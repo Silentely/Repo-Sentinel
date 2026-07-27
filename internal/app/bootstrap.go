@@ -1,0 +1,258 @@
+package app
+
+import (
+	"context"
+	"crypto/subtle"
+	"encoding/json"
+	"errors"
+	"io/fs"
+	"log/slog"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/Silentely/Repo-Sentinel/internal/auth"
+	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
+	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
+	"github.com/Silentely/Repo-Sentinel/internal/httpapi"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
+	webassets "github.com/Silentely/Repo-Sentinel/web"
+	"github.com/oklog/ulid/v2"
+)
+
+const (
+	encryptionProbeSettingKey = "security.encryption_probe"
+	encryptionProbePlaintext  = "reposentinel-key-check-v1"
+	encryptionProbeAAD        = "reposentinel:encryption-probe:v1"
+)
+
+type encryptionProbe struct {
+	Envelope string `json:"envelope"`
+}
+
+type buildDependencies struct {
+	openStore          func(context.Context, config.DatabaseConfig) (store.Store, error)
+	validateEncryption func(context.Context, store.Store, config.EncryptionConfig) (*cryptox.KeyRing, error)
+	openFrontend       func() (fs.FS, error)
+	newLogger          func(config.LoggingConfig) *slog.Logger
+	newHTTPServer      func(string, http.Handler) httpRuntime
+}
+
+func defaultBuildDependencies() buildDependencies {
+	return buildDependencies{
+		openStore:          store.Open,
+		validateEncryption: validateEncryptionKey,
+		openFrontend:       webassets.Files,
+		newLogger:          newLogger,
+		newHTTPServer: func(addr string, handler http.Handler) httpRuntime {
+			return &http.Server{
+				Addr:              addr,
+				Handler:           handler,
+				ReadHeaderTimeout: 10 * time.Second,
+				ReadTimeout:       30 * time.Second,
+				WriteTimeout:      30 * time.Second,
+				IdleTimeout:       60 * time.Second,
+			}
+		},
+	}
+}
+
+// Build 按配置、数据库、主密钥、管理员、服务与 HTTP 的顺序装配 App。
+func Build(ctx context.Context, cfg config.Config) (*App, error) {
+	return buildWithDependencies(ctx, cfg, defaultBuildDependencies())
+}
+
+func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies buildDependencies) (_ *App, returnedErr error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	logger := dependencies.newLogger(cfg.Logging)
+	data, err := dependencies.openStore(ctx, cfg.Database)
+	if err != nil {
+		return nil, mapStoreOpenError(err)
+	}
+	defer func() {
+		if returnedErr != nil {
+			_ = data.Close()
+		}
+	}()
+
+	keyRing, err := dependencies.validateEncryption(ctx, data, cfg.Encryption)
+	if err != nil {
+		if errors.Is(err, cryptox.ErrEncryptionKeyMismatch) {
+			return nil, newPublicError(
+				"encryption_key_mismatch",
+				"无法验证加密主密钥，请检查当前/上一把密钥与数据库是否匹配。",
+				cryptox.ErrEncryptionKeyMismatch,
+			)
+		}
+		return nil, newPublicError("database_unavailable", "无法校验数据库中的加密状态。", err)
+	}
+	frontend, err := dependencies.openFrontend()
+	if err != nil {
+		return nil, newPublicError("frontend_unavailable", "无法加载管理控制台资源。", err)
+	}
+
+	adminService := auth.NewAdminService(data, auth.NewPasswordHasher())
+	if err := bootstrapConfiguredAdmin(ctx, data, adminService, cfg); err != nil {
+		return nil, err
+	}
+	sessionService := auth.NewSessionService(data, nil, nil, cfg.Admin.SessionTTL)
+	readiness := &readinessState{}
+	handler := httpapi.New(httpapi.Dependencies{
+		Config:         cfg,
+		AdminStore:     data.Admins(),
+		AdminService:   adminService,
+		SessionService: sessionService,
+		CSRF:           auth.NewCSRFTokens(nil),
+		LoginLimiter:   auth.NewLoginLimiter(nil),
+		BuildInfo:      buildinfo.Current(),
+		Ready:          readiness,
+		Logger:         logger,
+		SchemaVersion:  SupportedSchemaVersion,
+		Frontend:       frontend,
+	})
+	built := &App{
+		config:          cfg,
+		data:            data,
+		keyRing:         keyRing,
+		adminService:    adminService,
+		sessionService:  sessionService,
+		httpServer:      dependencies.newHTTPServer(cfg.HTTP.Addr, handler),
+		readiness:       readiness,
+		logger:          logger,
+		cleanupInterval: defaultCleanupInterval,
+	}
+	readiness.Set(true)
+	info := buildinfo.Current()
+	logger.Info(
+		"reposentinel ready",
+		"version", info.Version,
+		"git_sha", info.GitSHA,
+		"build_time", info.BuildTime,
+		"build_channel", info.BuildChannel,
+		"database_driver", cfg.Database.Driver,
+		"schema_version", SupportedSchemaVersion,
+		"http_addr", cfg.HTTP.Addr,
+	)
+	return built, nil
+}
+
+func bootstrapConfiguredAdmin(
+	ctx context.Context,
+	data store.Store,
+	service *auth.AdminService,
+	cfg config.Config,
+) error {
+	_, err := data.Admins().GetOnly(ctx)
+	switch {
+	case err == nil:
+		return nil
+	case !errors.Is(err, store.ErrNotFound):
+		return newPublicError("database_unavailable", "无法读取管理员初始化状态。", err)
+	}
+	if strings.TrimSpace(cfg.Admin.Username) == "" {
+		return nil
+	}
+	_, err = service.BootstrapAdmin(ctx, cfg.Admin.Username, cfg.Admin.Password.Reveal())
+	return err
+}
+
+func validateEncryptionKey(
+	ctx context.Context,
+	data store.Store,
+	cfg config.EncryptionConfig,
+) (*cryptox.KeyRing, error) {
+	setting, err := data.Settings().Get(ctx, encryptionProbeSettingKey)
+	probeExists := err == nil
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
+	if strings.TrimSpace(cfg.CurrentKey.Reveal()) == "" {
+		if probeExists {
+			return nil, cryptox.ErrEncryptionKeyMismatch
+		}
+		return nil, nil
+	}
+	ring, err := cryptox.NewKeyRing(cfg)
+	if err != nil {
+		return nil, cryptox.ErrEncryptionKeyMismatch
+	}
+	if !probeExists {
+		if err := writeEncryptionProbe(ctx, data, ring, store.SystemSetting{}); err != nil {
+			return nil, err
+		}
+		return &ring, nil
+	}
+
+	var probe encryptionProbe
+	if err := json.Unmarshal(setting.ValueJSON, &probe); err != nil || strings.TrimSpace(probe.Envelope) == "" {
+		return nil, cryptox.ErrEncryptionKeyMismatch
+	}
+	decrypted, err := ring.Decrypt(ctx, probe.Envelope, []byte(encryptionProbeAAD))
+	if err != nil || subtle.ConstantTimeCompare(decrypted.Plaintext, []byte(encryptionProbePlaintext)) != 1 {
+		return nil, cryptox.ErrEncryptionKeyMismatch
+	}
+	if decrypted.UsedPreviousKey {
+		if err := writeEncryptionProbe(ctx, data, ring, setting); err != nil {
+			return nil, err
+		}
+	}
+	return &ring, nil
+}
+
+func writeEncryptionProbe(
+	ctx context.Context,
+	data store.Store,
+	ring cryptox.KeyRing,
+	existing store.SystemSetting,
+) error {
+	envelope, err := ring.Encrypt(ctx, []byte(encryptionProbePlaintext), []byte(encryptionProbeAAD))
+	if err != nil {
+		return cryptox.ErrEncryptionKeyMismatch
+	}
+	valueJSON, err := json.Marshal(encryptionProbe{Envelope: envelope})
+	if err != nil {
+		return cryptox.ErrEncryptionKeyMismatch
+	}
+	if existing.ID == "" {
+		existing.ID = ulid.Make().String()
+	}
+	existing.Key = encryptionProbeSettingKey
+	existing.ValueJSON = valueJSON
+	existing.UpdatedAt = time.Now().UTC()
+	existing.UpdatedBy = "system"
+	_, err = data.Settings().Upsert(ctx, existing)
+	return err
+}
+
+func newLogger(cfg config.LoggingConfig) *slog.Logger {
+	level := new(slog.LevelVar)
+	switch cfg.Level {
+	case "debug":
+		level.Set(slog.LevelDebug)
+	case "warn":
+		level.Set(slog.LevelWarn)
+	case "error":
+		level.Set(slog.LevelError)
+	default:
+		level.Set(slog.LevelInfo)
+	}
+	options := &slog.HandlerOptions{Level: level}
+	var handler slog.Handler
+	if cfg.Format == "text" {
+		handler = slog.NewTextHandler(os.Stderr, options)
+	} else {
+		handler = slog.NewJSONHandler(os.Stderr, options)
+	}
+	return slog.New(handler)
+}
+
+func mapStoreOpenError(err error) error {
+	if err != nil && err.Error() == "database migration failed" {
+		return newPublicError("migration_failed", "数据库迁移失败。", err)
+	}
+	return newPublicError("database_unavailable", "无法打开数据库。", err)
+}

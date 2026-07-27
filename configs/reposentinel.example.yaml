@@ -1,0 +1,61 @@
+# RepoSentinel 第一阶段示例配置。
+# Secret 不写入本文件；请按各段注释使用对应环境变量注入。
+
+http:
+  # HTTP 监听地址，必须包含主机和端口。
+  addr: "127.0.0.1:8080"
+  # 对外访问地址；生产环境使用 HTTPS，本地开发可留空。
+  public_base_url: ""
+
+database:
+  # 数据库驱动可选 sqlite 或 postgres。
+  driver: "sqlite"
+  # SQLite 文件地址；PostgreSQL 部署时可通过 REPOSENTINEL_DATABASE_URL 注入连接地址。
+  url: "file:/data/reposentinel.db"
+  # SQLite 默认最大打开连接数为 1；PostgreSQL 未显式设置时为 10。
+  max_open_conns: 1
+  # SQLite 默认最大空闲连接数为 1。
+  max_idle_conns: 1
+
+admin:
+  # 初始管理员用户名；若填写，密码必须通过 REPOSENTINEL_ADMIN_PASSWORD 同时提供。
+  username: ""
+  # 管理员会话有效期，使用 Go duration 格式。
+  session_ttl: "24h"
+
+setup:
+  # 是否明确允许从非本机地址完成首次设置。
+  allow_remote: false
+
+encryption: {}
+# 当前主密钥通过 REPOSENTINEL_ENCRYPTION_KEY 提供。
+# 上一把轮换密钥通过 REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS 提供。
+
+github:
+  # GitHub App 数字 ID。
+  app_id: 0
+  # GitHub App Client ID。
+  client_id: ""
+  # GitHub App 私钥文件路径；文件内容不写入配置。
+  private_key_path: ""
+  # Webhook Secret 通过 REPOSENTINEL_GITHUB_WEBHOOK_SECRET 提供。
+  # 上一把 Webhook Secret 通过 REPOSENTINEL_GITHUB_WEBHOOK_PREVIOUS_SECRET 提供。
+  # 外部仓库 PAT 通过 REPOSENTINEL_EXTERNAL_PAT 提供。
+
+notify:
+  telegram:
+    # Telegram 目标 Chat ID。
+    chat_id: ""
+    # Bot Token 通过 REPOSENTINEL_TELEGRAM_TOKEN 提供。
+  http_webhook:
+    # 通用 HTTP Webhook 地址。
+    url: ""
+    # 是否允许通知发送到私网地址。
+    allow_private: false
+    # Webhook 签名 Secret 通过 REPOSENTINEL_HTTP_WEBHOOK_SECRET 提供。
+
+logging:
+  # 日志格式可选 json 或 text。
+  format: "json"
+  # 日志级别可选 debug、info、warn 或 error。
+  level: "info"

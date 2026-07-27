@@ -147,6 +147,7 @@ docs/.vitepress/dist/
 .test-run-data-override
 
 # Development logs and temp files
+.tmp/
 backend-*.log
 backend-*.pid
 frontend-*.log

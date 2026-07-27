@@ -1,0 +1,123 @@
+package config
+
+import (
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
+	"net"
+	"net/url"
+	"strings"
+)
+
+const validationFailedCode = "validation_failed"
+
+// ValidationError 表示可稳定识别且不包含配置原文的校验错误。
+type ValidationError struct {
+	Field   string
+	Message string
+}
+
+// Error 返回固定错误码、字段名和安全说明，不回显失败输入。
+func (e *ValidationError) Error() string {
+	if e == nil {
+		return validationFailedCode
+	}
+	if e.Field == "" {
+		return fmt.Sprintf("%s: %s", validationFailedCode, e.Message)
+	}
+	return fmt.Sprintf("%s: %s: %s", validationFailedCode, e.Field, e.Message)
+}
+
+// ErrorCode 返回供 API 与 CLI 映射使用的稳定错误码。
+func (*ValidationError) ErrorCode() string {
+	return validationFailedCode
+}
+
+func newValidationError(field, message string) *ValidationError {
+	return &ValidationError{Field: field, Message: message}
+}
+
+// Validate 校验第一阶段中安全敏感且必须在启动前确定的配置。
+func (cfg Config) Validate() error {
+	switch cfg.Database.Driver {
+	case "sqlite":
+	case "postgres":
+		if strings.TrimSpace(cfg.Database.URL) == "" {
+			return newValidationError("database.url", "is required for postgres")
+		}
+	default:
+		return newValidationError("database.driver", "must be sqlite or postgres")
+	}
+
+	if _, _, err := net.SplitHostPort(cfg.HTTP.Addr); err != nil {
+		return newValidationError("http.addr", "must contain a valid host and port")
+	}
+	if !validPublicBaseURL(cfg.HTTP.PublicBaseURL) {
+		return newValidationError("http.public_base_url", "must use HTTPS except for localhost or loopback HTTP")
+	}
+
+	hasUsername := cfg.Admin.Username != ""
+	hasPassword := cfg.Admin.Password.Reveal() != ""
+	if hasUsername != hasPassword {
+		return newValidationError("admin", "username and password must be provided together")
+	}
+
+	switch cfg.Logging.Level {
+	case "debug", "info", "warn", "error":
+	default:
+		return newValidationError("logging.level", "must be debug, info, warn, or error")
+	}
+	switch cfg.Logging.Format {
+	case "json", "text":
+	default:
+		return newValidationError("logging.format", "must be json or text")
+	}
+
+	if !validEncryptionKey(cfg.Encryption.CurrentKey) {
+		return newValidationError("encryption.current_key", "must decode from base64 or hex to exactly 32 bytes")
+	}
+	if !validEncryptionKey(cfg.Encryption.PreviousKey) {
+		return newValidationError("encryption.previous_key", "must decode from base64 or hex to exactly 32 bytes")
+	}
+	return nil
+}
+
+func validPublicBaseURL(value string) bool {
+	if value == "" {
+		return true
+	}
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+
+	switch strings.ToLower(parsed.Scheme) {
+	case "https":
+		return true
+	case "http":
+		host := strings.ToLower(parsed.Hostname())
+		if host == "localhost" {
+			return true
+		}
+		ip := net.ParseIP(host)
+		return ip != nil && ip.IsLoopback()
+	default:
+		return false
+	}
+}
+
+func validEncryptionKey(secret Secret) bool {
+	value := secret.Reveal()
+	if value == "" {
+		return true
+	}
+	if decoded, err := hex.DecodeString(value); err == nil && len(decoded) == 32 {
+		return true
+	}
+	for _, encoding := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding} {
+		if decoded, err := encoding.DecodeString(value); err == nil && len(decoded) == 32 {
+			return true
+		}
+	}
+	return false
+}
