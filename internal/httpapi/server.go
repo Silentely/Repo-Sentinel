@@ -1,0 +1,115 @@
+package httpapi
+
+import (
+	"context"
+	"io/fs"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"strings"
+
+	"github.com/Silentely/Repo-Sentinel/internal/auth"
+	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
+	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/go-chi/chi/v5"
+)
+
+const (
+	// SessionCookieName 是服务端 Session 原始令牌的固定 Cookie 名。
+	SessionCookieName = "reposentinel_session"
+	// CSRFCookieName 是双提交 CSRF 原始令牌的固定 Cookie 名。
+	CSRFCookieName = "reposentinel_csrf"
+	// CSRFHeaderName 是写请求携带双提交令牌的固定 Header 名。
+	CSRFHeaderName = "X-CSRF-Token"
+)
+
+// ReadyChecker 报告迁移、数据库与核心依赖是否已就绪。
+type ReadyChecker interface {
+	Ready(context.Context) error
+}
+
+// ReadyCheckFunc 将普通函数适配为 ReadyChecker。
+type ReadyCheckFunc func(context.Context) error
+
+// Ready 执行就绪检查。
+func (f ReadyCheckFunc) Ready(ctx context.Context) error {
+	return f(ctx)
+}
+
+// Dependencies 是 HTTP 管理面的显式最小依赖集合。
+type Dependencies struct {
+	Config         config.Config
+	AdminStore     store.AdminStore
+	AdminService   *auth.AdminService
+	SessionService *auth.SessionService
+	CSRF           auth.CSRFTokens
+	LoginLimiter   *auth.LoginLimiter
+	BuildInfo      buildinfo.Info
+	Ready          ReadyChecker
+	Logger         *slog.Logger
+	SchemaVersion  string
+	Frontend       fs.FS
+}
+
+type server struct {
+	dependencies  Dependencies
+	secureCookies bool
+}
+
+// New 创建 Phase 1 管理 API HTTP Handler。
+func New(dependencies Dependencies) http.Handler {
+	if dependencies.Logger == nil {
+		dependencies.Logger = slog.Default()
+	}
+	if dependencies.Ready == nil {
+		dependencies.Ready = ReadyCheckFunc(func(context.Context) error { return nil })
+	}
+	if dependencies.LoginLimiter == nil {
+		dependencies.LoginLimiter = auth.NewLoginLimiter(nil)
+	}
+	if strings.TrimSpace(dependencies.SchemaVersion) == "" {
+		dependencies.SchemaVersion = "unknown"
+	}
+
+	s := &server{
+		dependencies:  dependencies,
+		secureCookies: usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
+	}
+	router := chi.NewRouter()
+	router.Use(s.requestIDMiddleware)
+	router.Use(s.realIPMiddleware)
+	router.Use(s.accessLogMiddleware)
+	router.Use(s.recoveryMiddleware)
+	router.Use(securityHeadersMiddleware)
+
+	router.Get("/health/live", s.handleLive)
+	router.Get("/health/ready", s.handleReady)
+	router.Route("/api/v1", func(api chi.Router) {
+		api.Get("/setup/status", s.handleSetupStatus)
+		api.Post("/setup", s.handleSetup)
+		api.Post("/auth/login", s.handleLogin)
+
+		api.Group(func(protected chi.Router) {
+			protected.Use(s.authenticationMiddleware)
+			protected.Get("/auth/session", s.handleSession)
+			protected.Get("/system/version", s.handleVersion)
+			protected.Group(func(mutating chi.Router) {
+				mutating.Use(s.csrfMiddleware)
+				mutating.Post("/auth/logout", s.handleLogout)
+				mutating.Post("/auth/password", s.handleChangePassword)
+			})
+		})
+	})
+	notFound := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, nil)
+	})
+	router.NotFound(newSPAHandler(dependencies.Frontend, notFound).ServeHTTP)
+	router.MethodNotAllowed(notFound.ServeHTTP)
+	return router
+}
+
+func usesSecureCookies(publicBaseURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(publicBaseURL))
+	return err == nil && strings.EqualFold(parsed.Scheme, "https")
+}
