@@ -20,7 +20,7 @@ Docker、PostgreSQL、Playwright Chromium 只在对应的契约或浏览器验�
 mkdir -p ".tmp"
 pnpm --dir "web" install
 pnpm --dir "web" build
-go build -tags production -o ".tmp/reposentinel" ./cmd/reposentinel
+OUTPUT=".tmp/reposentinel" BUILD_CHANNEL="local" make build-production
 ```
 
 使用仓库内的 SQLite 文件启动：
@@ -73,7 +73,7 @@ pnpm --dir "web" build
 
 ```bash
 pnpm --dir "web" build
-go build -tags production -o ".tmp/reposentinel" ./cmd/reposentinel
+OUTPUT=".tmp/reposentinel" BUILD_CHANNEL="local" make build-production
 ```
 
 Playwright 测试脚手架可以列出测试而不需要浏览器：
@@ -88,7 +88,7 @@ pnpm --dir "web" exec playwright test --list
 
 - Session 原始令牌只通过 HttpOnly Cookie 返回；CSRF 令牌使用独立的非 HttpOnly Cookie 和请求头。
 - 非安全 HTTP 方法需要 CSRF 校验；登录有本机内存限流。
-- 首次 setup 默认只允许 loopback 请求。只有明确设置 `REPOSENTINEL_SETUP_ALLOW_REMOTE=true` 才允许远程初始化，并且应放在 TLS 和网络访问控制之后。
+- 首次 setup 默认要求连接来源 IP 与请求 Host 都是 loopback（例如 `127.0.0.1`、`[::1]` 或 `localhost`）。通过公网域名或反向代理初始化时，必须明确设置 `REPOSENTINEL_SETUP_ALLOW_REMOTE=true`，并放在 TLS 和网络访问控制之后。
 - `/api` 与 `/health` 未知路径始终返回 JSON 404，不会被 SPA fallback 吞掉。
 - 生产静态资源使用不可变缓存；`index.html` 使用 `no-cache`。
 

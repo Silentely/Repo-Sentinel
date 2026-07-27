@@ -38,7 +38,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	remoteIP := remoteIPFromContext(r.Context())
-	if !s.dependencies.LoginLimiter.Allow(remoteIP, request.Username) {
+	if !s.dependencies.LoginLimiter.Allow(remoteIP) {
 		s.writeAPIError(w, r, http.StatusTooManyRequests, errorCodeRateLimited, nil)
 		return
 	}

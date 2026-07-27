@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -34,7 +36,8 @@ func (s *server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, nil)
 		return
 	}
-	if !s.dependencies.Config.Setup.AllowRemote && !isLoopbackIP(remoteIPFromContext(r.Context())) {
+	if !s.dependencies.Config.Setup.AllowRemote &&
+		(!isLoopbackIP(remoteIPFromContext(r.Context())) || !isLoopbackHost(r.Host)) {
 		s.writeAPIError(w, r, http.StatusForbidden, errorCodeForbidden, nil)
 		return
 	}
@@ -80,4 +83,21 @@ func (s *server) setupRequired(r *http.Request) (bool, error) {
 func isLoopbackIP(rawIP string) bool {
 	parsed := net.ParseIP(rawIP)
 	return parsed != nil && parsed.IsLoopback()
+}
+
+func isLoopbackHost(rawHost string) bool {
+	host := strings.TrimSpace(rawHost)
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	} else if parsedHost, port, err := net.SplitHostPort(host); err == nil {
+		portNumber, portErr := strconv.Atoi(port)
+		if portErr != nil || portNumber < 0 || portNumber > 65535 {
+			return false
+		}
+		host = parsedHost
+	} else if strings.Contains(host, ":") && net.ParseIP(host) == nil {
+		return false
+	}
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	return host == "localhost" || isLoopbackIP(host)
 }

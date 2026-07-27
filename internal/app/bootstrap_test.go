@@ -227,6 +227,9 @@ func (s *closeTrackingStore) Sessions() store.SessionStore {
 
 func (s *closeTrackingStore) Close() error {
 	s.closed.Store(true)
+	if s.Store != nil {
+		return s.Store.Close()
+	}
 	return nil
 }
 

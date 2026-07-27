@@ -20,7 +20,7 @@ type loginLimiterEntry struct {
 	lastSeen time.Time
 }
 
-// LoginLimiter 按 IP 与规范化用户名隔离登录令牌桶。
+// LoginLimiter 按来源 IP 隔离登录令牌桶。
 type LoginLimiter struct {
 	mu        sync.Mutex
 	clock     Clock
@@ -41,10 +41,10 @@ func NewLoginLimiter(clock Clock) *LoginLimiter {
 	}
 }
 
-// Allow 消耗指定 IP 与用户名键的一次登录尝试额度。
-func (l *LoginLimiter) Allow(ip, normalizedUsername string) bool {
+// Allow 消耗指定来源 IP 的一次登录尝试额度。
+func (l *LoginLimiter) Allow(ip string) bool {
 	now := l.clock.Now().UTC()
-	key := strings.TrimSpace(ip) + "\x00" + strings.ToLower(strings.TrimSpace(normalizedUsername))
+	key := strings.TrimSpace(ip)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()

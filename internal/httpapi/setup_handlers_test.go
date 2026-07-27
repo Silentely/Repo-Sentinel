@@ -44,6 +44,61 @@ func TestSetup默认拒绝远端请求(t *testing.T) {
 	assertAPIError(t, response, http.StatusForbidden, "forbidden")
 }
 
+func TestSetup默认拒绝同机反向代理转发的公网Host(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	response := fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/setup",
+		`{"username":"Repo Admin","password":"`+httpTestPassword+`"}`,
+		"127.0.0.1:41102",
+		nil,
+		map[string]string{"Host": "reposentinel.example"},
+	)
+	assertAPIError(t, response, http.StatusForbidden, "forbidden")
+}
+
+func TestSetup默认允许直连LoopbackHost(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	response := fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/setup",
+		`{"username":"Repo Admin","password":"`+httpTestPassword+`"}`,
+		"127.0.0.1:41103",
+		nil,
+		map[string]string{"Host": "127.0.0.1:8080"},
+	)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("本机直连 setup 状态=%d，响应=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestLoopbackHost识别本机Host并拒绝公网或畸形Host(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		want bool
+	}{
+		{name: "localhost", host: "localhost", want: true},
+		{name: "localhost trailing dot", host: "LOCALHOST.", want: true},
+		{name: "IPv4 with port", host: "127.0.0.1:8080", want: true},
+		{name: "bracketed IPv6", host: "[::1]", want: true},
+		{name: "bracketed IPv6 with port", host: "[::1]:8080", want: true},
+		{name: "public hostname", host: "reposentinel.example", want: false},
+		{name: "malformed port", host: "localhost:not-a-port", want: false},
+		{name: "out of range port", host: "localhost:70000", want: false},
+		{name: "empty", host: "", want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isLoopbackHost(test.host); got != test.want {
+				t.Fatalf("isLoopbackHost(%q)=%v，期望 %v", test.host, got, test.want)
+			}
+		})
+	}
+}
+
 func TestSetup显式允许远端后创建管理员与安全Cookie(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{allowRemote: true})
 	response := fixture.request(
@@ -53,7 +108,7 @@ func TestSetup显式允许远端后创建管理员与安全Cookie(t *testing.T) 
 		`{"username":"Repo Admin","password":"`+httpTestPassword+`"}`,
 		"203.0.113.10:41201",
 		nil,
-		nil,
+		map[string]string{"Host": "reposentinel.example"},
 	)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("远端显式允许 setup 状态=%d，响应=%s", response.Code, response.Body.String())

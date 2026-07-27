@@ -19,7 +19,7 @@ unset REPOSENTINEL_ADMIN_PASSWORD
 
 ### 通过 setup 页面创建
 
-没有管理员时，访问实例首页会跳转到“创建唯一管理员”。默认情况下，setup 只接受 loopback 请求；`REPOSENTINEL_SETUP_ALLOW_REMOTE` 必须显式设为 `true` 才允许远程 setup。远程 setup 只应在 TLS、反向代理认证和网络白名单都已就绪后启用。
+没有管理员时，访问实例首页会跳转到“创建唯一管理员”。默认情况下，setup 只接受连接来源 IP 与请求 Host 都是 loopback 的直连请求，例如 `http://127.0.0.1:8080`、`http://[::1]:8080` 或 `http://localhost:8080`。即使反向代理与 RepoSentinel 位于同一台主机，通过公网域名访问仍会被拒绝；此时必须显式设置 `REPOSENTINEL_SETUP_ALLOW_REMOTE=true`。远程 setup 只应在 TLS、反向代理认证和网络白名单都已就绪后启用，完成后应立即恢复为 `false`。
 
 成功 setup 会立即建立 Session。管理员已存在时，setup 状态变为 `required=false`，再次提交返回 `not_found`。
 
@@ -31,7 +31,7 @@ unset REPOSENTINEL_ADMIN_PASSWORD
 - Session 默认有效期为 24 小时，可用 `REPOSENTINEL_ADMIN_SESSION_TTL` 调整。
 - Session 原始令牌只通过 HttpOnly Cookie `reposentinel_session` 返回；服务端只保存哈希。
 - 写请求还需要非 HttpOnly Cookie `reposentinel_csrf` 对应的 `X-CSRF-Token` 请求头。
-- 登录限流在进程内生效；多实例部署需要在入口层增加共享限流或粘性策略。
+- 登录限流按来源 IP 在进程内生效，不因更换用户名获得新额度；多实例部署仍需要在入口层增加共享限流或粘性策略。
 
 退出会撤销当前 Session 并清理认证 Cookie。密码修改会保留当前 Session、撤销其他 Session；CLI 重置会撤销全部旧 Session。
 

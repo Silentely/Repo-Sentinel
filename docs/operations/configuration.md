@@ -28,7 +28,7 @@ YAML 适合保存地址、连接池和开关等非敏感值。密码、主密钥
 | `REPOSENTINEL_ADMIN_USERNAME` | 首次启动时创建唯一管理员的用户名。必须和密码成对提供。 |
 | `REPOSENTINEL_ADMIN_PASSWORD` | 首次启动时创建唯一管理员的密码；已有管理员时不会覆盖密码。 |
 | `REPOSENTINEL_ADMIN_SESSION_TTL` | Session 有效期，使用 Go duration，例如 `24h`。 |
-| `REPOSENTINEL_SETUP_ALLOW_REMOTE` | 是否允许非 loopback 地址完成首次 setup，默认 `false`。 |
+| `REPOSENTINEL_SETUP_ALLOW_REMOTE` | 是否允许来源 IP 或请求 Host 非 loopback 的首次 setup，默认 `false`。 |
 
 ### 主密钥
 
