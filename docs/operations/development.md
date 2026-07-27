@@ -73,10 +73,10 @@ go test ./migrations -run TestAtlasMigrationDirectories -v
 
 ```bash
 pnpm --dir "web" build
-go build -tags production -o ".tmp/reposentinel" ./cmd/reposentinel
+OUTPUT=".tmp/reposentinel" BUILD_CHANNEL="local" make build-production
 ```
 
-`web/embed_production.go` 使用 `go:embed dist`。如果没有先生成 `dist/index.html`，production 编译会在 embed 阶段失败；它不会启动一个空白页面。普通 `go test` 和不带 tag 的开发构建使用 `web/fallback/index.html`。
+Makefile 从根目录 `VERSION` 和当前 Git 状态注入版本、提交、分支、UTC 构建时间与构建渠道。正式发布应把 `BUILD_CHANNEL` 设置为发布渠道，并在构建后运行 `".tmp/reposentinel" version` 核对元数据。`web/embed_production.go` 使用 `go:embed dist`；如果没有先生成 `dist/index.html`，production 编译会在 embed 阶段失败，它不会启动一个空白页面。普通 `go test` 和不带 tag 的开发构建使用 `web/fallback/index.html`。
 
 SPA 处理规则如下：
 

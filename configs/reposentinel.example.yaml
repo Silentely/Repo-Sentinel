@@ -24,7 +24,7 @@ admin:
   session_ttl: "24h"
 
 setup:
-  # 是否明确允许从非本机地址完成首次设置。
+  # 是否明确允许来源 IP 或请求 Host 非 loopback 的首次设置。
   allow_remote: false
 
 encryption: {}

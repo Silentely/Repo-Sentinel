@@ -217,6 +217,10 @@ func (f *httpTestFixture) requestWithContentType(
 		request.AddCookie(cookie)
 	}
 	for name, value := range headers {
+		if name == "Host" {
+			request.Host = value
+			continue
+		}
 		request.Header.Set(name, value)
 	}
 	response := httptest.NewRecorder()
