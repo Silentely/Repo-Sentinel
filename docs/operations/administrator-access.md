@@ -35,7 +35,7 @@ unset REPOSENTINEL_ADMIN_PASSWORD
 
 退出会撤销当前 Session 并清理认证 Cookie。密码修改会保留当前 Session、撤销其他 Session；CLI 重置会撤销全部旧 Session。
 
-## 从 CLI 重置密码
+## 使用 CLI 重置密码
 
 密码不能作为命令行参数传入。使用 `--password-stdin`，程序只读取 stdin 第一行，并且不会把密码写入输出：
 
