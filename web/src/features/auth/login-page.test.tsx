@@ -14,10 +14,13 @@ describe("登录页", () => {
     expect(screen.getByLabelText("用户名")).toBeInTheDocument();
     expect(screen.getByLabelText("密码")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "使用 CLI 重置密码" })).toHaveAttribute(
+    const recoveryLink = screen.getByRole("link", { name: "使用 CLI 重置密码" });
+    expect(recoveryLink).toHaveAttribute(
       "href",
-      "/docs/operations/administrator-access#使用-cli-重置密码",
+      "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/operations/administrator-access.md#使用-cli-重置密码",
     );
+    expect(recoveryLink).toHaveAttribute("target", "_blank");
+    expect(recoveryLink).toHaveAttribute("rel", "noreferrer");
     expect(screen.queryByText(/忘记密码/)).not.toBeInTheDocument();
   });
 
