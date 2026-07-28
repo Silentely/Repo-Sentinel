@@ -42,6 +42,13 @@ func (a *App) Run(ctx context.Context) error {
 			Logger:  a.logger,
 		}).Run(workerCtx, 5*time.Second)
 	}()
+	schedDone := make(chan struct{})
+	go func() {
+		defer close(schedDone)
+		if a.scheduler != nil {
+			a.scheduler.Run(workerCtx)
+		}
+	}()
 
 	serverResult := make(chan error, 1)
 	go func() {
@@ -68,6 +75,7 @@ func (a *App) Run(ctx context.Context) error {
 	cancelShutdown()
 	<-workerDone
 	<-notifyDone
+	<-schedDone
 	closeErr := a.Close()
 
 	if runErr != nil {

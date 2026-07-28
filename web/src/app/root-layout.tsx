@@ -1,8 +1,13 @@
 import {
   Activity,
   GitBranch,
+  FolderGit2,
+  Info,
+  ListTodo,
   LogOut,
+  Shield,
   ShieldCheck,
+  Workflow,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -60,10 +65,32 @@ export function RootLayout({ session }: RootLayoutProps) {
             <Activity aria-hidden="true" size={17} />
             <span>仪表盘</span>
           </Link>
+          <span className="app-nav__label">仓库</span>
+          <Link to="/work-items" activeProps={{ "aria-current": "page" }}>
+            <ListTodo aria-hidden="true" size={17} />
+            <span>Issues / PR</span>
+          </Link>
+          <Link to="/actions" activeProps={{ "aria-current": "page" }}>
+            <Workflow aria-hidden="true" size={17} />
+            <span>Actions</span>
+          </Link>
+          <Link to="/security" activeProps={{ "aria-current": "page" }}>
+            <Shield aria-hidden="true" size={17} />
+            <span>安全告警</span>
+          </Link>
           <span className="app-nav__label">通知</span>
           <Link to="/notifications" activeProps={{ "aria-current": "page" }}>
             <GitBranch aria-hidden="true" size={17} />
             <span>渠道配置</span>
+          </Link>
+          <span className="app-nav__label">系统</span>
+          <Link to="/github" activeProps={{ "aria-current": "page" }}>
+            <FolderGit2 aria-hidden="true" size={17} />
+            <span>GitHub App</span>
+          </Link>
+          <Link to="/about" activeProps={{ "aria-current": "page" }}>
+            <Info aria-hidden="true" size={17} />
+            <span>关于与版本</span>
           </Link>
         </nav>
         <span className="app-sidebar__version">RepoSentinel</span>

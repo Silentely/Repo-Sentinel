@@ -250,6 +250,7 @@ type RepositoryStore interface {
 // InstallationStore GitHub App 安装。
 type InstallationStore interface {
 	Upsert(context.Context, GitHubInstallation) (GitHubInstallation, error)
+	Get(context.Context, string) (GitHubInstallation, error)
 	GetByInstallationID(context.Context, int64) (GitHubInstallation, error)
 	List(context.Context) ([]GitHubInstallation, error)
 }

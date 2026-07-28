@@ -82,6 +82,14 @@ func (s *installationStore) Upsert(ctx context.Context, in GitHubInstallation) (
 	return installationFromEntity(entity), nil
 }
 
+func (s *installationStore) Get(ctx context.Context, id string) (GitHubInstallation, error) {
+	entity, err := s.client.GitHubInstallation.Get(ctx, id)
+	if err != nil {
+		return GitHubInstallation{}, mapStoreError(err)
+	}
+	return installationFromEntity(entity), nil
+}
+
 func (s *installationStore) GetByInstallationID(ctx context.Context, id int64) (GitHubInstallation, error) {
 	entity, err := s.client.GitHubInstallation.Query().Where(githubinstallation.InstallationIDEQ(id)).Only(ctx)
 	if err != nil {

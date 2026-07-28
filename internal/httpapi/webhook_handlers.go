@@ -93,8 +93,13 @@ func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body [
 		repoName = res.Repository.FullName
 	}
 	if res.Event != nil && !res.SuppressNotify {
-		engine := &rules.Engine{Store: s.dependencies.Store}
-		if err := engine.Evaluate(ctx, res, repoName); err != nil {
+		var err error
+		if s.dependencies.Aggregator != nil {
+			err = s.dependencies.Aggregator.Evaluate(ctx, res, repoName)
+		} else {
+			err = (&rules.Engine{Store: s.dependencies.Store}).Evaluate(ctx, res, repoName)
+		}
+		if err != nil {
 			s.dependencies.Logger.Error("rule evaluate failed", "delivery_id", deliveryID, "error_code", "rule_failed")
 		}
 	}

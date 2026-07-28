@@ -63,7 +63,7 @@ func NewRunner(stdin io.Reader, stdout, stderr io.Writer, dependencies Dependenc
 // Run 分派 serve/version/config/admin 子命令，并统一输出安全错误。
 func (r Runner) Run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return reportError(r.stderr, newCLIError("缺少命令，可用命令: serve, version, config validate, admin reset-password。"))
+		return reportError(r.stderr, newCLIError("缺少命令，可用命令: serve, version, config validate, admin reset-password, doctor, backup, restore。"))
 	}
 	var err error
 	switch args[0] {
@@ -83,6 +83,12 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 		} else {
 			err = r.runAdminResetPassword(ctx, args[2:])
 		}
+	case "doctor":
+		err = r.runDoctor(ctx, args[1:])
+	case "backup":
+		err = r.runBackup(ctx, args[1:])
+	case "restore":
+		err = r.runRestore(ctx, args[1:])
 	default:
 		err = newCLIError("未知命令。")
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 )
 
 const (
@@ -39,6 +40,7 @@ type App struct {
 	cleanupInterval time.Duration
 	workerCtx       context.Context
 	workerCancel    context.CancelFunc
+	scheduler       *syncx.Scheduler
 	closeOnce       sync.Once
 	closeErr        error
 }

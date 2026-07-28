@@ -9,6 +9,8 @@ import {
   dashboardQueryOptions,
   eventsQueryOptions,
   outboxQueryOptions,
+  reconcileAll,
+  reconcileRepository,
   repositoriesQueryOptions,
   retryOutbox,
 } from "./api";
@@ -20,12 +22,18 @@ export function DashboardPage() {
   const events = useQuery(eventsQueryOptions);
   const outbox = useQuery(outboxQueryOptions);
 
-  const activate = useMutation({
+	const activate = useMutation({
     mutationFn: activateRepository,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["repositories"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
+  });
+  const reconcileOne = useMutation({
+    mutationFn: reconcileRepository,
+  });
+  const reconcileEverything = useMutation({
+    mutationFn: reconcileAll,
   });
   const retry = useMutation({
     mutationFn: retryOutbox,
@@ -74,6 +82,16 @@ export function DashboardPage() {
 
       <section className="onboarding-card" aria-labelledby="baseline-title">
         <h2 id="baseline-title">仓库与基线</h2>
+        <p>
+          <button
+            className="quiet-button"
+            type="button"
+            disabled={reconcileEverything.isPending}
+            onClick={() => reconcileEverything.mutate()}
+          >
+            {reconcileEverything.isPending ? "对账排队中…" : "立即对账全部自有仓"}
+          </button>
+        </p>
         {repos.isPending ? <p>加载仓库…</p> : null}
         {repos.data && repos.data.items.length === 0 ? (
           <EmptyState
@@ -101,6 +119,16 @@ export function DashboardPage() {
                   onClick={() => activate.mutate(repo.id)}
                 >
                   完成基线
+                </button>
+              ) : null}
+              {repo.type !== "external_public" ? (
+                <button
+                  className="quiet-button"
+                  type="button"
+                  disabled={reconcileOne.isPending}
+                  onClick={() => reconcileOne.mutate(repo.id)}
+                >
+                  对账
                 </button>
               ) : null}
               {repo.html_url ? (

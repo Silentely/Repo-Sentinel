@@ -16,8 +16,12 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
+	"github.com/Silentely/Repo-Sentinel/internal/digest"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/httpapi"
+	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	webassets "github.com/Silentely/Repo-Sentinel/web"
 	"github.com/oklog/ulid/v2"
 )
@@ -102,6 +106,20 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	sessionService := auth.NewSessionService(data, nil, nil, cfg.Admin.SessionTTL)
 	readiness := &readinessState{}
 	workerCtx, workerCancel := context.WithCancel(context.Background())
+
+	ghClient := githubx.NewAppClient(cfg.GitHub.AppID, cfg.GitHub.PrivateKeyPath)
+	reconciler := &syncx.Reconciler{Store: data, GitHub: ghClient, Logger: logger, MaxPages: 3}
+	external := &syncx.ExternalPoller{
+		Store:  data,
+		Client: &githubx.PublicClient{PAT: cfg.GitHub.ExternalPAT.Reveal()},
+		Logger: logger,
+	}
+	aggregator := rules.NewAggregator(data, 60*time.Second, 15, 5*time.Minute)
+	digestGen := &digest.Generator{Store: data}
+	scheduler := &syncx.Scheduler{
+		Reconciler: reconciler, External: external, Digest: digestGen, Logger: logger,
+	}
+
 	handler := httpapi.New(httpapi.Dependencies{
 		Config:         cfg,
 		Store:          data,
@@ -116,6 +134,8 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		SchemaVersion:  SupportedSchemaVersion,
 		Frontend:       frontend,
 		KeyRing:        keyRing,
+		Aggregator:     aggregator,
+		Reconciler:     reconciler,
 		Background:     workerCtx,
 	})
 	if err := bootstrapNotifyChannels(ctx, data, keyRing, cfg); err != nil {
@@ -134,6 +154,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		readiness:       readiness,
 		logger:          logger,
 		cleanupInterval: defaultCleanupInterval,
+		scheduler:       scheduler,
 	}
 	readiness.Set(true)
 	info := buildinfo.Current()
