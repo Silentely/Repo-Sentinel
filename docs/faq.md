@@ -58,6 +58,16 @@ printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --passwor
 
 新版本日志会在 `message=` 后附带**不含密码**的原因摘要（如「连接串含未编码的 #」）。
 
+### 启动报 `migration_failed`？
+
+- 优先使用**空业务库**；Neon / Nile 等托管库可有默认 schema，当前版本已支持 dirty 首次迁移。  
+- 连接用户必须对目标 schema（默认 `public`）有 **CREATE** 权限。Aiven 等只读/受限账号会报 `permission denied for schema public`——在控制台用管理员执行：  
+  `GRANT CREATE ON SCHEMA public TO 你的用户;`  
+  或改用可建表的角色（如 Aiven 的 `avnadmin`）。  
+- 若库里已有**无关业务表**且无本项目的 `atlas_schema_revisions`，迁移会在 `public` 建表，可能冲突——请新建专用库。  
+- Nile 等禁止 `set_config(search_path)` 的平台需使用含兼容修复的版本。  
+- 若 revision 高于当前二进制，需升级程序，不能用旧版本连新库。
+
 ### 环境变量一览在哪？
 
 仓库根目录 [`.env.example`](https://github.com/Silentely/Repo-Sentinel/blob/main/.env.example)，说明见 [配置参考](/reference/configuration)。

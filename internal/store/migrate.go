@@ -37,6 +37,11 @@ func applyMigrations(ctx context.Context, db *sql.DB, dialectName string) (err e
 	if err != nil {
 		return err
 	}
+	// 托管 Postgres（Neon/Nile 等）常有默认 schema 或禁止 set_config(search_path)。
+	// Atlas CheckClean→InspectRealm 会触发 set_config；用包装驱动跳过并配合 AllowDirty。
+	if dialectName == "postgres" {
+		driver = skipCleanCheckDriver{Driver: driver}
+	}
 	lockName := migrationLockName
 	if dialectName == "sqlite" {
 		lockName = fmt.Sprintf("%s_%d", migrationLockName, sqliteMigrationLockSeq.Add(1))
@@ -58,12 +63,14 @@ func applyMigrations(ctx context.Context, db *sql.DB, dialectName string) (err e
 	if err := rejectUnsupportedRevision(ctx, revisions, dir); err != nil {
 		return err
 	}
+	// 允许 dirty：仅有 public / 额外系统 schema 时仍可首次迁移；revision 表保证幂等。
 	executor, err := migrate.NewExecutor(
 		driver,
 		dir,
 		revisions,
 		migrate.WithExecOrder(migrate.ExecOrderLinear),
 		migrate.WithOperatorVersion("reposentinel"),
+		migrate.WithAllowDirty(true),
 	)
 	if err != nil {
 		return err
@@ -108,6 +115,17 @@ func atlasDriver(db *sql.DB, dialectName string) (migrate.Driver, error) {
 	default:
 		return nil, errors.New("unsupported migration dialect")
 	}
+}
+
+// skipCleanCheckDriver 跳过 Atlas 对库是否「干净」的 realm 检查。
+// Nile 等平台禁止 set_config('search_path')，InspectRealm 会失败；
+// 与 WithAllowDirty 配合时，返回 NotCleanError 即可继续执行待迁移文件。
+type skipCleanCheckDriver struct {
+	migrate.Driver
+}
+
+func (d skipCleanCheckDriver) CheckClean(context.Context, *migrate.TableIdent) error {
+	return &migrate.NotCleanError{Reason: "managed postgres: skip realm clean check"}
 }
 
 func rejectUnsupportedRevision(ctx context.Context, revisions *revisionStore, dir migrate.Dir) error {

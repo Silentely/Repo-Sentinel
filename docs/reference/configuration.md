@@ -67,6 +67,8 @@ python3 -c 'import urllib.parse; print(urllib.parse.quote("你的密码", safe="
 
 平台（如 Northflank）若提供「连接 URL」，优先复制官方已编码的 URL；内网库常用 `sslmode=disable`，公网用 `sslmode=require`。
 
+应用启动会自动执行迁移，因此数据库用户必须能在目标 schema 建表（至少 `CREATE` on `public`）。仅有 `USAGE` 不够。
+
 校验（不回显 Secret）：
 
 ```bash

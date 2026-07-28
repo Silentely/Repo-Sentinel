@@ -39,8 +39,7 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (Store, error) {
 	}
 	if err := applyMigrations(ctx, db, migrationDialect); err != nil {
 		_ = db.Close()
-		// 保留 errMigrationFailed 文案，便于 mapStoreOpenError / 既有测试识别。
-		return nil, fmt.Errorf("%w: %v", errMigrationFailed, err)
+		return nil, classifyMigrationError(err)
 	}
 
 	driver := entsql.OpenDB(entDialect, db)
@@ -100,6 +99,31 @@ func validatePostgresURL(raw string) string {
 		}
 	}
 	return ""
+}
+
+func classifyMigrationError(err error) error {
+	if err == nil {
+		return fmt.Errorf("%w", errMigrationFailed)
+	}
+	msg := strings.ToLower(err.Error())
+	reason := "数据库迁移失败"
+	switch {
+	case strings.Contains(msg, "not clean") || strings.Contains(msg, "allow-dirty") ||
+		strings.Contains(msg, "baseline version"):
+		reason = "数据库非空且无迁移基线（请用空业务库或升级含 allow-dirty 的版本）"
+	case strings.Contains(msg, "set_config") || strings.Contains(msg, "search_path"):
+		reason = "数据库禁止修改 search_path（部分托管 PG）；请升级含兼容修复的版本"
+	case strings.Contains(msg, "permission denied") || strings.Contains(msg, "42501"):
+		reason = "数据库权限不足（需对 public 有 CREATE，或使用可建表的角色）"
+	case strings.Contains(msg, "datetime") && strings.Contains(msg, "does not exist"):
+		reason = "迁移 SQL 含 SQLite 类型 datetime，Postgres 需 timestamptz"
+	case strings.Contains(msg, "newer than supported"):
+		reason = "数据库 revision 高于当前程序，禁止降级"
+	case strings.Contains(msg, "checksum") || strings.Contains(msg, "hash"):
+		reason = "迁移校验和与目录不一致"
+	}
+	// 公开文案不含连接串；底层 err 仍可通过 errors.Unwrap 链排查。
+	return fmt.Errorf("%w: %s", errMigrationFailed, reason)
 }
 
 func classifyConnectError(driver string, err error) error {
