@@ -42,7 +42,7 @@ const (
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
 	// Table holds the table name of the notificationoutbox in the database.
-	Table = "notification_outboxes"
+	Table = "notification_outbox"
 )
 
 // Columns holds all SQL columns for notificationoutbox fields.

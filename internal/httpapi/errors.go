@@ -89,6 +89,14 @@ func apiErrorMessage(errorCode string) string {
 		return "当前状态与请求冲突。"
 	case errorCodeCSRFFailed:
 		return "安全校验失败，请刷新页面后重试。"
+	case "webhook_not_configured":
+		return "尚未配置 GitHub Webhook Secret。"
+	case "invalid_signature":
+		return "Webhook 签名校验失败。"
+	case "reconcile_unavailable":
+		return "仓库同步服务当前不可用。"
+	case "encryption_unavailable":
+		return "加密主密钥不可用，无法保存敏感配置。"
 	default:
 		return "服务器暂时无法完成请求，请使用 request_id 排查。"
 	}

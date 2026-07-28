@@ -49,22 +49,15 @@ func (r Runner) backupSQLite(dbURL, out string) error {
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil && filepath.Dir(out) != "." {
 		// ignore if dir is .
 	}
-	// 优先 sqlite3 CLI
-	if _, err := exec.LookPath("sqlite3"); err == nil {
-		cmd := exec.Command("sqlite3", path, ".backup '"+out+"'")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return reportError(r.stderr, fmt.Errorf("sqlite3 backup failed: %w (%s)", err, string(out)))
-		}
-		fmt.Fprintf(r.stdout, "backup=%s\n", out)
-		fmt.Fprintf(r.stdout, "note=请同时备份 REPOSENTINEL_ENCRYPTION_KEY\n")
-		return nil
-	}
-	// 回退：只读连接 + VACUUM INTO（SQLite 3.27+）
+	// 使用驱动 VACUUM INTO，避免 shell 拼接路径。
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return reportError(r.stderr, err)
 	}
 	defer db.Close()
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil && filepath.Dir(out) != "." && filepath.Dir(out) != "" {
+		return reportError(r.stderr, err)
+	}
 	if _, err := db.Exec("VACUUM INTO ?", out); err != nil {
 		return reportError(r.stderr, fmt.Errorf("vacuum into failed: %w", err))
 	}

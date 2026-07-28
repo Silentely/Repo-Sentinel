@@ -3,6 +3,7 @@ package rules
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,7 +83,6 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	key := repoID + "|" + cat
 
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	now := time.Now()
 	// 超频检测
 	times := a.bursts[repoID]
@@ -95,8 +95,11 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	filtered = append(filtered, now)
 	a.bursts[repoID] = filtered
 	if len(filtered) > a.BurstThreshold {
-		// 降级：只写一条速率限制摘要
-		return a.enqueueSummaryLocked(ctx, repoID, repoFullName, cat, fmt.Sprintf("%s：通知过于频繁，已降级为摘要", repoFullName), res.Event)
+		sample := res.Event
+		title := fmt.Sprintf("%s：通知过于频繁，已降级为摘要", repoFullName)
+		a.mu.Unlock()
+		// 降级：只写一条速率限制摘要（必须在锁外访问 Store）
+		return a.enqueueBurstSummary(ctx, repoID, repoFullName, cat, title, sample)
 	}
 
 	b, ok := a.buckets[key]
@@ -106,9 +109,11 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 		b.timer = time.AfterFunc(a.Window, func() {
 			a.flush(key)
 		})
+		a.mu.Unlock()
 		return nil
 	}
 	b.events = append(b.events, res.Event)
+	a.mu.Unlock()
 	return nil
 }
 
@@ -127,22 +132,23 @@ func (a *Aggregator) flush(key string) {
 		_ = (&Engine{Store: a.Store}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName)
 		return
 	}
-	// 合并消息
-	title := fmt.Sprintf("📋 %s：%s %d 条（已合并）", b.repoName, b.category, len(b.events))
-	var body string
-	body = title + "\n"
+	// 合并消息（标题/正文对 Telegram HTML 做转义）
+	title := fmt.Sprintf("📋 %s：%s %d 条（已合并）", htmlEscape(b.repoName), htmlEscape(b.category), len(b.events))
+	var body strings.Builder
+	body.WriteString(title)
+	body.WriteByte('\n')
 	maxSamples := 5
 	for i, ev := range b.events {
 		if i >= maxSamples {
-			body += fmt.Sprintf("…另有 %d 条\n", len(b.events)-maxSamples)
+			body.WriteString(fmt.Sprintf("…另有 %d 条\n", len(b.events)-maxSamples))
 			break
 		}
-		body += fmt.Sprintf("• %s / %s — %s\n", ev.Kind, ev.Action, ev.Title)
+		body.WriteString(fmt.Sprintf("• %s / %s — %s\n", htmlEscape(ev.Kind), htmlEscape(ev.Action), htmlEscape(ev.Title)))
 		if ev.HTMLURL != "" {
-			body += fmt.Sprintf("  %s\n", ev.HTMLURL)
+			body.WriteString(fmt.Sprintf("  %s\n", htmlEscape(ev.HTMLURL)))
 		}
 	}
-	_ = a.enqueueMerged(ctx, b, title, body)
+	_ = a.enqueueMerged(ctx, b, title, body.String())
 }
 
 func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket, title, body string) error {
@@ -172,10 +178,7 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket, title, bod
 	return nil
 }
 
-func (a *Aggregator) enqueueSummaryLocked(ctx context.Context, repoID, repoName, cat, title string, sample *store.Event) error {
-	// 调用方已持锁；释放后写库
-	a.mu.Unlock()
-	defer a.mu.Lock()
+func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, cat, title string, sample *store.Event) error {
 	channels, err := a.Store.Channels().List(ctx)
 	if err != nil {
 		return err
@@ -186,15 +189,27 @@ func (a *Aggregator) enqueueSummaryLocked(ctx context.Context, repoID, repoName,
 		}
 		idem := idempotencyKey(ch.ID, sample.ID, "burst-"+cat)
 		eid := sample.ID
+		safeTitle := htmlEscape(title)
+		safeRepo := htmlEscape(repoName)
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eid,
 			AggregateKey: repoID + "|burst", IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
-			Title: title, BodyText: title + "\n仓库：" + repoName, ParseMode: "HTML",
+			Title: safeTitle, BodyText: safeTitle + "\n仓库：" + safeRepo, ParseMode: "HTML",
 		})
 		if err != nil && err != store.ErrConflict {
 			return err
 		}
 	}
 	return nil
+}
+
+func htmlEscape(s string) string {
+	replacer := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		`"`, "&quot;",
+	)
+	return replacer.Replace(s)
 }

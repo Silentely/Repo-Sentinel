@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -48,7 +47,13 @@ func (w *Worker) Run(ctx context.Context, interval time.Duration) {
 		interval = 5 * time.Second
 	}
 	if w.Client == nil {
-		w.Client = &http.Client{Timeout: 15 * time.Second}
+		w.Client = &http.Client{
+			Timeout: 15 * time.Second,
+			// 禁止跟随重定向，避免 30x 跳到内网/元数据地址绕过 SSRF 检查。
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 	if w.AAD == "" {
 		w.AAD = "reposentinel:notify-secret:v1"
@@ -146,8 +151,8 @@ func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text string) e
 		return fmt.Errorf("telegram_http_%d", resp.StatusCode)
 	}
 	if resp.StatusCode >= 400 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("telegram_client_error:%s", string(b))
+		// 不回传响应体，避免把上游错误详情写入日志。
+		return fmt.Errorf("telegram_client_error_%d", resp.StatusCode)
 	}
 	return nil
 }
@@ -230,19 +235,46 @@ func validateWebhookURL(raw string, allowPrivate bool) error {
 		return fmt.Errorf("invalid_webhook_url")
 	}
 	host := u.Hostname()
-	if host == "metadata.google.internal" || host == "169.254.169.254" || host == "metadata" {
+	lower := strings.ToLower(host)
+	if host == "metadata.google.internal" || host == "169.254.169.254" || host == "metadata" ||
+		lower == "localhost" || strings.HasSuffix(lower, ".local") || strings.HasSuffix(lower, ".internal") {
 		return fmt.Errorf("ssrf_blocked")
 	}
-	if !allowPrivate {
-		if ip := net.ParseIP(host); ip != nil {
-			if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
-				return fmt.Errorf("private_target_blocked")
-			}
+	if allowPrivate {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if isBlockedIP(ip) {
+			return fmt.Errorf("private_target_blocked")
 		}
-		lower := strings.ToLower(host)
-		if lower == "localhost" || strings.HasSuffix(lower, ".local") {
+		return nil
+	}
+	// 解析主机名，拦截解析到私网/链路本地的目标。
+	addrs, err := net.LookupIP(host)
+	if err != nil {
+		// 无法解析时拒绝，避免把判断推迟到连接阶段。
+		return fmt.Errorf("webhook_dns_lookup_failed")
+	}
+	if len(addrs) == 0 {
+		return fmt.Errorf("webhook_dns_lookup_failed")
+	}
+	for _, ip := range addrs {
+		if isBlockedIP(ip) {
 			return fmt.Errorf("private_target_blocked")
 		}
 	}
 	return nil
+}
+
+func isBlockedIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return true
+	}
+	// 额外拦截部分云元数据常见前缀（IPv4）。
+	if v4 := ip.To4(); v4 != nil {
+		if v4[0] == 169 && v4[1] == 254 {
+			return true
+		}
+	}
+	return false
 }
