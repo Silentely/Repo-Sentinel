@@ -67,4 +67,4 @@ npm run docs:dev
 
 ### 为什么改密后其他设备掉线？
 
-设计如此：改密撤销其他 Session；CLI 重置撤销全部 Session。
+这是预期行为：改密撤销其他 Session；CLI 重置撤销全部 Session。

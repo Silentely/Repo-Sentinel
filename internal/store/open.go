@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -36,7 +37,7 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (Store, error) {
 	}
 	if err := applyMigrations(ctx, db, migrationDialect); err != nil {
 		_ = db.Close()
-		return nil, errMigrationFailed
+		return nil, fmt.Errorf("%w: %v", errMigrationFailed, err)
 	}
 
 	driver := entsql.OpenDB(entDialect, db)

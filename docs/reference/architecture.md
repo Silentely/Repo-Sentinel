@@ -82,8 +82,8 @@ CLI (serve | version | config validate | admin reset-password)
 - 壳层：侧栏、健康胶囊、主题
 - 仪表盘：KPI、仓库与基线、事件、投递
 - 通知：渠道配置
-- 设计令牌：`web/src/styles/tokens.css`
+- UI 令牌：`web/src/styles/tokens.css`
 
-## 设计上下文
+## 视觉与文案
 
-产品视觉与文案原则见仓库根目录 `.impeccable.md`（若存在）及设计规格 §13。
+产品视觉与文案原则见仓库根目录 `.impeccable.md`（若存在）。
