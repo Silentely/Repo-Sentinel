@@ -62,7 +62,7 @@ type server struct {
 	secureCookies bool
 }
 
-// New 创建 Phase 1 管理 API HTTP Handler。
+// New 创建管理 API HTTP Handler。
 func New(dependencies Dependencies) http.Handler {
 	if dependencies.Logger == nil {
 		dependencies.Logger = slog.Default()

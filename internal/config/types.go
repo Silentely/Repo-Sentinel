@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Config 汇总 RepoSentinel 第一阶段的全部配置。
+// Config 汇总 RepoSentinel 的全部配置。
 type Config struct {
 	HTTP       HTTPConfig           `yaml:"http"`
 	Database   DatabaseConfig       `yaml:"database"`

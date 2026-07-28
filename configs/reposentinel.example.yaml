@@ -1,4 +1,4 @@
-# RepoSentinel 第一阶段示例配置。
+# RepoSentinel 示例配置。
 # Secret 不写入本文件；请按各段注释使用对应环境变量注入。
 
 http:

@@ -1,6 +1,6 @@
 # 运维手册
 
-面向已跑通 Phase 1 实例的日常操作。完整备份 CLI、指标与发布流水线仍以设计规格为准，下文标注「已实现 / 运维约定 / 未实现」。
+面向已部署实例的日常操作。下文标注「已实现 / 运维约定 / 规划中」。
 
 ## 进程与健康
 
@@ -35,9 +35,9 @@ curl -fsS https://monitor.example.com/health/ready
 printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --password-stdin
 ```
 
-## 备份与恢复（运维约定）
+## 备份与恢复
 
-应用内 `reposentinel backup` / `restore` **尚未实现**。Phase 1 请使用数据库原生工具，并**同时**保管加密主密钥。
+应用内 `reposentinel backup` / `restore` 命令若尚未提供，请使用数据库原生工具，并**同时**保管加密主密钥。
 
 ### SQLite
 
@@ -63,27 +63,26 @@ pg_restore --clean --if-exists --dbname="$REPOSENTINEL_DATABASE_URL" reposentine
 2. `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS=旧值`  
 3. `REPOSENTINEL_ENCRYPTION_KEY=新值`  
 4. 重启；确认解密与业务正常  
-5. 执行规格中的 `secrets reencrypt`（**命令尚未实现**）后移除 PREVIOUS  
-
-当前 Phase 1 库内加密凭据场景有限，但密钥环逻辑已存在，生产仍应按双密钥纪律操作。
+5. 完成密文重加密后移除 PREVIOUS（若提供 `secrets reencrypt` 命令则用之）
 
 ## 升级
 
 1. 备份数据库与主密钥  
-2. 阅读 Release / CHANGELOG（正式发布流程规划中）  
+2. 阅读 Release / CHANGELOG  
 3. 替换二进制或镜像  
 4. 启动并观察迁移与 `/health/ready`  
-5. 烟雾：登录、setup 状态、version API  
+5. 烟雾：登录、Webhook、通知渠道、version API  
 
 数据库版本高于应用支持版本时**拒绝启动**（防误降级）。
 
-## 尚未提供的运维能力
+## 运维能力一览
 
 | 能力 | 状态 |
 |------|------|
-| `reposentinel doctor` | 未实现 |
-| `reposentinel backup` / `restore` | 未实现 |
-| `reposentinel migrate status` | 未实现（启动时自动迁移） |
-| `reposentinel secrets reencrypt` | 未实现 |
-| Prometheus `/metrics` | 未实现 |
-| 过期 Session 定时清理 Worker | 未实现（改密/重置会主动撤销） |
+| `reposentinel version` | 已实现 |
+| `reposentinel config validate` | 已实现 |
+| `reposentinel admin reset-password` | 已实现 |
+| 启动时自动迁移 | 已实现 |
+| 原生 DB 备份约定 | 文档约定 |
+| `reposentinel doctor` / `backup` / `restore` | 规划中 |
+| Prometheus `/metrics` | 规划中 |

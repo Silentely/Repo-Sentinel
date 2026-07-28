@@ -39,7 +39,7 @@ YAML 适合保存地址、连接池和开关等非敏感值。密码、主密钥
 | `REPOSENTINEL_ENCRYPTION_KEY` | 当前数据加密主密钥。解码后必须正好 32 字节。 |
 | `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS` | 密钥轮换期间保留的上一把主密钥。 |
 
-### GitHub 和通知（Phase 1 仅保存配置边界）
+### GitHub 和通知
 
 | 变量 | 用途 |
 | --- | --- |

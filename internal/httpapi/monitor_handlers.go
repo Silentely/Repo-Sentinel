@@ -146,7 +146,6 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
-	// 不返回 body 全量时可裁剪；MVP 直接返回
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
 }
 

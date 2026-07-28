@@ -14,7 +14,7 @@ curl -fsS http://127.0.0.1:8080/health/live
 curl -fsS http://127.0.0.1:8080/health/ready
 ```
 
-容器或编排的 Healthcheck 应使用 `/health/ready`（完整 Docker 镜像发布仍属后续阶段）。
+容器或编排的 Healthcheck 应使用 `/health/ready`。
 
 ::: tip
 规格中的 `/health/detail`（管理员详细诊断）与 `/metrics` **尚未实现**。

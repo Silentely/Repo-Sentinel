@@ -2,7 +2,7 @@
 
 先准备固定工具链，再分别启动 Go API 和 Vite。生产构建把 Vite `dist` 嵌入 Go 二进制；普通开发构建使用仓库内的最小 fallback 页面。
 
-相关页面：[从源码运行](/deploy/source) · [实现状态](/reference/implementation-status) · [系统架构](/reference/architecture)
+相关页面：[从源码运行](/deploy/source) · [能力与状态](/reference/implementation-status) · [系统架构](/reference/architecture)
 
 ## 使用固定工具链
 

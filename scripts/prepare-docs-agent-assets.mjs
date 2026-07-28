@@ -141,20 +141,18 @@ function writeLlmsTxt() {
 
 文档站：${siteUrl}
 源码：https://github.com/${process.env.GITHUB_REPOSITORY || "Silentely/Repo-Sentinel"}
-版本：0.1.0（Phase 1 基础平台）
+版本：见仓库 VERSION
 
 ## 产品摘要
 
-RepoSentinel 通过 GitHub App Webhook 与 API 对账监控自有仓库的 Issue、PR、Actions 与安全告警，并支持少量外部公开仓库轮询与 Telegram / HTTP 通知。
-**当前已实现**：配置、SQLite/PostgreSQL 存储基础、唯一管理员、Session/CSRF、健康检查、CLI、React 认证壳。
-**尚未实现**：Webhook 采集、规则引擎、通知 Outbox、仓库仪表盘、正式 Docker 镜像发布。
+RepoSentinel 通过 GitHub App Webhook 监控自有仓库的 Issue、PR、Actions 与安全告警，支持可靠通知（Telegram / HTTP Webhook）与值守仪表盘。默认 SQLite，可选 PostgreSQL，Docker Compose 可部署。
 
 ## 推荐阅读顺序
 
-1. [功能与路线图](${siteUrl}/features)
+1. [功能介绍](${siteUrl}/features)
 2. [快速开始](${siteUrl}/guide/quick-start)
-3. [配置参考](${siteUrl}/reference/configuration)
-4. [实现状态](${siteUrl}/reference/implementation-status)
+3. [Docker 部署](${siteUrl}/deploy/docker)
+4. [配置参考](${siteUrl}/reference/configuration)
 5. [运维手册](${siteUrl}/reference/ops)
 
 ## 完整文档目录
