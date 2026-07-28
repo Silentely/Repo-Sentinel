@@ -60,8 +60,9 @@ REPOSENTINEL_DATABASE_URL=postgres://用户:密码@db主机:5432/reposentinel?ss
 
 说明：
 
-- `driver` 只能是 `sqlite` 或 `postgres`
+- `driver` 只能是 `sqlite` 或 `postgres`（不要写 `postgresql`）
 - Postgres **必须**提供非空 `REPOSENTINEL_DATABASE_URL`
+- **密码中的 `#` `@` `(` 等必须 URL 编码**，否则启动即 `database_unavailable`（见 [配置参考](/reference/configuration)）
 - 库需事先建好；应用启动时自动跑迁移
 - 仓库里的 `deployments/test/postgres.compose.yml` 仅供开发测试，**不是**生产模板
 

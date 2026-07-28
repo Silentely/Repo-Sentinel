@@ -306,7 +306,25 @@ func newLogger(cfg config.LoggingConfig) *slog.Logger {
 }
 
 func mapStoreOpenError(err error) error {
-	if err != nil && err.Error() == "database migration failed" {
+	if err == nil {
+		return newPublicError("database_unavailable", "无法打开数据库。", nil)
+	}
+	var openErr *store.OpenError
+	if errors.As(err, &openErr) && openErr != nil {
+		msg := "无法打开数据库。"
+		if openErr.Reason != "" {
+			msg = "无法打开数据库：" + openErr.Reason + "。"
+		}
+		code := "database_unavailable"
+		if openErr.Kind == "migrate" {
+			code = "migration_failed"
+			if openErr.Reason == "" {
+				msg = "数据库迁移失败。"
+			}
+		}
+		return newPublicError(code, msg, err)
+	}
+	if errors.Is(err, store.ErrMigrationFailed) || strings.Contains(err.Error(), "database migration failed") {
 		return newPublicError("migration_failed", "数据库迁移失败。", err)
 	}
 	return newPublicError("database_unavailable", "无法打开数据库。", err)

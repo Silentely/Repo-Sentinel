@@ -26,8 +26,31 @@ func TestOpen数据库连接错误不泄露凭据(t *testing.T) {
 			t.Fatalf("数据库错误泄露敏感文本 %q: %v", secret, err)
 		}
 	}
-	if err.Error() != "database unavailable" {
-		t.Fatalf("数据库错误=%q，期望固定安全文本 database unavailable", err)
+	if !strings.Contains(err.Error(), "database unavailable") {
+		t.Fatalf("数据库错误=%q，期望包含 database unavailable", err.Error())
+	}
+}
+
+func TestOpen拒绝未编码井号的Postgres密码(t *testing.T) {
+	// 与 Northflank 常见事故一致：密码含 # ( 等未编码字符会破坏 URL。
+	raw := "postgres://postgres:9t#dE(4#0g@postgres-db.internal:5432/postgres?sslmode=disable"
+	_, err := store.Open(t.Context(), config.DatabaseConfig{
+		Driver:       "postgres",
+		URL:          raw,
+		MaxOpenConns: 1,
+		MaxIdleConns: 1,
+	})
+	if err == nil {
+		t.Fatal("未编码 # 的连接串应失败")
+	}
+	msg := err.Error()
+	for _, secret := range []string{"9t#dE", "dE(4", raw} {
+		if strings.Contains(msg, secret) {
+			t.Fatalf("错误泄露密码片段 %q: %s", secret, msg)
+		}
+	}
+	if !strings.Contains(msg, "%23") && !strings.Contains(msg, "编码") && !strings.Contains(msg, "连接串") {
+		t.Fatalf("应提示 URL 编码问题，实际: %s", msg)
 	}
 }
 

@@ -33,6 +33,40 @@ reposentinel serve
 - Postgres **必须**提供非空 URL；库先建好，启动时自动迁移
 - Docker Compose 默认 SQLite 见根目录 `docker-compose.yml`；改 Postgres 时覆盖上述两个变量即可
 
+#### 连接串密码必须 URL 编码
+
+`REPOSENTINEL_DATABASE_URL` 是标准 URL。密码里的 `#`、`@`、`:`、`/`、`?`、`(`、`)`、`%` 等**不能原样粘贴**，否则解析失败，启动报 `database_unavailable`。
+
+| 字符 | 编码 |
+|------|------|
+| `#` | `%23` |
+| `@` | `%40` |
+| `:` | `%3A` |
+| `/` | `%2F` |
+| `?` | `%3F` |
+| `(` | `%28` |
+| `)` | `%29` |
+| `%` | `%25` |
+| 空格 | `%20` |
+
+示例：密码为 `9t#dE(4#0g` 时：
+
+```bash
+# 错误（# 会截断 URL）
+# postgres://postgres:9t#dE(4#0g@db:5432/postgres?sslmode=disable
+
+# 正确
+REPOSENTINEL_DATABASE_URL="postgres://postgres:9t%23dE%284%230g@db:5432/postgres?sslmode=disable"
+```
+
+编码命令：
+
+```bash
+python3 -c 'import urllib.parse; print(urllib.parse.quote("你的密码", safe=""))'
+```
+
+平台（如 Northflank）若提供「连接 URL」，优先复制官方已编码的 URL；内网库常用 `sslmode=disable`，公网用 `sslmode=require`。
+
 校验（不回显 Secret）：
 
 ```bash
