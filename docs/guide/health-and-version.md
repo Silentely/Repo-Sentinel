@@ -6,6 +6,7 @@
 |------|------|------|
 | `GET /health/live` | 无 | 进程存活 |
 | `GET /health/ready` | 无 | 数据库与迁移等核心依赖就绪 |
+| `GET /metrics` | 可选 Bearer | Prometheus 文本指标（见下方） |
 
 示例：
 
@@ -16,9 +17,23 @@ curl -fsS http://127.0.0.1:8080/health/ready
 
 容器或编排的 Healthcheck 应使用 `/health/ready`。
 
-::: tip
-规格中的 `/health/detail`（管理员详细诊断）与 `/metrics` **尚未实现**。
-:::
+## Prometheus `/metrics` 是什么？
+
+`/metrics` 是 **Prometheus 抓取格式**的指标 HTTP 接口（`text/plain`），给监控系统（Prometheus、VictoriaMetrics、Grafana Agent 等）定期拉取，用于做图表与告警。它**不是**给人看的管理 API。
+
+当前暴露的计数/仪表包括（节选）：
+
+- `reposentinel_webhook_accepted_total` / `duplicate_total` / `invalid_signature_total`
+- `reposentinel_outbox_sent_total` / `outbox_dead_total`
+- `reposentinel_reconcile_runs_total`
+- 以及开放 Issue/PR、失败 Actions、安全告警、仓库数等 gauge
+
+配置：
+
+- `REPOSENTINEL_METRICS_ENABLED=true|false`（默认开启）
+- `REPOSENTINEL_METRICS_TOKEN`：设置后抓取需带 `Authorization: Bearer <token>`
+
+生产建议：反向代理只对内网开放 `/metrics`，或启用 Token。
 
 ## 版本 API
 

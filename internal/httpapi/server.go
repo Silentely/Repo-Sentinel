@@ -94,6 +94,9 @@ func New(dependencies Dependencies) http.Handler {
 
 	router.Get("/health/live", s.handleLive)
 	router.Get("/health/ready", s.handleReady)
+	if dependencies.Config.Metrics.Enabled {
+		router.Get("/metrics", s.handleMetrics)
+	}
 	router.Post("/webhooks/github", s.handleGitHubWebhook)
 	router.Route("/api/v1", func(api chi.Router) {
 		api.Get("/setup/status", s.handleSetupStatus)

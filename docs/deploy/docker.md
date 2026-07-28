@@ -42,3 +42,27 @@ docker compose exec reposentinel /reposentinel version
 ```
 
 更完整说明见 [运维手册](/reference/ops)。
+
+## GHCR 官方镜像（CI 推送）
+
+仓库提供 [`.github/workflows/docker.yml`](../../.github/workflows/docker.yml)：在 `main`/`dev` 推送、`v*` 标签或手动触发时构建并推送到：
+
+```text
+ghcr.io/<owner>/repo-sentinel
+```
+
+标签约定（与设计规格对齐）：
+
+| 触发 | 镜像标签 | 架构 |
+|------|----------|------|
+| `vX.Y.Z` tag | `vX.Y.Z`、`X.Y.Z`、`X.Y`、`latest`、`sha-<12>` | amd64 + arm64 |
+| `dev` 分支 | `dev`、`dev-<12>` | amd64 |
+| `main` 分支 | `main-<12>`、`sha-<12>` | amd64 |
+
+使用示例：
+
+```bash
+docker pull ghcr.io/<owner>/repo-sentinel:latest
+```
+
+首次使用 GHCR 私有包时，需在 GitHub Packages 设置中允许读取，或 `docker login ghcr.io`。

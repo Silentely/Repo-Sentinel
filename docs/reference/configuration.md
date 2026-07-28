@@ -64,6 +64,13 @@ YAML 适合保存地址、连接池和开关等非敏感值。密码、主密钥
 | `LOG_FORMAT` | 日志格式的标准别名；同时存在时覆盖 `REPOSENTINEL_LOG_FORMAT`。 |
 | `LOG_LEVEL` | 日志级别的标准别名；同时存在时覆盖 `REPOSENTINEL_LOG_LEVEL`。 |
 
+### 指标（Prometheus）
+
+| 变量 | 用途 |
+| --- | --- |
+| `REPOSENTINEL_METRICS_ENABLED` | 是否注册 `GET /metrics`，默认 `true`。 |
+| `REPOSENTINEL_METRICS_TOKEN` | 可选；非空时要求 `Authorization: Bearer <token>`。未设置时建议仅内网/反向代理访问该路径。 |
+
 配置错误会返回稳定的 `validation_failed`，错误信息不会回显密码、连接 URL 或主密钥原文。`config validate` 只输出安全摘要：
 
 ```bash

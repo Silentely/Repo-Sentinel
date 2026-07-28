@@ -282,6 +282,16 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (bool, er
 	if value, ok := lookup("LOG_LEVEL"); ok {
 		cfg.Logging.Level = value
 	}
+	if value, ok := lookup("REPOSENTINEL_METRICS_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_METRICS_ENABLED", value)
+		if err != nil {
+			return false, err
+		}
+		cfg.Metrics.Enabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_METRICS_TOKEN"); ok {
+		cfg.Metrics.Token = NewSecret(value)
+	}
 	return maxOpenExplicit, nil
 }
 

@@ -24,7 +24,7 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | 基线与乱序 | 新仓基线抑制通知；陈旧 `source_updated_at` 丢弃回滚 |
 | 通知 | Outbox、Telegram、HTTP Webhook、死信重试 |
 | 管理后台 | 仪表盘、仓库/基线、事件、投递、渠道配置、主题 |
-| 容器部署 | Dockerfile、Compose、健康检查约定 |
+| 容器部署 | Dockerfile、Compose、GHCR 推送流水线、健康检查与 `/metrics` |
 
 ## 规划中 / 持续增强
 

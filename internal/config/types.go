@@ -15,6 +15,15 @@ type Config struct {
 	GitHub     GitHubConfig         `yaml:"github"`
 	Notify     NotifyConfig         `yaml:"notify"`
 	Logging    LoggingConfig        `yaml:"logging"`
+	Metrics    MetricsConfig        `yaml:"metrics"`
+}
+
+// MetricsConfig 描述 Prometheus /metrics 暴露策略。
+type MetricsConfig struct {
+	// Enabled 默认 true；设为 false 可关闭路由注册。
+	Enabled bool `yaml:"enabled"`
+	// Token 可选 Bearer；非空时 /metrics 必须携带 Authorization: Bearer <token>。
+	Token Secret `yaml:"token"`
 }
 
 // LoadOptions 提供可注入的配置来源，避免加载过程依赖隐藏的全局状态。
