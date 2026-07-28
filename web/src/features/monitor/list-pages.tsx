@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { EmptyState } from "../../components/empty-state";
@@ -172,14 +173,135 @@ export function GitHubPage() {
   );
 }
 
+type VersionInfo = {
+  version?: string;
+  git_sha?: string;
+  git_branch?: string;
+  build_time?: string;
+  build_channel?: string;
+  go_version?: string;
+  database_driver?: string;
+  schema_version?: string;
+  update_check_enabled?: boolean;
+};
+
+type UpdateCheckInfo = {
+  enabled: boolean;
+  latest_version?: string;
+  latest_url?: string;
+  update_available: boolean;
+  checked_at?: string;
+  error?: string;
+  source?: string;
+  cached?: boolean;
+};
+
+type VersionCheckResponse = {
+  version: VersionInfo;
+  update_check: UpdateCheckInfo;
+};
+
+function safeHttpUrl(raw?: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(String(raw).trim());
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function AboutPage() {
   const q = useQuery({
     queryKey: ["version"],
-    queryFn: () => apiRequest<Record<string, string>>("/api/v1/system/version"),
+    queryFn: () => apiRequest<VersionInfo>("/api/v1/system/version"),
   });
+  const [checking, setChecking] = useState(false);
+  const [banner, setBanner] = useState<{
+    kind: "update" | "latest" | "error" | "info";
+    text: string;
+    url?: string | null;
+  } | null>(null);
+
   const v = q.data || {};
+  const checkUpdate = async (force = true) => {
+    setChecking(true);
+    try {
+      const res = await apiRequest<VersionCheckResponse>(
+        `/api/v1/system/version/check?force=${force ? "true" : "false"}`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      const uc = res.update_check;
+      if (!uc.enabled) {
+        setBanner({ kind: "info", text: "远程更新检查已关闭（REPOSENTINEL_UPDATE_CHECK）。" });
+        return;
+      }
+      if (uc.error && !uc.latest_version) {
+        setBanner({ kind: "error", text: `检查失败：${uc.error}` });
+        return;
+      }
+      const url = safeHttpUrl(uc.latest_url);
+      if (uc.update_available && uc.latest_version) {
+        setBanner({
+          kind: "update",
+          text: `发现新版本 v${uc.latest_version}（当前 v${res.version.version || v.version || "—"}）`,
+          url,
+        });
+        return;
+      }
+      setBanner({
+        kind: "latest",
+        text: uc.latest_version
+          ? `已是最新（远程 v${uc.latest_version}${uc.cached ? " · 缓存" : ""}）`
+          : "未获取到远程版本信息",
+        url,
+      });
+    } catch (e) {
+      setBanner({
+        kind: "error",
+        text: e instanceof Error ? e.message : "检查更新失败",
+      });
+    } finally {
+      setChecking(false);
+    }
+  };
+
   return (
-    <ListShell title="关于与版本" description="构建元数据与运行信息。">
+    <ListShell title="关于与版本" description="构建元数据、运行信息与 GitHub Release 更新检查。">
+      <div className="about-toolbar">
+        <button
+          type="button"
+          className="quiet-button"
+          disabled={checking || q.isLoading}
+          onClick={() => void checkUpdate(true)}
+        >
+          {checking ? "检查中…" : "检查更新"}
+        </button>
+      </div>
+      {banner ? (
+        <div
+          className={
+            banner.kind === "update"
+              ? "about-banner about-banner--update"
+              : banner.kind === "latest"
+                ? "about-banner about-banner--latest"
+                : banner.kind === "error"
+                  ? "about-banner about-banner--error"
+                  : "about-banner about-banner--info"
+          }
+        >
+          <div>{banner.text}</div>
+          {banner.kind === "update" ? (
+            <p className="muted">升级请拉取新镜像或替换二进制，并阅读 CHANGELOG。</p>
+          ) : null}
+          {banner.url ? (
+            <a href={banner.url} target="_blank" rel="noopener noreferrer">
+              打开 Release 页面
+            </a>
+          ) : null}
+        </div>
+      ) : null}
       <ul className="event-list">
         <li>
           <strong>版本</strong> <span>{v.version || "—"}</span>
@@ -188,16 +310,26 @@ export function AboutPage() {
           <strong>Git SHA</strong> <span className="muted">{v.git_sha || "—"}</span>
         </li>
         <li>
+          <strong>分支</strong> <span className="muted">{v.git_branch || "—"}</span>
+        </li>
+        <li>
           <strong>构建时间</strong> <span className="muted">{v.build_time || "—"}</span>
         </li>
         <li>
           <strong>渠道</strong> <span className="muted">{v.build_channel || "—"}</span>
         </li>
         <li>
+          <strong>Go</strong> <span className="muted">{v.go_version || "—"}</span>
+        </li>
+        <li>
           <strong>数据库</strong> <span className="muted">{v.database_driver || "—"}</span>
         </li>
         <li>
           <strong>Schema</strong> <span className="muted">{v.schema_version || "—"}</span>
+        </li>
+        <li>
+          <strong>更新检查</strong>{" "}
+          <span className="muted">{v.update_check_enabled === false ? "已关闭" : "已开启"}</span>
         </li>
       </ul>
     </ListShell>

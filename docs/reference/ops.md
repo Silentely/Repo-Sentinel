@@ -37,11 +37,19 @@ printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --passwor
 
 ## 备份与恢复
 
-应用内 `reposentinel backup` / `restore` 命令若尚未提供，请使用数据库原生工具，并**同时**保管加密主密钥。
+应用内已提供 `reposentinel backup` / `restore`（SQLite 使用参数化 `VACUUM INTO`；PostgreSQL 调用 `pg_dump` / `pg_restore`）。**必须同时保管** `REPOSENTINEL_ENCRYPTION_KEY`，否则通知渠道等密文无法解密。
 
-### SQLite
+### 推荐（应用命令）
 
-使用 Online Backup API，勿直接复制活跃主库文件：
+```bash
+.tmp/reposentinel backup --output .tmp/backups/reposentinel-$(date -u +%Y%m%dT%H%M%SZ)
+# 恢复前会尽量另存当前库；恢复后用与备份匹配的主密钥启动并验证渠道解密
+.tmp/reposentinel restore --input /path/to/backup
+```
+
+### SQLite 备选（原生工具）
+
+勿直接复制活跃主库文件；可用 sqlite3 Online Backup API：
 
 ```bash
 mkdir -p .tmp/backups
@@ -50,7 +58,7 @@ sqlite3 .tmp/reposentinel.db ".backup '.tmp/backups/reposentinel-$(date +%Y%m%d)
 
 恢复：停服务 → 另存当前库 → 换回备份文件 → 用**同一主密钥**启动。启动流程会做迁移与加密相关校验。
 
-### PostgreSQL
+### PostgreSQL 备选
 
 ```bash
 pg_dump --format=custom --file=reposentinel.dump "$REPOSENTINEL_DATABASE_URL"
@@ -83,6 +91,15 @@ pg_restore --clean --if-exists --dbname="$REPOSENTINEL_DATABASE_URL" reposentine
 | `reposentinel config validate` | 已实现 |
 | `reposentinel admin reset-password` | 已实现 |
 | 启动时自动迁移 | 已实现 |
-| 原生 DB 备份约定 | 文档约定 |
-| `reposentinel doctor` / `backup` / `restore` | 规划中 |
-| Prometheus `/metrics` | 规划中 |
+| `reposentinel doctor` / `backup` / `restore` | 已实现 |
+| Prometheus `/metrics` | 已实现（可选 Bearer） |
+| 关于页 / 远程版本检查 | 已实现（可关；见 [健康检查与版本](/guide/health-and-version)） |
+| 原生 DB 备份约定 | 文档约定（应用命令优先） |
+
+## 多实例与通知聚合
+
+进程内短时合并是 **best-effort**。多副本时：
+
+- 合并 / 超频摘要的 Outbox **幂等键**含时间桶，同渠道同仓同类同桶只会成功写入一条
+- 各副本仍可能各自缓冲事件，合并文案条数可能不完整；生产默认 **单实例** 最稳妥
+- 每日摘要依赖 settings 中的 `digest.last_sent_date` 与 Outbox 幂等键，多实例相对安全

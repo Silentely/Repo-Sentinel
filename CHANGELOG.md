@@ -2,6 +2,24 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 SemVer。
 
+## [0.3.2] - 2026-07-28
+
+### Added
+
+- 关于页「检查更新」：对齐 TG-SignPulse，优先 GitHub HTML `releases/latest` 302 解析 tag，失败再回退 API JSON；可关；失败 soft-fail
+- `POST /api/v1/system/version/check` 与版本响应字段 `update_check_enabled`
+- `syncx` 外部仓轮询与 `digest` 每日摘要单元测试；聚合多实例时间桶幂等测试
+
+### Changed
+
+- 通知合并 Outbox 幂等键改为「渠道 + 仓 + 类别 + 时间桶」，多实例下重复合并通知可收敛
+- 出站 HTTP 客户端在拨号时 pin 解析后的公网 IP，降低 DNS rebinding 风险
+- 聚合窗口等可通过 `REPOSENTINEL_AGGREGATION_*` 配置
+
+### Fixed
+
+- 文档与 Compose 版本号与 `VERSION` 对齐；运维手册标明 backup/restore、`/metrics` 已实现
+
 ## [0.3.1] - 2026-07-28
 
 ### Fixed

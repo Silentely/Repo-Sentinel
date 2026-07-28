@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestValidateWebhookURLRejectsNonHTTPSAndPrivate(t *testing.T) {
@@ -30,6 +31,23 @@ func TestValidateWebhookURLRejectsNonHTTPSAndPrivate(t *testing.T) {
 		if !tc.wantErr && err != nil {
 			t.Fatalf("%s allow=%v 不期望错误: %v", tc.url, tc.allow, err)
 		}
+	}
+}
+
+func TestSafeHTTPClientPinsPublicIPAndBlocksPrivate(t *testing.T) {
+	client := newSafeHTTPClient(3 * time.Second)
+	// 直接拨 loopback 应被 DialContext 拦截（即使 allow_private 在 URL 层放行，拨号仍拦字面量私网由 validate 决定；
+	// 这里验证 Dial 对 127.0.0.1 拒绝）。
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.DialContext == nil {
+		t.Fatal("expected custom transport")
+	}
+	_, err := transport.DialContext(t.Context(), "tcp", "127.0.0.1:443")
+	if err == nil {
+		t.Fatal("loopback dial should be blocked")
+	}
+	if client.CheckRedirect == nil {
+		t.Fatal("CheckRedirect required")
 	}
 }
 

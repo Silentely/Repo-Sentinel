@@ -36,5 +36,14 @@ func defaultConfig() Config {
 		Metrics: MetricsConfig{
 			Enabled: true,
 		},
+		UpdateCheck: UpdateCheckConfig{
+			Enabled: true,
+			URL:     "https://api.github.com/repos/Silentely/Repo-Sentinel/releases/latest",
+		},
+		Aggregation: AggregationConfig{
+			Window:         60 * time.Second,
+			BurstThreshold: 15,
+			BurstWindow:    5 * time.Minute,
+		},
 	}
 }

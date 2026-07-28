@@ -159,6 +159,9 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 			Database: config.DatabaseConfig{Driver: "sqlite"},
 			Admin:    config.AdminBootstrapConfig{SessionTTL: time.Hour},
 			Setup:    config.SetupConfig{AllowRemote: options.allowRemote},
+			UpdateCheck: config.UpdateCheckConfig{
+				Enabled: false, // 单测默认不联网
+			},
 		},
 		AdminStore:     opened.Admins(),
 		AdminService:   adminService,

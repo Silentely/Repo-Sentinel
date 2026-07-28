@@ -52,8 +52,21 @@ OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
 .tmp/reposentinel version
 ```
 
-`VERSION` 文件是 SemVer 真相源（当前 `0.1.0`）。正式 Tag 与镜像规则见设计规格；**GHCR 发布流水线尚未落地**。
+`VERSION` 文件是 SemVer 真相源（当前 `0.3.2`）。正式 Tag（`v*`）与 `main`/`dev` 推送会由 [`.github/workflows/docker.yml`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/workflows/docker.yml) 构建并推送到 GHCR（`ghcr.io/<owner>/repo-sentinel`）。本地 Compose 构建可通过 `docker-compose.yml` 的 `VERSION` build arg 注入。
 
 ## 更新检查
 
-规格中的「关于页主动检查 GitHub Release」**尚未实现**。请关注仓库 Release 或自行比对 `VERSION`。
+管理后台「关于与版本」提供 **检查更新**（对齐 TG-SignPulse：优先 `github.com/.../releases/latest` 302 解析 tag，失败再回退 API JSON；失败 soft-fail；成功结果进程内缓存约 6 小时）。
+
+| 配置 | 说明 |
+|------|------|
+| `REPOSENTINEL_UPDATE_CHECK` | 默认开启；`false`/`0`/`off` 关闭远程检查 |
+| `REPOSENTINEL_UPDATE_CHECK_URL` | 默认 GitHub API `releases/latest`；可换自定义 **https** JSON 源 |
+| `REPOSENTINEL_UPDATE_CHECK_TOKEN` | 可选，仅 JSON/API 路径使用 |
+
+```http
+GET  /api/v1/system/version
+POST /api/v1/system/version/check?force=true
+```
+
+均需管理员 Session；`POST` 另需 CSRF。响应含 `update_check`（`latest_version` / `update_available` / `error` / `cached` 等）。

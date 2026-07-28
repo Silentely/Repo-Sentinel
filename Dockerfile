@@ -15,7 +15,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /src/web/dist ./web/dist
-ARG VERSION=0.3.1
+ARG VERSION=0.3.2
 ARG GIT_SHA=unknown
 ARG GIT_BRANCH=unknown
 ARG BUILD_TIME=unknown

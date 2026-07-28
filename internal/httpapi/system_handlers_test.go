@@ -44,24 +44,58 @@ func Test版本API需要认证并返回显式构建数据库与Schema信息(t *t
 	if response.Code != http.StatusOK {
 		t.Fatalf("version 状态=%d，响应=%s", response.Code, response.Body.String())
 	}
-	var body map[string]string
+	var body map[string]any
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatalf("解析 version JSON 失败: %v", err)
 	}
-	want := map[string]string{
-		"version":         "0.1.0",
-		"git_sha":         "0123456789abcdef",
-		"git_branch":      "feature/reposentinel-mvp",
-		"build_time":      "2026-07-27T12:00:00Z",
-		"build_channel":   "test",
-		"go_version":      "go1.26.4",
-		"database_driver": "sqlite",
-		"schema_version":  "202607270001",
+	want := map[string]any{
+		"version":              "0.1.0",
+		"git_sha":              "0123456789abcdef",
+		"git_branch":           "feature/reposentinel-mvp",
+		"build_time":           "2026-07-27T12:00:00Z",
+		"build_channel":        "test",
+		"go_version":           "go1.26.4",
+		"database_driver":      "sqlite",
+		"schema_version":       "202607270001",
+		"update_check_enabled": false, // fixture 默认关闭远程检查
 	}
 	for key, expected := range want {
 		if body[key] != expected {
-			t.Fatalf("version[%s]=%q，期望 %q；完整响应=%v", key, body[key], expected, body)
+			t.Fatalf("version[%s]=%v，期望 %v；完整响应=%v", key, body[key], expected, body)
 		}
+	}
+}
+
+func Test版本检查API需要认证与CSRF并返回softFail结果(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	unauthorized := fixture.request(t, http.MethodPost, "/api/v1/system/version/check", `{}`, "127.0.0.1:43111", nil, nil)
+	assertAPIError(t, unauthorized, http.StatusUnauthorized, "unauthorized")
+
+	missingCSRF := fixture.request(t, http.MethodPost, "/api/v1/system/version/check?force=true", `{}`, "127.0.0.1:43112", cookies, nil)
+	assertAPIError(t, missingCSRF, http.StatusForbidden, "csrf_failed")
+
+	// 关闭远程检查：应 soft-fail 且 enabled=false。
+	// 重新装配 handler 代价高，直接用默认零值 Config（UpdateCheck.Enabled=false）。
+	response := fixture.request(
+		t, http.MethodPost, "/api/v1/system/version/check?force=true", `{}`,
+		"127.0.0.1:43113", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var body versionCheckResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Version.Version != "0.1.0" {
+		t.Fatalf("version=%q", body.Version.Version)
+	}
+	if body.UpdateCheck.Enabled {
+		t.Fatal("fixture 默认应关闭或未开启远程检查")
 	}
 }
 

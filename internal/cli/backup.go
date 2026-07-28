@@ -46,17 +46,16 @@ func (r Runner) backupSQLite(dbURL, out string) error {
 	if path == "" {
 		return reportError(r.stderr, newCLIError("无法解析 SQLite 路径。"))
 	}
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil && filepath.Dir(out) != "." {
-		// ignore if dir is .
-	}
 	// 使用驱动 VACUUM INTO，避免 shell 拼接路径。
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return reportError(r.stderr, err)
 	}
 	defer db.Close()
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil && filepath.Dir(out) != "." && filepath.Dir(out) != "" {
-		return reportError(r.stderr, err)
+	if dir := filepath.Dir(out); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return reportError(r.stderr, err)
+		}
 	}
 	if _, err := db.Exec("VACUUM INTO ?", out); err != nil {
 		return reportError(r.stderr, fmt.Errorf("vacuum into failed: %w", err))
