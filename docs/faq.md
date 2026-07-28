@@ -47,6 +47,17 @@ printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --passwor
 
 示例与完整变量见 [配置参考](/reference/configuration)、[Docker 部署](/deploy/docker)。
 
+### 启动报 `database_unavailable` / 无法打开数据库？
+
+常见原因：
+
+1. **密码特殊字符未 URL 编码**（最常见）：密码含 `#` `@` `(` 等时，连接串会被截断。把密码编码后再拼进 URL（`#`→`%23`，`(`→`%28`）。见 [配置参考](/reference/configuration)。  
+2. **驱动仍是 sqlite**：确认 `REPOSENTINEL_DATABASE_DRIVER=postgres`（不要写成 `postgresql`）。  
+3. **主机/网络**：PaaS 内网主机名是否与官方连接信息一致；应用与数据库是否同一私有网络。  
+4. **库不存在 / 认证失败 / SSL**：库名、用户密码、`sslmode`（内网常 `disable`，公网 `require`）。  
+
+新版本日志会在 `message=` 后附带**不含密码**的原因摘要（如「连接串含未编码的 #」）。
+
 ### 环境变量一览在哪？
 
 仓库根目录 [`.env.example`](https://github.com/Silentely/Repo-Sentinel/blob/main/.env.example)，说明见 [配置参考](/reference/configuration)。
