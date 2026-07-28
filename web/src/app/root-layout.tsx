@@ -1,7 +1,5 @@
 import {
   Activity,
-  CheckCircle2,
-  CircleDashed,
   GitBranch,
   LogOut,
   ShieldCheck,
@@ -11,14 +9,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 
 import { ThemeToggle } from "../components/theme-toggle";
-import { EmptyState } from "../components/empty-state";
 import {
   logout,
   readyStatusQueryOptions,
-  setupStatusQueryOptions,
   type AuthenticationResponse,
 } from "../features/auth/api";
-import { toApiError } from "../lib/api/errors";
 
 export interface RootLayoutProps {
   session: AuthenticationResponse;
@@ -35,7 +30,7 @@ export function RootLayout({ session }: RootLayoutProps) {
     : ready.isError || ready.data?.status !== "ready"
       ? "error"
       : "ready";
-  const healthLabel = healthState === "ready" ? "同步正常" : healthState === "warning" ? "检查中" : "需要关注";
+  const healthLabel = healthState === "ready" ? "服务正常" : healthState === "warning" ? "检查中" : "需要关注";
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -71,12 +66,12 @@ export function RootLayout({ session }: RootLayoutProps) {
             <span>渠道配置</span>
           </Link>
         </nav>
-        <span className="app-sidebar__version">v0.1 · 生产 MVP</span>
+        <span className="app-sidebar__version">RepoSentinel</span>
       </aside>
 
       <div className="app-main">
         <header className="app-topbar">
-          <p className="app-topbar__title">仪表盘</p>
+          <p className="app-topbar__title">管理控制台</p>
           <div className="app-topbar__actions">
             <span className={`health-pill health-pill--${healthState}`}>{healthLabel}</span>
             <ThemeToggle />
@@ -94,69 +89,6 @@ export function RootLayout({ session }: RootLayoutProps) {
         </main>
       </div>
     </div>
-  );
-}
-
-export function FoundationHome() {
-  const ready = useQuery(readyStatusQueryOptions);
-  const setup = useQuery(setupStatusQueryOptions);
-  const setupComplete = setup.data?.required === false;
-
-  return (
-    <>
-      <section className="page-intro">
-        <div>
-          <p className="eyebrow">值守概览 · Phase 1</p>
-          <h1>先确认系统，再接入仓库。</h1>
-          <p>这里展示当前实例真实的健康与上手状态。GitHub 事件采集将在下一阶段接入。</p>
-        </div>
-      </section>
-
-      <section className="status-card" aria-labelledby="status-title">
-        <div className="status-grid">
-          <div className="status-item">
-            <span className="status-item__label">HTTP readiness</span>
-            <strong>{ready.isPending ? "检查中" : ready.data?.status === "ready" ? "已就绪" : "待处理"}</strong>
-          </div>
-          <div className="status-item">
-            <span className="status-item__label">管理员 Session</span>
-            <strong>已保护</strong>
-          </div>
-          <div className="status-item">
-            <span className="status-item__label">数据存储</span>
-            <strong>由服务端管理</strong>
-          </div>
-        </div>
-        <h2 id="status-title" className="sr-only">系统状态</h2>
-        {ready.isError ? (
-          <EmptyState
-            eyebrow={toApiError(ready.error).errorCode}
-            title="服务健康状态暂不可读"
-            description="HTTP 服务没有返回 readiness。检查服务日志后重试。"
-            action={<button className="quiet-button" type="button" onClick={() => void ready.refetch()}>重试</button>}
-          />
-        ) : null}
-      </section>
-
-      <section className="onboarding-card" aria-labelledby="onboarding-title">
-        <h2 id="onboarding-title">上手进度</h2>
-        <p>完成这些基础步骤后，下一阶段即可开始接收 GitHub 仓库事件。</p>
-        <ol className="onboarding-list">
-          <li data-state={setupComplete ? "done" : "next"}>
-            {setupComplete ? <CheckCircle2 aria-hidden="true" size={18} /> : <CircleDashed aria-hidden="true" size={18} />}
-            <span>{setupComplete ? "唯一管理员已创建" : "完成管理员初始化"}</span>
-          </li>
-          <li data-state="next">
-            <CircleDashed aria-hidden="true" size={18} />
-            <span>配置 GitHub App 与 Webhook（下一阶段）</span>
-          </li>
-          <li data-state="next">
-            <CircleDashed aria-hidden="true" size={18} />
-            <span>等待首个仓库完成基线同步</span>
-          </li>
-        </ol>
-      </section>
-    </>
   );
 }
 

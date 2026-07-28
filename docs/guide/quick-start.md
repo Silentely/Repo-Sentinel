@@ -1,10 +1,6 @@
 # 快速开始
 
-本指南帮助你在本机跑通 **Phase 1**：构建二进制、启动 SQLite 实例、创建唯一管理员并登录。
-
-::: warning 能力边界
-当前版本**不会**接收 GitHub Webhook，也**不会**发送 Telegram 通知。若你需要完整监控能力，请先阅读 [功能与路线图](/features) 与 [实现状态](/reference/implementation-status)。
-:::
+本指南帮助你在本机构建二进制、启动 SQLite 实例、创建唯一管理员并登录。生产环境更推荐 [Docker 部署](/deploy/docker)。
 
 ## 1. 准备环境
 
@@ -14,7 +10,7 @@
 | Node.js 24+ | 前端构建 |
 | pnpm 10.34.5 | `web/packageManager` 已锁定 |
 | 可选 sqlite3 | SQLite 在线备份 |
-| 可选 Docker | 仅 PostgreSQL 契约测试 |
+| 可选 Docker | PostgreSQL 契约或 Compose 部署 |
 
 ## 2. 安装前端依赖并构建
 
@@ -27,14 +23,14 @@ pnpm --dir web build
 
 ## 3. 编译服务
 
-开发构建（无完整前端嵌入时使用 fallback 页）：
+开发构建：
 
 ```bash
 mkdir -p .tmp
 make build OUTPUT=.tmp/reposentinel
 ```
 
-生产嵌入构建（需先完成 `pnpm --dir web build`）：
+生产嵌入构建（需先完成前端 build）：
 
 ```bash
 OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
@@ -53,6 +49,8 @@ mkdir -p .tmp
 REPOSENTINEL_HTTP_ADDR=127.0.0.1:8080 \
 REPOSENTINEL_DATABASE_DRIVER=sqlite \
 REPOSENTINEL_DATABASE_URL=file:./.tmp/reposentinel.db \
+REPOSENTINEL_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+REPOSENTINEL_GITHUB_WEBHOOK_SECRET=dev-secret \
 .tmp/reposentinel serve
 ```
 
@@ -60,7 +58,7 @@ REPOSENTINEL_DATABASE_URL=file:./.tmp/reposentinel.db \
 
 1. 首次访问进入 **创建唯一管理员**
 2. 创建成功后自动登录
-3. 仪表盘展示真实 readiness 与上手步骤（后续阶段能力会标为「下一阶段」）
+3. 在仪表盘查看健康、仓库与事件（配置 Webhook 后有数据）
 
 ## 5. 健康检查
 
@@ -79,6 +77,7 @@ REPOSENTINEL_ADMIN_USERNAME="admin" \
 REPOSENTINEL_HTTP_ADDR=127.0.0.1:8080 \
 REPOSENTINEL_DATABASE_DRIVER=sqlite \
 REPOSENTINEL_DATABASE_URL=file:./.tmp/reposentinel.db \
+REPOSENTINEL_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
 .tmp/reposentinel serve
 unset REPOSENTINEL_ADMIN_PASSWORD
 ```
@@ -87,6 +86,7 @@ unset REPOSENTINEL_ADMIN_PASSWORD
 
 ## 7. 下一步
 
-- [管理员与 Session](/guide/administrator) — setup 远程开关、改密、CLI 重置
-- [配置参考](/reference/configuration) — 主密钥、数据库、日志
-- [从源码运行](/deploy/source) — 前后端分离开发与 production embed
+- [管理员与 Session](/guide/administrator)
+- [配置参考](/reference/configuration)
+- [Docker 部署](/deploy/docker)
+- [从源码运行](/deploy/source)

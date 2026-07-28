@@ -6,7 +6,7 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// ScheduledJob 保存后台任务队列项。
+// ScheduledJob 保存后台作业队列项。
 type ScheduledJob struct {
 	ent.Schema
 }

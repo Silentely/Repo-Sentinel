@@ -37,7 +37,7 @@ func newValidationError(field, message string) *ValidationError {
 	return &ValidationError{Field: field, Message: message}
 }
 
-// Validate 校验第一阶段中安全敏感且必须在启动前确定的配置。
+// Validate 校验安全敏感且必须在启动前确定的配置。
 func (cfg Config) Validate() error {
 	switch cfg.Database.Driver {
 	case "sqlite":

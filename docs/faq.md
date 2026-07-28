@@ -1,18 +1,22 @@
 # 常见问题
 
-## 产品边界
+## 产品与使用
 
-### 为什么登录后没有仓库列表？
+### 登录后仓库列表是空的？
 
-当前 **v0.1.0 / Phase 1** 只交付认证与运行时。GitHub App、Webhook 与仓库同步属于后续阶段。仪表盘上的「下一阶段」步骤是有意为之，不是故障。详见 [实现状态](/reference/implementation-status)。
+需要先在 GitHub 安装 App 并配置 Webhook；事件到达后仓库会自动出现。也可在能力支持时登记外部公开仓库。详见 [Docker 部署](/deploy/docker) 与 [快速开始](/guide/quick-start)。
 
-### 可以配置 Telegram 吗？
+### 为什么新仓库一开始不发 Telegram？
 
-环境变量里预留了 Telegram / HTTP Webhook 相关键，便于后续接线；**Phase 1 不会发送通知**。
+新授权仓库默认处于**基线**状态：只建立当前快照，抑制历史/快照通知洪流。在管理后台确认后点击「完成基线」，之后的变化才会实时通知。
+
+### 如何配置 Telegram？
+
+可在环境变量中设置 `REPOSENTINEL_TELEGRAM_TOKEN` 与 `REPOSENTINEL_TELEGRAM_CHAT_ID`（启动时写入渠道），或在「渠道配置」页保存。Token 使用主密钥加密存储。
 
 ## 安装与启动
 
-### setup 页面提示不允许远程初始化？
+### setup 提示不允许远程初始化？
 
 默认要求来源 IP 与 Host 均为 loopback。使用域名或反向代理时需临时：
 
@@ -32,7 +36,7 @@ printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --passwor
 
 ### 主密钥是什么？必须设置吗？
 
-`REPOSENTINEL_ENCRYPTION_KEY` 用于加密库内敏感凭据（后续 Telegram Token、PAT 等）。解码后须为 32 字节。密钥丢失会导致密文无法解密；备份数据库时必须同时备份主密钥。见 [配置参考](/reference/configuration)。
+`REPOSENTINEL_ENCRYPTION_KEY` 用于加密库内敏感凭据（如 Telegram Token）。解码后须为 32 字节。密钥丢失会导致密文无法解密；备份数据库时必须同时备份主密钥。见 [配置参考](/reference/configuration)。
 
 ### SQLite 能直接复制 `.db` 文件备份吗？
 
@@ -44,9 +48,9 @@ printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --passwor
 
 先 `pnpm --dir web install`。
 
-### Go 测试里的 PostgreSQL 失败？
+### PostgreSQL 相关测试失败？
 
-无 Docker/URL 时应跳过或按 `docs/reference/development.md` 启动 test compose，不要把 SQLite 结果当成 Postgres 已验证。
+无 Docker/URL 时应按 [开发规范](/reference/development) 启动 test compose，不要把 SQLite 结果当成 Postgres 已验证。
 
 ### 文档站怎么预览？
 

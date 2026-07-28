@@ -65,7 +65,7 @@ export function NotifyPage() {
         <div>
           <p className="eyebrow">通知</p>
           <h1>配置投递渠道</h1>
-          <p>MVP 每种渠道最多启用 1 个实例，全量事件发往已启用渠道。</p>
+          <p>每种渠道最多启用 1 个实例，全量事件发往已启用渠道。</p>
         </div>
       </section>
 

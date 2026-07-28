@@ -1,6 +1,6 @@
 # 从源码运行
 
-Phase 1 以源码与本地二进制为主。正式多架构 Docker 镜像与 Compose 生产样例仍在路线图中。
+适合本地开发与自定义构建。生产更推荐 [Docker 部署](/deploy/docker)。
 
 ## 开发模式（API + Vite）
 
@@ -11,6 +11,7 @@ mkdir -p .tmp
 REPOSENTINEL_HTTP_ADDR=127.0.0.1:8080 \
 REPOSENTINEL_DATABASE_DRIVER=sqlite \
 REPOSENTINEL_DATABASE_URL=file:./.tmp/reposentinel-dev.db \
+REPOSENTINEL_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
 go run ./cmd/reposentinel serve
 ```
 

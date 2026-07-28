@@ -22,7 +22,7 @@ export default defineConfig({
   lang: "zh-CN",
   title: "RepoSentinel",
   description:
-    "自托管 GitHub 仓库动态与安全告警监控平台。Phase 1 已交付认证与运行时基础；Webhook、对账与通知按阶段推进。",
+    "自托管 GitHub 仓库动态与安全告警监控平台：Webhook、可靠通知与值守仪表盘。",
   base,
   cleanUrls: true,
   lastUpdated: true,
@@ -93,7 +93,7 @@ export default defineConfig({
 
     nav: [
       { text: "首页", link: "/" },
-      { text: "功能与路线图", link: "/features" },
+      { text: "功能介绍", link: "/features" },
       { text: "快速开始", link: "/guide/quick-start" },
       {
         text: "部署",
@@ -110,7 +110,7 @@ export default defineConfig({
           { text: "运维手册", link: "/reference/ops" },
           { text: "系统架构", link: "/reference/architecture" },
           { text: "开发规范", link: "/reference/development" },
-          { text: "实现状态", link: "/reference/implementation-status" },
+          { text: "能力与状态", link: "/reference/implementation-status" },
         ],
       },
       { text: "常见问题", link: "/faq" },
@@ -120,7 +120,7 @@ export default defineConfig({
       {
         text: "开始",
         items: [
-          { text: "功能与路线图", link: "/features" },
+          { text: "功能介绍", link: "/features" },
           { text: "快速开始", link: "/guide/quick-start" },
           { text: "文档总览", link: "/README" },
         ],
@@ -147,7 +147,7 @@ export default defineConfig({
           { text: "运维手册", link: "/reference/ops" },
           { text: "系统架构", link: "/reference/architecture" },
           { text: "开发规范", link: "/reference/development" },
-          { text: "实现状态", link: "/reference/implementation-status" },
+          { text: "能力与状态", link: "/reference/implementation-status" },
         ],
       },
       {
@@ -201,7 +201,7 @@ export default defineConfig({
 
     footer: {
       message:
-        '基于 <a href="https://vitepress.dev/">VitePress</a> 构建 · 默认 SQLite，可选 PostgreSQL · 当前 v0.1.0（Phase 1）',
+        '基于 <a href="https://vitepress.dev/">VitePress</a> 构建 · 默认 SQLite，可选 PostgreSQL',
       copyright: "Copyright © 2026 RepoSentinel",
     },
 
