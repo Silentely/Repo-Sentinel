@@ -28,7 +28,7 @@ const (
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
 	// Table holds the table name of the githubinstallation in the database.
-	Table = "git_hub_installations"
+	Table = "github_installations"
 )
 
 // Columns holds all SQL columns for githubinstallation fields.

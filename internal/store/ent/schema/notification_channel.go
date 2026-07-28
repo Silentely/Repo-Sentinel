@@ -2,6 +2,8 @@ package schema
 
 import (
 	"entgo.io/ent"
+	"entgo.io/ent/dialect/entsql"
+	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -30,3 +32,11 @@ func (NotificationChannel) Indexes() []ent.Index {
 		index.Fields("channel_type", "enabled"),
 	}
 }
+
+// Annotations 固定物理表名，与 Atlas 迁移保持一致。
+func (NotificationChannel) Annotations() []schema.Annotation {
+	return []schema.Annotation{
+		entsql.Annotation{Table: "notification_channels"},
+	}
+}
+

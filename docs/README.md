@@ -1,6 +1,6 @@
 # RepoSentinel 文档
 
-> v0.2.0 · 自托管 GitHub 仓库值守：Webhook、安全告警与可靠通知。
+> v0.3.1 · 自托管 GitHub 仓库值守：Webhook、安全告警与可靠通知。
 
 ## 产品简介
 

@@ -3,6 +3,7 @@
 package migrate
 
 import (
+	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/dialect/sql/schema"
 	"entgo.io/ent/schema/field"
 )
@@ -155,8 +156,8 @@ var (
 			},
 		},
 	}
-	// GitHubInstallationsColumns holds the columns for the "git_hub_installations" table.
-	GitHubInstallationsColumns = []*schema.Column{
+	// GithubInstallationsColumns holds the columns for the "github_installations" table.
+	GithubInstallationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "installation_id", Type: field.TypeInt64},
 		{Name: "account_login", Type: field.TypeString},
@@ -167,16 +168,16 @@ var (
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
-	// GitHubInstallationsTable holds the schema information for the "git_hub_installations" table.
-	GitHubInstallationsTable = &schema.Table{
-		Name:       "git_hub_installations",
-		Columns:    GitHubInstallationsColumns,
-		PrimaryKey: []*schema.Column{GitHubInstallationsColumns[0]},
+	// GithubInstallationsTable holds the schema information for the "github_installations" table.
+	GithubInstallationsTable = &schema.Table{
+		Name:       "github_installations",
+		Columns:    GithubInstallationsColumns,
+		PrimaryKey: []*schema.Column{GithubInstallationsColumns[0]},
 		Indexes: []*schema.Index{
 			{
 				Name:    "githubinstallation_installation_id",
 				Unique:  true,
-				Columns: []*schema.Column{GitHubInstallationsColumns[1]},
+				Columns: []*schema.Column{GithubInstallationsColumns[1]},
 			},
 		},
 	}
@@ -205,8 +206,8 @@ var (
 			},
 		},
 	}
-	// NotificationOutboxesColumns holds the columns for the "notification_outboxes" table.
-	NotificationOutboxesColumns = []*schema.Column{
+	// NotificationOutboxColumns holds the columns for the "notification_outbox" table.
+	NotificationOutboxColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "channel_id", Type: field.TypeString},
 		{Name: "event_id", Type: field.TypeString, Nullable: true},
@@ -224,31 +225,31 @@ var (
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
-	// NotificationOutboxesTable holds the schema information for the "notification_outboxes" table.
-	NotificationOutboxesTable = &schema.Table{
-		Name:       "notification_outboxes",
-		Columns:    NotificationOutboxesColumns,
-		PrimaryKey: []*schema.Column{NotificationOutboxesColumns[0]},
+	// NotificationOutboxTable holds the schema information for the "notification_outbox" table.
+	NotificationOutboxTable = &schema.Table{
+		Name:       "notification_outbox",
+		Columns:    NotificationOutboxColumns,
+		PrimaryKey: []*schema.Column{NotificationOutboxColumns[0]},
 		Indexes: []*schema.Index{
 			{
 				Name:    "notificationoutbox_idempotency_key",
 				Unique:  true,
-				Columns: []*schema.Column{NotificationOutboxesColumns[4]},
+				Columns: []*schema.Column{NotificationOutboxColumns[4]},
 			},
 			{
 				Name:    "notificationoutbox_status_next_attempt_at",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationOutboxesColumns[5], NotificationOutboxesColumns[7]},
+				Columns: []*schema.Column{NotificationOutboxColumns[5], NotificationOutboxColumns[7]},
 			},
 			{
 				Name:    "notificationoutbox_channel_id_status",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationOutboxesColumns[1], NotificationOutboxesColumns[5]},
+				Columns: []*schema.Column{NotificationOutboxColumns[1], NotificationOutboxColumns[5]},
 			},
 			{
 				Name:    "notificationoutbox_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationOutboxesColumns[14]},
+				Columns: []*schema.Column{NotificationOutboxColumns[14]},
 			},
 		},
 	}
@@ -564,9 +565,9 @@ var (
 		AdminSessionsTable,
 		AuditLogsTable,
 		EventsTable,
-		GitHubInstallationsTable,
+		GithubInstallationsTable,
 		NotificationChannelsTable,
-		NotificationOutboxesTable,
+		NotificationOutboxTable,
 		RepositoriesTable,
 		ScheduledJobsTable,
 		SecurityAlertsTable,
@@ -580,4 +581,37 @@ var (
 
 func init() {
 	AdminSessionsTable.ForeignKeys[0].RefTable = AdminAccountsTable
+	EventsTable.Annotation = &entsql.Annotation{
+		Table: "events",
+	}
+	GithubInstallationsTable.Annotation = &entsql.Annotation{
+		Table: "github_installations",
+	}
+	NotificationChannelsTable.Annotation = &entsql.Annotation{
+		Table: "notification_channels",
+	}
+	NotificationOutboxTable.Annotation = &entsql.Annotation{
+		Table: "notification_outbox",
+	}
+	RepositoriesTable.Annotation = &entsql.Annotation{
+		Table: "repositories",
+	}
+	ScheduledJobsTable.Annotation = &entsql.Annotation{
+		Table: "scheduled_jobs",
+	}
+	SecurityAlertsTable.Annotation = &entsql.Annotation{
+		Table: "security_alerts",
+	}
+	SyncCursorsTable.Annotation = &entsql.Annotation{
+		Table: "sync_cursors",
+	}
+	WebhookDeliveriesTable.Annotation = &entsql.Annotation{
+		Table: "webhook_deliveries",
+	}
+	WorkItemsTable.Annotation = &entsql.Annotation{
+		Table: "work_items",
+	}
+	WorkflowRunsTable.Annotation = &entsql.Annotation{
+		Table: "workflow_runs",
+	}
 }
