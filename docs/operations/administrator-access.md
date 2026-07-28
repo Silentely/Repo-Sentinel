@@ -1,5 +1,7 @@
 # 管理员访问 RepoSentinel
 
+> **文档已迁移**：请优先阅读文档站 [管理员与 Session](/guide/administrator)。
+
 RepoSentinel 只允许一个管理员账号。首次启动可以用环境变量引导管理员，也可以通过本机 setup 页面创建；已有管理员时，后续启动不会用环境变量覆盖密码。
 
 ## 首次创建唯一管理员

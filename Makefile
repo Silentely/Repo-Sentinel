@@ -11,7 +11,7 @@ BUILD_LDFLAGS := \
 	-X github.com/Silentely/Repo-Sentinel/internal/buildinfo.buildTime=$(BUILD_TIME) \
 	-X github.com/Silentely/Repo-Sentinel/internal/buildinfo.buildChannel=$(BUILD_CHANNEL)
 
-.PHONY: fmt test vet build build-production verify
+.PHONY: fmt test vet build build-production verify docs-dev docs-build
 
 fmt:
 	go fmt ./...
@@ -27,5 +27,11 @@ build:
 
 build-production:
 	go build -tags production -ldflags "$(BUILD_LDFLAGS)" -o "$(OUTPUT)" ./cmd/reposentinel
+
+docs-dev:
+	npm run docs:dev
+
+docs-build:
+	npm run docs:build
 
 verify: fmt test vet build
