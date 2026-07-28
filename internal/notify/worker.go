@@ -74,10 +74,27 @@ func (w *Worker) tick(ctx context.Context) {
 	}
 	for _, item := range items {
 		if err := w.deliver(ctx, item); err != nil {
+			if w.Logger != nil {
+				w.Logger.Warn(
+					"notification delivery failed",
+					"outbox_id", item.ID,
+					"channel_id", item.ChannelID,
+					"attempt", item.AttemptCount,
+					"error", err.Error(),
+				)
+			}
 			w.handleFailure(ctx, item, err)
 			continue
 		}
 		_ = w.Store.Outbox().MarkSent(ctx, item.ID)
+		if w.Logger != nil {
+			w.Logger.Info(
+				"notification delivered",
+				"outbox_id", item.ID,
+				"channel_id", item.ChannelID,
+				"title", item.Title,
+			)
+		}
 		if w.OnSent != nil {
 			w.OnSent()
 		}
@@ -123,9 +140,9 @@ func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text string) e
 	}
 	api := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
 	body, _ := json.Marshal(map[string]any{
-		"chat_id":    chatID,
-		"text":       text,
-		"parse_mode": "HTML",
+		"chat_id":                  chatID,
+		"text":                     text,
+		"parse_mode":               "HTML",
 		"disable_web_page_preview": true,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, api, bytes.NewReader(body))

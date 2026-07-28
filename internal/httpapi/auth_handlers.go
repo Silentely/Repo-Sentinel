@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -38,12 +39,28 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	remoteIP := remoteIPFromContext(r.Context())
+	requestID := requestIDFromContext(r.Context())
 	if !s.dependencies.LoginLimiter.Allow(remoteIP) {
+		s.dependencies.Logger.Warn(
+			"login rate limited",
+			"request_id", requestID,
+			"remote_ip", remoteIP,
+			"error_code", errorCodeRateLimited,
+		)
 		s.writeAPIError(w, r, http.StatusTooManyRequests, errorCodeRateLimited, nil)
 		return
 	}
 	admin, err := s.dependencies.AdminService.Authenticate(r.Context(), request.Username, request.Password)
 	if err != nil {
+		// 凭据错误记 Warn；其它错误交 writeMappedError 记 Error，避免重复。
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			s.dependencies.Logger.Warn(
+				"login failed",
+				"request_id", requestID,
+				"remote_ip", remoteIP,
+				"error_code", errorCodeInvalidCredentials,
+			)
+		}
 		s.writeMappedError(w, r, err)
 		return
 	}
@@ -52,6 +69,13 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
+	s.dependencies.Logger.Info(
+		"login success",
+		"request_id", requestID,
+		"admin_id", admin.ID,
+		"remote_ip", remoteIP,
+		"session_id", created.Session.ID,
+	)
 	s.setAuthCookies(w, created)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, newAuthenticationResponse(admin, created.Session))
@@ -89,6 +113,12 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
+	s.dependencies.Logger.Info(
+		"logout success",
+		"request_id", requestIDFromContext(r.Context()),
+		"admin_id", session.AdminID,
+		"session_id", session.ID,
+	)
 	s.clearAuthCookies(w)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]bool{"logged_out": true})

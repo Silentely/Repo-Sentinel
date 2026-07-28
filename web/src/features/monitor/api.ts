@@ -118,3 +118,100 @@ export async function reconcileAll(): Promise<void> {
     body: JSON.stringify({}),
   });
 }
+
+export interface GitHubConfigStatus {
+  app_id_configured: boolean;
+  client_id_configured: boolean;
+  private_key_configured: boolean;
+  webhook_secret_configured: boolean;
+  webhook_previous_secret_configured?: boolean;
+  external_pat_configured: boolean;
+  webhook_path: string;
+}
+
+export interface VersionInfo {
+  version?: string;
+  git_sha?: string;
+  git_branch?: string;
+  build_time?: string;
+  build_channel?: string;
+  go_version?: string;
+  database_driver?: string;
+  schema_version?: string;
+  update_check_enabled?: boolean;
+  public_base_url?: string;
+  http_addr?: string;
+  github?: GitHubConfigStatus;
+}
+
+export interface UpdateCheckInfo {
+  enabled: boolean;
+  latest_version?: string;
+  latest_url?: string;
+  update_available: boolean;
+  checked_at?: string;
+  error?: string;
+  source?: string;
+  cached?: boolean;
+}
+
+export interface VersionCheckResponse {
+  version: VersionInfo;
+  update_check: UpdateCheckInfo;
+}
+
+export interface SystemSettings {
+  "admin.timezone"?: string;
+  "digest.local_time"?: string;
+  "digest.send_empty"?: boolean;
+  "notify.aggregate_window_sec"?: number;
+  "notify.burst_threshold"?: number;
+  "notify.burst_window_sec"?: number;
+}
+
+export interface Installation {
+  id: string;
+  installation_id: number;
+  account_login: string;
+  account_type: string;
+  suspended: string;
+}
+
+export const versionQueryOptions = queryOptions({
+  queryKey: ["version"] as const,
+  queryFn: () => apiRequest<VersionInfo>("/api/v1/system/version"),
+  staleTime: 30_000,
+});
+
+export const settingsQueryOptions = queryOptions({
+  queryKey: ["system-settings"] as const,
+  queryFn: () => apiRequest<SystemSettings>("/api/v1/system/settings"),
+  staleTime: 30_000,
+});
+
+export const installationsQueryOptions = queryOptions({
+  queryKey: ["installations"] as const,
+  queryFn: () => apiRequest<{ items: Installation[] }>("/api/v1/github/installations"),
+  staleTime: 15_000,
+});
+
+export async function checkForUpdates(force = true): Promise<VersionCheckResponse> {
+  return apiRequest<VersionCheckResponse>(`/api/v1/system/version/check?force=${force ? "true" : "false"}`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function saveSystemSettings(body: SystemSettings): Promise<SystemSettings> {
+  return apiRequest<SystemSettings>("/api/v1/system/settings", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function addExternalRepository(fullName: string): Promise<Repository> {
+  return apiRequest<Repository>("/api/v1/repositories/external", {
+    method: "POST",
+    body: JSON.stringify({ full_name: fullName }),
+  });
+}

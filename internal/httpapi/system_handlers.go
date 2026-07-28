@@ -2,21 +2,36 @@ package httpapi
 
 import (
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 )
 
 type versionResponse struct {
-	Version            string `json:"version"`
-	GitSHA             string `json:"git_sha"`
-	GitBranch          string `json:"git_branch"`
-	BuildTime          string `json:"build_time"`
-	BuildChannel       string `json:"build_channel"`
-	GoVersion          string `json:"go_version"`
-	DatabaseDriver     string `json:"database_driver"`
-	SchemaVersion      string `json:"schema_version"`
-	UpdateCheckEnabled bool   `json:"update_check_enabled"`
+	Version            string              `json:"version"`
+	GitSHA             string              `json:"git_sha"`
+	GitBranch          string              `json:"git_branch"`
+	BuildTime          string              `json:"build_time"`
+	BuildChannel       string              `json:"build_channel"`
+	GoVersion          string              `json:"go_version"`
+	DatabaseDriver     string              `json:"database_driver"`
+	SchemaVersion      string              `json:"schema_version"`
+	UpdateCheckEnabled bool                `json:"update_check_enabled"`
+	PublicBaseURL      string              `json:"public_base_url"`
+	HTTPAddr           string              `json:"http_addr"`
+	GitHub             githubStatusPayload `json:"github"`
+}
+
+// githubStatusPayload 仅暴露是否已配置，不回传 Secret 或私钥内容。
+type githubStatusPayload struct {
+	AppIDConfigured           bool   `json:"app_id_configured"`
+	ClientIDConfigured        bool   `json:"client_id_configured"`
+	PrivateKeyConfigured      bool   `json:"private_key_configured"`
+	WebhookSecretConfigured   bool   `json:"webhook_secret_configured"`
+	WebhookPreviousConfigured bool   `json:"webhook_previous_secret_configured"`
+	ExternalPATConfigured     bool   `json:"external_pat_configured"`
+	WebhookPath               string `json:"webhook_path"`
 }
 
 type versionCheckResponse struct {
@@ -56,6 +71,13 @@ func (s *server) localVersion() versionResponse {
 	if s.dependencies.UpdateChecker != nil {
 		enabled = s.dependencies.UpdateChecker.Enabled
 	}
+	gh := s.dependencies.Config.GitHub
+	privateKeyOK := false
+	if path := strings.TrimSpace(gh.PrivateKeyPath); path != "" {
+		if st, err := os.Stat(path); err == nil && !st.IsDir() {
+			privateKeyOK = true
+		}
+	}
 	return versionResponse{
 		Version:            info.Version,
 		GitSHA:             info.GitSHA,
@@ -66,5 +88,16 @@ func (s *server) localVersion() versionResponse {
 		DatabaseDriver:     s.dependencies.Config.Database.Driver,
 		SchemaVersion:      s.dependencies.SchemaVersion,
 		UpdateCheckEnabled: enabled,
+		PublicBaseURL:      s.dependencies.Config.HTTP.PublicBaseURL,
+		HTTPAddr:           s.dependencies.Config.HTTP.Addr,
+		GitHub: githubStatusPayload{
+			AppIDConfigured:           gh.AppID > 0,
+			ClientIDConfigured:        strings.TrimSpace(gh.ClientID) != "",
+			PrivateKeyConfigured:      privateKeyOK,
+			WebhookSecretConfigured:   strings.TrimSpace(gh.WebhookSecret.Reveal()) != "",
+			WebhookPreviousConfigured: strings.TrimSpace(gh.WebhookPreviousSecret.Reveal()) != "",
+			ExternalPATConfigured:     strings.TrimSpace(gh.ExternalPAT.Reveal()) != "",
+			WebhookPath:               "/webhooks/github",
+		},
 	}
 }

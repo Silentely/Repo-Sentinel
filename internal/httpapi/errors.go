@@ -44,6 +44,8 @@ func (s *server) writeMappedError(w http.ResponseWriter, r *http.Request, err er
 		s.dependencies.Logger.Error(
 			"http request failed",
 			"request_id", requestIDFromContext(r.Context()),
+			"method", r.Method,
+			"path", r.URL.Path,
 			"error_code", errorCodeInternal,
 		)
 		s.writeAPIError(w, r, http.StatusInternalServerError, errorCodeInternal, nil)
@@ -97,6 +99,8 @@ func apiErrorMessage(errorCode string) string {
 		return "仓库同步服务当前不可用。"
 	case "encryption_unavailable":
 		return "加密主密钥不可用，无法保存敏感配置。"
+	case "external_repo_limit":
+		return "外部公开仓库已达上限（20 个）。"
 	default:
 		return "服务器暂时无法完成请求，请使用 request_id 排查。"
 	}

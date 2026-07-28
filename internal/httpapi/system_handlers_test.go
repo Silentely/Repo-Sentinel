@@ -64,6 +64,24 @@ func Test版本API需要认证并返回显式构建数据库与Schema信息(t *t
 			t.Fatalf("version[%s]=%v，期望 %v；完整响应=%v", key, body[key], expected, body)
 		}
 	}
+	github, ok := body["github"].(map[string]any)
+	if !ok {
+		t.Fatalf("version 缺少 github 状态对象：%v", body)
+	}
+	if path, _ := github["webhook_path"].(string); path != "/webhooks/github" {
+		t.Fatalf("webhook_path=%v，期望 /webhooks/github", github["webhook_path"])
+	}
+	for _, key := range []string{
+		"app_id_configured",
+		"client_id_configured",
+		"private_key_configured",
+		"webhook_secret_configured",
+		"external_pat_configured",
+	} {
+		if _, exists := github[key]; !exists {
+			t.Fatalf("github 缺少字段 %s：%v", key, github)
+		}
+	}
 }
 
 func Test版本检查API需要认证与CSRF并返回softFail结果(t *testing.T) {

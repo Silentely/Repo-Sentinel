@@ -90,7 +90,7 @@ export function RootLayout({ session }: RootLayoutProps) {
           </Link>
           <Link to="/about" activeProps={{ "aria-current": "page" }}>
             <Info aria-hidden="true" size={17} />
-            <span>关于与版本</span>
+            <span>关于与设置</span>
           </Link>
         </nav>
         <span className="app-sidebar__version">RepoSentinel</span>

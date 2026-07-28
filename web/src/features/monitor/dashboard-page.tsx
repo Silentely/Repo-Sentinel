@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { CheckCircle2, CircleDashed, ExternalLink } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
@@ -81,8 +82,8 @@ export function DashboardPage() {
       </section>
 
       <section className="onboarding-card" aria-labelledby="baseline-title">
-        <h2 id="baseline-title">仓库与基线</h2>
-        <p>
+        <div className="onboarding-card__header">
+          <h2 id="baseline-title">仓库与基线</h2>
           <button
             className="quiet-button"
             type="button"
@@ -91,12 +92,13 @@ export function DashboardPage() {
           >
             {reconcileEverything.isPending ? "对账排队中…" : "立即对账全部自有仓"}
           </button>
-        </p>
+        </div>
         {repos.isPending ? <p>加载仓库…</p> : null}
         {repos.data && repos.data.items.length === 0 ? (
           <EmptyState
             title="还没有仓库"
-            description="安装 GitHub App 并配置 Webhook 后，仓库会自动出现。也可添加外部公开仓库。"
+            description="安装 GitHub App 并配置 Webhook 后，仓库会自动出现。也可在 GitHub App 页登记外部公开仓库。"
+            action={<Link to="/github">打开 GitHub App 配置指引</Link>}
           />
         ) : null}
         <ul className="onboarding-list">
