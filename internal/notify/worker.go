@@ -37,6 +37,9 @@ type Worker struct {
 	Client  *http.Client
 	Logger  *slog.Logger
 	AAD     string
+	// OnSent / OnDead 可选指标回调，避免 notify 包依赖 httpapi。
+	OnSent func()
+	OnDead func()
 }
 
 // Run 循环领取并发送。
@@ -76,6 +79,9 @@ func (w *Worker) tick(ctx context.Context) {
 			continue
 		}
 		_ = w.Store.Outbox().MarkSent(ctx, item.ID)
+		if w.OnSent != nil {
+			w.OnSent()
+		}
 	}
 }
 
@@ -196,6 +202,9 @@ func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbo
 	}
 	if item.AttemptCount >= maxAttempts {
 		_ = w.Store.Outbox().MarkDead(ctx, item.ID, code)
+		if w.OnDead != nil {
+			w.OnDead()
+		}
 		return
 	}
 	idx := item.AttemptCount - 1

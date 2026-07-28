@@ -108,7 +108,10 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 
 	ghClient := githubx.NewAppClient(cfg.GitHub.AppID, cfg.GitHub.PrivateKeyPath)
-	reconciler := &syncx.Reconciler{Store: data, GitHub: ghClient, Logger: logger, MaxPages: 3}
+	reconciler := &syncx.Reconciler{
+		Store: data, GitHub: ghClient, Logger: logger, MaxPages: 3,
+		OnRun: httpapi.MetricsIncReconcileRuns,
+	}
 	external := &syncx.ExternalPoller{
 		Store:  data,
 		Client: &githubx.PublicClient{PAT: cfg.GitHub.ExternalPAT.Reveal()},

@@ -46,7 +46,7 @@ RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。�
 | **通知** | Outbox 持久化投递；Telegram 富文本；HTTPS Webhook（HMAC 签名）；失败重试与死信重试 |
 | **管理后台** | 仪表盘 KPI、仓库与基线、最近事件、投递记录、渠道配置、亮/暗主题 |
 | **安全基线** | 单管理员、Argon2id、Session + CSRF、主密钥 AES-GCM、敏感配置掩码 |
-| **运维** | 健康检查、结构化日志、Docker 多阶段镜像、Compose、文档站 |
+| **运维** | 健康检查、`/metrics`、结构化日志、Docker/GHCR、Compose、文档站 |
 
 ---
 

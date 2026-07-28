@@ -35,6 +35,7 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !githubx.VerifySignature(body, r.Header.Get("X-Hub-Signature-256"), secrets...) {
+		MetricsIncWebhookInvalidSig()
 		s.writeAPIError(w, r, http.StatusUnauthorized, "invalid_signature", nil)
 		return
 	}
@@ -47,6 +48,7 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if existing, err := s.dependencies.Store.WebhookDeliveries().GetByDeliveryID(r.Context(), deliveryID); err == nil {
+		MetricsIncWebhookDuplicate()
 		writeJSON(w, http.StatusAccepted, map[string]any{
 			"status":      "duplicate",
 			"delivery_id": existing.DeliveryID,
@@ -60,6 +62,7 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if err == store.ErrConflict {
+			MetricsIncWebhookDuplicate()
 			writeJSON(w, http.StatusAccepted, map[string]any{"status": "duplicate", "delivery_id": deliveryID})
 			return
 		}
@@ -68,6 +71,7 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 尽快 202，后台规范化
+	MetricsIncWebhookAccepted()
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"status":      "accepted",
 		"delivery_id": deliveryID,

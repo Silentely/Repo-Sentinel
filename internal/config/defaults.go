@@ -33,5 +33,8 @@ func defaultConfig() Config {
 			Format: "json",
 			Level:  "info",
 		},
+		Metrics: MetricsConfig{
+			Enabled: true,
+		},
 	}
 }

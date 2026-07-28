@@ -40,8 +40,8 @@
 | Outbox 重试 / 死信 | 已交付 | |
 | 仪表盘 / 列表 / GitHub / 关于 | 已交付 | |
 | doctor / backup / restore | 已交付 | 备份须同时保管主密钥 |
-| GHCR 发布流水线 | 未做 | 有 Dockerfile，镜像推送可后续加 CI |
-| Prometheus /metrics | 未做 | 非计划硬门槛 |
+| GHCR 发布流水线 | 已交付 | `.github/workflows/docker.yml` → `ghcr.io/<owner>/repo-sentinel` |
+| Prometheus `/metrics` | 已交付 | 进程内计数 + 可选 Bearer；建议内网抓取 |
 
 ## 验证命令
 

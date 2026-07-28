@@ -9,6 +9,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
+	"github.com/Silentely/Repo-Sentinel/internal/httpapi"
 	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -40,6 +41,8 @@ func (a *App) Run(ctx context.Context) error {
 			Store:   a.data,
 			KeyRing: a.keyRing,
 			Logger:  a.logger,
+			OnSent:  httpapi.MetricsIncOutboxSent,
+			OnDead:  httpapi.MetricsIncOutboxDead,
 		}).Run(workerCtx, 5*time.Second)
 	}()
 	schedDone := make(chan struct{})

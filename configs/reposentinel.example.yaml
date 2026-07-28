@@ -59,3 +59,8 @@ logging:
   format: "json"
   # 日志级别可选 debug、info、warn 或 error。
   level: "info"
+
+metrics:
+  # 是否暴露 GET /metrics（Prometheus 文本格式）。
+  enabled: true
+  # 可选 Bearer Token；通过 REPOSENTINEL_METRICS_TOKEN 注入，非空时要求 Authorization: Bearer <token>。

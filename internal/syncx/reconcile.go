@@ -20,6 +20,8 @@ type Reconciler struct {
 	Logger *slog.Logger
 	// 单次仓库请求预算（防打爆 API）
 	MaxPages int
+	// OnRun 可选：每次对账执行回调（指标等）。
+	OnRun func()
 }
 
 // ReconcileRepository 对单仓执行增量或基线同步。
@@ -249,6 +251,9 @@ func strPtr(p *string) string {
 
 // ReconcileAll 对账全部自有仓（受预算限制：每轮最多 N 个）。
 func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
+	if r.OnRun != nil {
+		r.OnRun()
+	}
 	if limit <= 0 {
 		limit = 10
 	}
