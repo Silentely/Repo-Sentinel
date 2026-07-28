@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
+	"sync/atomic"
 	"time"
 
 	"ariga.io/atlas/sql/migrate"
@@ -19,6 +21,10 @@ const (
 	migrationLockName = "reposentinel_atlas_migrate"
 )
 
+// sqlite 驱动的 Lock 在进程内按名称互斥；并行单测会打开不同库文件却争用同一锁名。
+// 用序号隔离 SQLite 迁移锁；PostgreSQL 仍用固定名（库级 advisory lock）。
+var sqliteMigrationLockSeq atomic.Uint64
+
 func applyMigrations(ctx context.Context, db *sql.DB, dialectName string) (err error) {
 	dir, err := embeddedMigrationDir(dialectName)
 	if err != nil {
@@ -31,7 +37,11 @@ func applyMigrations(ctx context.Context, db *sql.DB, dialectName string) (err e
 	if err != nil {
 		return err
 	}
-	unlock, err := driver.Lock(ctx, migrationLockName, 30*time.Second)
+	lockName := migrationLockName
+	if dialectName == "sqlite" {
+		lockName = fmt.Sprintf("%s_%d", migrationLockName, sqliteMigrationLockSeq.Add(1))
+	}
+	unlock, err := driver.Lock(ctx, lockName, 30*time.Second)
 	if err != nil {
 		return err
 	}
