@@ -80,11 +80,12 @@ OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
 
 ## 发布
 
-- 权威规则与禁止事项：[`.github/RELEASE_RULES.md`](.github/RELEASE_RULES.md)
-- 镜像标签与运维摘要：[docs/reference/release.md](docs/reference/release.md)
+- 权威规则：[`.github/RELEASE_RULES.md`](.github/RELEASE_RULES.md)
+- 维护者摘要：[docs/reference/release.md](docs/reference/release.md)
+- 用户部署文档不要写发版策略表；镜像示例用 `ghcr.io/silentely/repo-sentinel:latest`
 
-约定摘要：产品版本**唯一真实来源**为根目录 `VERSION`（SemVer）；Git tag 为 `vX.Y.Z` 并触发 Docker CI；发布前 `go test` + `go vet` + 前端 typecheck + build 须全过。  
-贡献者通常只需保证 `main` 可合并；**不要**自行 force-push 或覆盖已发布的 `v*` 标签。
+产品版本唯一真实来源为根目录 `VERSION`；tag `vX.Y.Z` 触发 Docker CI。  
+贡献者保证 `main` 可合并即可；**不要** force-push / 覆盖已发布 `v*` 标签。
 
 ## 文档站
 

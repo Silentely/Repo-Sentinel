@@ -40,7 +40,7 @@
 
 - Go 模块：`go.mod` / `go.sum`
 - 前端：`web/pnpm-lock.yaml`
-- 镜像：仅信任 `ghcr.io/silentely/repo-sentinel` 及本仓库 Actions 构建结果
+- 镜像：仅信任 `ghcr.io/silentely/repo-sentinel:latest`（或钉死的 `v*`）及本仓库 Actions 构建结果
 - Dependabot（若启用）会定期开 PR 升级依赖；合并前请跑测试
 
 ## 致谢

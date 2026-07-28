@@ -94,7 +94,18 @@ docker compose up -d
 curl -fsS http://127.0.0.1:8080/health/ready
 ```
 
-默认镜像：`ghcr.io/silentely/repo-sentinel:latest`（仅随正式 `v*` 发版更新）。私有包需先 `docker login ghcr.io`。
+默认镜像：`ghcr.io/silentely/repo-sentinel:latest`。私有包需先 `docker login ghcr.io`。
+
+常用环境变量（完整见 [`.env.example`](.env.example) 与 [配置参考](docs/reference/configuration.md)）：
+
+| 变量 | 用途 |
+|------|------|
+| `REPOSENTINEL_ENCRYPTION_KEY` | 主密钥（必填，`openssl rand -base64 32`） |
+| `REPOSENTINEL_PUBLIC_BASE_URL` | 对外 URL，生产用 HTTPS |
+| `REPOSENTINEL_DATABASE_DRIVER` | `sqlite`（默认）或 `postgres` |
+| `REPOSENTINEL_DATABASE_URL` | SQLite 文件 DSN 或 Postgres 连接串 |
+| `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` | GitHub Webhook Secret |
+| `REPOSENTINEL_ADMIN_USERNAME` / `PASSWORD` | 可选，预置唯一管理员 |
 
 浏览器打开 <http://127.0.0.1:8080>，完成唯一管理员创建（或使用环境变量预置）。
 
@@ -124,22 +135,28 @@ REPOSENTINEL_GITHUB_WEBHOOK_SECRET=dev-secret \
 
 ## 文档
 
+源文件在仓库 **`docs/`** 目录。在 GitHub 上浏览请带 `docs/` 前缀，例如：
+
+- 运维：[`docs/reference/ops.md`](docs/reference/ops.md)（不是 `/reference/ops`）
+- 配置：[`docs/reference/configuration.md`](docs/reference/configuration.md)
+- 部署：[`docs/deploy/docker.md`](docs/deploy/docker.md)
+
 | 文档 | 说明 |
 |------|------|
 | [贡献指南](CONTRIBUTING.md) | Issue / PR 要求与开发约定 |
 | [安全策略](SECURITY.md) | 漏洞报告与部署基线 |
-| [发布与镜像](docs/reference/release.md) | GHCR 标签与发版清单 |
 | [快速开始](docs/guide/quick-start.md) | 构建、启动、首次管理员 |
-| [Docker 部署](docs/deploy/docker.md) | Compose、卷、Webhook、Telegram |
-| [管理员与 Session](docs/guide/administrator.md) | 初始化、改密、CLI 重置 |
-| [配置参考](docs/reference/configuration.md) | 环境变量与主密钥 |
+| [Docker 部署](docs/deploy/docker.md) | 镜像、环境变量、SQLite/Postgres、Webhook |
+| [配置参考](docs/reference/configuration.md) | 全部环境变量、数据库、主密钥 |
 | [运维手册](docs/reference/ops.md) | 健康检查、备份、升级 |
+| [管理员与 Session](docs/guide/administrator.md) | 初始化、改密、CLI 重置 |
+| [发布与镜像](docs/reference/release.md) | 维护者发版（用户可跳过） |
 | [系统架构](docs/reference/architecture.md) | 模块与数据流 |
 | [功能介绍](docs/features.md) | 能力边界与非目标 |
 | [常见问题](docs/faq.md) | 部署与使用排障 |
 | [文档总览](docs/README.md) | 完整导航 |
 
-本地预览文档站：
+本地预览文档站（路径为 `/reference/ops` 等，由 VitePress 提供，**不是** GitHub blob 路径）：
 
 ```bash
 npm install
