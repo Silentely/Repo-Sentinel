@@ -137,6 +137,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/sync/reconcile", s.handleReconcileAll)
 				mutating.Put("/system/settings", s.handlePutSettings)
 				mutating.Put("/github/config", s.handlePutGitHubConfig)
+				mutating.Post("/github/sync-repositories", s.handleSyncInstallationRepositories)
 				mutating.Post("/system/version/check", s.handleVersionCheck)
 			})
 		})

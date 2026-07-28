@@ -259,6 +259,11 @@ button:disabled {
   min-width: 7.5rem;
 }
 
+a.primary-button {
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
 .auth-card__footer {
   display: flex;
   justify-content: space-between;
