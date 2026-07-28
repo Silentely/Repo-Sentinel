@@ -133,3 +133,23 @@ func TestGitHub配置API环境变量字段锁定(t *testing.T) {
 	)
 	assertAPIError(t, resp, http.StatusConflict, "github_field_locked")
 }
+
+func Test同步Installation仓库需要认证且未配置App时拒绝(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	unauthorized := fixture.request(t, http.MethodPost, "/api/v1/github/sync-repositories", `{}`, "127.0.0.1:44101", nil, nil)
+	assertAPIError(t, unauthorized, http.StatusUnauthorized, "unauthorized")
+
+	missingCSRF := fixture.request(t, http.MethodPost, "/api/v1/github/sync-repositories", `{}`, "127.0.0.1:44102", cookies, nil)
+	assertAPIError(t, missingCSRF, http.StatusForbidden, "csrf_failed")
+
+	// fixture 的 GitHubRuntime 未挂 AppClient → github_app_not_configured
+	resp := fixture.request(
+		t, http.MethodPost, "/api/v1/github/sync-repositories", `{}`,
+		"127.0.0.1:44103", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	assertAPIError(t, resp, http.StatusServiceUnavailable, "github_app_not_configured")
+}

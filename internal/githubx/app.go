@@ -184,7 +184,11 @@ func (c *AppClient) InstallationToken(ctx context.Context, installationID int64)
 	if err != nil {
 		return "", err
 	}
-	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", c.BaseURL, installationID)
+	base := strings.TrimSpace(c.BaseURL)
+	if base == "" {
+		base = "https://api.github.com"
+	}
+	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", base, installationID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return "", err

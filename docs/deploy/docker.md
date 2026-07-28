@@ -217,8 +217,14 @@ REPOSENTINEL_PUBLIC_BASE_URL=https://你的域名
 > **优先级**：环境变量 **高于** 管理台数据库配置。某字段已用环境变量设置时，管理台该字段会显示「锁定」，不能覆盖。  
 > 私钥路径示例：`REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH=/secrets/github-app.pem`，compose 中挂载 pem；或改用管理台粘贴 PEM。
 
-4. **Install App** → 选择仓库  
-5. 管理台 **GitHub App** 页应出现 Installation；**仪表盘** 出现仓库（先为基线）→ 点「完成基线」后再发实时通知
+4. **Install App**（在 GitHub 完成，管理台不能代替授权）  
+   - 打开 [已安装的 Apps](https://github.com/settings/installations) 或 App 设置页的 Install  
+   - 选择 All / 指定仓库后保存；GitHub 会向 `/webhooks/github` 推送 `installation`  
+5. **确认入库**  
+   - 管理台 **GitHub App** → Installation 列表出现账号  
+   - **仪表盘** 出现仓库（状态「基线中」）  
+   - 若日志已 `accepted` 但仪表盘仍空：点 **「从 GitHub 同步仓库」**（`POST /api/v1/github/sync-repositories`）补拉  
+6. 对需要监控的仓点 **「完成基线」** 后再发实时通知
 
 ## 5. Telegram / 其他通知
 
