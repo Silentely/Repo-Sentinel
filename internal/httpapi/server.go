@@ -15,6 +15,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
+	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -57,6 +58,8 @@ type Dependencies struct {
 	KeyRing        *cryptox.KeyRing
 	Aggregator     *rules.Aggregator
 	Reconciler     *syncx.Reconciler
+	// UpdateChecker 可选；关于页远程版本检查。
+	UpdateChecker *updatecheck.Checker
 	// Background 用于 Webhook 异步规范化；关闭时由 App 取消。
 	Background context.Context
 }
@@ -128,6 +131,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/repositories/{id}/reconcile", s.handleReconcileRepository)
 				mutating.Post("/sync/reconcile", s.handleReconcileAll)
 				mutating.Put("/system/settings", s.handlePutSettings)
+				mutating.Post("/system/version/check", s.handleVersionCheck)
 			})
 		})
 	})

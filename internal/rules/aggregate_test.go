@@ -111,3 +111,47 @@ func TestHTMLEscape(t *testing.T) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
+
+func TestMultiInstanceAggregateIdempotency(t *testing.T) {
+	data := openTestStore(t)
+	_ = seedChannel(t, data)
+	// 两个独立聚合器模拟双实例；手动 flush 保证同一时间桶。
+	agg1 := NewAggregator(data, time.Minute, 100, time.Minute)
+	agg2 := NewAggregator(data, time.Minute, 100, time.Minute)
+	repoID := ulid.Make().String()
+	makeEvent := func(title string) *store.Event {
+		return &store.Event{
+			ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened",
+			Title: title, RepositoryID: &repoID,
+		}
+	}
+	ctx := context.Background()
+	_ = agg1.Evaluate(ctx, normalizer.Result{Event: makeEvent("a")}, "acme/demo")
+	_ = agg1.Evaluate(ctx, normalizer.Result{Event: makeEvent("b")}, "acme/demo")
+	_ = agg2.Evaluate(ctx, normalizer.Result{Event: makeEvent("c")}, "acme/demo")
+	_ = agg2.Evaluate(ctx, normalizer.Result{Event: makeEvent("d")}, "acme/demo")
+	key := repoID + "|issue"
+	agg1.flush(key)
+	agg2.flush(key)
+	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 时间桶幂等：两实例合并通知应收敛为 1 条（同渠道同桶）。
+	if len(items) != 1 {
+		t.Fatalf("多实例应幂等为 1 条 outbox，got %d", len(items))
+	}
+}
+
+func TestTimeBucket(t *testing.T) {
+	ts := time.Unix(1_700_000_060, 0).UTC()
+	b1 := timeBucket(ts, time.Minute)
+	b2 := timeBucket(ts.Add(30*time.Second), time.Minute)
+	if b1 != b2 {
+		t.Fatalf("same minute bucket: %d vs %d", b1, b2)
+	}
+	b3 := timeBucket(ts.Add(2*time.Minute), time.Minute)
+	if b3 == b1 {
+		t.Fatal("later minute should differ")
+	}
+}

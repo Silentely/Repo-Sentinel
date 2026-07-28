@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/go-1.26+-00ADD8" alt="Go">
   <img src="https://img.shields.io/badge/node-24+-green" alt="Node.js">
-  <img src="https://img.shields.io/badge/version-0.2.0-C45C26" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.2-C45C26" alt="Version">
   <img src="https://img.shields.io/badge/license-see%20repo-lightgrey" alt="License">
 </p>
 

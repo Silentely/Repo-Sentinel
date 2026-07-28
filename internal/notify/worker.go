@@ -47,13 +47,7 @@ func (w *Worker) Run(ctx context.Context, interval time.Duration) {
 		interval = 5 * time.Second
 	}
 	if w.Client == nil {
-		w.Client = &http.Client{
-			Timeout: 15 * time.Second,
-			// 禁止跟随重定向，避免 30x 跳到内网/元数据地址绕过 SSRF 检查。
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		}
+		w.Client = newSafeHTTPClient(15 * time.Second)
 	}
 	if w.AAD == "" {
 		w.AAD = "reposentinel:notify-secret:v1"
@@ -277,4 +271,58 @@ func isBlockedIP(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+// newSafeHTTPClient 禁止跟随重定向，并在拨号时 pin 到校验过的公网 IP，降低 DNS rebinding 风险。
+func newSafeHTTPClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			// 字面量 IP：直接二次校验。
+			if ip := net.ParseIP(host); ip != nil {
+				if isBlockedIP(ip) {
+					return nil, fmt.Errorf("private_target_blocked")
+				}
+				return dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			}
+			addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, fmt.Errorf("webhook_dns_lookup_failed: %w", err)
+			}
+			var last error
+			for _, a := range addrs {
+				if isBlockedIP(a.IP) {
+					last = fmt.Errorf("private_target_blocked")
+					continue
+				}
+				conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(a.IP.String(), port))
+				if err == nil {
+					return conn, nil
+				}
+				last = err
+			}
+			if last == nil {
+				last = fmt.Errorf("webhook_dns_lookup_failed")
+			}
+			return nil, last
+		},
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          20,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+		// 禁止跟随重定向，避免 30x 跳到内网/元数据地址绕过 SSRF 检查。
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }

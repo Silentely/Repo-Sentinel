@@ -292,6 +292,40 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (bool, er
 	if value, ok := lookup("REPOSENTINEL_METRICS_TOKEN"); ok {
 		cfg.Metrics.Token = NewSecret(value)
 	}
+	if value, ok := lookup("REPOSENTINEL_UPDATE_CHECK"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_UPDATE_CHECK", value)
+		if err != nil {
+			return false, err
+		}
+		cfg.UpdateCheck.Enabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_UPDATE_CHECK_URL"); ok {
+		cfg.UpdateCheck.URL = value
+	}
+	if value, ok := lookup("REPOSENTINEL_UPDATE_CHECK_TOKEN"); ok {
+		cfg.UpdateCheck.Token = NewSecret(value)
+	}
+	if value, ok := lookup("REPOSENTINEL_AGGREGATION_WINDOW"); ok {
+		d, err := time.ParseDuration(value)
+		if err != nil {
+			return false, newValidationError("REPOSENTINEL_AGGREGATION_WINDOW", "must be a duration")
+		}
+		cfg.Aggregation.Window = d
+	}
+	if value, ok := lookup("REPOSENTINEL_AGGREGATION_BURST_THRESHOLD"); ok {
+		n, err := parseIntEnvironment("REPOSENTINEL_AGGREGATION_BURST_THRESHOLD", value)
+		if err != nil {
+			return false, err
+		}
+		cfg.Aggregation.BurstThreshold = n
+	}
+	if value, ok := lookup("REPOSENTINEL_AGGREGATION_BURST_WINDOW"); ok {
+		d, err := time.ParseDuration(value)
+		if err != nil {
+			return false, newValidationError("REPOSENTINEL_AGGREGATION_BURST_WINDOW", "must be a duration")
+		}
+		cfg.Aggregation.BurstWindow = d
+	}
 	return maxOpenExplicit, nil
 }
 

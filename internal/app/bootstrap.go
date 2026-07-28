@@ -22,6 +22,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
+	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 	webassets "github.com/Silentely/Repo-Sentinel/web"
 	"github.com/oklog/ulid/v2"
 )
@@ -117,10 +118,29 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		Client: &githubx.PublicClient{PAT: cfg.GitHub.ExternalPAT.Reveal()},
 		Logger: logger,
 	}
-	aggregator := rules.NewAggregator(data, 60*time.Second, 15, 5*time.Minute)
+	aggWindow := cfg.Aggregation.Window
+	if aggWindow <= 0 {
+		aggWindow = 60 * time.Second
+	}
+	aggBurstN := cfg.Aggregation.BurstThreshold
+	if aggBurstN <= 0 {
+		aggBurstN = 15
+	}
+	aggBurstW := cfg.Aggregation.BurstWindow
+	if aggBurstW <= 0 {
+		aggBurstW = 5 * time.Minute
+	}
+	aggregator := rules.NewAggregator(data, aggWindow, aggBurstN, aggBurstW)
 	digestGen := &digest.Generator{Store: data}
 	scheduler := &syncx.Scheduler{
 		Reconciler: reconciler, External: external, Digest: digestGen, Logger: logger,
+	}
+	build := buildinfo.Current()
+	updateChecker := &updatecheck.Checker{
+		Enabled:  cfg.UpdateCheck.Enabled,
+		CheckURL: cfg.UpdateCheck.URL,
+		Token:    cfg.UpdateCheck.Token.Reveal(),
+		Current:  build.Version,
 	}
 
 	handler := httpapi.New(httpapi.Dependencies{
@@ -131,7 +151,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		SessionService: sessionService,
 		CSRF:           auth.NewCSRFTokens(nil),
 		LoginLimiter:   auth.NewLoginLimiter(nil),
-		BuildInfo:      buildinfo.Current(),
+		BuildInfo:      build,
 		Ready:          readiness,
 		Logger:         logger,
 		SchemaVersion:  SupportedSchemaVersion,
@@ -139,6 +159,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		KeyRing:        keyRing,
 		Aggregator:     aggregator,
 		Reconciler:     reconciler,
+		UpdateChecker:  updateChecker,
 		Background:     workerCtx,
 	})
 	if err := bootstrapNotifyChannels(ctx, data, keyRing, cfg); err != nil {

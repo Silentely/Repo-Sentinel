@@ -79,6 +79,24 @@ func (cfg Config) Validate() error {
 	if !validEncryptionKey(cfg.Encryption.PreviousKey) {
 		return newValidationError("encryption.previous_key", "must decode from base64 or hex to exactly 32 bytes")
 	}
+	if cfg.UpdateCheck.Enabled {
+		u := strings.TrimSpace(cfg.UpdateCheck.URL)
+		if u != "" {
+			parsed, err := url.Parse(u)
+			if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" || parsed.User != nil {
+				return newValidationError("update_check.url", "must be an https URL without userinfo")
+			}
+		}
+	}
+	if cfg.Aggregation.Window < 0 {
+		return newValidationError("aggregation.window", "must be >= 0")
+	}
+	if cfg.Aggregation.BurstThreshold < 0 {
+		return newValidationError("aggregation.burst_threshold", "must be >= 0")
+	}
+	if cfg.Aggregation.BurstWindow < 0 {
+		return newValidationError("aggregation.burst_window", "must be >= 0")
+	}
 	return nil
 }
 

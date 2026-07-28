@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VERSION: "0.1.0"
+        VERSION: "0.3.2"
         BUILD_CHANNEL: "release"
     image: reposentinel:local
     container_name: reposentinel

@@ -733,3 +733,44 @@ button:disabled {
 .onboarding-list .quiet-button {
   margin-left: auto;
 }
+
+.about-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.about-banner {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.about-banner a {
+  color: inherit;
+  font-weight: 600;
+  text-underline-offset: 2px;
+}
+
+.about-banner--update {
+  border: 1px solid color-mix(in oklab, var(--info, #2b6cb0) 40%, transparent);
+  background: color-mix(in oklab, var(--info, #2b6cb0) 12%, transparent);
+}
+
+.about-banner--latest {
+  border: 1px solid color-mix(in oklab, var(--success, #2f6f4e) 40%, transparent);
+  background: color-mix(in oklab, var(--success, #2f6f4e) 12%, transparent);
+}
+
+.about-banner--error {
+  border: 1px solid color-mix(in oklab, var(--warning, #b7791f) 45%, transparent);
+  background: color-mix(in oklab, var(--warning, #b7791f) 12%, transparent);
+}
+
+.about-banner--info {
+  border: 1px solid var(--border-subtle, #e7e0d8);
+  background: var(--bg-muted, #f7f3ee);
+}

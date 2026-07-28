@@ -156,20 +156,23 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket, title, bod
 	if err != nil {
 		return err
 	}
-	// 用首条事件 id 参与幂等变体
+	// 多实例：幂等键按「渠道 + 仓 + 类别 + 时间桶」稳定，避免各副本各写一条合并通知。
+	// 进程内合并仍是 best-effort；跨实例重复事件靠 Outbox 唯一约束收敛。
 	firstID := b.events[0].ID
+	bucket := timeBucket(time.Now().UTC(), a.Window)
 	for _, ch := range channels {
 		if !ch.Enabled {
 			continue
 		}
-		idem := idempotencyKey(ch.ID, firstID, fmt.Sprintf("agg-%s-%d", b.category, len(b.events)))
+		variant := fmt.Sprintf("agg|%s|%s|%d", b.repoID, b.category, bucket)
+		idem := idempotencyKey(ch.ID, b.repoID, variant)
 		eventID := firstID
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eventID,
 			AggregateKey: b.repoID + "|" + b.category, IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: title, BodyText: body, ParseMode: "HTML",
-			BodyJSON: map[string]any{"aggregate": true, "count": len(b.events), "category": b.category},
+			BodyJSON: map[string]any{"aggregate": true, "count": len(b.events), "category": b.category, "bucket": bucket},
 		})
 		if err != nil && err != store.ErrConflict {
 			return err
@@ -183,11 +186,13 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 	if err != nil {
 		return err
 	}
+	bucket := timeBucket(time.Now().UTC(), a.BurstWindow)
 	for _, ch := range channels {
 		if !ch.Enabled {
 			continue
 		}
-		idem := idempotencyKey(ch.ID, sample.ID, "burst-"+cat)
+		variant := fmt.Sprintf("burst|%s|%s|%d", repoID, cat, bucket)
+		idem := idempotencyKey(ch.ID, repoID, variant)
 		eid := sample.ID
 		safeTitle := htmlEscape(title)
 		safeRepo := htmlEscape(repoName)
@@ -202,6 +207,26 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 		}
 	}
 	return nil
+}
+
+// timeBucket 将时间对齐到窗口边界，供多实例 Outbox 幂等键使用。
+func timeBucket(t time.Time, window time.Duration) int64 {
+	if window <= 0 {
+		window = 60 * time.Second
+	}
+	// 亚秒窗口按毫秒对齐，避免 int64(window/time.Second)==0 除零。
+	if window < time.Second {
+		ms := window.Milliseconds()
+		if ms <= 0 {
+			ms = 1
+		}
+		return t.UnixMilli() / ms
+	}
+	sec := int64(window / time.Second)
+	if sec <= 0 {
+		sec = 1
+	}
+	return t.Unix() / sec
 }
 
 func htmlEscape(s string) string {
