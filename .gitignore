@@ -127,6 +127,8 @@ _test*.json
 
 frontend/node_modules/
 node_modules/
+web/node_modules/
+web/dist/
 frontend/.next/
 frontend/out/
 frontend/tsconfig.tsbuildinfo
@@ -134,6 +136,9 @@ frontend/.env.local
 docs/.vitepress/cache/
 docs/.vitepress/.temp/
 docs/.vitepress/dist/
+docs/public/_sources/
+docs/public/sitemap.xml
+docs/public/llms.txt
 .venv/
 .venv*/
 .ruff_cache/

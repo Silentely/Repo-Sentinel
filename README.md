@@ -1,97 +1,95 @@
 # RepoSentinel
 
-RepoSentinel 是一个自托管的 GitHub 仓库值守平台。当前仓库交付的是 Phase 1 基础平台：配置与主密钥校验、SQLite/PostgreSQL 存储基础、唯一管理员、Session/CSRF、健康检查、CLI 恢复命令，以及 React 认证壳。
+自托管的 GitHub 仓库动态与安全告警监控平台。
 
-GitHub App 事件采集、规则分析、通知和真正的仓库仪表盘属于后续阶段。当前首页只展示服务端真实的 readiness、Session 和初始化状态，不会伪造仓库数据。
+> **当前版本 v0.1.0 = Phase 1 基础平台**  
+> 已交付：配置与主密钥、SQLite/PostgreSQL 迁移、唯一管理员、Session/CSRF、健康检查、CLI、React 认证壳。  
+> **未交付**：GitHub Webhook 采集、对账、规则引擎、通知、完整仪表盘、正式 Docker 镜像。  
+> 详见 [实现状态](docs/reference/implementation-status.md) 与 [功能与路线图](docs/features.md)。
 
-## 先运行起来
+## 文档
 
-生产嵌入构建需要以下工具：
+结构化文档站（对齐 [TG-SignPulse](https://github.com/Silentely/TG-SignPulse) 的 VitePress 布局）：
 
-- Go 1.26
-- Node.js 24 或更高版本
-- pnpm 10.34.5
+| 文档 | 说明 |
+|------|------|
+| [快速开始](docs/guide/quick-start.md) | 构建、启动、首次管理员 |
+| [配置参考](docs/reference/configuration.md) | 环境变量与主密钥 |
+| [管理员](docs/guide/administrator.md) | Setup、Session、CLI 重置密码 |
+| [实现状态](docs/reference/implementation-status.md) | 规格对照与验证证据 |
+| [文档总览](docs/README.md) | 完整导航 |
 
-Docker、PostgreSQL、Playwright Chromium 只在对应的契约或浏览器验证中需要，不影响 SQLite 基础启动。
-
-在仓库根目录运行：
-
-```bash
-mkdir -p ".tmp"
-pnpm --dir "web" install
-pnpm --dir "web" build
-OUTPUT=".tmp/reposentinel" BUILD_CHANNEL="local" make build-production
-```
-
-使用仓库内的 SQLite 文件启动：
+本地预览文档站：
 
 ```bash
-REPOSENTINEL_HTTP_ADDR="127.0.0.1:8080" \
-REPOSENTINEL_DATABASE_DRIVER="sqlite" \
-REPOSENTINEL_DATABASE_URL="file:./.tmp/reposentinel.db" \
-".tmp/reposentinel" serve
+npm install
+npm run docs:dev
 ```
 
-打开 <http://127.0.0.1:8080>，首次访问会进入初始化页面。创建唯一管理员后，使用该凭据登录。
+## 先运行起来（Phase 1）
 
-可以先检查进程和数据库 readiness：
+需要 Go 1.26+、Node.js 24+、pnpm 10.34.5。
 
 ```bash
-curl --fail "http://127.0.0.1:8080/health/live"
-curl --fail "http://127.0.0.1:8080/health/ready"
-curl --fail "http://127.0.0.1:8080/api/v1/setup/status"
+mkdir -p .tmp
+pnpm --dir web install
+pnpm --dir web build
+OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
+
+REPOSENTINEL_HTTP_ADDR=127.0.0.1:8080 \
+REPOSENTINEL_DATABASE_DRIVER=sqlite \
+REPOSENTINEL_DATABASE_URL=file:./.tmp/reposentinel.db \
+.tmp/reposentinel serve
 ```
 
-## 配置和管理员操作
+打开 <http://127.0.0.1:8080>，完成唯一管理员初始化后登录。
 
-- [配置、环境变量与密钥轮换](docs/operations/configuration.md)
-- [初始化、Session 与密码恢复](docs/operations/administrator-access.md)
-- [开发、测试与 production embed](docs/operations/development.md)
-
-配置优先级是默认值 → YAML 文件 → 环境变量。服务命令和恢复命令都支持 `--config` 指定 YAML 文件；Secret 不应写入仓库或提交记录。
+```bash
+curl -fsS http://127.0.0.1:8080/health/live
+curl -fsS http://127.0.0.1:8080/health/ready
+curl -fsS http://127.0.0.1:8080/api/v1/setup/status
+```
 
 ## 开发命令
 
-启动 Go API（默认监听 `127.0.0.1:8080`）后，可以在另一个终端启动 Vite：
-
 ```bash
-pnpm --dir "web" dev
-```
+# API
+REPOSENTINEL_HTTP_ADDR=127.0.0.1:8080 \
+REPOSENTINEL_DATABASE_DRIVER=sqlite \
+REPOSENTINEL_DATABASE_URL=file:./.tmp/reposentinel-dev.db \
+go run ./cmd/reposentinel serve
 
-Vite 会把 `/api` 和 `/health` 代理到本机 Go 服务。常用验证命令：
+# 前端（另开终端；代理 /api 与 /health）
+pnpm --dir web dev
 
-```bash
+# 验证
 go test ./...
-go test -race ./...
 go vet ./...
-pnpm --dir "web" test -- --run
-pnpm --dir "web" typecheck
-pnpm --dir "web" build
+pnpm --dir web test -- --run
+pnpm --dir web typecheck
+pnpm --dir web build
+npm run docs:build
 ```
 
-生产二进制必须在前端构建完成后使用 `production` build tag 编译：
+CLI 子命令：`serve` · `version` · `config validate` · `admin reset-password`。
 
-```bash
-pnpm --dir "web" build
-OUTPUT=".tmp/reposentinel" BUILD_CHANNEL="local" make build-production
-```
+## 安全边界（Phase 1）
 
-Playwright 测试脚手架可以列出测试而不需要浏览器：
-
-```bash
-pnpm --dir "web" exec playwright test --list
-```
-
-完整浏览器旅程需要本机已安装 Chromium。项目不会自动下载浏览器；缺少 runtime 时，将该项记录为 `SKIP`。
-
-## 当前安全边界
-
-- Session 原始令牌只通过 HttpOnly Cookie 返回；CSRF 令牌使用独立的非 HttpOnly Cookie 和请求头。
-- 非安全 HTTP 方法需要 CSRF 校验；登录有本机内存限流。
-- 首次 setup 默认要求连接来源 IP 与请求 Host 都是 loopback（例如 `127.0.0.1`、`[::1]` 或 `localhost`）。通过公网域名或反向代理初始化时，必须明确设置 `REPOSENTINEL_SETUP_ALLOW_REMOTE=true`，并放在 TLS 和网络访问控制之后。
-- `/api` 与 `/health` 未知路径始终返回 JSON 404，不会被 SPA fallback 吞掉。
-- 生产静态资源使用不可变缓存；`index.html` 使用 `no-cache`。
+- Session：HttpOnly Cookie；CSRF：双提交
+- 登录进程内 IP 限流
+- Setup 默认仅 loopback；公网须 `REPOSENTINEL_SETUP_ALLOW_REMOTE=true`
+- `/api` 与 `/health` 未知路径返回 JSON，不被 SPA 吞掉
+- 生产静态资源长缓存；`index.html` no-cache
 
 ## 路线图
 
-Phase 1 完成基础运行时和认证边界。后续阶段将接入 GitHub App、Webhook 事件、仓库规则、严重性聚合、通知渠道和可操作的仓库仪表盘；在这些能力落地前，文档和 UI 都会明确标注“后续阶段”。
+设计规格：`docs/superpowers/specs/2026-07-26-reposentinel-design.md`（内部设计稿，默认不编入文档站）。
+
+1. **Phase 1（当前）** — 运行时与认证  
+2. GitHub App + Webhook Inbox + 事件规范化  
+3. 自有仓基线与对账、Workflow 状态机  
+4. 外部公开仓轮询  
+5. Rule Engine、Outbox、Telegram / HTTP  
+6. 完整管理后台  
+7. Docker / GHCR / 发布  
+8. 备份 CLI、指标、加固与完整 E2E  

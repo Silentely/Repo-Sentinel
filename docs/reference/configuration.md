@@ -1,8 +1,8 @@
-# 配置 RepoSentinel
-
-> **文档已迁移**：请优先阅读文档站 [配置参考](/reference/configuration)。本文件保留供旧链接兼容，内容与 reference 版同步维护责任在 reference。
+# 配置参考
 
 先确定配置来源，再启动服务。RepoSentinel 按“默认值 → YAML 文件 → 环境变量”的顺序合并配置；环境变量优先级最高。
+
+相关页面：[快速开始](/guide/quick-start) · [运维手册](/reference/ops) · [管理员](/guide/administrator)
 
 ## 使用 YAML 配置基础值
 
