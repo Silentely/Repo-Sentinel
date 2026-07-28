@@ -6,6 +6,17 @@
 
 需要先在 GitHub 安装 App 并配置 Webhook；事件到达后仓库会自动出现。也可在能力支持时登记外部公开仓库。详见 [Docker 部署](/deploy/docker) 与 [快速开始](/guide/quick-start)。
 
+### 创建 GitHub App 时 Callback URL / OAuth 怎么填？
+
+**全部可跳过。** RepoSentinel 不用用户 OAuth：Callback URL 留空；不要勾选 Request user authorization during installation、Device Flow。必填的是 **Webhook Active + URL（`/webhooks/github`）+ Secret**，以及仓库只读权限与事件订阅。逐项说明见 [Docker 部署 · GitHub App](/deploy/docker#4-github-app创建表单逐项) 或管理台「GitHub App」页。
+
+### App ID / 私钥 / Webhook Secret 能在网页里填吗？
+
+**可以。** 管理台 **GitHub App** 页支持填写 App ID、Client ID、Public Base URL、Webhook Secret，以及粘贴私钥 PEM（或填服务器路径）。敏感字段用主密钥加密存库，保存后立即生效。
+
+- 若同一字段已用 `REPOSENTINEL_GITHUB_*` 环境变量设置，页面会显示「环境变量锁定」，不能用网页覆盖（避免和部署配置打架）。  
+- `REPOSENTINEL_EXTERNAL_PAT` 仍仅支持环境变量。
+
 ### 为什么新仓库一开始不发 Telegram？
 
 新授权仓库默认处于**基线**状态：只建立当前快照，抑制历史/快照通知洪流。在管理后台确认后点击「完成基线」，之后的变化才会实时通知。

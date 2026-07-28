@@ -23,12 +23,17 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secrets := make([]string, 0, 2)
-	if v := s.dependencies.Config.GitHub.WebhookSecret.Reveal(); v != "" {
-		secrets = append(secrets, v)
-	}
-	if v := s.dependencies.Config.GitHub.WebhookPreviousSecret.Reveal(); v != "" {
-		secrets = append(secrets, v)
+	var secrets []string
+	if s.dependencies.GitHubRuntime != nil {
+		secrets = s.dependencies.GitHubRuntime.WebhookSecrets()
+	} else {
+		secrets = make([]string, 0, 2)
+		if v := s.dependencies.Config.GitHub.WebhookSecret.Reveal(); v != "" {
+			secrets = append(secrets, v)
+		}
+		if v := s.dependencies.Config.GitHub.WebhookPreviousSecret.Reveal(); v != "" {
+			secrets = append(secrets, v)
+		}
 	}
 	if len(secrets) == 0 {
 		s.dependencies.Logger.Warn(

@@ -18,6 +18,8 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
@@ -113,6 +115,9 @@ type httpTestOptions struct {
 	publicBaseURL string
 	ready         ReadyChecker
 	frontend      fs.FS
+	keyRing       *cryptox.KeyRing
+	// envAppID > 0 时模拟环境变量已设置 App ID（管理台锁定）。
+	envAppID int64
 }
 
 type httpTestFixture struct {
@@ -121,6 +126,7 @@ type httpTestFixture struct {
 	adminService   *auth.AdminService
 	sessionService *auth.SessionService
 	clock          *httpTestClock
+	githubRuntime  *githubx.RuntimeConfig
 }
 
 func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture {
@@ -153,16 +159,32 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 	if ready == nil {
 		ready = ReadyCheckFunc(func(context.Context) error { return nil })
 	}
-	dependencies := Dependencies{
-		Config: config.Config{
-			HTTP:     config.HTTPConfig{PublicBaseURL: publicBaseURL},
-			Database: config.DatabaseConfig{Driver: "sqlite"},
-			Admin:    config.AdminBootstrapConfig{SessionTTL: time.Hour},
-			Setup:    config.SetupConfig{AllowRemote: options.allowRemote},
-			UpdateCheck: config.UpdateCheckConfig{
-				Enabled: false, // 单测默认不联网
-			},
+	ghRuntime := &githubx.RuntimeConfig{
+		PublicBaseURL:       publicBaseURL,
+		PublicBaseURLSource: "env",
+		WebhookSecretSource: "unset",
+		AppIDSource:         "unset",
+		ClientIDSource:      "unset",
+		PrivateKeySource:    "unset",
+		ExternalPATSource:   "unset",
+	}
+	cfg := config.Config{
+		HTTP:     config.HTTPConfig{PublicBaseURL: publicBaseURL},
+		Database: config.DatabaseConfig{Driver: "sqlite"},
+		Admin:    config.AdminBootstrapConfig{SessionTTL: time.Hour},
+		Setup:    config.SetupConfig{AllowRemote: options.allowRemote},
+		UpdateCheck: config.UpdateCheckConfig{
+			Enabled: false, // 单测默认不联网
 		},
+	}
+	if options.envAppID > 0 {
+		cfg.GitHub.AppID = options.envAppID
+		ghRuntime.AppID = options.envAppID
+		ghRuntime.AppIDSource = "env"
+	}
+	dependencies := Dependencies{
+		Config:         cfg,
+		Store:          opened,
 		AdminStore:     opened.Admins(),
 		AdminService:   adminService,
 		SessionService: sessionService,
@@ -180,6 +202,8 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		Logger:        slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		SchemaVersion: "202607270001",
 		Frontend:      options.frontend,
+		KeyRing:       options.keyRing,
+		GitHubRuntime: ghRuntime,
 	}
 	return &httpTestFixture{
 		handler:        New(dependencies),
@@ -187,6 +211,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		adminService:   adminService,
 		sessionService: sessionService,
 		clock:          clock,
+		githubRuntime:  ghRuntime,
 	}
 }
 

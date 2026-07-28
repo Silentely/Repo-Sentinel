@@ -1,7 +1,9 @@
 # 配置参考
 
 配置合并顺序：**默认值 → YAML 文件 → 环境变量**（环境变量优先）。  
-Secret（密码、主密钥、Webhook Secret、Token）只放环境变量或密钥管理，不要写入仓库内 YAML。
+Secret（密码、主密钥、Webhook Secret、Token）不要写入仓库内 YAML。
+
+GitHub App 相关项（App ID / Client ID / 私钥 / 入站 Webhook Secret / Public Base URL）还可在管理台 **GitHub App** 页填写：未用环境变量设置的字段会加密写入数据库并热更新；**同一字段若已设环境变量，则以环境变量为准**（页面显示锁定）。`REPOSENTINEL_EXTERNAL_PAT` 仍仅环境变量。
 
 相关：[快速开始](/guide/quick-start) · [Docker 部署](/deploy/docker) · [运维手册](/reference/ops)
 

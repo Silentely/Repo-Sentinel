@@ -61,3 +61,40 @@ func TestAppClientNotConfigured(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestAppClient内存PEM与Configure热更新(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der := x509.MarshalPKCS1PrivateKey(key)
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: der})
+
+	c := NewAppClient(0, "")
+	if c.Configured() {
+		t.Fatal("empty should not be configured")
+	}
+	c.Configure(99, "", string(pemBytes))
+	if !c.Configured() {
+		t.Fatal("pem should configure client")
+	}
+	if !c.HasPrivateKeyMaterial() {
+		t.Fatal("expected private key material")
+	}
+	token, err := c.AppJWT()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := jwt.Parse(token, func(token *jwt.Token) (any, error) {
+		return &key.PublicKey, nil
+	})
+	if err != nil || !parsed.Valid {
+		t.Fatalf("jwt invalid: %v", err)
+	}
+	if err := ValidatePrivateKeyPEM(string(pemBytes)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidatePrivateKeyPEM("not-a-key"); err == nil {
+		t.Fatal("expected invalid pem error")
+	}
+}

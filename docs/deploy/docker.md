@@ -112,15 +112,113 @@ docker compose exec reposentinel /reposentinel version
 
 浏览器打开应用地址，完成管理员创建（若未用环境变量预置）。公网请接 [反向代理](/deploy/reverse-proxy)。
 
-## 4. GitHub App Webhook
+## 4. GitHub App（创建表单逐项）
 
-1. 创建 GitHub App，按需勾选 Issues / Pull requests / Actions / 安全告警等只读权限  
-2. Webhook URL：`https://你的域名/webhooks/github`  
-3. Secret 写入 `REPOSENTINEL_GITHUB_WEBHOOK_SECRET`  
-4. 订阅：`issues`、`pull_request`、`workflow_run`、三类 `*_alert`、`installation`、`installation_repositories`、`repository`  
-5. 安装到仓库后，新仓先为**基线中**；管理后台点「完成基线」后才发实时通知  
+RepoSentinel **不走用户 OAuth 登录 GitHub**；认证是「App JWT → Installation Token」。因此创建页里与「Identifying and authorizing users」相关的 Callback / Device Flow 均可空着。
 
-私钥路径示例：`REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH=/secrets/github-app.pem`，并在 compose 中挂载 pem 文件。
+打开 [Create GitHub App](https://github.com/settings/apps/new)（组织可用 `https://github.com/organizations/<org>/settings/apps/new`）。
+
+### 4.1 基本信息
+
+| 字段 | 怎么填 |
+|------|--------|
+| **GitHub App name** | 任意全局唯一名，例如 `RepoSentinel` 或 `RepoSentinel-<你的ID>` |
+| **Description** | 可选，如「自托管仓库值守」 |
+| **Homepage URL** | 你的管理台公网地址，如 `https://monitor.example.com`；本地可先填 `http://127.0.0.1:8080`（Webhook 仍需 GitHub 能访问的 HTTPS） |
+
+### 4.2 Identifying and authorizing users（可全部跳过）
+
+| 字段 | 怎么填 |
+|------|--------|
+| **Callback URL** | **留空**（产品无 OAuth 回调路由） |
+| **Expire user authorization tokens** | 不勾 |
+| **Request user authorization (OAuth) during installation** | **不勾** |
+| **Enable Device Flow** | **不勾** |
+
+### 4.3 Post installation
+
+| 字段 | 怎么填 |
+|------|--------|
+| **Setup URL** | 可选；可填管理台地址，安装后跳回你的控制台 |
+| **Redirect on update** | 可选；一般不勾 |
+
+### 4.4 Webhook（必填）
+
+| 字段 | 怎么填 |
+|------|--------|
+| **Active** | **必须勾选** |
+| **Webhook URL** | `https://你的域名/webhooks/github`（与 `REPOSENTINEL_PUBLIC_BASE_URL` + 路径一致；管理台「GitHub App」页可复制） |
+| **Secret** | 随机串，例如 `openssl rand -hex 32`；**同一值**写入环境变量 `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` |
+
+> 本地开发可用 [smee.io](https://smee.io) / ngrok 等把公网 HTTPS 转到本机；Secret 仍要与环境变量一致。
+
+### 4.5 Repository permissions（建议只读）
+
+权限选好后，下方「Subscribe to events」才会出现对应事件。
+
+| 权限 | Access | 用途 |
+|------|--------|------|
+| **Metadata** | Read-only | 必选（仓库基础信息） |
+| **Contents** | Read-only | 对账/元数据 |
+| **Issues** | Read-only | Issue Webhook + API 对账 |
+| **Pull requests** | Read-only | PR Webhook + 对账 |
+| **Actions** | Read-only | `workflow_run` 与对账 |
+| **Dependabot alerts** | Read-only | Dependabot 告警 |
+| **Code scanning alerts** | Read-only | Code Scanning |
+| **Secret scanning alerts** | Read-only | Secret Scanning |
+
+- **Organization permissions**：全部 **No access**（除非你明确需要组织级能力）。  
+- **Account permissions**：全部 **No access**。  
+- 不要选 Write，除非你清楚自己在做什么（本产品不写回 GitHub）。
+
+### 4.6 Subscribe to events（勾选）
+
+| 事件 | 是否需要 |
+|------|----------|
+| **Issues** | 要 |
+| **Pull request** | 要 |
+| **Workflow run** | 要 |
+| **Dependabot alert** | 要（安全） |
+| **Code scanning alert** | 要（安全） |
+| **Secret scanning alert** | 要（安全） |
+| **Installation** | 要 |
+| **Installation repositories** | 要 |
+| **Repository** | 要 |
+| Installation target / Meta / Security advisory | 可不勾（处理器会忽略未处理类型） |
+
+创建页若暂时看不到某事件，先提高对应 Repository permission，保存后再回来勾事件。
+
+### 4.7 Where can this GitHub App be installed?
+
+| 选项 | 建议 |
+|------|------|
+| **Only on this account** | 个人自用推荐 |
+| **Any account** | 需要装到多个组织/账号时再选 |
+
+### 4.8 创建后必做
+
+1. **Generate a private key**，下载 `.pem`  
+2. 记下 **App ID**、**Client ID**（对账核心依赖 **App ID + 私钥**）  
+3. **写入运行时（二选一）**  
+
+**方式 A · 管理台（推荐上手）**  
+登录后打开 **GitHub App** 页，填写 App ID / Client ID / Public Base URL / Webhook Secret，并粘贴 PEM 或填服务器路径 → **保存**（加密入库，立即生效，无需重启）。
+
+**方式 B · 环境变量（适合 Docker / K8s Secret）**
+
+```bash
+REPOSENTINEL_GITHUB_APP_ID=123456
+REPOSENTINEL_GITHUB_CLIENT_ID=Iv1.xxxxxxxx
+REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH=/secrets/github-app.pem
+REPOSENTINEL_GITHUB_WEBHOOK_SECRET=与_App_Webhook_Secret_相同
+REPOSENTINEL_PUBLIC_BASE_URL=https://你的域名
+```
+
+> **优先级**：环境变量 **高于** 管理台数据库配置。某字段已用环境变量设置时，管理台该字段会显示「锁定」，不能覆盖。  
+> 私钥路径示例：`REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH=/secrets/github-app.pem`，compose 中挂载 pem；或改用管理台粘贴 PEM。
+
+4. **Install App** → 选择仓库  
+5. 管理台 **GitHub App** 页应出现 Installation；**仪表盘** 出现仓库（先为基线）→ 点「完成基线」后再发实时通知
 
 ## 5. Telegram / 其他通知
 

@@ -104,7 +104,7 @@ curl -fsS http://127.0.0.1:8080/health/ready
 | `REPOSENTINEL_PUBLIC_BASE_URL` | 对外 URL，生产用 HTTPS |
 | `REPOSENTINEL_DATABASE_DRIVER` | `sqlite`（默认）或 `postgres` |
 | `REPOSENTINEL_DATABASE_URL` | SQLite 文件 DSN 或 Postgres 连接串 |
-| `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` | GitHub Webhook Secret |
+| `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` | GitHub 入站 Webhook Secret（也可在管理台 GitHub App 页填写） |
 | `REPOSENTINEL_ADMIN_USERNAME` / `PASSWORD` | 可选，预置唯一管理员 |
 
 浏览器打开 <http://127.0.0.1:8080>，完成唯一管理员创建（或使用环境变量预置）。

@@ -1114,3 +1114,82 @@ button:disabled {
 .empty-state__action a:hover {
   text-decoration: underline;
 }
+
+.section-subtitle {
+  margin: 1.15rem 0 0.55rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.section-subtitle:first-of-type {
+  margin-top: 0.35rem;
+}
+
+.field-map {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 0.35rem;
+}
+
+.field-map > div {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-muted);
+}
+
+.field-map dt {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.field-map dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.field-map code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.78rem;
+}
+
+.field-textarea {
+  width: 100%;
+  min-height: 7rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.field-textarea:focus {
+  border-color: color-mix(in oklch, var(--accent) 70%, var(--border-subtle));
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 14%, transparent);
+  outline: 0;
+  background: var(--bg-surface);
+}
+
+.field-textarea:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.field-lock {
+  margin-left: 0.4rem;
+  color: var(--warning);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 650;
+}

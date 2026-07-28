@@ -109,6 +109,10 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 
 	ghClient := githubx.NewAppClient(cfg.GitHub.AppID, cfg.GitHub.PrivateKeyPath)
+	ghRuntime := newRuntimeFromEnv(cfg, ghClient)
+	if err := githubx.MergeFromStore(ctx, data, keyRing, ghRuntime); err != nil {
+		return nil, newPublicError("database_unavailable", "无法加载 GitHub 运行时配置。", err)
+	}
 	reconciler := &syncx.Reconciler{
 		Store: data, GitHub: ghClient, Logger: logger, MaxPages: 3,
 		OnRun: httpapi.MetricsIncReconcileRuns,
@@ -160,6 +164,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		Aggregator:     aggregator,
 		Reconciler:     reconciler,
 		UpdateChecker:  updateChecker,
+		GitHubRuntime:  ghRuntime,
 		Background:     workerCtx,
 	})
 	if err := bootstrapNotifyChannels(ctx, data, keyRing, cfg); err != nil {

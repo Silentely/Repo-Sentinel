@@ -127,6 +127,48 @@ export interface GitHubConfigStatus {
   webhook_previous_secret_configured?: boolean;
   external_pat_configured: boolean;
   webhook_path: string;
+  app_id_source?: string;
+  client_id_source?: string;
+  private_key_source?: string;
+  webhook_secret_source?: string;
+  public_base_url_source?: string;
+}
+
+export interface GitHubRuntimeConfig {
+  app_id: number;
+  client_id: string;
+  private_key_path: string;
+  public_base_url: string;
+  webhook_path: string;
+  webhook_url: string;
+  app_id_configured: boolean;
+  client_id_configured: boolean;
+  private_key_configured: boolean;
+  webhook_secret_configured: boolean;
+  external_pat_configured: boolean;
+  app_id_source: string;
+  client_id_source: string;
+  private_key_source: string;
+  webhook_secret_source: string;
+  public_base_url_source: string;
+  app_id_locked: boolean;
+  client_id_locked: boolean;
+  private_key_locked: boolean;
+  webhook_secret_locked: boolean;
+  public_base_url_locked: boolean;
+  can_edit_in_ui: boolean;
+  note: string;
+}
+
+export interface GitHubRuntimeConfigInput {
+  app_id?: number;
+  client_id?: string;
+  private_key_path?: string;
+  private_key_pem?: string;
+  webhook_secret?: string;
+  public_base_url?: string;
+  clear_private_key?: boolean;
+  clear_webhook_secret?: boolean;
 }
 
 export interface VersionInfo {
@@ -213,5 +255,18 @@ export async function addExternalRepository(fullName: string): Promise<Repositor
   return apiRequest<Repository>("/api/v1/repositories/external", {
     method: "POST",
     body: JSON.stringify({ full_name: fullName }),
+  });
+}
+
+export const githubConfigQueryOptions = queryOptions({
+  queryKey: ["github-config"] as const,
+  queryFn: () => apiRequest<GitHubRuntimeConfig>("/api/v1/github/config"),
+  staleTime: 10_000,
+});
+
+export async function saveGitHubConfig(body: GitHubRuntimeConfigInput): Promise<GitHubRuntimeConfig> {
+  return apiRequest<GitHubRuntimeConfig>("/api/v1/github/config", {
+    method: "PUT",
+    body: JSON.stringify(body),
   });
 }
