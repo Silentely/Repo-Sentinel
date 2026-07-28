@@ -65,13 +65,13 @@ export function RootLayout({ session }: RootLayoutProps) {
             <Activity aria-hidden="true" size={17} />
             <span>仪表盘</span>
           </Link>
-          <span className="app-nav__label">系统</span>
-          <span>
+          <span className="app-nav__label">通知</span>
+          <Link to="/notifications" activeProps={{ "aria-current": "page" }}>
             <GitBranch aria-hidden="true" size={17} />
-            <span>GitHub App · 后续</span>
-          </span>
+            <span>渠道配置</span>
+          </Link>
         </nav>
-        <span className="app-sidebar__version">vdev · Phase 1</span>
+        <span className="app-sidebar__version">v0.1 · 生产 MVP</span>
       </aside>
 
       <div className="app-main">

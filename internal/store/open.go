@@ -83,8 +83,20 @@ func newStore(client *entclient.Client, closeFn func() error) *storeImpl {
 	return &storeImpl{client: client, closeFn: closeFn}
 }
 
-func (s *storeImpl) Admins() AdminStore      { return &adminStore{client: s.client} }
-func (s *storeImpl) Sessions() SessionStore  { return &sessionStore{client: s.client} }
-func (s *storeImpl) Settings() SettingsStore { return &settingsStore{client: s.client} }
-func (s *storeImpl) Audits() AuditStore      { return &auditStore{client: s.client} }
-func (s *storeImpl) Close() error            { return s.closeFn() }
+func (s *storeImpl) Admins() AdminStore                 { return &adminStore{client: s.client} }
+func (s *storeImpl) Sessions() SessionStore             { return &sessionStore{client: s.client} }
+func (s *storeImpl) Settings() SettingsStore            { return &settingsStore{client: s.client} }
+func (s *storeImpl) Audits() AuditStore                 { return &auditStore{client: s.client} }
+func (s *storeImpl) Installations() InstallationStore   { return &installationStore{client: s.client} }
+func (s *storeImpl) Repositories() RepositoryStore      { return &repositoryStore{client: s.client} }
+func (s *storeImpl) WebhookDeliveries() WebhookDeliveryStore {
+	return &webhookDeliveryStore{client: s.client}
+}
+func (s *storeImpl) WorkItems() WorkItemStore           { return &workItemStore{client: s.client} }
+func (s *storeImpl) WorkflowRuns() WorkflowRunStore     { return &workflowRunStore{client: s.client} }
+func (s *storeImpl) SecurityAlerts() SecurityAlertStore { return &securityAlertStore{client: s.client} }
+func (s *storeImpl) Events() EventStore                 { return &eventStore{client: s.client} }
+func (s *storeImpl) Channels() ChannelStore             { return &channelStore{client: s.client} }
+func (s *storeImpl) Outbox() OutboxStore                { return &outboxStore{client: s.client} }
+func (s *storeImpl) Cursors() CursorStore               { return &cursorStore{client: s.client} }
+func (s *storeImpl) Close() error                       { return s.closeFn() }

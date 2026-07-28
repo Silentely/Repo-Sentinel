@@ -40,6 +40,12 @@ const DOC_PAGES = [
     changefreq: "monthly",
   },
   {
+    route: "/deploy/docker",
+    file: "deploy/docker.md",
+    priority: "0.95",
+    changefreq: "monthly",
+  },
+  {
     route: "/deploy/source",
     file: "deploy/source.md",
     priority: "0.9",

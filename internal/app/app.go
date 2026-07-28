@@ -16,7 +16,7 @@ import (
 
 const (
 	// SupportedSchemaVersion 是当前二进制支持的最新 Atlas migration 版本。
-	SupportedSchemaVersion  = "20260727000100"
+	SupportedSchemaVersion  = "20260728000100"
 	gracefulShutdownTimeout = 30 * time.Second
 	defaultCleanupInterval  = 15 * time.Minute
 )
@@ -26,7 +26,7 @@ type httpRuntime interface {
 	Shutdown(context.Context) error
 }
 
-// App 保存完成装配的 Phase 1 运行时及其生命周期资源。
+// App 保存完成装配的运行时及其生命周期资源。
 type App struct {
 	config          config.Config
 	data            store.Store
@@ -37,6 +37,8 @@ type App struct {
 	readiness       *readinessState
 	logger          *slog.Logger
 	cleanupInterval time.Duration
+	workerCtx       context.Context
+	workerCancel    context.CancelFunc
 	closeOnce       sync.Once
 	closeErr        error
 }
@@ -49,6 +51,9 @@ func (a *App) Close() error {
 	a.closeOnce.Do(func() {
 		if a.readiness != nil {
 			a.readiness.Set(false)
+		}
+		if a.workerCancel != nil {
+			a.workerCancel()
 		}
 		if a.data != nil {
 			a.closeErr = a.data.Close()

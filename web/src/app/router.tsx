@@ -15,7 +15,9 @@ import { SetupPage } from "../features/auth/setup-page";
 import { createAdmin, login, setupStatusQueryOptions } from "../features/auth/api";
 import { useSession } from "../features/auth/use-session";
 import { queryClient } from "../lib/query-client";
-import { RootLayout, FoundationHome, RouteLoading } from "./root-layout";
+import { DashboardPage } from "../features/monitor/dashboard-page";
+import { NotifyPage } from "../features/monitor/notify-page";
+import { RootLayout, RouteLoading } from "./root-layout";
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -46,13 +48,19 @@ const authenticatedRoute = createRoute({
 const indexRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/",
-  component: FoundationHome,
+  component: DashboardPage,
+});
+
+const notifyRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/notifications",
+  component: NotifyPage,
 });
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
-  authenticatedRoute.addChildren([indexRoute]),
+  authenticatedRoute.addChildren([indexRoute, notifyRoute]),
 ]);
 
 export const router = createRouter({

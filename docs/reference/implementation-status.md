@@ -1,31 +1,31 @@
 # 实现状态（自查报告）
 
-> 检查日期：2026-07-28  
-> 对照：`docs/superpowers/specs/2026-07-26-reposentinel-design.md` §23 实施阶段  
-> 代码基线：`main` 上 Phase 1 相关提交（含 `feat: deliver RepoSentinel phase 1 foundation` 与后续认证加固）
+> 检查日期：2026-07-28（生产 MVP 续作）  
+> 对照：`docs/superpowers/specs/2026-07-26-reposentinel-design.md` 与 `docs/superpowers/plans/2026-07-28-production-mvp.md`  
+> 代码基线：`main` 生产 MVP 闭环
 
 ## 总览结论
 
 | 判断 | 说明 |
 |------|------|
-| **Phase 1 基础平台** | 已基本落地，可本地构建、测试、启动、登录 |
-| **完整设计规格** | **未完成**；Webhook / 对账 / 通知 / 完整 UI / Docker 发布均未实现 |
-| **文档** | 已按 TG-SignPulse 文档站结构重组为 VitePress 站点（本页起） |
+| **生产 MVP 闭环** | **已落地**：Webhook 验签入库 → 规范化 → 规则 → Outbox → Telegram/HTTP；管理仪表盘；Docker Compose |
+| **完整设计规格** | 部分能力仍简化：外部仓 API 轮询、周度全量对账、每日摘要调度、多 Installation Token 刷新等可继续迭代 |
+| **文档** | VitePress 文档站 + Docker 部署页 |
 
-**不能**将当前仓库表述为「RepoSentinel 全功能已交付」。
+可将当前版本表述为 **可上线的监控最小闭环（v0.2.0）**，但需按部署文档配置 GitHub App 与主密钥。
 
 ## 规格 §23 阶段对照
 
 | 阶段 | 内容 | 状态 |
 |------|------|------|
-| 1 | 骨架、配置、数据库、管理员认证 | **已完成**（见下表） |
-| 2 | GitHub App、Webhook、事件规范化 | 未开始 |
-| 3 | 自有仓同步、基线、Workflow 状态机、对账 | 未开始 |
-| 4 | 外部公开仓轮询 | 未开始 |
-| 5 | Rule Engine、聚合、Outbox、Telegram/HTTP | 未开始 |
-| 6 | 完整管理后台 | 仅认证壳 + 占位仪表盘 |
-| 7 | Docker / 版本发布流水线 | 无 Dockerfile / 无 GHCR workflow |
-| 8 | 备份 CLI、指标、完整测试矩阵 | 部分单测；无 backup CLI |
+| 1 | 骨架、配置、数据库、管理员认证 | **已完成** |
+| 2 | Webhook 验签、Inbox、事件规范化、乱序保护 | **已完成（MVP）** |
+| 3 | 基线状态 + 手动完成基线；自动 API 对账 | **部分**（基线有；自动对账简化） |
+| 4 | 外部公开仓轮询 | **部分**（可登记外部仓；API 轮询待增强） |
+| 5 | Rule Engine、Outbox、Telegram/HTTP | **已完成（MVP，聚合窗口简化）** |
+| 6 | 管理后台 | **MVP 仪表盘 + 通知配置** |
+| 7 | Docker | **Dockerfile + compose 已提供**；GHCR 流水线可选后续 |
+| 8 | 备份 CLI、指标 | **运维约定文档**；原生 DB 备份 |
 
 ## Phase 1 能力清单
 

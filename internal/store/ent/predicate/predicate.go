@@ -15,5 +15,38 @@ type AdminSession func(*sql.Selector)
 // AuditLog is the predicate function for auditlog builders.
 type AuditLog func(*sql.Selector)
 
+// Event is the predicate function for event builders.
+type Event func(*sql.Selector)
+
+// GitHubInstallation is the predicate function for githubinstallation builders.
+type GitHubInstallation func(*sql.Selector)
+
+// NotificationChannel is the predicate function for notificationchannel builders.
+type NotificationChannel func(*sql.Selector)
+
+// NotificationOutbox is the predicate function for notificationoutbox builders.
+type NotificationOutbox func(*sql.Selector)
+
+// Repository is the predicate function for repository builders.
+type Repository func(*sql.Selector)
+
+// ScheduledJob is the predicate function for scheduledjob builders.
+type ScheduledJob func(*sql.Selector)
+
+// SecurityAlert is the predicate function for securityalert builders.
+type SecurityAlert func(*sql.Selector)
+
+// SyncCursor is the predicate function for synccursor builders.
+type SyncCursor func(*sql.Selector)
+
 // SystemSetting is the predicate function for systemsetting builders.
 type SystemSetting func(*sql.Selector)
+
+// WebhookDelivery is the predicate function for webhookdelivery builders.
+type WebhookDelivery func(*sql.Selector)
+
+// WorkItem is the predicate function for workitem builders.
+type WorkItem func(*sql.Selector)
+
+// WorkflowRun is the predicate function for workflowrun builders.
+type WorkflowRun func(*sql.Selector)

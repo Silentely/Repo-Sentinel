@@ -105,6 +105,307 @@ var (
 			},
 		},
 	}
+	// EventsColumns holds the columns for the "events" table.
+	EventsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "source", Type: field.TypeString},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "action", Type: field.TypeString},
+		{Name: "repository_id", Type: field.TypeString, Nullable: true},
+		{Name: "subject_number", Type: field.TypeInt, Nullable: true},
+		{Name: "title", Type: field.TypeString, Default: ""},
+		{Name: "severity", Type: field.TypeString, Default: ""},
+		{Name: "actor", Type: field.TypeString, Default: ""},
+		{Name: "workflow_run_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "workflow_conclusion", Type: field.TypeString, Default: ""},
+		{Name: "occurred_at", Type: field.TypeTime},
+		{Name: "source_updated_at", Type: field.TypeTime, Nullable: true},
+		{Name: "html_url", Type: field.TypeString, Default: ""},
+		{Name: "payload_summary", Type: field.TypeJSON, Nullable: true},
+		{Name: "suppress_notification", Type: field.TypeBool, Default: false},
+		{Name: "dedupe_fingerprint", Type: field.TypeString},
+		{Name: "state_hash", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// EventsTable holds the schema information for the "events" table.
+	EventsTable = &schema.Table{
+		Name:       "events",
+		Columns:    EventsColumns,
+		PrimaryKey: []*schema.Column{EventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "event_dedupe_fingerprint",
+				Unique:  true,
+				Columns: []*schema.Column{EventsColumns[16]},
+			},
+			{
+				Name:    "event_repository_id_kind_occurred_at",
+				Unique:  false,
+				Columns: []*schema.Column{EventsColumns[4], EventsColumns[2], EventsColumns[11]},
+			},
+			{
+				Name:    "event_occurred_at",
+				Unique:  false,
+				Columns: []*schema.Column{EventsColumns[11]},
+			},
+			{
+				Name:    "event_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{EventsColumns[18]},
+			},
+		},
+	}
+	// GitHubInstallationsColumns holds the columns for the "git_hub_installations" table.
+	GitHubInstallationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "installation_id", Type: field.TypeInt64},
+		{Name: "account_login", Type: field.TypeString},
+		{Name: "account_type", Type: field.TypeString},
+		{Name: "target_type", Type: field.TypeString, Default: ""},
+		{Name: "permissions_json", Type: field.TypeJSON, Nullable: true},
+		{Name: "suspended", Type: field.TypeString, Default: "false"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// GitHubInstallationsTable holds the schema information for the "git_hub_installations" table.
+	GitHubInstallationsTable = &schema.Table{
+		Name:       "git_hub_installations",
+		Columns:    GitHubInstallationsColumns,
+		PrimaryKey: []*schema.Column{GitHubInstallationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "githubinstallation_installation_id",
+				Unique:  true,
+				Columns: []*schema.Column{GitHubInstallationsColumns[1]},
+			},
+		},
+	}
+	// NotificationChannelsColumns holds the columns for the "notification_channels" table.
+	NotificationChannelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "channel_type", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString, Default: ""},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "target", Type: field.TypeString, Default: ""},
+		{Name: "secret_envelope", Type: field.TypeString, Default: ""},
+		{Name: "allow_private", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// NotificationChannelsTable holds the schema information for the "notification_channels" table.
+	NotificationChannelsTable = &schema.Table{
+		Name:       "notification_channels",
+		Columns:    NotificationChannelsColumns,
+		PrimaryKey: []*schema.Column{NotificationChannelsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notificationchannel_channel_type_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{NotificationChannelsColumns[1], NotificationChannelsColumns[3]},
+			},
+		},
+	}
+	// NotificationOutboxesColumns holds the columns for the "notification_outboxes" table.
+	NotificationOutboxesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "channel_id", Type: field.TypeString},
+		{Name: "event_id", Type: field.TypeString, Nullable: true},
+		{Name: "aggregate_key", Type: field.TypeString, Default: ""},
+		{Name: "idempotency_key", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString, Default: "pending"},
+		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "next_attempt_at", Type: field.TypeTime},
+		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error_code", Type: field.TypeString, Default: ""},
+		{Name: "title", Type: field.TypeString, Default: ""},
+		{Name: "body_text", Type: field.TypeString},
+		{Name: "body_json", Type: field.TypeJSON, Nullable: true},
+		{Name: "parse_mode", Type: field.TypeString, Default: "HTML"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// NotificationOutboxesTable holds the schema information for the "notification_outboxes" table.
+	NotificationOutboxesTable = &schema.Table{
+		Name:       "notification_outboxes",
+		Columns:    NotificationOutboxesColumns,
+		PrimaryKey: []*schema.Column{NotificationOutboxesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notificationoutbox_idempotency_key",
+				Unique:  true,
+				Columns: []*schema.Column{NotificationOutboxesColumns[4]},
+			},
+			{
+				Name:    "notificationoutbox_status_next_attempt_at",
+				Unique:  false,
+				Columns: []*schema.Column{NotificationOutboxesColumns[5], NotificationOutboxesColumns[7]},
+			},
+			{
+				Name:    "notificationoutbox_channel_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{NotificationOutboxesColumns[1], NotificationOutboxesColumns[5]},
+			},
+			{
+				Name:    "notificationoutbox_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{NotificationOutboxesColumns[14]},
+			},
+		},
+	}
+	// RepositoriesColumns holds the columns for the "repositories" table.
+	RepositoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "type", Type: field.TypeString},
+		{Name: "sync_status", Type: field.TypeString, Default: "baseline_sync"},
+		{Name: "github_repo_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "owner", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString},
+		{Name: "full_name", Type: field.TypeString},
+		{Name: "installation_id", Type: field.TypeString, Nullable: true},
+		{Name: "is_archived", Type: field.TypeBool, Default: false},
+		{Name: "is_private", Type: field.TypeBool, Default: false},
+		{Name: "html_url", Type: field.TypeString, Default: ""},
+		{Name: "default_branch", Type: field.TypeString, Default: ""},
+		{Name: "baseline_started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "baseline_finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_sync_error_code", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// RepositoriesTable holds the schema information for the "repositories" table.
+	RepositoriesTable = &schema.Table{
+		Name:       "repositories",
+		Columns:    RepositoriesColumns,
+		PrimaryKey: []*schema.Column{RepositoriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "repository_full_name",
+				Unique:  true,
+				Columns: []*schema.Column{RepositoriesColumns[6]},
+			},
+			{
+				Name:    "repository_github_repo_id",
+				Unique:  false,
+				Columns: []*schema.Column{RepositoriesColumns[3]},
+			},
+			{
+				Name:    "repository_type",
+				Unique:  false,
+				Columns: []*schema.Column{RepositoriesColumns[1]},
+			},
+			{
+				Name:    "repository_sync_status",
+				Unique:  false,
+				Columns: []*schema.Column{RepositoriesColumns[2]},
+			},
+			{
+				Name:    "repository_installation_id",
+				Unique:  false,
+				Columns: []*schema.Column{RepositoriesColumns[7]},
+			},
+		},
+	}
+	// ScheduledJobsColumns holds the columns for the "scheduled_jobs" table.
+	ScheduledJobsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "job_type", Type: field.TypeString},
+		{Name: "payload_json", Type: field.TypeString, Default: "{}"},
+		{Name: "status", Type: field.TypeString, Default: "pending"},
+		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "run_at", Type: field.TypeTime},
+		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error_code", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// ScheduledJobsTable holds the schema information for the "scheduled_jobs" table.
+	ScheduledJobsTable = &schema.Table{
+		Name:       "scheduled_jobs",
+		Columns:    ScheduledJobsColumns,
+		PrimaryKey: []*schema.Column{ScheduledJobsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "scheduledjob_status_run_at",
+				Unique:  false,
+				Columns: []*schema.Column{ScheduledJobsColumns[3], ScheduledJobsColumns[5]},
+			},
+			{
+				Name:    "scheduledjob_job_type_status",
+				Unique:  false,
+				Columns: []*schema.Column{ScheduledJobsColumns[1], ScheduledJobsColumns[3]},
+			},
+		},
+	}
+	// SecurityAlertsColumns holds the columns for the "security_alerts" table.
+	SecurityAlertsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "repository_id", Type: field.TypeString},
+		{Name: "alert_kind", Type: field.TypeString},
+		{Name: "alert_number", Type: field.TypeInt},
+		{Name: "state", Type: field.TypeString},
+		{Name: "severity", Type: field.TypeString, Default: ""},
+		{Name: "rule_or_dependency", Type: field.TypeString, Default: ""},
+		{Name: "dismissed_reason", Type: field.TypeString, Default: ""},
+		{Name: "html_url", Type: field.TypeString, Default: ""},
+		{Name: "source_updated_at", Type: field.TypeTime},
+		{Name: "state_hash", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SecurityAlertsTable holds the schema information for the "security_alerts" table.
+	SecurityAlertsTable = &schema.Table{
+		Name:       "security_alerts",
+		Columns:    SecurityAlertsColumns,
+		PrimaryKey: []*schema.Column{SecurityAlertsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "securityalert_repository_id_alert_kind_alert_number",
+				Unique:  true,
+				Columns: []*schema.Column{SecurityAlertsColumns[1], SecurityAlertsColumns[2], SecurityAlertsColumns[3]},
+			},
+			{
+				Name:    "securityalert_state",
+				Unique:  false,
+				Columns: []*schema.Column{SecurityAlertsColumns[4]},
+			},
+			{
+				Name:    "securityalert_severity",
+				Unique:  false,
+				Columns: []*schema.Column{SecurityAlertsColumns[5]},
+			},
+			{
+				Name:    "securityalert_source_updated_at",
+				Unique:  false,
+				Columns: []*schema.Column{SecurityAlertsColumns[9]},
+			},
+		},
+	}
+	// SyncCursorsColumns holds the columns for the "sync_cursors" table.
+	SyncCursorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "repository_id", Type: field.TypeString},
+		{Name: "resource", Type: field.TypeString},
+		{Name: "cursor_value", Type: field.TypeString, Default: ""},
+		{Name: "etag", Type: field.TypeString, Default: ""},
+		{Name: "last_success_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error_code", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SyncCursorsTable holds the schema information for the "sync_cursors" table.
+	SyncCursorsTable = &schema.Table{
+		Name:       "sync_cursors",
+		Columns:    SyncCursorsColumns,
+		PrimaryKey: []*schema.Column{SyncCursorsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "synccursor_repository_id_resource",
+				Unique:  true,
+				Columns: []*schema.Column{SyncCursorsColumns[1], SyncCursorsColumns[2]},
+			},
+		},
+	}
 	// SystemSettingsColumns holds the columns for the "system_settings" table.
 	SystemSettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -126,12 +427,154 @@ var (
 			},
 		},
 	}
+	// WebhookDeliveriesColumns holds the columns for the "webhook_deliveries" table.
+	WebhookDeliveriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "delivery_id", Type: field.TypeString},
+		{Name: "event_type", Type: field.TypeString},
+		{Name: "action", Type: field.TypeString, Default: ""},
+		{Name: "repository_full_name", Type: field.TypeString, Default: ""},
+		{Name: "status", Type: field.TypeString, Default: "accepted"},
+		{Name: "error_code", Type: field.TypeString, Default: ""},
+		{Name: "payload", Type: field.TypeBytes, Nullable: true},
+		{Name: "received_at", Type: field.TypeTime},
+		{Name: "processed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// WebhookDeliveriesTable holds the schema information for the "webhook_deliveries" table.
+	WebhookDeliveriesTable = &schema.Table{
+		Name:       "webhook_deliveries",
+		Columns:    WebhookDeliveriesColumns,
+		PrimaryKey: []*schema.Column{WebhookDeliveriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "webhookdelivery_delivery_id",
+				Unique:  true,
+				Columns: []*schema.Column{WebhookDeliveriesColumns[1]},
+			},
+			{
+				Name:    "webhookdelivery_status",
+				Unique:  false,
+				Columns: []*schema.Column{WebhookDeliveriesColumns[5]},
+			},
+			{
+				Name:    "webhookdelivery_received_at",
+				Unique:  false,
+				Columns: []*schema.Column{WebhookDeliveriesColumns[8]},
+			},
+		},
+	}
+	// WorkItemsColumns holds the columns for the "work_items" table.
+	WorkItemsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "repository_id", Type: field.TypeString},
+		{Name: "number", Type: field.TypeInt},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "state", Type: field.TypeString},
+		{Name: "title", Type: field.TypeString},
+		{Name: "author", Type: field.TypeString, Default: ""},
+		{Name: "labels_json", Type: field.TypeJSON, Nullable: true},
+		{Name: "assignees_json", Type: field.TypeJSON, Nullable: true},
+		{Name: "milestone", Type: field.TypeString, Default: ""},
+		{Name: "draft", Type: field.TypeBool, Default: false},
+		{Name: "merged", Type: field.TypeBool, Default: false},
+		{Name: "html_url", Type: field.TypeString, Default: ""},
+		{Name: "source_updated_at", Type: field.TypeTime},
+		{Name: "state_hash", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// WorkItemsTable holds the schema information for the "work_items" table.
+	WorkItemsTable = &schema.Table{
+		Name:       "work_items",
+		Columns:    WorkItemsColumns,
+		PrimaryKey: []*schema.Column{WorkItemsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "workitem_repository_id_number",
+				Unique:  true,
+				Columns: []*schema.Column{WorkItemsColumns[1], WorkItemsColumns[2]},
+			},
+			{
+				Name:    "workitem_repository_id_kind_state",
+				Unique:  false,
+				Columns: []*schema.Column{WorkItemsColumns[1], WorkItemsColumns[3], WorkItemsColumns[4]},
+			},
+			{
+				Name:    "workitem_updated_at",
+				Unique:  false,
+				Columns: []*schema.Column{WorkItemsColumns[16]},
+			},
+		},
+	}
+	// WorkflowRunsColumns holds the columns for the "workflow_runs" table.
+	WorkflowRunsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "repository_id", Type: field.TypeString},
+		{Name: "github_run_id", Type: field.TypeInt64},
+		{Name: "github_workflow_id", Type: field.TypeInt64},
+		{Name: "workflow_name", Type: field.TypeString, Default: ""},
+		{Name: "run_number", Type: field.TypeInt, Default: 0},
+		{Name: "event", Type: field.TypeString, Default: ""},
+		{Name: "head_branch", Type: field.TypeString, Default: ""},
+		{Name: "head_sha", Type: field.TypeString, Default: ""},
+		{Name: "status", Type: field.TypeString, Default: ""},
+		{Name: "conclusion", Type: field.TypeString, Nullable: true},
+		{Name: "previous_conclusion", Type: field.TypeString, Nullable: true},
+		{Name: "actor", Type: field.TypeString, Default: ""},
+		{Name: "run_attempt", Type: field.TypeInt, Default: 1},
+		{Name: "html_url", Type: field.TypeString, Default: ""},
+		{Name: "run_started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "run_updated_at", Type: field.TypeTime},
+		{Name: "run_completed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "state_hash", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// WorkflowRunsTable holds the schema information for the "workflow_runs" table.
+	WorkflowRunsTable = &schema.Table{
+		Name:       "workflow_runs",
+		Columns:    WorkflowRunsColumns,
+		PrimaryKey: []*schema.Column{WorkflowRunsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "workflowrun_repository_id_github_run_id",
+				Unique:  true,
+				Columns: []*schema.Column{WorkflowRunsColumns[1], WorkflowRunsColumns[2]},
+			},
+			{
+				Name:    "workflowrun_repository_id_github_workflow_id_head_branch",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowRunsColumns[1], WorkflowRunsColumns[3], WorkflowRunsColumns[7]},
+			},
+			{
+				Name:    "workflowrun_conclusion",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowRunsColumns[10]},
+			},
+			{
+				Name:    "workflowrun_run_updated_at",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowRunsColumns[16]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AdminAccountsTable,
 		AdminSessionsTable,
 		AuditLogsTable,
+		EventsTable,
+		GitHubInstallationsTable,
+		NotificationChannelsTable,
+		NotificationOutboxesTable,
+		RepositoriesTable,
+		ScheduledJobsTable,
+		SecurityAlertsTable,
+		SyncCursorsTable,
 		SystemSettingsTable,
+		WebhookDeliveriesTable,
+		WorkItemsTable,
+		WorkflowRunsTable,
 	}
 )
 

@@ -1,0 +1,1164 @@
+package store
+
+import (
+	"context"
+	"time"
+
+	entclient "github.com/Silentely/Repo-Sentinel/internal/store/ent"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/event"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/githubinstallation"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationchannel"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationoutbox"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workitem"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
+	"github.com/oklog/ulid/v2"
+)
+
+func newID() string { return ulid.Make().String() }
+
+func normalizePage(f ListFilter) ListFilter {
+	if f.Page < 1 {
+		f.Page = 1
+	}
+	if f.PerPage < 1 {
+		f.PerPage = 20
+	}
+	if f.PerPage > 100 {
+		f.PerPage = 100
+	}
+	return f
+}
+
+// --- installations ---
+
+type installationStore struct{ client *entclient.Client }
+
+func (s *installationStore) Upsert(ctx context.Context, in GitHubInstallation) (GitHubInstallation, error) {
+	now := time.Now().UTC()
+	existing, err := s.client.GitHubInstallation.Query().
+		Where(githubinstallation.InstallationIDEQ(in.InstallationID)).
+		Only(ctx)
+	if err == nil {
+		entity, err := s.client.GitHubInstallation.UpdateOneID(existing.ID).
+			SetAccountLogin(in.AccountLogin).
+			SetAccountType(in.AccountType).
+			SetTargetType(in.TargetType).
+			SetPermissionsJSON(in.PermissionsJSON).
+			SetSuspended(in.Suspended).
+			SetUpdatedAt(now).
+			Save(ctx)
+		if err != nil {
+			return GitHubInstallation{}, mapStoreError(err)
+		}
+		return installationFromEntity(entity), nil
+	}
+	if mapStoreError(err) != ErrNotFound {
+		return GitHubInstallation{}, mapStoreError(err)
+	}
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	if in.CreatedAt.IsZero() {
+		in.CreatedAt = now
+	}
+	entity, err := s.client.GitHubInstallation.Create().
+		SetID(in.ID).
+		SetInstallationID(in.InstallationID).
+		SetAccountLogin(in.AccountLogin).
+		SetAccountType(in.AccountType).
+		SetTargetType(in.TargetType).
+		SetPermissionsJSON(in.PermissionsJSON).
+		SetSuspended(in.Suspended).
+		SetCreatedAt(in.CreatedAt.UTC()).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return GitHubInstallation{}, mapStoreError(err)
+	}
+	return installationFromEntity(entity), nil
+}
+
+func (s *installationStore) GetByInstallationID(ctx context.Context, id int64) (GitHubInstallation, error) {
+	entity, err := s.client.GitHubInstallation.Query().Where(githubinstallation.InstallationIDEQ(id)).Only(ctx)
+	if err != nil {
+		return GitHubInstallation{}, mapStoreError(err)
+	}
+	return installationFromEntity(entity), nil
+}
+
+func (s *installationStore) List(ctx context.Context) ([]GitHubInstallation, error) {
+	rows, err := s.client.GitHubInstallation.Query().All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	out := make([]GitHubInstallation, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, installationFromEntity(row))
+	}
+	return out, nil
+}
+
+func installationFromEntity(e *entclient.GitHubInstallation) GitHubInstallation {
+	return GitHubInstallation{
+		ID: e.ID, InstallationID: e.InstallationID, AccountLogin: e.AccountLogin,
+		AccountType: e.AccountType, TargetType: e.TargetType, PermissionsJSON: e.PermissionsJSON,
+		Suspended: e.Suspended, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+	}
+}
+
+// --- repositories ---
+
+type repositoryStore struct{ client *entclient.Client }
+
+func (s *repositoryStore) Upsert(ctx context.Context, in Repository) (Repository, error) {
+	now := time.Now().UTC()
+	existing, err := s.client.Repository.Query().Where(repository.FullNameEQ(in.FullName)).Only(ctx)
+	if err == nil {
+		upd := s.client.Repository.UpdateOneID(existing.ID).
+			SetType(in.Type).
+			SetSyncStatus(in.SyncStatus).
+			SetOwner(in.Owner).
+			SetName(in.Name).
+			SetFullName(in.FullName).
+			SetIsArchived(in.IsArchived).
+			SetIsPrivate(in.IsPrivate).
+			SetHTMLURL(in.HTMLURL).
+			SetDefaultBranch(in.DefaultBranch).
+			SetLastSyncErrorCode(in.LastSyncErrorCode).
+			SetUpdatedAt(now)
+		if in.GitHubRepoID != nil {
+			upd.SetGithubRepoID(*in.GitHubRepoID)
+		}
+		if in.InstallationID != nil {
+			upd.SetInstallationID(*in.InstallationID)
+		}
+		if in.BaselineStartedAt != nil {
+			upd.SetBaselineStartedAt(*in.BaselineStartedAt)
+		}
+		if in.BaselineFinishedAt != nil {
+			upd.SetBaselineFinishedAt(*in.BaselineFinishedAt)
+		}
+		if in.LastSyncedAt != nil {
+			upd.SetLastSyncedAt(*in.LastSyncedAt)
+		}
+		entity, err := upd.Save(ctx)
+		if err != nil {
+			return Repository{}, mapStoreError(err)
+		}
+		return repositoryFromEntity(entity), nil
+	}
+	if mapStoreError(err) != ErrNotFound {
+		return Repository{}, mapStoreError(err)
+	}
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	if in.CreatedAt.IsZero() {
+		in.CreatedAt = now
+	}
+	if in.SyncStatus == "" {
+		in.SyncStatus = SyncStatusBaseline
+	}
+	c := s.client.Repository.Create().
+		SetID(in.ID).
+		SetType(in.Type).
+		SetSyncStatus(in.SyncStatus).
+		SetOwner(in.Owner).
+		SetName(in.Name).
+		SetFullName(in.FullName).
+		SetIsArchived(in.IsArchived).
+		SetIsPrivate(in.IsPrivate).
+		SetHTMLURL(in.HTMLURL).
+		SetDefaultBranch(in.DefaultBranch).
+		SetLastSyncErrorCode(in.LastSyncErrorCode).
+		SetCreatedAt(in.CreatedAt.UTC()).
+		SetUpdatedAt(now)
+	if in.GitHubRepoID != nil {
+		c.SetGithubRepoID(*in.GitHubRepoID)
+	}
+	if in.InstallationID != nil {
+		c.SetInstallationID(*in.InstallationID)
+	}
+	entity, err := c.Save(ctx)
+	if err != nil {
+		return Repository{}, mapStoreError(err)
+	}
+	return repositoryFromEntity(entity), nil
+}
+
+func (s *repositoryStore) Get(ctx context.Context, id string) (Repository, error) {
+	entity, err := s.client.Repository.Get(ctx, id)
+	if err != nil {
+		return Repository{}, mapStoreError(err)
+	}
+	return repositoryFromEntity(entity), nil
+}
+
+func (s *repositoryStore) GetByFullName(ctx context.Context, fullName string) (Repository, error) {
+	entity, err := s.client.Repository.Query().Where(repository.FullNameEQ(fullName)).Only(ctx)
+	if err != nil {
+		return Repository{}, mapStoreError(err)
+	}
+	return repositoryFromEntity(entity), nil
+}
+
+func (s *repositoryStore) GetByGitHubRepoID(ctx context.Context, githubID int64) (Repository, error) {
+	entity, err := s.client.Repository.Query().Where(repository.GithubRepoIDEQ(githubID)).Only(ctx)
+	if err != nil {
+		return Repository{}, mapStoreError(err)
+	}
+	return repositoryFromEntity(entity), nil
+}
+
+func (s *repositoryStore) List(ctx context.Context, f ListFilter) ([]Repository, PageResult, error) {
+	f = normalizePage(f)
+	q := s.client.Repository.Query()
+	if f.Kind != "" {
+		q = q.Where(repository.TypeEQ(f.Kind))
+	}
+	if f.Status != "" {
+		q = q.Where(repository.SyncStatusEQ(f.Status))
+	}
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	rows, err := q.Order(entclient.Desc(repository.FieldUpdatedAt)).
+		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	out := make([]Repository, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, repositoryFromEntity(row))
+	}
+	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+}
+
+func (s *repositoryStore) UpdateSyncStatus(ctx context.Context, id, status string) error {
+	err := s.client.Repository.UpdateOneID(id).
+		SetSyncStatus(status).
+		SetUpdatedAt(time.Now().UTC()).
+		Exec(ctx)
+	return mapStoreError(err)
+}
+
+func (s *repositoryStore) CountByType(ctx context.Context, repoType string) (int, error) {
+	n, err := s.client.Repository.Query().Where(repository.TypeEQ(repoType)).Count(ctx)
+	return n, mapStoreError(err)
+}
+
+func repositoryFromEntity(e *entclient.Repository) Repository {
+	return Repository{
+		ID: e.ID, Type: e.Type, SyncStatus: e.SyncStatus, GitHubRepoID: e.GithubRepoID,
+		Owner: e.Owner, Name: e.Name, FullName: e.FullName, InstallationID: e.InstallationID,
+		IsArchived: e.IsArchived, IsPrivate: e.IsPrivate, HTMLURL: e.HTMLURL, DefaultBranch: e.DefaultBranch,
+		BaselineStartedAt: e.BaselineStartedAt, BaselineFinishedAt: e.BaselineFinishedAt,
+		LastSyncedAt: e.LastSyncedAt, LastSyncErrorCode: e.LastSyncErrorCode,
+		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+	}
+}
+
+// --- webhook deliveries ---
+
+type webhookDeliveryStore struct{ client *entclient.Client }
+
+func (s *webhookDeliveryStore) Create(ctx context.Context, in WebhookDelivery) (WebhookDelivery, error) {
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	if in.ReceivedAt.IsZero() {
+		in.ReceivedAt = time.Now().UTC()
+	}
+	if in.Status == "" {
+		in.Status = DeliveryAccepted
+	}
+	entity, err := s.client.WebhookDelivery.Create().
+		SetID(in.ID).
+		SetDeliveryID(in.DeliveryID).
+		SetEventType(in.EventType).
+		SetAction(in.Action).
+		SetRepositoryFullName(in.RepositoryFullName).
+		SetStatus(in.Status).
+		SetErrorCode(in.ErrorCode).
+		SetPayload(in.Payload).
+		SetReceivedAt(in.ReceivedAt.UTC()).
+		Save(ctx)
+	if err != nil {
+		return WebhookDelivery{}, mapStoreError(err)
+	}
+	return webhookDeliveryFromEntity(entity), nil
+}
+
+func (s *webhookDeliveryStore) GetByDeliveryID(ctx context.Context, deliveryID string) (WebhookDelivery, error) {
+	entity, err := s.client.WebhookDelivery.Query().Where(webhookdelivery.DeliveryIDEQ(deliveryID)).Only(ctx)
+	if err != nil {
+		return WebhookDelivery{}, mapStoreError(err)
+	}
+	return webhookDeliveryFromEntity(entity), nil
+}
+
+func (s *webhookDeliveryStore) MarkProcessed(ctx context.Context, id, status, errorCode string) error {
+	now := time.Now().UTC()
+	err := s.client.WebhookDelivery.UpdateOneID(id).
+		SetStatus(status).
+		SetErrorCode(errorCode).
+		SetProcessedAt(now).
+		Exec(ctx)
+	return mapStoreError(err)
+}
+
+func webhookDeliveryFromEntity(e *entclient.WebhookDelivery) WebhookDelivery {
+	return WebhookDelivery{
+		ID: e.ID, DeliveryID: e.DeliveryID, EventType: e.EventType, Action: e.Action,
+		RepositoryFullName: e.RepositoryFullName, Status: e.Status, ErrorCode: e.ErrorCode,
+		Payload: e.Payload, ReceivedAt: e.ReceivedAt, ProcessedAt: e.ProcessedAt,
+	}
+}
+
+// --- work items ---
+
+type workItemStore struct{ client *entclient.Client }
+
+func (s *workItemStore) GetByRepoNumber(ctx context.Context, repoID string, number int) (WorkItem, error) {
+	entity, err := s.client.WorkItem.Query().
+		Where(workitem.RepositoryIDEQ(repoID), workitem.NumberEQ(number)).
+		Only(ctx)
+	if err != nil {
+		return WorkItem{}, mapStoreError(err)
+	}
+	return workItemFromEntity(entity), nil
+}
+
+// UpsertIfNewer 按 source_updated_at / state_hash 防止陈旧回滚。返回 updated=是否写入。
+func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem) (WorkItem, bool, error) {
+	now := time.Now().UTC()
+	existing, err := s.GetByRepoNumber(ctx, in.RepositoryID, in.Number)
+	if err == nil {
+		if in.SourceUpdatedAt.Before(existing.SourceUpdatedAt) {
+			return existing, false, nil
+		}
+		if in.SourceUpdatedAt.Equal(existing.SourceUpdatedAt) && in.StateHash == existing.StateHash {
+			return existing, false, nil
+		}
+		entity, err := s.client.WorkItem.UpdateOneID(existing.ID).
+			SetKind(in.Kind).
+			SetState(in.State).
+			SetTitle(in.Title).
+			SetAuthor(in.Author).
+			SetLabelsJSON(in.LabelsJSON).
+			SetAssigneesJSON(in.AssigneesJSON).
+			SetMilestone(in.Milestone).
+			SetDraft(in.Draft).
+			SetMerged(in.Merged).
+			SetHTMLURL(in.HTMLURL).
+			SetSourceUpdatedAt(in.SourceUpdatedAt.UTC()).
+			SetStateHash(in.StateHash).
+			SetUpdatedAt(now).
+			Save(ctx)
+		if err != nil {
+			return WorkItem{}, false, mapStoreError(err)
+		}
+		return workItemFromEntity(entity), true, nil
+	}
+	if err != ErrNotFound {
+		return WorkItem{}, false, err
+	}
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	entity, err := s.client.WorkItem.Create().
+		SetID(in.ID).
+		SetRepositoryID(in.RepositoryID).
+		SetNumber(in.Number).
+		SetKind(in.Kind).
+		SetState(in.State).
+		SetTitle(in.Title).
+		SetAuthor(in.Author).
+		SetLabelsJSON(in.LabelsJSON).
+		SetAssigneesJSON(in.AssigneesJSON).
+		SetMilestone(in.Milestone).
+		SetDraft(in.Draft).
+		SetMerged(in.Merged).
+		SetHTMLURL(in.HTMLURL).
+		SetSourceUpdatedAt(in.SourceUpdatedAt.UTC()).
+		SetStateHash(in.StateHash).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return WorkItem{}, false, mapStoreError(err)
+	}
+	return workItemFromEntity(entity), true, nil
+}
+
+func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, PageResult, error) {
+	f = normalizePage(f)
+	q := s.client.WorkItem.Query()
+	if f.RepositoryID != "" {
+		q = q.Where(workitem.RepositoryIDEQ(f.RepositoryID))
+	}
+	if f.Kind != "" {
+		q = q.Where(workitem.KindEQ(f.Kind))
+	}
+	if f.State != "" {
+		q = q.Where(workitem.StateEQ(f.State))
+	}
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	rows, err := q.Order(entclient.Desc(workitem.FieldUpdatedAt)).
+		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	out := make([]WorkItem, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, workItemFromEntity(row))
+	}
+	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+}
+
+func (s *workItemStore) CountOpen(ctx context.Context) (int, error) {
+	n, err := s.client.WorkItem.Query().Where(workitem.StateEQ("open")).Count(ctx)
+	return n, mapStoreError(err)
+}
+
+func workItemFromEntity(e *entclient.WorkItem) WorkItem {
+	return WorkItem{
+		ID: e.ID, RepositoryID: e.RepositoryID, Number: e.Number, Kind: e.Kind, State: e.State,
+		Title: e.Title, Author: e.Author, LabelsJSON: e.LabelsJSON, AssigneesJSON: e.AssigneesJSON,
+		Milestone: e.Milestone, Draft: e.Draft, Merged: e.Merged, HTMLURL: e.HTMLURL,
+		SourceUpdatedAt: e.SourceUpdatedAt, StateHash: e.StateHash, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+	}
+}
+
+// --- workflow runs ---
+
+type workflowRunStore struct{ client *entclient.Client }
+
+func (s *workflowRunStore) GetByRepoRunID(ctx context.Context, repoID string, runID int64) (WorkflowRun, error) {
+	entity, err := s.client.WorkflowRun.Query().
+		Where(workflowrun.RepositoryIDEQ(repoID), workflowrun.GithubRunIDEQ(runID)).
+		Only(ctx)
+	if err != nil {
+		return WorkflowRun{}, mapStoreError(err)
+	}
+	return workflowRunFromEntity(entity), nil
+}
+
+func (s *workflowRunStore) UpsertIfNewer(ctx context.Context, in WorkflowRun) (WorkflowRun, bool, error) {
+	now := time.Now().UTC()
+	existing, err := s.GetByRepoRunID(ctx, in.RepositoryID, in.GitHubRunID)
+	if err == nil {
+		if in.RunAttempt < existing.RunAttempt {
+			return existing, false, nil
+		}
+		if in.RunUpdatedAt.Before(existing.RunUpdatedAt) {
+			return existing, false, nil
+		}
+		if in.RunUpdatedAt.Equal(existing.RunUpdatedAt) && in.StateHash == existing.StateHash {
+			return existing, false, nil
+		}
+		prev := existing.Conclusion
+		upd := s.client.WorkflowRun.UpdateOneID(existing.ID).
+			SetGithubWorkflowID(in.GitHubWorkflowID).
+			SetWorkflowName(in.WorkflowName).
+			SetRunNumber(in.RunNumber).
+			SetEvent(in.Event).
+			SetHeadBranch(in.HeadBranch).
+			SetHeadSha(in.HeadSHA).
+			SetStatus(in.Status).
+			SetActor(in.Actor).
+			SetRunAttempt(in.RunAttempt).
+			SetHTMLURL(in.HTMLURL).
+			SetRunUpdatedAt(in.RunUpdatedAt.UTC()).
+			SetStateHash(in.StateHash).
+			SetUpdatedAt(now)
+		if in.Conclusion != nil {
+			upd.SetConclusion(*in.Conclusion)
+			if prev != nil && *prev != *in.Conclusion {
+				upd.SetPreviousConclusion(*prev)
+			}
+		}
+		if in.RunStartedAt != nil {
+			upd.SetRunStartedAt(*in.RunStartedAt)
+		}
+		if in.RunCompletedAt != nil {
+			upd.SetRunCompletedAt(*in.RunCompletedAt)
+		}
+		entity, err := upd.Save(ctx)
+		if err != nil {
+			return WorkflowRun{}, false, mapStoreError(err)
+		}
+		return workflowRunFromEntity(entity), true, nil
+	}
+	if err != ErrNotFound {
+		return WorkflowRun{}, false, err
+	}
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	c := s.client.WorkflowRun.Create().
+		SetID(in.ID).
+		SetRepositoryID(in.RepositoryID).
+		SetGithubRunID(in.GitHubRunID).
+		SetGithubWorkflowID(in.GitHubWorkflowID).
+		SetWorkflowName(in.WorkflowName).
+		SetRunNumber(in.RunNumber).
+		SetEvent(in.Event).
+		SetHeadBranch(in.HeadBranch).
+		SetHeadSha(in.HeadSHA).
+		SetStatus(in.Status).
+		SetActor(in.Actor).
+		SetRunAttempt(in.RunAttempt).
+		SetHTMLURL(in.HTMLURL).
+		SetRunUpdatedAt(in.RunUpdatedAt.UTC()).
+		SetStateHash(in.StateHash).
+		SetCreatedAt(now).
+		SetUpdatedAt(now)
+	if in.Conclusion != nil {
+		c.SetConclusion(*in.Conclusion)
+	}
+	if in.RunStartedAt != nil {
+		c.SetRunStartedAt(*in.RunStartedAt)
+	}
+	if in.RunCompletedAt != nil {
+		c.SetRunCompletedAt(*in.RunCompletedAt)
+	}
+	entity, err := c.Save(ctx)
+	if err != nil {
+		return WorkflowRun{}, false, mapStoreError(err)
+	}
+	return workflowRunFromEntity(entity), true, nil
+}
+
+func (s *workflowRunStore) LatestCompleted(ctx context.Context, repoID string, workflowID int64, branch string) (WorkflowRun, error) {
+	entity, err := s.client.WorkflowRun.Query().
+		Where(
+			workflowrun.RepositoryIDEQ(repoID),
+			workflowrun.GithubWorkflowIDEQ(workflowID),
+			workflowrun.HeadBranchEQ(branch),
+			workflowrun.ConclusionNotNil(),
+		).
+		Order(entclient.Desc(workflowrun.FieldRunUpdatedAt)).
+		First(ctx)
+	if err != nil {
+		return WorkflowRun{}, mapStoreError(err)
+	}
+	return workflowRunFromEntity(entity), nil
+}
+
+func (s *workflowRunStore) List(ctx context.Context, f ListFilter) ([]WorkflowRun, PageResult, error) {
+	f = normalizePage(f)
+	q := s.client.WorkflowRun.Query()
+	if f.RepositoryID != "" {
+		q = q.Where(workflowrun.RepositoryIDEQ(f.RepositoryID))
+	}
+	if f.Status != "" {
+		q = q.Where(workflowrun.ConclusionEQ(f.Status))
+	}
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	rows, err := q.Order(entclient.Desc(workflowrun.FieldRunUpdatedAt)).
+		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	out := make([]WorkflowRun, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, workflowRunFromEntity(row))
+	}
+	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+}
+
+func (s *workflowRunStore) CountFailed(ctx context.Context) (int, error) {
+	n, err := s.client.WorkflowRun.Query().Where(
+		workflowrun.ConclusionIn("failure", "timed_out", "cancelled", "action_required", "startup_failure"),
+	).Count(ctx)
+	return n, mapStoreError(err)
+}
+
+func workflowRunFromEntity(e *entclient.WorkflowRun) WorkflowRun {
+	return WorkflowRun{
+		ID: e.ID, RepositoryID: e.RepositoryID, GitHubRunID: e.GithubRunID, GitHubWorkflowID: e.GithubWorkflowID,
+		WorkflowName: e.WorkflowName, RunNumber: e.RunNumber, Event: e.Event, HeadBranch: e.HeadBranch,
+		HeadSHA: e.HeadSha, Status: e.Status, Conclusion: e.Conclusion, PreviousConclusion: e.PreviousConclusion,
+		Actor: e.Actor, RunAttempt: e.RunAttempt, HTMLURL: e.HTMLURL, RunStartedAt: e.RunStartedAt,
+		RunUpdatedAt: e.RunUpdatedAt, RunCompletedAt: e.RunCompletedAt, StateHash: e.StateHash,
+		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+	}
+}
+
+// --- security alerts ---
+
+type securityAlertStore struct{ client *entclient.Client }
+
+func (s *securityAlertStore) GetByIdentity(ctx context.Context, repoID, kind string, number int) (SecurityAlert, error) {
+	entity, err := s.client.SecurityAlert.Query().
+		Where(
+			securityalert.RepositoryIDEQ(repoID),
+			securityalert.AlertKindEQ(kind),
+			securityalert.AlertNumberEQ(number),
+		).Only(ctx)
+	if err != nil {
+		return SecurityAlert{}, mapStoreError(err)
+	}
+	return securityAlertFromEntity(entity), nil
+}
+
+func (s *securityAlertStore) UpsertIfNewer(ctx context.Context, in SecurityAlert) (SecurityAlert, bool, error) {
+	now := time.Now().UTC()
+	existing, err := s.GetByIdentity(ctx, in.RepositoryID, in.AlertKind, in.AlertNumber)
+	if err == nil {
+		if in.SourceUpdatedAt.Before(existing.SourceUpdatedAt) {
+			return existing, false, nil
+		}
+		if in.SourceUpdatedAt.Equal(existing.SourceUpdatedAt) && in.StateHash == existing.StateHash {
+			return existing, false, nil
+		}
+		entity, err := s.client.SecurityAlert.UpdateOneID(existing.ID).
+			SetState(in.State).
+			SetSeverity(in.Severity).
+			SetRuleOrDependency(in.RuleOrDependency).
+			SetDismissedReason(in.DismissedReason).
+			SetHTMLURL(in.HTMLURL).
+			SetSourceUpdatedAt(in.SourceUpdatedAt.UTC()).
+			SetStateHash(in.StateHash).
+			SetUpdatedAt(now).
+			Save(ctx)
+		if err != nil {
+			return SecurityAlert{}, false, mapStoreError(err)
+		}
+		return securityAlertFromEntity(entity), true, nil
+	}
+	if err != ErrNotFound {
+		return SecurityAlert{}, false, err
+	}
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	entity, err := s.client.SecurityAlert.Create().
+		SetID(in.ID).
+		SetRepositoryID(in.RepositoryID).
+		SetAlertKind(in.AlertKind).
+		SetAlertNumber(in.AlertNumber).
+		SetState(in.State).
+		SetSeverity(in.Severity).
+		SetRuleOrDependency(in.RuleOrDependency).
+		SetDismissedReason(in.DismissedReason).
+		SetHTMLURL(in.HTMLURL).
+		SetSourceUpdatedAt(in.SourceUpdatedAt.UTC()).
+		SetStateHash(in.StateHash).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return SecurityAlert{}, false, mapStoreError(err)
+	}
+	return securityAlertFromEntity(entity), true, nil
+}
+
+func (s *securityAlertStore) List(ctx context.Context, f ListFilter) ([]SecurityAlert, PageResult, error) {
+	f = normalizePage(f)
+	q := s.client.SecurityAlert.Query()
+	if f.RepositoryID != "" {
+		q = q.Where(securityalert.RepositoryIDEQ(f.RepositoryID))
+	}
+	if f.Kind != "" {
+		q = q.Where(securityalert.AlertKindEQ(f.Kind))
+	}
+	if f.State != "" {
+		q = q.Where(securityalert.StateEQ(f.State))
+	}
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	rows, err := q.Order(entclient.Desc(securityalert.FieldSourceUpdatedAt)).
+		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	out := make([]SecurityAlert, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, securityAlertFromEntity(row))
+	}
+	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+}
+
+func (s *securityAlertStore) CountOpen(ctx context.Context) (int, error) {
+	n, err := s.client.SecurityAlert.Query().Where(securityalert.StateIn("open", "reopened")).Count(ctx)
+	return n, mapStoreError(err)
+}
+
+func securityAlertFromEntity(e *entclient.SecurityAlert) SecurityAlert {
+	return SecurityAlert{
+		ID: e.ID, RepositoryID: e.RepositoryID, AlertKind: e.AlertKind, AlertNumber: e.AlertNumber,
+		State: e.State, Severity: e.Severity, RuleOrDependency: e.RuleOrDependency,
+		DismissedReason: e.DismissedReason, HTMLURL: e.HTMLURL, SourceUpdatedAt: e.SourceUpdatedAt,
+		StateHash: e.StateHash, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+	}
+}
+
+// --- events ---
+
+type eventStore struct{ client *entclient.Client }
+
+func (s *eventStore) Create(ctx context.Context, in Event) (Event, error) {
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	if in.CreatedAt.IsZero() {
+		in.CreatedAt = time.Now().UTC()
+	}
+	c := s.client.Event.Create().
+		SetID(in.ID).
+		SetSource(in.Source).
+		SetKind(in.Kind).
+		SetAction(in.Action).
+		SetTitle(in.Title).
+		SetSeverity(in.Severity).
+		SetActor(in.Actor).
+		SetWorkflowConclusion(in.WorkflowConclusion).
+		SetOccurredAt(in.OccurredAt.UTC()).
+		SetHTMLURL(in.HTMLURL).
+		SetPayloadSummary(in.PayloadSummary).
+		SetSuppressNotification(in.SuppressNotification).
+		SetDedupeFingerprint(in.DedupeFingerprint).
+		SetStateHash(in.StateHash).
+		SetCreatedAt(in.CreatedAt.UTC())
+	if in.RepositoryID != nil {
+		c.SetRepositoryID(*in.RepositoryID)
+	}
+	if in.SubjectNumber != nil {
+		c.SetSubjectNumber(*in.SubjectNumber)
+	}
+	if in.WorkflowRunID != nil {
+		c.SetWorkflowRunID(*in.WorkflowRunID)
+	}
+	if in.SourceUpdatedAt != nil {
+		c.SetSourceUpdatedAt(in.SourceUpdatedAt.UTC())
+	}
+	entity, err := c.Save(ctx)
+	if err != nil {
+		return Event{}, mapStoreError(err)
+	}
+	return eventFromEntity(entity), nil
+}
+
+func (s *eventStore) GetByFingerprint(ctx context.Context, fp string) (Event, error) {
+	entity, err := s.client.Event.Query().Where(event.DedupeFingerprintEQ(fp)).Only(ctx)
+	if err != nil {
+		return Event{}, mapStoreError(err)
+	}
+	return eventFromEntity(entity), nil
+}
+
+func (s *eventStore) List(ctx context.Context, f ListFilter) ([]Event, PageResult, error) {
+	f = normalizePage(f)
+	q := s.client.Event.Query()
+	if f.RepositoryID != "" {
+		q = q.Where(event.RepositoryIDEQ(f.RepositoryID))
+	}
+	if f.Kind != "" {
+		q = q.Where(event.KindEQ(f.Kind))
+	}
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	rows, err := q.Order(entclient.Desc(event.FieldOccurredAt)).
+		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	out := make([]Event, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, eventFromEntity(row))
+	}
+	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+}
+
+func (s *eventStore) CountSince(ctx context.Context, since time.Time) (int, error) {
+	n, err := s.client.Event.Query().Where(event.OccurredAtGTE(since.UTC())).Count(ctx)
+	return n, mapStoreError(err)
+}
+
+func eventFromEntity(e *entclient.Event) Event {
+	return Event{
+		ID: e.ID, Source: e.Source, Kind: e.Kind, Action: e.Action, RepositoryID: e.RepositoryID,
+		SubjectNumber: e.SubjectNumber, Title: e.Title, Severity: e.Severity, Actor: e.Actor,
+		WorkflowRunID: e.WorkflowRunID, WorkflowConclusion: e.WorkflowConclusion, OccurredAt: e.OccurredAt,
+		SourceUpdatedAt: e.SourceUpdatedAt, HTMLURL: e.HTMLURL, PayloadSummary: e.PayloadSummary,
+		SuppressNotification: e.SuppressNotification, DedupeFingerprint: e.DedupeFingerprint,
+		StateHash: e.StateHash, CreatedAt: e.CreatedAt,
+	}
+}
+
+// --- channels ---
+
+type channelStore struct{ client *entclient.Client }
+
+func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (NotificationChannel, error) {
+	now := time.Now().UTC()
+	if in.ID != "" {
+		if _, err := s.client.NotificationChannel.Get(ctx, in.ID); err == nil {
+			entity, err := s.client.NotificationChannel.UpdateOneID(in.ID).
+				SetName(in.Name).
+				SetEnabled(in.Enabled).
+				SetTarget(in.Target).
+				SetSecretEnvelope(in.SecretEnvelope).
+				SetAllowPrivate(in.AllowPrivate).
+				SetUpdatedAt(now).
+				Save(ctx)
+			if err != nil {
+				return NotificationChannel{}, mapStoreError(err)
+			}
+			return channelFromEntity(entity), nil
+		}
+	}
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	entity, err := s.client.NotificationChannel.Create().
+		SetID(in.ID).
+		SetChannelType(in.ChannelType).
+		SetName(in.Name).
+		SetEnabled(in.Enabled).
+		SetTarget(in.Target).
+		SetSecretEnvelope(in.SecretEnvelope).
+		SetAllowPrivate(in.AllowPrivate).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return NotificationChannel{}, mapStoreError(err)
+	}
+	return channelFromEntity(entity), nil
+}
+
+func (s *channelStore) Get(ctx context.Context, id string) (NotificationChannel, error) {
+	entity, err := s.client.NotificationChannel.Get(ctx, id)
+	if err != nil {
+		return NotificationChannel{}, mapStoreError(err)
+	}
+	return channelFromEntity(entity), nil
+}
+
+func (s *channelStore) GetEnabledByType(ctx context.Context, channelType string) (NotificationChannel, error) {
+	entity, err := s.client.NotificationChannel.Query().
+		Where(notificationchannel.ChannelTypeEQ(channelType), notificationchannel.EnabledEQ(true)).
+		Only(ctx)
+	if err != nil {
+		return NotificationChannel{}, mapStoreError(err)
+	}
+	return channelFromEntity(entity), nil
+}
+
+func (s *channelStore) List(ctx context.Context) ([]NotificationChannel, error) {
+	rows, err := s.client.NotificationChannel.Query().All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	out := make([]NotificationChannel, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, channelFromEntity(row))
+	}
+	return out, nil
+}
+
+func (s *channelStore) DisableOthersOfType(ctx context.Context, channelType, keepID string) error {
+	_, err := s.client.NotificationChannel.Update().
+		Where(
+			notificationchannel.ChannelTypeEQ(channelType),
+			notificationchannel.IDNEQ(keepID),
+			notificationchannel.EnabledEQ(true),
+		).
+		SetEnabled(false).
+		SetUpdatedAt(time.Now().UTC()).
+		Save(ctx)
+	return mapStoreError(err)
+}
+
+func channelFromEntity(e *entclient.NotificationChannel) NotificationChannel {
+	return NotificationChannel{
+		ID: e.ID, ChannelType: e.ChannelType, Name: e.Name, Enabled: e.Enabled,
+		Target: e.Target, SecretEnvelope: e.SecretEnvelope, AllowPrivate: e.AllowPrivate,
+		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+	}
+}
+
+// --- outbox ---
+
+type outboxStore struct{ client *entclient.Client }
+
+func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (NotificationOutbox, error) {
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	now := time.Now().UTC()
+	if in.NextAttemptAt.IsZero() {
+		in.NextAttemptAt = now
+	}
+	if in.Status == "" {
+		in.Status = OutboxPending
+	}
+	if in.ParseMode == "" {
+		in.ParseMode = "HTML"
+	}
+	c := s.client.NotificationOutbox.Create().
+		SetID(in.ID).
+		SetChannelID(in.ChannelID).
+		SetAggregateKey(in.AggregateKey).
+		SetIdempotencyKey(in.IdempotencyKey).
+		SetStatus(in.Status).
+		SetAttemptCount(in.AttemptCount).
+		SetNextAttemptAt(in.NextAttemptAt.UTC()).
+		SetLastErrorCode(in.LastErrorCode).
+		SetTitle(in.Title).
+		SetBodyText(in.BodyText).
+		SetBodyJSON(in.BodyJSON).
+		SetParseMode(in.ParseMode).
+		SetCreatedAt(now).
+		SetUpdatedAt(now)
+	if in.EventID != nil {
+		c.SetEventID(*in.EventID)
+	}
+	entity, err := c.Save(ctx)
+	if err != nil {
+		return NotificationOutbox{}, mapStoreError(err)
+	}
+	return outboxFromEntity(entity), nil
+}
+
+func (s *outboxStore) ClaimDue(ctx context.Context, now time.Time, lockFor time.Duration, limit int) ([]NotificationOutbox, error) {
+	if limit < 1 {
+		limit = 10
+	}
+	now = now.UTC()
+	lockUntil := now.Add(lockFor)
+	rows, err := s.client.NotificationOutbox.Query().
+		Where(
+			notificationoutbox.StatusIn(OutboxPending, OutboxSending),
+			notificationoutbox.NextAttemptAtLTE(now),
+		).
+		Order(entclient.Asc(notificationoutbox.FieldNextAttemptAt)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	out := make([]NotificationOutbox, 0, len(rows))
+	for _, row := range rows {
+		if row.LockedUntil != nil && row.LockedUntil.After(now) {
+			continue
+		}
+		entity, err := s.client.NotificationOutbox.UpdateOneID(row.ID).
+			SetStatus(OutboxSending).
+			SetLockedUntil(lockUntil).
+			SetAttemptCount(row.AttemptCount + 1).
+			SetUpdatedAt(now).
+			Save(ctx)
+		if err != nil {
+			continue
+		}
+		out = append(out, outboxFromEntity(entity))
+	}
+	return out, nil
+}
+
+func (s *outboxStore) MarkSent(ctx context.Context, id string) error {
+	now := time.Now().UTC()
+	return mapStoreError(s.client.NotificationOutbox.UpdateOneID(id).
+		SetStatus(OutboxSent).
+		ClearLockedUntil().
+		SetUpdatedAt(now).
+		Exec(ctx))
+}
+
+func (s *outboxStore) MarkRetry(ctx context.Context, id string, next time.Time, errorCode string) error {
+	now := time.Now().UTC()
+	return mapStoreError(s.client.NotificationOutbox.UpdateOneID(id).
+		SetStatus(OutboxPending).
+		SetNextAttemptAt(next.UTC()).
+		SetLastErrorCode(errorCode).
+		ClearLockedUntil().
+		SetUpdatedAt(now).
+		Exec(ctx))
+}
+
+func (s *outboxStore) MarkDead(ctx context.Context, id, errorCode string) error {
+	now := time.Now().UTC()
+	return mapStoreError(s.client.NotificationOutbox.UpdateOneID(id).
+		SetStatus(OutboxDead).
+		SetLastErrorCode(errorCode).
+		ClearLockedUntil().
+		SetUpdatedAt(now).
+		Exec(ctx))
+}
+
+func (s *outboxStore) List(ctx context.Context, f ListFilter) ([]NotificationOutbox, PageResult, error) {
+	f = normalizePage(f)
+	q := s.client.NotificationOutbox.Query()
+	if f.Status != "" {
+		q = q.Where(notificationoutbox.StatusEQ(f.Status))
+	}
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	rows, err := q.Order(entclient.Desc(notificationoutbox.FieldCreatedAt)).
+		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	out := make([]NotificationOutbox, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, outboxFromEntity(row))
+	}
+	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+}
+
+func (s *outboxStore) CountByStatus(ctx context.Context, status string) (int, error) {
+	n, err := s.client.NotificationOutbox.Query().Where(notificationoutbox.StatusEQ(status)).Count(ctx)
+	return n, mapStoreError(err)
+}
+
+func (s *outboxStore) RetryDead(ctx context.Context, id string, next time.Time) error {
+	now := time.Now().UTC()
+	return mapStoreError(s.client.NotificationOutbox.UpdateOneID(id).
+		SetStatus(OutboxPending).
+		SetNextAttemptAt(next.UTC()).
+		SetLastErrorCode("").
+		ClearLockedUntil().
+		SetUpdatedAt(now).
+		Exec(ctx))
+}
+
+func outboxFromEntity(e *entclient.NotificationOutbox) NotificationOutbox {
+	return NotificationOutbox{
+		ID: e.ID, ChannelID: e.ChannelID, EventID: e.EventID, AggregateKey: e.AggregateKey,
+		IdempotencyKey: e.IdempotencyKey, Status: e.Status, AttemptCount: e.AttemptCount,
+		NextAttemptAt: e.NextAttemptAt, LockedUntil: e.LockedUntil, LastErrorCode: e.LastErrorCode,
+		Title: e.Title, BodyText: e.BodyText, BodyJSON: e.BodyJSON, ParseMode: e.ParseMode,
+		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+	}
+}
+
+// --- cursors ---
+
+type cursorStore struct{ client *entclient.Client }
+
+func (s *cursorStore) Get(ctx context.Context, repoID, resource string) (SyncCursor, error) {
+	entity, err := s.client.SyncCursor.Query().
+		Where(synccursor.RepositoryIDEQ(repoID), synccursor.ResourceEQ(resource)).
+		Only(ctx)
+	if err != nil {
+		return SyncCursor{}, mapStoreError(err)
+	}
+	return cursorFromEntity(entity), nil
+}
+
+func (s *cursorStore) Upsert(ctx context.Context, in SyncCursor) (SyncCursor, error) {
+	now := time.Now().UTC()
+	existing, err := s.Get(ctx, in.RepositoryID, in.Resource)
+	if err == nil {
+		entity, err := s.client.SyncCursor.UpdateOneID(existing.ID).
+			SetCursorValue(in.CursorValue).
+			SetEtag(in.ETag).
+			SetLastErrorCode(in.LastErrorCode).
+			SetUpdatedAt(now).
+			Save(ctx)
+		if err != nil {
+			return SyncCursor{}, mapStoreError(err)
+		}
+		if in.LastSuccessAt != nil {
+			entity, err = s.client.SyncCursor.UpdateOneID(existing.ID).SetLastSuccessAt(*in.LastSuccessAt).Save(ctx)
+			if err != nil {
+				return SyncCursor{}, mapStoreError(err)
+			}
+		}
+		return cursorFromEntity(entity), nil
+	}
+	if err != ErrNotFound {
+		return SyncCursor{}, err
+	}
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	c := s.client.SyncCursor.Create().
+		SetID(in.ID).
+		SetRepositoryID(in.RepositoryID).
+		SetResource(in.Resource).
+		SetCursorValue(in.CursorValue).
+		SetEtag(in.ETag).
+		SetLastErrorCode(in.LastErrorCode).
+		SetUpdatedAt(now)
+	if in.LastSuccessAt != nil {
+		c.SetLastSuccessAt(*in.LastSuccessAt)
+	}
+	entity, err := c.Save(ctx)
+	if err != nil {
+		return SyncCursor{}, mapStoreError(err)
+	}
+	return cursorFromEntity(entity), nil
+}
+
+func cursorFromEntity(e *entclient.SyncCursor) SyncCursor {
+	return SyncCursor{
+		ID: e.ID, RepositoryID: e.RepositoryID, Resource: e.Resource, CursorValue: e.CursorValue,
+		ETag: e.Etag, LastSuccessAt: e.LastSuccessAt, LastErrorCode: e.LastErrorCode, UpdatedAt: e.UpdatedAt,
+	}
+}
+
+// Dashboard 聚合统计。
+func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
+	var stats DashboardStats
+	var err error
+	if stats.OpenIssues, err = s.WorkItems().CountOpen(ctx); err != nil {
+		return stats, err
+	}
+	// open pulls counted via kind filter
+	openPR, err := s.client.WorkItem.Query().
+		Where(workitem.KindEQ(WorkItemKindPR), workitem.StateEQ("open")).Count(ctx)
+	if err != nil {
+		return stats, mapStoreError(err)
+	}
+	stats.OpenPulls = openPR
+	if stats.FailedActions, err = s.WorkflowRuns().CountFailed(ctx); err != nil {
+		return stats, err
+	}
+	if stats.OpenSecurity, err = s.SecurityAlerts().CountOpen(ctx); err != nil {
+		return stats, err
+	}
+	if stats.Events24h, err = s.Events().CountSince(ctx, time.Now().UTC().Add(-24*time.Hour)); err != nil {
+		return stats, err
+	}
+	if stats.OutboxDead, err = s.Outbox().CountByStatus(ctx, OutboxDead); err != nil {
+		return stats, err
+	}
+	active, err := s.client.Repository.Query().Where(repository.SyncStatusEQ(SyncStatusActive)).Count(ctx)
+	if err != nil {
+		return stats, mapStoreError(err)
+	}
+	baseline, err := s.client.Repository.Query().Where(repository.SyncStatusEQ(SyncStatusBaseline)).Count(ctx)
+	if err != nil {
+		return stats, mapStoreError(err)
+	}
+	channels, err := s.client.NotificationChannel.Query().Where(notificationchannel.EnabledEQ(true)).Count(ctx)
+	if err != nil {
+		return stats, mapStoreError(err)
+	}
+	stats.ReposActive = active
+	stats.ReposBaseline = baseline
+	stats.ChannelsEnabled = channels
+	return stats, nil
+}

@@ -46,7 +46,14 @@ func TestOpen拒绝数据库Revision超过程序目录(t *testing.T) {
 	if err != nil {
 		t.Fatalf("打开测试数据库失败: %v", err)
 	}
-	if _, err := db.ExecContext(t.Context(), `UPDATE atlas_schema_revisions SET version = '99999999999999'`); err != nil {
+	// 插入一条高于程序目录的 revision，模拟「库比应用新」的降级场景。
+	if _, err := db.ExecContext(t.Context(), `
+		INSERT INTO atlas_schema_revisions (
+			version, description, type, applied, total, executed_at, execution_time, hash
+		) VALUES (
+			'99999999999999', 'future', 2, 1, 1, datetime('now'), 0, 'test'
+		)
+	`); err != nil {
 		_ = db.Close()
 		t.Fatalf("写入未来 revision 失败: %v", err)
 	}

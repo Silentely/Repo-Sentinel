@@ -4,7 +4,18 @@ package ent
 
 import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/adminaccount"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/event"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/githubinstallation"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationchannel"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationoutbox"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/scheduledjob"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/schema"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workitem"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -17,4 +28,246 @@ func init() {
 	adminaccountDescSingletonSlot := adminaccountFields[7].Descriptor()
 	// adminaccount.DefaultSingletonSlot holds the default value on creation for the singleton_slot field.
 	adminaccount.DefaultSingletonSlot = adminaccountDescSingletonSlot.Default.(int)
+	eventFields := schema.Event{}.Fields()
+	_ = eventFields
+	// eventDescTitle is the schema descriptor for title field.
+	eventDescTitle := eventFields[6].Descriptor()
+	// event.DefaultTitle holds the default value on creation for the title field.
+	event.DefaultTitle = eventDescTitle.Default.(string)
+	// eventDescSeverity is the schema descriptor for severity field.
+	eventDescSeverity := eventFields[7].Descriptor()
+	// event.DefaultSeverity holds the default value on creation for the severity field.
+	event.DefaultSeverity = eventDescSeverity.Default.(string)
+	// eventDescActor is the schema descriptor for actor field.
+	eventDescActor := eventFields[8].Descriptor()
+	// event.DefaultActor holds the default value on creation for the actor field.
+	event.DefaultActor = eventDescActor.Default.(string)
+	// eventDescWorkflowConclusion is the schema descriptor for workflow_conclusion field.
+	eventDescWorkflowConclusion := eventFields[10].Descriptor()
+	// event.DefaultWorkflowConclusion holds the default value on creation for the workflow_conclusion field.
+	event.DefaultWorkflowConclusion = eventDescWorkflowConclusion.Default.(string)
+	// eventDescHTMLURL is the schema descriptor for html_url field.
+	eventDescHTMLURL := eventFields[13].Descriptor()
+	// event.DefaultHTMLURL holds the default value on creation for the html_url field.
+	event.DefaultHTMLURL = eventDescHTMLURL.Default.(string)
+	// eventDescSuppressNotification is the schema descriptor for suppress_notification field.
+	eventDescSuppressNotification := eventFields[15].Descriptor()
+	// event.DefaultSuppressNotification holds the default value on creation for the suppress_notification field.
+	event.DefaultSuppressNotification = eventDescSuppressNotification.Default.(bool)
+	// eventDescStateHash is the schema descriptor for state_hash field.
+	eventDescStateHash := eventFields[17].Descriptor()
+	// event.DefaultStateHash holds the default value on creation for the state_hash field.
+	event.DefaultStateHash = eventDescStateHash.Default.(string)
+	githubinstallationFields := schema.GitHubInstallation{}.Fields()
+	_ = githubinstallationFields
+	// githubinstallationDescTargetType is the schema descriptor for target_type field.
+	githubinstallationDescTargetType := githubinstallationFields[4].Descriptor()
+	// githubinstallation.DefaultTargetType holds the default value on creation for the target_type field.
+	githubinstallation.DefaultTargetType = githubinstallationDescTargetType.Default.(string)
+	// githubinstallationDescSuspended is the schema descriptor for suspended field.
+	githubinstallationDescSuspended := githubinstallationFields[6].Descriptor()
+	// githubinstallation.DefaultSuspended holds the default value on creation for the suspended field.
+	githubinstallation.DefaultSuspended = githubinstallationDescSuspended.Default.(string)
+	notificationchannelFields := schema.NotificationChannel{}.Fields()
+	_ = notificationchannelFields
+	// notificationchannelDescName is the schema descriptor for name field.
+	notificationchannelDescName := notificationchannelFields[2].Descriptor()
+	// notificationchannel.DefaultName holds the default value on creation for the name field.
+	notificationchannel.DefaultName = notificationchannelDescName.Default.(string)
+	// notificationchannelDescEnabled is the schema descriptor for enabled field.
+	notificationchannelDescEnabled := notificationchannelFields[3].Descriptor()
+	// notificationchannel.DefaultEnabled holds the default value on creation for the enabled field.
+	notificationchannel.DefaultEnabled = notificationchannelDescEnabled.Default.(bool)
+	// notificationchannelDescTarget is the schema descriptor for target field.
+	notificationchannelDescTarget := notificationchannelFields[4].Descriptor()
+	// notificationchannel.DefaultTarget holds the default value on creation for the target field.
+	notificationchannel.DefaultTarget = notificationchannelDescTarget.Default.(string)
+	// notificationchannelDescSecretEnvelope is the schema descriptor for secret_envelope field.
+	notificationchannelDescSecretEnvelope := notificationchannelFields[5].Descriptor()
+	// notificationchannel.DefaultSecretEnvelope holds the default value on creation for the secret_envelope field.
+	notificationchannel.DefaultSecretEnvelope = notificationchannelDescSecretEnvelope.Default.(string)
+	// notificationchannelDescAllowPrivate is the schema descriptor for allow_private field.
+	notificationchannelDescAllowPrivate := notificationchannelFields[6].Descriptor()
+	// notificationchannel.DefaultAllowPrivate holds the default value on creation for the allow_private field.
+	notificationchannel.DefaultAllowPrivate = notificationchannelDescAllowPrivate.Default.(bool)
+	notificationoutboxFields := schema.NotificationOutbox{}.Fields()
+	_ = notificationoutboxFields
+	// notificationoutboxDescAggregateKey is the schema descriptor for aggregate_key field.
+	notificationoutboxDescAggregateKey := notificationoutboxFields[3].Descriptor()
+	// notificationoutbox.DefaultAggregateKey holds the default value on creation for the aggregate_key field.
+	notificationoutbox.DefaultAggregateKey = notificationoutboxDescAggregateKey.Default.(string)
+	// notificationoutboxDescStatus is the schema descriptor for status field.
+	notificationoutboxDescStatus := notificationoutboxFields[5].Descriptor()
+	// notificationoutbox.DefaultStatus holds the default value on creation for the status field.
+	notificationoutbox.DefaultStatus = notificationoutboxDescStatus.Default.(string)
+	// notificationoutboxDescAttemptCount is the schema descriptor for attempt_count field.
+	notificationoutboxDescAttemptCount := notificationoutboxFields[6].Descriptor()
+	// notificationoutbox.DefaultAttemptCount holds the default value on creation for the attempt_count field.
+	notificationoutbox.DefaultAttemptCount = notificationoutboxDescAttemptCount.Default.(int)
+	// notificationoutboxDescLastErrorCode is the schema descriptor for last_error_code field.
+	notificationoutboxDescLastErrorCode := notificationoutboxFields[9].Descriptor()
+	// notificationoutbox.DefaultLastErrorCode holds the default value on creation for the last_error_code field.
+	notificationoutbox.DefaultLastErrorCode = notificationoutboxDescLastErrorCode.Default.(string)
+	// notificationoutboxDescTitle is the schema descriptor for title field.
+	notificationoutboxDescTitle := notificationoutboxFields[10].Descriptor()
+	// notificationoutbox.DefaultTitle holds the default value on creation for the title field.
+	notificationoutbox.DefaultTitle = notificationoutboxDescTitle.Default.(string)
+	// notificationoutboxDescParseMode is the schema descriptor for parse_mode field.
+	notificationoutboxDescParseMode := notificationoutboxFields[13].Descriptor()
+	// notificationoutbox.DefaultParseMode holds the default value on creation for the parse_mode field.
+	notificationoutbox.DefaultParseMode = notificationoutboxDescParseMode.Default.(string)
+	repositoryFields := schema.Repository{}.Fields()
+	_ = repositoryFields
+	// repositoryDescSyncStatus is the schema descriptor for sync_status field.
+	repositoryDescSyncStatus := repositoryFields[2].Descriptor()
+	// repository.DefaultSyncStatus holds the default value on creation for the sync_status field.
+	repository.DefaultSyncStatus = repositoryDescSyncStatus.Default.(string)
+	// repositoryDescIsArchived is the schema descriptor for is_archived field.
+	repositoryDescIsArchived := repositoryFields[8].Descriptor()
+	// repository.DefaultIsArchived holds the default value on creation for the is_archived field.
+	repository.DefaultIsArchived = repositoryDescIsArchived.Default.(bool)
+	// repositoryDescIsPrivate is the schema descriptor for is_private field.
+	repositoryDescIsPrivate := repositoryFields[9].Descriptor()
+	// repository.DefaultIsPrivate holds the default value on creation for the is_private field.
+	repository.DefaultIsPrivate = repositoryDescIsPrivate.Default.(bool)
+	// repositoryDescHTMLURL is the schema descriptor for html_url field.
+	repositoryDescHTMLURL := repositoryFields[10].Descriptor()
+	// repository.DefaultHTMLURL holds the default value on creation for the html_url field.
+	repository.DefaultHTMLURL = repositoryDescHTMLURL.Default.(string)
+	// repositoryDescDefaultBranch is the schema descriptor for default_branch field.
+	repositoryDescDefaultBranch := repositoryFields[11].Descriptor()
+	// repository.DefaultDefaultBranch holds the default value on creation for the default_branch field.
+	repository.DefaultDefaultBranch = repositoryDescDefaultBranch.Default.(string)
+	// repositoryDescLastSyncErrorCode is the schema descriptor for last_sync_error_code field.
+	repositoryDescLastSyncErrorCode := repositoryFields[15].Descriptor()
+	// repository.DefaultLastSyncErrorCode holds the default value on creation for the last_sync_error_code field.
+	repository.DefaultLastSyncErrorCode = repositoryDescLastSyncErrorCode.Default.(string)
+	scheduledjobFields := schema.ScheduledJob{}.Fields()
+	_ = scheduledjobFields
+	// scheduledjobDescPayloadJSON is the schema descriptor for payload_json field.
+	scheduledjobDescPayloadJSON := scheduledjobFields[2].Descriptor()
+	// scheduledjob.DefaultPayloadJSON holds the default value on creation for the payload_json field.
+	scheduledjob.DefaultPayloadJSON = scheduledjobDescPayloadJSON.Default.(string)
+	// scheduledjobDescStatus is the schema descriptor for status field.
+	scheduledjobDescStatus := scheduledjobFields[3].Descriptor()
+	// scheduledjob.DefaultStatus holds the default value on creation for the status field.
+	scheduledjob.DefaultStatus = scheduledjobDescStatus.Default.(string)
+	// scheduledjobDescAttemptCount is the schema descriptor for attempt_count field.
+	scheduledjobDescAttemptCount := scheduledjobFields[4].Descriptor()
+	// scheduledjob.DefaultAttemptCount holds the default value on creation for the attempt_count field.
+	scheduledjob.DefaultAttemptCount = scheduledjobDescAttemptCount.Default.(int)
+	// scheduledjobDescLastErrorCode is the schema descriptor for last_error_code field.
+	scheduledjobDescLastErrorCode := scheduledjobFields[7].Descriptor()
+	// scheduledjob.DefaultLastErrorCode holds the default value on creation for the last_error_code field.
+	scheduledjob.DefaultLastErrorCode = scheduledjobDescLastErrorCode.Default.(string)
+	securityalertFields := schema.SecurityAlert{}.Fields()
+	_ = securityalertFields
+	// securityalertDescSeverity is the schema descriptor for severity field.
+	securityalertDescSeverity := securityalertFields[5].Descriptor()
+	// securityalert.DefaultSeverity holds the default value on creation for the severity field.
+	securityalert.DefaultSeverity = securityalertDescSeverity.Default.(string)
+	// securityalertDescRuleOrDependency is the schema descriptor for rule_or_dependency field.
+	securityalertDescRuleOrDependency := securityalertFields[6].Descriptor()
+	// securityalert.DefaultRuleOrDependency holds the default value on creation for the rule_or_dependency field.
+	securityalert.DefaultRuleOrDependency = securityalertDescRuleOrDependency.Default.(string)
+	// securityalertDescDismissedReason is the schema descriptor for dismissed_reason field.
+	securityalertDescDismissedReason := securityalertFields[7].Descriptor()
+	// securityalert.DefaultDismissedReason holds the default value on creation for the dismissed_reason field.
+	securityalert.DefaultDismissedReason = securityalertDescDismissedReason.Default.(string)
+	// securityalertDescHTMLURL is the schema descriptor for html_url field.
+	securityalertDescHTMLURL := securityalertFields[8].Descriptor()
+	// securityalert.DefaultHTMLURL holds the default value on creation for the html_url field.
+	securityalert.DefaultHTMLURL = securityalertDescHTMLURL.Default.(string)
+	synccursorFields := schema.SyncCursor{}.Fields()
+	_ = synccursorFields
+	// synccursorDescCursorValue is the schema descriptor for cursor_value field.
+	synccursorDescCursorValue := synccursorFields[3].Descriptor()
+	// synccursor.DefaultCursorValue holds the default value on creation for the cursor_value field.
+	synccursor.DefaultCursorValue = synccursorDescCursorValue.Default.(string)
+	// synccursorDescEtag is the schema descriptor for etag field.
+	synccursorDescEtag := synccursorFields[4].Descriptor()
+	// synccursor.DefaultEtag holds the default value on creation for the etag field.
+	synccursor.DefaultEtag = synccursorDescEtag.Default.(string)
+	// synccursorDescLastErrorCode is the schema descriptor for last_error_code field.
+	synccursorDescLastErrorCode := synccursorFields[6].Descriptor()
+	// synccursor.DefaultLastErrorCode holds the default value on creation for the last_error_code field.
+	synccursor.DefaultLastErrorCode = synccursorDescLastErrorCode.Default.(string)
+	webhookdeliveryFields := schema.WebhookDelivery{}.Fields()
+	_ = webhookdeliveryFields
+	// webhookdeliveryDescAction is the schema descriptor for action field.
+	webhookdeliveryDescAction := webhookdeliveryFields[3].Descriptor()
+	// webhookdelivery.DefaultAction holds the default value on creation for the action field.
+	webhookdelivery.DefaultAction = webhookdeliveryDescAction.Default.(string)
+	// webhookdeliveryDescRepositoryFullName is the schema descriptor for repository_full_name field.
+	webhookdeliveryDescRepositoryFullName := webhookdeliveryFields[4].Descriptor()
+	// webhookdelivery.DefaultRepositoryFullName holds the default value on creation for the repository_full_name field.
+	webhookdelivery.DefaultRepositoryFullName = webhookdeliveryDescRepositoryFullName.Default.(string)
+	// webhookdeliveryDescStatus is the schema descriptor for status field.
+	webhookdeliveryDescStatus := webhookdeliveryFields[5].Descriptor()
+	// webhookdelivery.DefaultStatus holds the default value on creation for the status field.
+	webhookdelivery.DefaultStatus = webhookdeliveryDescStatus.Default.(string)
+	// webhookdeliveryDescErrorCode is the schema descriptor for error_code field.
+	webhookdeliveryDescErrorCode := webhookdeliveryFields[6].Descriptor()
+	// webhookdelivery.DefaultErrorCode holds the default value on creation for the error_code field.
+	webhookdelivery.DefaultErrorCode = webhookdeliveryDescErrorCode.Default.(string)
+	workitemFields := schema.WorkItem{}.Fields()
+	_ = workitemFields
+	// workitemDescAuthor is the schema descriptor for author field.
+	workitemDescAuthor := workitemFields[6].Descriptor()
+	// workitem.DefaultAuthor holds the default value on creation for the author field.
+	workitem.DefaultAuthor = workitemDescAuthor.Default.(string)
+	// workitemDescMilestone is the schema descriptor for milestone field.
+	workitemDescMilestone := workitemFields[9].Descriptor()
+	// workitem.DefaultMilestone holds the default value on creation for the milestone field.
+	workitem.DefaultMilestone = workitemDescMilestone.Default.(string)
+	// workitemDescDraft is the schema descriptor for draft field.
+	workitemDescDraft := workitemFields[10].Descriptor()
+	// workitem.DefaultDraft holds the default value on creation for the draft field.
+	workitem.DefaultDraft = workitemDescDraft.Default.(bool)
+	// workitemDescMerged is the schema descriptor for merged field.
+	workitemDescMerged := workitemFields[11].Descriptor()
+	// workitem.DefaultMerged holds the default value on creation for the merged field.
+	workitem.DefaultMerged = workitemDescMerged.Default.(bool)
+	// workitemDescHTMLURL is the schema descriptor for html_url field.
+	workitemDescHTMLURL := workitemFields[12].Descriptor()
+	// workitem.DefaultHTMLURL holds the default value on creation for the html_url field.
+	workitem.DefaultHTMLURL = workitemDescHTMLURL.Default.(string)
+	workflowrunFields := schema.WorkflowRun{}.Fields()
+	_ = workflowrunFields
+	// workflowrunDescWorkflowName is the schema descriptor for workflow_name field.
+	workflowrunDescWorkflowName := workflowrunFields[4].Descriptor()
+	// workflowrun.DefaultWorkflowName holds the default value on creation for the workflow_name field.
+	workflowrun.DefaultWorkflowName = workflowrunDescWorkflowName.Default.(string)
+	// workflowrunDescRunNumber is the schema descriptor for run_number field.
+	workflowrunDescRunNumber := workflowrunFields[5].Descriptor()
+	// workflowrun.DefaultRunNumber holds the default value on creation for the run_number field.
+	workflowrun.DefaultRunNumber = workflowrunDescRunNumber.Default.(int)
+	// workflowrunDescEvent is the schema descriptor for event field.
+	workflowrunDescEvent := workflowrunFields[6].Descriptor()
+	// workflowrun.DefaultEvent holds the default value on creation for the event field.
+	workflowrun.DefaultEvent = workflowrunDescEvent.Default.(string)
+	// workflowrunDescHeadBranch is the schema descriptor for head_branch field.
+	workflowrunDescHeadBranch := workflowrunFields[7].Descriptor()
+	// workflowrun.DefaultHeadBranch holds the default value on creation for the head_branch field.
+	workflowrun.DefaultHeadBranch = workflowrunDescHeadBranch.Default.(string)
+	// workflowrunDescHeadSha is the schema descriptor for head_sha field.
+	workflowrunDescHeadSha := workflowrunFields[8].Descriptor()
+	// workflowrun.DefaultHeadSha holds the default value on creation for the head_sha field.
+	workflowrun.DefaultHeadSha = workflowrunDescHeadSha.Default.(string)
+	// workflowrunDescStatus is the schema descriptor for status field.
+	workflowrunDescStatus := workflowrunFields[9].Descriptor()
+	// workflowrun.DefaultStatus holds the default value on creation for the status field.
+	workflowrun.DefaultStatus = workflowrunDescStatus.Default.(string)
+	// workflowrunDescActor is the schema descriptor for actor field.
+	workflowrunDescActor := workflowrunFields[12].Descriptor()
+	// workflowrun.DefaultActor holds the default value on creation for the actor field.
+	workflowrun.DefaultActor = workflowrunDescActor.Default.(string)
+	// workflowrunDescRunAttempt is the schema descriptor for run_attempt field.
+	workflowrunDescRunAttempt := workflowrunFields[13].Descriptor()
+	// workflowrun.DefaultRunAttempt holds the default value on creation for the run_attempt field.
+	workflowrun.DefaultRunAttempt = workflowrunDescRunAttempt.Default.(int)
+	// workflowrunDescHTMLURL is the schema descriptor for html_url field.
+	workflowrunDescHTMLURL := workflowrunFields[14].Descriptor()
+	// workflowrun.DefaultHTMLURL holds the default value on creation for the html_url field.
+	workflowrun.DefaultHTMLURL = workflowrunDescHTMLURL.Default.(string)
 }

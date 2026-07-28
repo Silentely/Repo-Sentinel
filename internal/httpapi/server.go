@@ -11,6 +11,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/go-chi/chi/v5"
 )
@@ -40,6 +41,7 @@ func (f ReadyCheckFunc) Ready(ctx context.Context) error {
 // Dependencies 是 HTTP 管理面的显式最小依赖集合。
 type Dependencies struct {
 	Config         config.Config
+	Store          store.Store
 	AdminStore     store.AdminStore
 	AdminService   *auth.AdminService
 	SessionService *auth.SessionService
@@ -50,6 +52,9 @@ type Dependencies struct {
 	Logger         *slog.Logger
 	SchemaVersion  string
 	Frontend       fs.FS
+	KeyRing        *cryptox.KeyRing
+	// Background 用于 Webhook 异步规范化；关闭时由 App 取消。
+	Background context.Context
 }
 
 type server struct {
@@ -85,6 +90,7 @@ func New(dependencies Dependencies) http.Handler {
 
 	router.Get("/health/live", s.handleLive)
 	router.Get("/health/ready", s.handleReady)
+	router.Post("/webhooks/github", s.handleGitHubWebhook)
 	router.Route("/api/v1", func(api chi.Router) {
 		api.Get("/setup/status", s.handleSetupStatus)
 		api.Post("/setup", s.handleSetup)
@@ -94,10 +100,22 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Use(s.authenticationMiddleware)
 			protected.Get("/auth/session", s.handleSession)
 			protected.Get("/system/version", s.handleVersion)
+			protected.Get("/dashboard", s.handleDashboard)
+			protected.Get("/repositories", s.handleListRepositories)
+			protected.Post("/repositories/external", s.handleAddExternalRepository)
+			protected.Get("/work-items", s.handleListWorkItems)
+			protected.Get("/workflow-runs", s.handleListWorkflowRuns)
+			protected.Get("/security-alerts", s.handleListSecurityAlerts)
+			protected.Get("/events", s.handleListEvents)
+			protected.Get("/notifications/outbox", s.handleListOutbox)
+			protected.Get("/notifications/channels", s.handleListChannels)
 			protected.Group(func(mutating chi.Router) {
 				mutating.Use(s.csrfMiddleware)
 				mutating.Post("/auth/logout", s.handleLogout)
 				mutating.Post("/auth/password", s.handleChangePassword)
+				mutating.Put("/notifications/channels/{type}", s.handleUpsertChannel)
+				mutating.Post("/notifications/outbox/{id}/retry", s.handleRetryOutbox)
+				mutating.Post("/repositories/{id}/activate", s.handleActivateRepository)
 			})
 		})
 	})

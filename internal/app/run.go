@@ -9,10 +9,11 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
+	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
-// Run 启动 HTTP 与后台 Session 清理，并在取消时按 30 秒预算优雅关闭。
+// Run 启动 HTTP、通知 Worker 与 Session 清理，并在取消时按 30 秒预算优雅关闭。
 func (a *App) Run(ctx context.Context) error {
 	if a == nil || a.httpServer == nil {
 		return newPublicError("internal_error", "应用尚未完成装配。", nil)
@@ -20,11 +21,26 @@ func (a *App) Run(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	workerCtx, cancelWorkers := context.WithCancel(context.Background())
+	workerCtx := a.workerCtx
+	if workerCtx == nil {
+		var cancel context.CancelFunc
+		workerCtx, cancel = context.WithCancel(context.Background())
+		a.workerCancel = cancel
+		a.workerCtx = workerCtx
+	}
 	workerDone := make(chan struct{})
 	go func() {
 		defer close(workerDone)
 		a.runSessionCleanup(workerCtx)
+	}()
+	notifyDone := make(chan struct{})
+	go func() {
+		defer close(notifyDone)
+		(&notify.Worker{
+			Store:   a.data,
+			KeyRing: a.keyRing,
+			Logger:  a.logger,
+		}).Run(workerCtx, 5*time.Second)
 	}()
 
 	serverResult := make(chan error, 1)
@@ -44,11 +60,14 @@ func (a *App) Run(ctx context.Context) error {
 	if a.readiness != nil {
 		a.readiness.Set(false)
 	}
-	cancelWorkers()
+	if a.workerCancel != nil {
+		a.workerCancel()
+	}
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
 	shutdownErr := a.httpServer.Shutdown(shutdownCtx)
 	cancelShutdown()
 	<-workerDone
+	<-notifyDone
 	closeErr := a.Close()
 
 	if runErr != nil {

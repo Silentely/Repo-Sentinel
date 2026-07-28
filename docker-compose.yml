@@ -1,0 +1,55 @@
+# RepoSentinel SQLite 单容器生产样例
+# 使用前请设置 .env 中的密钥与管理员凭据。
+
+services:
+  reposentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "0.1.0"
+        BUILD_CHANNEL: "release"
+    image: reposentinel:local
+    container_name: reposentinel
+    restart: unless-stopped
+    init: true
+    ports:
+      - "8080:8080"
+    environment:
+      REPOSENTINEL_HTTP_ADDR: "0.0.0.0:8080"
+      REPOSENTINEL_PUBLIC_BASE_URL: "${REPOSENTINEL_PUBLIC_BASE_URL:-http://127.0.0.1:8080}"
+      REPOSENTINEL_DATABASE_DRIVER: "sqlite"
+      REPOSENTINEL_DATABASE_URL: "file:/data/reposentinel.db"
+      REPOSENTINEL_ENCRYPTION_KEY: "${REPOSENTINEL_ENCRYPTION_KEY:?set encryption key}"
+      REPOSENTINEL_ADMIN_USERNAME: "${REPOSENTINEL_ADMIN_USERNAME:-}"
+      REPOSENTINEL_ADMIN_PASSWORD: "${REPOSENTINEL_ADMIN_PASSWORD:-}"
+      REPOSENTINEL_SETUP_ALLOW_REMOTE: "${REPOSENTINEL_SETUP_ALLOW_REMOTE:-false}"
+      REPOSENTINEL_GITHUB_APP_ID: "${REPOSENTINEL_GITHUB_APP_ID:-0}"
+      REPOSENTINEL_GITHUB_CLIENT_ID: "${REPOSENTINEL_GITHUB_CLIENT_ID:-}"
+      REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH: "${REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH:-}"
+      REPOSENTINEL_GITHUB_WEBHOOK_SECRET: "${REPOSENTINEL_GITHUB_WEBHOOK_SECRET:-}"
+      REPOSENTINEL_TELEGRAM_TOKEN: "${REPOSENTINEL_TELEGRAM_TOKEN:-}"
+      REPOSENTINEL_TELEGRAM_CHAT_ID: "${REPOSENTINEL_TELEGRAM_CHAT_ID:-}"
+      REPOSENTINEL_HTTP_WEBHOOK_URL: "${REPOSENTINEL_HTTP_WEBHOOK_URL:-}"
+      REPOSENTINEL_HTTP_WEBHOOK_SECRET: "${REPOSENTINEL_HTTP_WEBHOOK_SECRET:-}"
+      LOG_FORMAT: "${LOG_FORMAT:-json}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+    volumes:
+      - reposentinel-data:/data
+      # 可选：挂载 GitHub App 私钥
+      # - ./secrets/github-app.pem:/secrets/github-app.pem:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  reposentinel-data:
