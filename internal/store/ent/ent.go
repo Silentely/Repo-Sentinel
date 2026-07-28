@@ -15,7 +15,18 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/adminaccount"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/adminsession"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/auditlog"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/event"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/githubinstallation"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationchannel"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationoutbox"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/scheduledjob"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workitem"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -76,10 +87,21 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			adminaccount.Table:  adminaccount.ValidColumn,
-			adminsession.Table:  adminsession.ValidColumn,
-			auditlog.Table:      auditlog.ValidColumn,
-			systemsetting.Table: systemsetting.ValidColumn,
+			adminaccount.Table:        adminaccount.ValidColumn,
+			adminsession.Table:        adminsession.ValidColumn,
+			auditlog.Table:            auditlog.ValidColumn,
+			event.Table:               event.ValidColumn,
+			githubinstallation.Table:  githubinstallation.ValidColumn,
+			notificationchannel.Table: notificationchannel.ValidColumn,
+			notificationoutbox.Table:  notificationoutbox.ValidColumn,
+			repository.Table:          repository.ValidColumn,
+			scheduledjob.Table:        scheduledjob.ValidColumn,
+			securityalert.Table:       securityalert.ValidColumn,
+			synccursor.Table:          synccursor.ValidColumn,
+			systemsetting.Table:       systemsetting.ValidColumn,
+			webhookdelivery.Table:     webhookdelivery.ValidColumn,
+			workitem.Table:            workitem.ValidColumn,
+			workflowrun.Table:         workflowrun.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

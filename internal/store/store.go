@@ -51,12 +51,23 @@ type AuditLog struct {
 	CreatedAt    time.Time
 }
 
-// Store 汇总当前阶段真正需要的四类持久化能力。
+// Store 汇总持久化能力。
 type Store interface {
 	Admins() AdminStore
 	Sessions() SessionStore
 	Settings() SettingsStore
 	Audits() AuditStore
+	Installations() InstallationStore
+	Repositories() RepositoryStore
+	WebhookDeliveries() WebhookDeliveryStore
+	WorkItems() WorkItemStore
+	WorkflowRuns() WorkflowRunStore
+	SecurityAlerts() SecurityAlertStore
+	Events() EventStore
+	Channels() ChannelStore
+	Outbox() OutboxStore
+	Cursors() CursorStore
+	Dashboard(context.Context) (DashboardStats, error)
 	WithTx(context.Context, func(Store) error) error
 	Close() error
 }

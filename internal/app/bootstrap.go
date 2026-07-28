@@ -101,8 +101,10 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	}
 	sessionService := auth.NewSessionService(data, nil, nil, cfg.Admin.SessionTTL)
 	readiness := &readinessState{}
+	workerCtx, workerCancel := context.WithCancel(context.Background())
 	handler := httpapi.New(httpapi.Dependencies{
 		Config:         cfg,
+		Store:          data,
 		AdminStore:     data.Admins(),
 		AdminService:   adminService,
 		SessionService: sessionService,
@@ -113,11 +115,19 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		Logger:         logger,
 		SchemaVersion:  SupportedSchemaVersion,
 		Frontend:       frontend,
+		KeyRing:        keyRing,
+		Background:     workerCtx,
 	})
+	if err := bootstrapNotifyChannels(ctx, data, keyRing, cfg); err != nil {
+		workerCancel()
+		return nil, err
+	}
 	built := &App{
 		config:          cfg,
 		data:            data,
 		keyRing:         keyRing,
+		workerCancel:    workerCancel,
+		workerCtx:       workerCtx,
 		adminService:    adminService,
 		sessionService:  sessionService,
 		httpServer:      dependencies.newHTTPServer(cfg.HTTP.Addr, handler),
@@ -255,4 +265,49 @@ func mapStoreOpenError(err error) error {
 		return newPublicError("migration_failed", "数据库迁移失败。", err)
 	}
 	return newPublicError("database_unavailable", "无法打开数据库。", err)
+}
+
+// bootstrapNotifyChannels 将环境中的 Telegram/HTTP 配置物化为渠道行（每类最多启用 1 个）。
+func bootstrapNotifyChannels(ctx context.Context, data store.Store, keyRing *cryptox.KeyRing, cfg config.Config) error {
+	if keyRing == nil {
+		return nil
+	}
+	const aad = "reposentinel:notify-secret:v1"
+	if tok := cfg.Notify.Telegram.Token.Reveal(); tok != "" && cfg.Notify.Telegram.ChatID != "" {
+		if _, err := data.Channels().GetEnabledByType(ctx, store.ChannelTelegram); errors.Is(err, store.ErrNotFound) {
+			env, err := keyRing.Encrypt(ctx, []byte(tok), []byte(aad))
+			if err != nil {
+				return newPublicError("encryption_failed", "无法加密 Telegram Token。", err)
+			}
+			ch, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+				ChannelType: store.ChannelTelegram, Name: "Telegram", Enabled: true,
+				Target: cfg.Notify.Telegram.ChatID, SecretEnvelope: env,
+			})
+			if err != nil {
+				return newPublicError("database_unavailable", "无法初始化 Telegram 渠道。", err)
+			}
+			_ = data.Channels().DisableOthersOfType(ctx, store.ChannelTelegram, ch.ID)
+		}
+	}
+	if url := strings.TrimSpace(cfg.Notify.HTTPWebhook.URL); url != "" {
+		if _, err := data.Channels().GetEnabledByType(ctx, store.ChannelHTTPWebhook); errors.Is(err, store.ErrNotFound) {
+			secretEnv := ""
+			if sec := cfg.Notify.HTTPWebhook.Secret.Reveal(); sec != "" {
+				env, err := keyRing.Encrypt(ctx, []byte(sec), []byte(aad))
+				if err != nil {
+					return newPublicError("encryption_failed", "无法加密 HTTP Webhook Secret。", err)
+				}
+				secretEnv = env
+			}
+			ch, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+				ChannelType: store.ChannelHTTPWebhook, Name: "HTTP Webhook", Enabled: true,
+				Target: url, SecretEnvelope: secretEnv, AllowPrivate: cfg.Notify.HTTPWebhook.AllowPrivate,
+			})
+			if err != nil {
+				return newPublicError("database_unavailable", "无法初始化 HTTP Webhook 渠道。", err)
+			}
+			_ = data.Channels().DisableOthersOfType(ctx, store.ChannelHTTPWebhook, ch.ID)
+		}
+	}
+	return nil
 }

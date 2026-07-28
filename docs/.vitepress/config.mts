@@ -98,6 +98,7 @@ export default defineConfig({
       {
         text: "部署",
         items: [
+          { text: "Docker 部署", link: "/deploy/docker" },
           { text: "从源码运行", link: "/deploy/source" },
           { text: "反向代理", link: "/deploy/reverse-proxy" },
         ],
@@ -134,6 +135,7 @@ export default defineConfig({
       {
         text: "部署",
         items: [
+          { text: "Docker 部署", link: "/deploy/docker" },
           { text: "从源码运行", link: "/deploy/source" },
           { text: "反向代理", link: "/deploy/reverse-proxy" },
         ],

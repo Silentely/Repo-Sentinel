@@ -676,3 +676,60 @@ button:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+
+.event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.event-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border-subtle, #e7e0d8);
+  border-radius: 12px;
+  background: var(--bg-muted, #f7f3ee);
+}
+
+.event-kind {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, #c45c26 16%, transparent);
+}
+
+.muted {
+  color: var(--text-muted, #7a6f64);
+  font-size: 0.875rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+}
+
+.field input {
+  border: 1px solid var(--border-subtle, #e7e0d8);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  background: var(--bg-canvas, #fbf8f4);
+  color: inherit;
+}
+
+.success-banner {
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: color-mix(in oklab, #2f6f4e 14%, transparent);
+  border: 1px solid color-mix(in oklab, #2f6f4e 35%, transparent);
+}
+
+.onboarding-list .quiet-button {
+  margin-left: auto;
+}

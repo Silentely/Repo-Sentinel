@@ -18,8 +18,30 @@ type Tx struct {
 	AdminSession *AdminSessionClient
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
+	// Event is the client for interacting with the Event builders.
+	Event *EventClient
+	// GitHubInstallation is the client for interacting with the GitHubInstallation builders.
+	GitHubInstallation *GitHubInstallationClient
+	// NotificationChannel is the client for interacting with the NotificationChannel builders.
+	NotificationChannel *NotificationChannelClient
+	// NotificationOutbox is the client for interacting with the NotificationOutbox builders.
+	NotificationOutbox *NotificationOutboxClient
+	// Repository is the client for interacting with the Repository builders.
+	Repository *RepositoryClient
+	// ScheduledJob is the client for interacting with the ScheduledJob builders.
+	ScheduledJob *ScheduledJobClient
+	// SecurityAlert is the client for interacting with the SecurityAlert builders.
+	SecurityAlert *SecurityAlertClient
+	// SyncCursor is the client for interacting with the SyncCursor builders.
+	SyncCursor *SyncCursorClient
 	// SystemSetting is the client for interacting with the SystemSetting builders.
 	SystemSetting *SystemSettingClient
+	// WebhookDelivery is the client for interacting with the WebhookDelivery builders.
+	WebhookDelivery *WebhookDeliveryClient
+	// WorkItem is the client for interacting with the WorkItem builders.
+	WorkItem *WorkItemClient
+	// WorkflowRun is the client for interacting with the WorkflowRun builders.
+	WorkflowRun *WorkflowRunClient
 
 	// lazily loaded.
 	client     *Client
@@ -154,7 +176,18 @@ func (tx *Tx) init() {
 	tx.AdminAccount = NewAdminAccountClient(tx.config)
 	tx.AdminSession = NewAdminSessionClient(tx.config)
 	tx.AuditLog = NewAuditLogClient(tx.config)
+	tx.Event = NewEventClient(tx.config)
+	tx.GitHubInstallation = NewGitHubInstallationClient(tx.config)
+	tx.NotificationChannel = NewNotificationChannelClient(tx.config)
+	tx.NotificationOutbox = NewNotificationOutboxClient(tx.config)
+	tx.Repository = NewRepositoryClient(tx.config)
+	tx.ScheduledJob = NewScheduledJobClient(tx.config)
+	tx.SecurityAlert = NewSecurityAlertClient(tx.config)
+	tx.SyncCursor = NewSyncCursorClient(tx.config)
 	tx.SystemSetting = NewSystemSettingClient(tx.config)
+	tx.WebhookDelivery = NewWebhookDeliveryClient(tx.config)
+	tx.WorkItem = NewWorkItemClient(tx.config)
+	tx.WorkflowRun = NewWorkflowRunClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.
