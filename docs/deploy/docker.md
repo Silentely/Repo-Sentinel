@@ -1,42 +1,88 @@
 # Docker 部署
 
-生产推荐：拉取 GHCR 镜像 + SQLite 数据卷 + 反向代理 HTTPS。默认 **不要** 在部署机本地 `docker build`。
+生产推荐：拉取 GHCR 镜像 + 数据卷（默认 SQLite）+ 反向代理 HTTPS。  
+**不要**在部署机本地 `docker build`。
 
-## 镜像策略
-
-| 触发条件 | 镜像标签 | 架构 | 用途 |
-|----------|----------|------|------|
-| 推送到 `main` | `main`、`main-<sha>` | amd64 | 主干滚动 |
-| 推送到 `dev` | `dev`、`dev-<sha>` | amd64 | 开发 / 预发 |
-| Git 标签 `v*` | `vX.Y.Z`、`latest` | amd64 + arm64 | 正式发版 |
-| 手动 `workflow_dispatch` | 按当前分支 / tag 规则 | 同上 | 应急补镜像 |
-
-> 发版：合并到 `main`（更新 `main` / `main-<sha>`）→ 打 `vX.Y.Z` 并 push tag（更新 `vX.Y.Z` / `latest`）。  
-> 正式 tag 因双架构 + QEMU，通常比 main 的单架构构建更久（约 15–30 分钟）；main/dev 约 3–8 分钟属正常。详见 [发布与镜像](/reference/release)。
-
-镜像仓库：
+## 镜像
 
 ```text
-ghcr.io/silentely/repo-sentinel
+ghcr.io/silentely/repo-sentinel:latest
 ```
 
-## 前置
-
-```bash
-cp .env.example .env
-# 必填：
-# REPOSENTINEL_ENCRYPTION_KEY=$(openssl rand -base64 32)
-# REPOSENTINEL_GITHUB_WEBHOOK_SECRET=...
-# 建议：管理员用户名/密码，或首次本机 Web setup
-```
-
-若 GHCR 包为私有，先登录：
+也可钉死版本，例如 `ghcr.io/silentely/repo-sentinel:v0.3.4`。  
+若包为私有，先登录：
 
 ```bash
 echo "$GITHUB_TOKEN" | docker login ghcr.io -u USERNAME --password-stdin
 ```
 
-## 快速部署
+维护者发版与标签说明见 [发布与镜像](/reference/release)（用户部署可跳过）。
+
+## 1. 准备环境变量
+
+```bash
+cp .env.example .env
+```
+
+最少需要：
+
+| 变量 | 说明 |
+|------|------|
+| `REPOSENTINEL_ENCRYPTION_KEY` | 主密钥，`openssl rand -base64 32` 生成，**必须**与数据一并备份 |
+| `REPOSENTINEL_PUBLIC_BASE_URL` | 对外访问地址，生产用 `https://你的域名` |
+| `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` | GitHub App Webhook Secret |
+
+建议同时配置管理员（否则首次用本机浏览器 Web setup）：
+
+```bash
+REPOSENTINEL_ADMIN_USERNAME=admin
+REPOSENTINEL_ADMIN_PASSWORD=请换成强密码
+```
+
+经域名 / 反向代理做首次 setup 时，需临时 `REPOSENTINEL_SETUP_ALLOW_REMOTE=true`，完成后关掉。  
+完整变量表见 [配置参考](/reference/configuration)。
+
+## 2. 数据库：SQLite（默认）或 PostgreSQL
+
+Compose 默认已是 **SQLite**，数据在卷 `reposentinel-data` 的 `/data/reposentinel.db`：
+
+```yaml
+REPOSENTINEL_DATABASE_DRIVER: "sqlite"
+REPOSENTINEL_DATABASE_URL: "file:/data/reposentinel.db"
+```
+
+改用 **PostgreSQL** 时，在 `.env` 或 compose `environment` 中设置：
+
+```bash
+REPOSENTINEL_DATABASE_DRIVER=postgres
+REPOSENTINEL_DATABASE_URL=postgres://用户:密码@db主机:5432/reposentinel?sslmode=require
+```
+
+说明：
+
+- `driver` 只能是 `sqlite` 或 `postgres`
+- Postgres **必须**提供非空 `REPOSENTINEL_DATABASE_URL`
+- 库需事先建好；应用启动时自动跑迁移
+- 仓库里的 `deployments/test/postgres.compose.yml` 仅供开发测试，**不是**生产模板
+
+可选连接池（仅 Postgres 有意义）：
+
+```bash
+REPOSENTINEL_DATABASE_MAX_OPEN_CONNS=10
+REPOSENTINEL_DATABASE_MAX_IDLE_CONNS=5
+```
+
+## 3. 启动
+
+### Docker Compose（推荐）
+
+根目录 `docker-compose.yml` 默认镜像为 `ghcr.io/silentely/repo-sentinel:latest`。
+
+```bash
+docker compose pull
+docker compose up -d
+curl -fsS http://127.0.0.1:8080/health/ready
+```
 
 ### docker run
 
@@ -47,36 +93,15 @@ docker run -d \
   -p 8080:8080 \
   -v reposentinel-data:/data \
   -e REPOSENTINEL_HTTP_ADDR=0.0.0.0:8080 \
+  -e REPOSENTINEL_PUBLIC_BASE_URL=https://monitor.example.com \
+  -e REPOSENTINEL_DATABASE_DRIVER=sqlite \
+  -e REPOSENTINEL_DATABASE_URL=file:/data/reposentinel.db \
   -e REPOSENTINEL_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
   -e REPOSENTINEL_GITHUB_WEBHOOK_SECRET=your-webhook-secret \
   ghcr.io/silentely/repo-sentinel:latest
 ```
 
-### Docker Compose（推荐）
-
-仓库根目录 `docker-compose.yml` 默认：
-
-```yaml
-image: ghcr.io/silentely/repo-sentinel:latest
-```
-
-```bash
-cp .env.example .env
-docker compose pull
-docker compose up -d
-curl -fsS http://127.0.0.1:8080/health/ready
-```
-
-数据在卷 `reposentinel-data` 的 `/data/reposentinel.db`。
-
-固定版本或跟主干：
-
-```bash
-# image: ghcr.io/silentely/repo-sentinel:v0.3.4
-# image: ghcr.io/silentely/repo-sentinel:main
-```
-
-### 上线后自检
+### 自检
 
 ```bash
 curl -fsS http://127.0.0.1:8080/health/live
@@ -84,31 +109,42 @@ curl -fsS http://127.0.0.1:8080/health/ready
 docker compose exec reposentinel /reposentinel version
 ```
 
-## GitHub App Webhook
+浏览器打开应用地址，完成管理员创建（若未用环境变量预置）。公网请接 [反向代理](/deploy/reverse-proxy)。
 
-1. 创建 GitHub App，只读权限覆盖 Issues、Pull requests、Actions、Dependabot / Code scanning / Secret scanning alerts（按需勾选）
-2. Webhook URL：`https://你的域名/webhooks/github`
-3. Secret 写入 `REPOSENTINEL_GITHUB_WEBHOOK_SECRET`
-4. 订阅：`issues`、`pull_request`、`workflow_run`、三类 `*_alert`、`installation`、`installation_repositories`、`repository`
-5. 安装到仓库后，首次仓库为 **基线中**；管理后台点「完成基线」后才发实时通知
+## 4. GitHub App Webhook
 
-## Telegram
+1. 创建 GitHub App，按需勾选 Issues / Pull requests / Actions / 安全告警等只读权限  
+2. Webhook URL：`https://你的域名/webhooks/github`  
+3. Secret 写入 `REPOSENTINEL_GITHUB_WEBHOOK_SECRET`  
+4. 订阅：`issues`、`pull_request`、`workflow_run`、三类 `*_alert`、`installation`、`installation_repositories`、`repository`  
+5. 安装到仓库后，新仓先为**基线中**；管理后台点「完成基线」后才发实时通知  
 
-在 `.env` 设置 `REPOSENTINEL_TELEGRAM_TOKEN` 与 `REPOSENTINEL_TELEGRAM_CHAT_ID`，或登录后在「渠道配置」页保存。Token 使用主密钥 AES-GCM 加密入库。
+私钥路径示例：`REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH=/secrets/github-app.pem`，并在 compose 中挂载 pem 文件。
 
-## 备份
+## 5. Telegram / 其他通知
 
 ```bash
-docker compose exec reposentinel /reposentinel version
-# 维护窗口备份数据卷，并同时保管 REPOSENTINEL_ENCRYPTION_KEY
-# 也可用：docker compose exec reposentinel /reposentinel backup --output /tmp/backup.db
+REPOSENTINEL_TELEGRAM_TOKEN=...
+REPOSENTINEL_TELEGRAM_CHAT_ID=...
+# 或
+# REPOSENTINEL_HTTP_WEBHOOK_URL=https://hooks.example.com/...
+# REPOSENTINEL_HTTP_WEBHOOK_SECRET=...
 ```
 
-更完整说明见 [运维手册](/reference/ops)。
+也可登录后在「渠道配置」页保存。Token 用主密钥加密入库。
 
-## 本地源码镜像（可选）
+## 6. 备份
 
-仅开发或排障需要自建时：
+```bash
+# 维护窗口备份数据卷，并同时保管 REPOSENTINEL_ENCRYPTION_KEY
+docker compose exec reposentinel /reposentinel backup --output /tmp/backup
+```
+
+详见 [运维手册](/reference/ops)。
+
+## 本地自建镜像（可选）
+
+仅开发或排障：
 
 ```bash
 docker build -t reposentinel:local \
@@ -116,4 +152,4 @@ docker build -t reposentinel:local \
   --build-arg BUILD_CHANNEL=local .
 ```
 
-生产路径请继续使用 `ghcr.io/silentely/repo-sentinel:latest`（或钉死的 `v*` / 跟进的 `main`）。
+生产请继续用 `ghcr.io/silentely/repo-sentinel:latest`（或钉死的 `v*`）。

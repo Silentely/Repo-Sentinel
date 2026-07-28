@@ -1,11 +1,18 @@
 # 运维手册
 
-面向已部署实例的日常操作。下文标注「已实现 / 运维约定 / 规划中」。
+面向已部署实例的日常操作。部署与环境变量见 [Docker 部署](/deploy/docker)、[配置参考](/reference/configuration)。
+
+> 在 **GitHub** 上打开本文：[`docs/reference/ops.md`](https://github.com/Silentely/Repo-Sentinel/blob/main/docs/reference/ops.md)  
+> （路径须含 `docs/`；`/reference/ops` 是文档站路由，不是仓库根目录文件。）
 
 ## 进程与健康
 
 ```bash
-.tmp/reposentinel serve --config /path/to/reposentinel.yaml
+# 二进制
+reposentinel serve --config /path/to/reposentinel.yaml
+# 或 Compose
+docker compose exec reposentinel /reposentinel version
+
 curl -fsS https://monitor.example.com/health/live
 curl -fsS https://monitor.example.com/health/ready
 ```
@@ -37,14 +44,20 @@ printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --passwor
 
 ## 备份与恢复
 
-应用内已提供 `reposentinel backup` / `restore`（SQLite 使用参数化 `VACUUM INTO`；PostgreSQL 调用 `pg_dump` / `pg_restore`）。**必须同时保管** `REPOSENTINEL_ENCRYPTION_KEY`，否则通知渠道等密文无法解密。
+应用内已提供 `reposentinel backup` / `restore`（SQLite：`VACUUM INTO`；PostgreSQL：`pg_dump` / `pg_restore`）。  
+**必须同时保管** `REPOSENTINEL_ENCRYPTION_KEY`，否则通知渠道等密文无法解密。
+
+数据库类型由 `REPOSENTINEL_DATABASE_DRIVER` + `REPOSENTINEL_DATABASE_URL` 决定（见配置参考）。
 
 ### 推荐（应用命令）
 
 ```bash
-.tmp/reposentinel backup --output .tmp/backups/reposentinel-$(date -u +%Y%m%dT%H%M%SZ)
-# 恢复前会尽量另存当前库；恢复后用与备份匹配的主密钥启动并验证渠道解密
-.tmp/reposentinel restore --input /path/to/backup
+reposentinel backup --output /path/to/backups/reposentinel-$(date -u +%Y%m%dT%H%M%SZ)
+# Compose 示例：
+# docker compose exec reposentinel /reposentinel backup --output /tmp/backup
+
+# 恢复前会尽量另存当前库；恢复后用与备份匹配的主密钥启动
+reposentinel restore --input /path/to/backup
 ```
 
 ### SQLite 备选（原生工具）

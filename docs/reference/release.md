@@ -1,109 +1,50 @@
-# 发布与镜像标签
+# 发布与镜像
 
-本文说明维护者如何发版，以及 GHCR 镜像标签规则。  
-**Agent / 发版检查清单的权威条文**见 [`.github/RELEASE_RULES.md`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/RELEASE_RULES.md)。  
-部署用户请直接使用 [Docker 部署](/deploy/docker)。
-
-## 镜像仓库
+本文面向**维护者**。部署用户请用 [Docker 部署](/deploy/docker)，直接拉：
 
 ```text
-ghcr.io/silentely/repo-sentinel
+ghcr.io/silentely/repo-sentinel:latest
 ```
 
-生产推荐：
+权威检查清单见 [`.github/RELEASE_RULES.md`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/RELEASE_RULES.md)。
 
-```bash
-docker pull ghcr.io/silentely/repo-sentinel:latest
-# 或钉死版本
-docker pull ghcr.io/silentely/repo-sentinel:v0.3.4
-```
+## 镜像标签（摘要）
 
-## 标签规则
+| 触发 | 标签 | 说明 |
+|------|------|------|
+| `main` 推送 | `main`、`main-<sha>` | 主干滚动（amd64） |
+| `dev` 推送 | `dev`、`dev-<sha>` | 开发 / 预发（amd64） |
+| Git tag `v*` | `vX.Y.Z`、`latest` | 正式版（amd64 + arm64） |
 
-| 触发 | 推送的标签 | 架构 | 典型耗时 |
-|------|------------|------|----------|
-| 推送到 `main` | `main`、`main-<12 位 sha>` | linux/amd64 | 约 3–8 分钟（有缓存更短） |
-| 推送到 `dev` | `dev`、`dev-<12 位 sha>` | linux/amd64 | 约 3–8 分钟 |
-| 推送 Git 标签 `v*` | `vX.Y.Z`、`latest` | linux/amd64 + linux/arm64 | 约 15–30 分钟（QEMU 交叉构建） |
-| 手动 `workflow_dispatch` | 按当前分支 / tag 走上表规则 | 同上 | 同上 |
+- 生产优先 `latest` 或钉死 `vX.Y.Z`
+- 正式 tag 双架构 + QEMU，通常比 `main` 单架构更久
+- 工作流：[`.github/workflows/docker.yml`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/workflows/docker.yml)
 
-说明：
-
-- **`latest` 仅在正式 `v*` 发版时更新**，不会随 `main` 每次提交滚动。
-- **`main` 浮动标签**表示主干最新构建，适合预发或跟主干；生产更建议 `latest` 或钉死 `v*`。
-- 工作流文件：[`.github/workflows/docker.yml`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/workflows/docker.yml)。
-
-## 为何正式发版比 main 慢？
-
-| 阶段 | main / dev | 正式 `v*` |
-|------|------------|-----------|
-| 测试 | `go test` + 前端 typecheck / unit | 相同 |
-| 镜像平台 | 仅 `amd64` | `amd64` + `arm64` |
-| QEMU | 否 | 是（模拟 arm64，显著变慢） |
-
-因此：**main 推送约 5 分钟量级是正常的**；**带 `latest` 的正式 tag 构建更久是预期现象**，不是卡死。可在 Actions 的 `build-and-push` 步骤查看进度。
-
-## 版本号约定
+## 版本约定
 
 | 项 | 约定 |
 |----|------|
-| 唯一真实来源 | 仓库根目录 [`VERSION`](https://github.com/Silentely/Repo-Sentinel/blob/main/VERSION)（SemVer，**无** `v` 前缀） |
-| Git tag | `v` + `VERSION`（如 `0.3.4` → `v0.3.4`），推送后触发 Docker CI |
-| 二进制 / 镜像内版本 | 构建时 ldflags / `VERSION` build-arg 注入 |
-| 变更日志 | [CHANGELOG.md](https://github.com/Silentely/Repo-Sentinel/blob/main/CHANGELOG.md)（Keep a Changelog） |
-| 完整流程与禁止事项 | [RELEASE_RULES.md](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/RELEASE_RULES.md) |
+| 唯一真实来源 | 根目录 [`VERSION`](https://github.com/Silentely/Repo-Sentinel/blob/main/VERSION)（SemVer，无 `v`） |
+| Git tag | `v` + `VERSION`，推送后触发 Docker CI |
+| 变更日志 | [`CHANGELOG.md`](https://github.com/Silentely/Repo-Sentinel/blob/main/CHANGELOG.md) |
 
-对照：邻项目 TG-SignPulse 以 `tg_signer/__init__.py` 的 `__version__` 为唯一真实来源；本仓库对应为 **`VERSION` 文件**。
+## 发版步骤（摘要）
 
-## 维护者发版清单
+1. `main` 已含待发布提交，CI 绿  
+2. 改 `VERSION`，更新 `CHANGELOG.md`（及 README 徽章等展示）  
+3. 推 `main` → 打 **新** tag `vX.Y.Z` 并 push（禁止覆盖已发布 tag）  
+4. 等 Docker 工作流成功；创建 GitHub Release  
+5. 验证 `docker pull ghcr.io/silentely/repo-sentinel:vX.Y.Z` 与 `latest`  
+6. 将 `main` 同步到 `dev`  
 
-完整步骤与门禁见 [RELEASE_RULES.md](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/RELEASE_RULES.md)。摘要：
+本地门禁：`go test` + `go vet` + `pnpm --dir web typecheck` + `make build`（或 production 构建）。
 
-1. 确认 `main` 已包含待发布提交，且 CI 测试通过  
-2. 更新根目录 `VERSION`（唯一必改的产品版本源）  
-3. 更新 `CHANGELOG.md` 对应章节  
-4. 同步 README / 文档中的版本徽章或示例标签（展示副本）  
-5. 合并并推送到 `main`（会产出 `main` / `main-<sha>` 镜像）  
-6. 打 **新** tag 并推送（禁止覆盖已发布 tag）：
+## 禁止
 
-```bash
-git checkout main
-git pull
-git tag -a v0.3.4 -m "RepoSentinel v0.3.4"
-git push origin v0.3.4
-```
-
-7. 创建 GitHub Release（可与 tag 同步），正文引用 CHANGELOG  
-8. 等待 Actions 中 **Docker Image** 对 `v*` 的 run 成功（四项门禁等价检查须已通过）  
-9. 验证：
-
-```bash
-docker pull ghcr.io/silentely/repo-sentinel:v0.3.4
-docker pull ghcr.io/silentely/repo-sentinel:latest
-docker run --rm ghcr.io/silentely/repo-sentinel:latest version
-```
-
-10. 将 `main` 同步到 `dev`，避免分支长期分叉  
-
-### 本地四项门禁（发布前）
-
-```bash
-go test ./...
-go vet ./...
-pnpm --dir web typecheck
-OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
-```
+- 跳过测试发布、CI 未绿就宣称完成  
+- 覆盖已发布 `v*` tag  
+- commit 含 `Claude` / 生成器署名  
 
 ## 回滚
 
-- 部署侧将 Compose / run 的 image 改回上一 `v*` 标签并 `compose pull && up -d`  
-- **不删除**已发布 tag；以新 patch 修复  
-- 数据库若已跑新迁移，降级前确认迁移兼容性；更高 schema 版本会拒绝被旧二进制启动  
-- 加密主密钥必须与备份库匹配  
-
-## 相关链接
-
-- [发布规则（权威）](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/RELEASE_RULES.md)  
-- [贡献指南](https://github.com/Silentely/Repo-Sentinel/blob/main/CONTRIBUTING.md)  
-- [安全策略](https://github.com/Silentely/Repo-Sentinel/blob/main/SECURITY.md)  
-- [Docker 部署](/deploy/docker)  
+不删已发 tag；部署改回上一 `v*` 镜像；有问题发新 patch。详见 RELEASE_RULES。

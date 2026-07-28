@@ -1,5 +1,10 @@
 # RepoSentinel 生产样例：直接拉取 GHCR 镜像，无需本地构建。
-# 使用前请设置 .env 中的密钥与管理员凭据。
+# 使用前：cp .env.example .env 并填写密钥与管理员等。
+#
+# 默认 SQLite（数据卷 reposentinel-data → /data/reposentinel.db）。
+# 改用 PostgreSQL 时在 .env 设置：
+#   REPOSENTINEL_DATABASE_DRIVER=postgres
+#   REPOSENTINEL_DATABASE_URL=postgres://user:pass@db:5432/reposentinel?sslmode=require
 
 services:
   reposentinel:
@@ -12,8 +17,9 @@ services:
     environment:
       REPOSENTINEL_HTTP_ADDR: "0.0.0.0:8080"
       REPOSENTINEL_PUBLIC_BASE_URL: "${REPOSENTINEL_PUBLIC_BASE_URL:-http://127.0.0.1:8080}"
-      REPOSENTINEL_DATABASE_DRIVER: "sqlite"
-      REPOSENTINEL_DATABASE_URL: "file:/data/reposentinel.db"
+      # 默认 SQLite；需要 Postgres 时改为引用 .env（见文件头注释）
+      REPOSENTINEL_DATABASE_DRIVER: "${REPOSENTINEL_DATABASE_DRIVER:-sqlite}"
+      REPOSENTINEL_DATABASE_URL: "${REPOSENTINEL_DATABASE_URL:-file:/data/reposentinel.db}"
       REPOSENTINEL_ENCRYPTION_KEY: "${REPOSENTINEL_ENCRYPTION_KEY:?set encryption key}"
       REPOSENTINEL_ADMIN_USERNAME: "${REPOSENTINEL_ADMIN_USERNAME:-}"
       REPOSENTINEL_ADMIN_PASSWORD: "${REPOSENTINEL_ADMIN_PASSWORD:-}"

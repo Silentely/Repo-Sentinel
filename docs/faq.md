@@ -38,9 +38,22 @@ printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --passwor
 
 `REPOSENTINEL_ENCRYPTION_KEY` 用于加密库内敏感凭据（如 Telegram Token）。解码后须为 32 字节。密钥丢失会导致密文无法解密；备份数据库时必须同时备份主密钥。见 [配置参考](/reference/configuration)。
 
+### 怎么选 SQLite 还是 PostgreSQL？
+
+- **默认 SQLite**：单机 / 单容器最简单，Compose 已配置 `file:/data/reposentinel.db` 与数据卷  
+- **PostgreSQL**：设 `REPOSENTINEL_DATABASE_DRIVER=postgres` 与  
+  `REPOSENTINEL_DATABASE_URL=postgres://用户:密码@主机:5432/库名?sslmode=require`  
+  库需事先创建；应用启动自动迁移  
+
+示例与完整变量见 [配置参考](/reference/configuration)、[Docker 部署](/deploy/docker)。
+
+### 环境变量一览在哪？
+
+仓库根目录 [`.env.example`](https://github.com/Silentely/Repo-Sentinel/blob/main/.env.example)，说明见 [配置参考](/reference/configuration)。
+
 ### SQLite 能直接复制 `.db` 文件备份吗？
 
-运行中请用 `sqlite3 ... .backup`。直接拷贝活跃 WAL 库可能不一致。见 [运维手册](/reference/ops)。
+运行中请用应用 `backup` 命令或 `sqlite3 ... .backup`。直接拷贝活跃 WAL 库可能不一致。见 [运维手册](/reference/ops)。
 
 ## 开发
 

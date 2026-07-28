@@ -1,6 +1,7 @@
 # RepoSentinel 文档
 
-> v0.3.4 · 自托管 GitHub 仓库值守：Webhook、安全告警与可靠通知。
+> 自托管 GitHub 仓库值守：Webhook、安全告警与可靠通知。  
+> 版本见仓库根目录 `VERSION`。在 **GitHub** 上打开文档请用 `docs/...` 路径（例如 `docs/reference/ops.md`）；文档站路由为 `/reference/ops`。
 
 ## 产品简介
 

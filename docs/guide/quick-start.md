@@ -84,9 +84,21 @@ unset REPOSENTINEL_ADMIN_PASSWORD
 
 用户名与密码必须成对出现；已有管理员时不会用环境变量覆盖密码。
 
-## 7. 下一步
+## 7. 数据库切换（可选）
+
+默认 SQLite。改用 PostgreSQL：
+
+```bash
+REPOSENTINEL_DATABASE_DRIVER=postgres \
+REPOSENTINEL_DATABASE_URL="postgres://user:pass@127.0.0.1:5432/reposentinel?sslmode=disable" \
+.tmp/reposentinel serve
+```
+
+生产 Compose 与变量说明见 [Docker 部署](/deploy/docker)、[配置参考](/reference/configuration)。
+
+## 8. 下一步
 
 - [管理员与 Session](/guide/administrator)
-- [配置参考](/reference/configuration)
+- [配置参考](/reference/configuration)（全部环境变量）
 - [Docker 部署](/deploy/docker)
 - [从源码运行](/deploy/source)

@@ -52,7 +52,8 @@ OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
 .tmp/reposentinel version
 ```
 
-`VERSION` 文件是 SemVer 真相源（当前 `0.3.4`）。GHCR 标签规则见 [发布与镜像](/reference/release)：`main` → `main` / `main-<sha>`；`dev` → `dev` / `dev-<sha>`；正式 `v*` → `vX.Y.Z` / `latest`。部署推荐 `ghcr.io/silentely/repo-sentinel:latest`（或钉死的 `v*`），无需本地构建。
+部署镜像推荐：`ghcr.io/silentely/repo-sentinel:latest`（或钉死 `vX.Y.Z`），见 [Docker 部署](/deploy/docker)。  
+产品版本以仓库根目录 `VERSION` 为准；维护者发版见 [发布与镜像](/reference/release)。
 
 ## 更新检查
 
