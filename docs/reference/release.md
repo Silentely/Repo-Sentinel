@@ -1,6 +1,8 @@
 # 发布与镜像标签
 
-本文说明维护者如何发版，以及 GHCR 镜像标签规则。部署用户请直接使用 [Docker 部署](/deploy/docker)。
+本文说明维护者如何发版，以及 GHCR 镜像标签规则。  
+**Agent / 发版检查清单的权威条文**见 [`.github/RELEASE_RULES.md`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/RELEASE_RULES.md)。  
+部署用户请直接使用 [Docker 部署](/deploy/docker)。
 
 ## 镜像仓库
 
@@ -35,20 +37,34 @@ docker pull ghcr.io/silentely/repo-sentinel:v0.3.4
 
 | 阶段 | main / dev | 正式 `v*` |
 |------|------------|-----------|
-| 测试 | `go test` + 前端 | 相同 |
+| 测试 | `go test` + 前端 typecheck / unit | 相同 |
 | 镜像平台 | 仅 `amd64` | `amd64` + `arm64` |
 | QEMU | 否 | 是（模拟 arm64，显著变慢） |
 
 因此：**main 推送约 5 分钟量级是正常的**；**带 `latest` 的正式 tag 构建更久是预期现象**，不是卡死。可在 Actions 的 `build-and-push` 步骤查看进度。
 
+## 版本号约定
+
+| 项 | 约定 |
+|----|------|
+| 唯一真实来源 | 仓库根目录 [`VERSION`](https://github.com/Silentely/Repo-Sentinel/blob/main/VERSION)（SemVer，**无** `v` 前缀） |
+| Git tag | `v` + `VERSION`（如 `0.3.4` → `v0.3.4`），推送后触发 Docker CI |
+| 二进制 / 镜像内版本 | 构建时 ldflags / `VERSION` build-arg 注入 |
+| 变更日志 | [CHANGELOG.md](https://github.com/Silentely/Repo-Sentinel/blob/main/CHANGELOG.md)（Keep a Changelog） |
+| 完整流程与禁止事项 | [RELEASE_RULES.md](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/RELEASE_RULES.md) |
+
+对照：邻项目 TG-SignPulse 以 `tg_signer/__init__.py` 的 `__version__` 为唯一真实来源；本仓库对应为 **`VERSION` 文件**。
+
 ## 维护者发版清单
 
+完整步骤与门禁见 [RELEASE_RULES.md](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/RELEASE_RULES.md)。摘要：
+
 1. 确认 `main` 已包含待发布提交，且 CI 测试通过  
-2. 更新根目录 `VERSION`（SemVer，无 `v` 前缀）  
+2. 更新根目录 `VERSION`（唯一必改的产品版本源）  
 3. 更新 `CHANGELOG.md` 对应章节  
-4. 同步 README / 文档中的版本徽章或示例标签（如有）  
+4. 同步 README / 文档中的版本徽章或示例标签（展示副本）  
 5. 合并并推送到 `main`（会产出 `main` / `main-<sha>` 镜像）  
-6. 打 tag 并推送：
+6. 打 **新** tag 并推送（禁止覆盖已发布 tag）：
 
 ```bash
 git checkout main
@@ -58,7 +74,7 @@ git push origin v0.3.4
 ```
 
 7. 创建 GitHub Release（可与 tag 同步），正文引用 CHANGELOG  
-8. 等待 Actions 中 **Docker Image** 对 `v*` 的 run 成功  
+8. 等待 Actions 中 **Docker Image** 对 `v*` 的 run 成功（四项门禁等价检查须已通过）  
 9. 验证：
 
 ```bash
@@ -67,21 +83,27 @@ docker pull ghcr.io/silentely/repo-sentinel:latest
 docker run --rm ghcr.io/silentely/repo-sentinel:latest version
 ```
 
-## 版本号约定
+10. 将 `main` 同步到 `dev`，避免分支长期分叉  
 
-- 真相源：仓库根目录 `VERSION`  
-- Git tag：`v` + `VERSION`（如 `0.3.4` → `v0.3.4`）  
-- 二进制 / 镜像内版本：构建时 ldflags 注入  
-- 变更日志：[CHANGELOG.md](https://github.com/Silentely/Repo-Sentinel/blob/main/CHANGELOG.md)（Keep a Changelog）
+### 本地四项门禁（发布前）
+
+```bash
+go test ./...
+go vet ./...
+pnpm --dir web typecheck
+OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
+```
 
 ## 回滚
 
 - 部署侧将 Compose / run 的 image 改回上一 `v*` 标签并 `compose pull && up -d`  
+- **不删除**已发布 tag；以新 patch 修复  
 - 数据库若已跑新迁移，降级前确认迁移兼容性；更高 schema 版本会拒绝被旧二进制启动  
 - 加密主密钥必须与备份库匹配  
 
 ## 相关链接
 
+- [发布规则（权威）](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/RELEASE_RULES.md)  
 - [贡献指南](https://github.com/Silentely/Repo-Sentinel/blob/main/CONTRIBUTING.md)  
 - [安全策略](https://github.com/Silentely/Repo-Sentinel/blob/main/SECURITY.md)  
 - [Docker 部署](/deploy/docker)  

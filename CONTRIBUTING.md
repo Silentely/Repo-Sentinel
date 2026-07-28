@@ -49,8 +49,20 @@ OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
 
 ## 提交说明
 
-- 使用祈使句、聚焦变更本身，例如：`fix: 修复 Outbox 表名映射`
-- 避免空泛词（「交付」「对账计划」「Phase」等）与无意义的生成器署名
+使用类型前缀（emoji 可选），祈使句写清「做了什么 / 为什么」：
+
+| 前缀 | 含义 | 示例 |
+|------|------|------|
+| `✨ feat:` / `feat:` | 新功能 | `feat: 增加 Prometheus /metrics` |
+| `🐛 fix:` / `fix:` | Bug 修复 | `fix: 修复 Outbox 表名映射` |
+| `♻️ refactor:` / `refactor:` | 重构 | `refactor: 抽离通知聚合逻辑` |
+| `🔥 remove:` / `remove:` | 删除废弃代码 | `remove: 删除未使用的配置项` |
+| `🔧 chore:` / `chore:` | 构建 / CI / 依赖 / 发版 | `chore: 发布版本号同步至 0.3.5` |
+| `📝 docs:` / `docs:` | 文档 | `docs: 补充 Docker 标签说明` |
+| `improve:` | 现有功能改进 | `improve: 缩短对账默认间隔` |
+
+- 避免空泛词（「交付」「对账计划」「Phase」等）
+- **禁止** commit 中出现 `Claude`、`Co-Authored-By: Claude` 等生成器署名
 - 破坏性变更在正文说明迁移 / 回滚影响
 
 ## Pull Request 要求
@@ -68,7 +80,11 @@ OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
 
 ## 发布
 
-维护者发版流程见 [docs/reference/release.md](docs/reference/release.md)。贡献者通常只需保证 `main` 可合并；**不要**自行 force-push 已发布的 `v*` 标签，除非维护者明确要求。
+- 权威规则与禁止事项：[`.github/RELEASE_RULES.md`](.github/RELEASE_RULES.md)
+- 镜像标签与运维摘要：[docs/reference/release.md](docs/reference/release.md)
+
+约定摘要：产品版本**唯一真实来源**为根目录 `VERSION`（SemVer）；Git tag 为 `vX.Y.Z` 并触发 Docker CI；发布前 `go test` + `go vet` + 前端 typecheck + build 须全过。  
+贡献者通常只需保证 `main` 可合并；**不要**自行 force-push 或覆盖已发布的 `v*` 标签。
 
 ## 文档站
 
