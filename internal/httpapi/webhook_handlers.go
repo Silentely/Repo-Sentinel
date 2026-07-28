@@ -139,11 +139,13 @@ func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body [
 		}
 	}
 	_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(ctx, rowID, store.DeliveryProcessed, "")
+	// installation 类事件可能一次写入多仓；日志给出最终代表仓与是否有更新。
 	s.dependencies.Logger.Info(
 		"github webhook processed",
 		"delivery_id", deliveryID,
 		"event_type", eventType,
 		"repo", repoName,
+		"updated", res.Updated,
 		"suppressed", res.SuppressNotify,
 	)
 }

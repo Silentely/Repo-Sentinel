@@ -17,6 +17,7 @@ import {
   saveGitHubConfig,
   saveSystemSettings,
   settingsQueryOptions,
+  syncInstallationRepositories,
   versionQueryOptions,
   type SystemSettings,
   type VersionInfo,
@@ -58,12 +59,16 @@ interface SecurityAlert {
 }
 
 const DOCS_GITHUB_APP =
-  "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/deploy/docker.md#4-github-app-webhook";
+  "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/deploy/docker.md#4-github-app创建表单逐项";
 const DOCS_CONFIG =
   "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/reference/configuration.md";
 const DOCS_FAQ = "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/faq.md";
 const DOCS_CHANGELOG = "https://github.com/Silentely/Repo-Sentinel/blob/main/CHANGELOG.md";
 const GITHUB_NEW_APP = "https://github.com/settings/apps/new";
+/** 用户级 GitHub Apps 列表；可点进具体 App 再 Install。 */
+const GITHUB_APPS_SETTINGS = "https://github.com/settings/apps";
+/** 当前账号已安装的 Apps（含 Install / Configure）。 */
+const GITHUB_INSTALLATIONS = "https://github.com/settings/installations";
 
 export function WorkItemsPage() {
   const kind = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("kind") || "" : "";
@@ -190,6 +195,7 @@ export function GitHubPage() {
   const [externalName, setExternalName] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "ok" | "fail">("idle");
   const [formMessage, setFormMessage] = useState("");
+  const [syncMessage, setSyncMessage] = useState("");
   const [configMessage, setConfigMessage] = useState("");
   const [appID, setAppID] = useState("");
   const [clientID, setClientID] = useState("");
@@ -219,6 +225,18 @@ export function GitHubPage() {
       setFormMessage("外部公开仓库已登记，将进入基线同步。");
       await queryClient.invalidateQueries({ queryKey: ["repositories"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+
+  const syncRepos = useMutation({
+    mutationFn: () => syncInstallationRepositories(),
+    onSuccess: async (res) => {
+      setSyncMessage(
+        `已从 GitHub 同步：${res.imported_or_updated} 个仓库（${res.installations} 个 Installation）。请到仪表盘查看基线状态并「完成基线」。`,
+      );
+      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["installations"] });
     },
   });
 
@@ -638,31 +656,69 @@ export function GitHubPage() {
         </dl>
       </section>
 
-      <section className="onboarding-card" aria-labelledby="gh-steps-title">
-        <h2 id="gh-steps-title">创建后操作顺序</h2>
-        <ol className="guide-steps">
+      <section className="onboarding-card" aria-labelledby="gh-install-action-title">
+        <h2 id="gh-install-action-title">安装到仓库（在 GitHub 完成）</h2>
+        <p className="field-hint">
+          本管理台<strong>不能代替</strong> GitHub 授权安装。保存凭据后，须到 GitHub 点 Install，GitHub 会推送{" "}
+          <code>installation</code> 事件；仓库会出现在仪表盘（基线中）。若你已安装但仪表盘仍空，多半是旧版本未解析{" "}
+          <code>repositories</code> 字段——点下方「从 GitHub 同步仓库」补拉即可。
+        </p>
+        <div className="link-row">
+          <a className="primary-button primary-button--inline" href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer">
+            <ExternalLink size={15} aria-hidden="true" /> 去 GitHub 安装 / 管理 App
+          </a>
+          <a className="quiet-button" href={GITHUB_APPS_SETTINGS} target="_blank" rel="noreferrer">
+            <ExternalLink size={14} aria-hidden="true" /> 我的 GitHub Apps
+          </a>
+          <button
+            className="quiet-button"
+            type="button"
+            disabled={syncRepos.isPending || !cfg?.app_id_configured || !cfg?.private_key_configured}
+            onClick={() => {
+              setSyncMessage("");
+              syncRepos.mutate();
+            }}
+            title={
+              !cfg?.app_id_configured || !cfg?.private_key_configured
+                ? "需先配置 App ID 与私钥"
+                : "用 Installation Token 拉取已授权仓库"
+            }
+          >
+            {syncRepos.isPending ? "同步中…" : "从 GitHub 同步仓库"}
+          </button>
+        </div>
+        {syncRepos.isError ? (
+          <ErrorAlert
+            title="同步失败"
+            message={toApiError(syncRepos.error).message}
+            errorCode={toApiError(syncRepos.error).errorCode}
+          />
+        ) : null}
+        {syncMessage ? (
+          <p className="success-banner" role="status" style={{ marginTop: "0.75rem" }}>
+            {syncMessage}
+          </p>
+        ) : null}
+        <ol className="guide-steps" style={{ marginTop: "1rem" }}>
           <li>
-            <strong>生成私钥</strong>
+            <strong>打开安装页</strong>
             <span>
-              App 创建页 <code>Generate a private key</code>，下载 <code>.pem</code>，挂到服务器路径（如{" "}
-              <code>/secrets/github-app.pem</code>）。
+              点击「去 GitHub 安装 / 管理 App」→ 找到 <code>repo-sentinel-bot</code>（或你的 App 名）→ Install / Configure。
             </span>
           </li>
           <li>
-            <strong>写入环境变量并重启</strong>
-            <span>
-              <code>REPOSENTINEL_GITHUB_APP_ID</code>、<code>REPOSENTINEL_GITHUB_CLIENT_ID</code>、
-              <code>REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH</code>、与 GitHub 一致的{" "}
-              <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code>；生产再加 <code>REPOSENTINEL_PUBLIC_BASE_URL</code>。
-            </span>
+            <strong>选择仓库</strong>
+            <span>可选 All repositories 或 Only select；保存后 GitHub 会 POST <code>/webhooks/github</code>。</span>
           </li>
           <li>
-            <strong>Install App</strong>
-            <span>在 GitHub 安装到目标仓库。仅创建 App、未 Install，本页不会出现 Installation。</span>
+            <strong>回到本页刷新</strong>
+            <span>
+              Installation 列表应出现账号；仪表盘应出现仓库（状态「基线中」）。没有仓库就点「从 GitHub 同步仓库」。
+            </span>
           </li>
           <li>
             <strong>完成基线</strong>
-            <span>仪表盘中新仓为「基线中」；确认快照后点「完成基线」，之后才发实时通知。</span>
+            <span>仪表盘对需要监控的仓点「完成基线」后，才会发实时通知（避免首次洪流）。</span>
           </li>
         </ol>
       </section>
@@ -670,14 +726,19 @@ export function GitHubPage() {
       <section className="onboarding-card" aria-labelledby="gh-install-title">
         <div className="onboarding-card__header">
           <h2 id="gh-install-title">已记录的 Installation</h2>
-          <button
-            className="quiet-button"
-            type="button"
-            disabled={installations.isFetching}
-            onClick={() => void installations.refetch()}
-          >
-            {installations.isFetching ? "刷新中…" : "刷新"}
-          </button>
+          <div className="link-row">
+            <button
+              className="quiet-button"
+              type="button"
+              disabled={installations.isFetching}
+              onClick={() => void installations.refetch()}
+            >
+              {installations.isFetching ? "刷新中…" : "刷新"}
+            </button>
+            <a className="quiet-button" href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer">
+              <ExternalLink size={14} aria-hidden="true" /> 去 GitHub 安装
+            </a>
+          </div>
         </div>
         {installations.isError ? (
           <ErrorAlert
@@ -694,6 +755,16 @@ export function GitHubPage() {
                 <strong>{inst.account_login || "（未知账号）"}</strong>
                 <span className="muted">installation {inst.installation_id}</span>
                 <span className="muted">{inst.suspended === "true" ? "已挂起" : "正常"}</span>
+                {inst.installation_id ? (
+                  <a
+                    className="quiet-button"
+                    href={`https://github.com/settings/installations/${inst.installation_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    配置
+                  </a>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -701,7 +772,12 @@ export function GitHubPage() {
           <EmptyState
             eyebrow="等待事件"
             title="尚未收到 Installation"
-            description="安装 App 并确保 Webhook 可达后，installation / installation_repositories 事件会写入此处。仅配置环境变量不会自动出现记录。"
+            description="请先在 GitHub 安装 App。安装后本列表会出现账号；若只有 Installation 没有仓库，点上方「从 GitHub 同步仓库」。"
+            action={
+              <a href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer">
+                去 GitHub 安装 App
+              </a>
+            }
           />
         )}
       </section>

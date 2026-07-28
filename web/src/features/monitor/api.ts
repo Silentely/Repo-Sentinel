@@ -270,3 +270,17 @@ export async function saveGitHubConfig(body: GitHubRuntimeConfigInput): Promise<
     body: JSON.stringify(body),
   });
 }
+
+export interface SyncInstallationReposResult {
+  installations: number;
+  imported_or_updated: number;
+  last_error?: string;
+}
+
+/** 用 Installation Token 从 GitHub 拉取已授权仓库并写入本地（基线）。 */
+export async function syncInstallationRepositories(): Promise<SyncInstallationReposResult> {
+  return apiRequest<SyncInstallationReposResult>("/api/v1/github/sync-repositories", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}

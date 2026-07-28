@@ -56,7 +56,7 @@ type ghRepository struct {
 }
 
 type ghInstallation struct {
-	ID int64 `json:"id"`
+	ID      int64 `json:"id"`
 	Account struct {
 		Login string `json:"login"`
 		Type  string `json:"type"`
@@ -68,13 +68,13 @@ type ghUser struct {
 }
 
 type ghIssue struct {
-	Number    int       `json:"number"`
-	Title     string    `json:"title"`
-	State     string    `json:"state"`
-	HTMLURL   string    `json:"html_url"`
-	User      ghUser    `json:"user"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Draft     bool      `json:"draft"`
+	Number      int       `json:"number"`
+	Title       string    `json:"title"`
+	State       string    `json:"state"`
+	HTMLURL     string    `json:"html_url"`
+	User        ghUser    `json:"user"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Draft       bool      `json:"draft"`
 	PullRequest *struct {
 		URL string `json:"url"`
 	} `json:"pull_request"`
@@ -124,13 +124,13 @@ type ghWorkflowRun struct {
 }
 
 type ghAlert struct {
-	Number     int       `json:"number"`
-	State      string    `json:"state"`
-	HTMLURL    string    `json:"html_url"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-	Severity   string    `json:"severity"`
-	DismissedReason string `json:"dismissed_reason"`
+	Number          int       `json:"number"`
+	State           string    `json:"state"`
+	HTMLURL         string    `json:"html_url"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	Severity        string    `json:"severity"`
+	DismissedReason string    `json:"dismissed_reason"`
 	// dependabot
 	Dependency *struct {
 		Package struct {
@@ -148,7 +148,7 @@ type ghAlert struct {
 		Severity    string `json:"severity"`
 	} `json:"rule"`
 	// secret scanning
-	SecretType string `json:"secret_type"`
+	SecretType            string `json:"secret_type"`
 	SecretTypeDisplayName string `json:"secret_type_display_name"`
 }
 
@@ -196,6 +196,10 @@ func (p *Processor) ensureRepository(ctx context.Context, gh *ghRepository, inst
 		}
 	}
 	repoID := gh.ID
+	htmlURL := strings.TrimSpace(gh.HTMLURL)
+	if htmlURL == "" && gh.FullName != "" {
+		htmlURL = "https://github.com/" + gh.FullName
+	}
 	in := store.Repository{
 		Type:           store.RepositoryTypeInstallation,
 		SyncStatus:     store.SyncStatusBaseline,
@@ -206,7 +210,7 @@ func (p *Processor) ensureRepository(ctx context.Context, gh *ghRepository, inst
 		InstallationID: installationID,
 		IsArchived:     gh.Archived,
 		IsPrivate:      gh.Private,
-		HTMLURL:        gh.HTMLURL,
+		HTMLURL:        htmlURL,
 		DefaultBranch:  gh.DefaultBranch,
 	}
 	existing, err := p.Store.Repositories().GetByFullName(ctx, gh.FullName)
@@ -232,12 +236,12 @@ func (p *Processor) processInstallation(ctx context.Context, eventType string, e
 		return Result{}, fmt.Errorf("missing installation")
 	}
 	inst, err := p.Store.Installations().Upsert(ctx, store.GitHubInstallation{
-		InstallationID: env.Installation.ID,
-		AccountLogin:   env.Installation.Account.Login,
-		AccountType:    env.Installation.Account.Type,
-		TargetType:     env.Installation.Account.Type,
+		InstallationID:  env.Installation.ID,
+		AccountLogin:    env.Installation.Account.Login,
+		AccountType:     env.Installation.Account.Type,
+		TargetType:      env.Installation.Account.Type,
 		PermissionsJSON: map[string]any{},
-		Suspended:      "false",
+		Suspended:       "false",
 	})
 	if err != nil {
 		return Result{}, err
@@ -251,17 +255,37 @@ func (p *Processor) processInstallation(ctx context.Context, eventType string, e
 		}
 		repo = &r
 	}
-	// installation_repositories 可能带 repositories_added
+	// installation.created 载荷顶层为 repositories；
+	// installation_repositories 的 added/removed 为 repositories_added / repositories_removed。
 	var extra struct {
+		Repositories      []ghRepository `json:"repositories"`
 		RepositoriesAdded []ghRepository `json:"repositories_added"`
 	}
 	_ = json.Unmarshal(payload, &extra)
-	for i := range extra.RepositoriesAdded {
-		r, err := p.ensureRepository(ctx, &extra.RepositoriesAdded[i], &instID)
-		if err != nil {
-			return Result{}, err
+	seen := map[string]struct{}{}
+	upsertList := func(list []ghRepository) error {
+		for i := range list {
+			name := strings.TrimSpace(list[i].FullName)
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			r, err := p.ensureRepository(ctx, &list[i], &instID)
+			if err != nil {
+				return err
+			}
+			repo = &r
 		}
-		repo = &r
+		return nil
+	}
+	if err := upsertList(extra.Repositories); err != nil {
+		return Result{}, err
+	}
+	if err := upsertList(extra.RepositoriesAdded); err != nil {
+		return Result{}, err
 	}
 	return Result{Repository: repo, Updated: true, SuppressNotify: true}, nil
 }
@@ -357,7 +381,7 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(env.Action),
 		RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
 		OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: saved.HTMLURL,
-		PayloadSummary: map[string]any{"state": saved.State, "draft": saved.Draft},
+		PayloadSummary:       map[string]any{"state": saved.State, "draft": saved.Draft},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}
 	created, err := p.Store.Events().Create(ctx, ev)
@@ -548,7 +572,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(env.Action),
 		RepositoryID: &repo.ID, SubjectNumber: &num, Title: rule, Severity: severity,
 		OccurredAt: updatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: a.HTMLURL,
-		PayloadSummary: map[string]any{"state": a.State, "severity": severity},
+		PayloadSummary:       map[string]any{"state": a.State, "severity": severity},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}
 	created, err := p.Store.Events().Create(ctx, ev)

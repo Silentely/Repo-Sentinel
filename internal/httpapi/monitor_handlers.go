@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/oklog/ulid/v2"
@@ -254,6 +255,146 @@ func (s *server) handleListInstallations(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// handleSyncInstallationRepositories 用 Installation Token 拉取 GitHub 上已授权仓库并写入本地（基线状态）。
+// 用于补救「installation 事件已到但旧版本未解析 repositories」或主动刷新授权范围。
+func (s *server) handleSyncInstallationRepositories(w http.ResponseWriter, r *http.Request) {
+	if s.dependencies.Store == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		return
+	}
+	client := (*githubx.AppClient)(nil)
+	if s.dependencies.GitHubRuntime != nil && s.dependencies.GitHubRuntime.Client != nil {
+		client = s.dependencies.GitHubRuntime.Client
+	}
+	if client == nil || !client.Configured() {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, "github_app_not_configured", nil)
+		return
+	}
+	installations, err := s.dependencies.Store.Installations().List(r.Context())
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	if len(installations) == 0 {
+		s.writeAPIError(w, r, http.StatusConflict, "github_no_installation", nil)
+		return
+	}
+
+	imported := 0
+	var lastErr string
+	for _, inst := range installations {
+		token, err := client.InstallationToken(r.Context(), inst.InstallationID)
+		if err != nil {
+			lastErr = err.Error()
+			s.dependencies.Logger.Warn(
+				"installation token failed",
+				"installation_id", inst.InstallationID,
+				"error", err.Error(),
+			)
+			continue
+		}
+		instID := inst.ID
+		for page := 1; page <= 20; page++ {
+			repos, _, err := client.ListInstallationRepositories(r.Context(), token, page)
+			if err != nil {
+				lastErr = err.Error()
+				s.dependencies.Logger.Warn(
+					"list installation repositories failed",
+					"installation_id", inst.InstallationID,
+					"page", page,
+					"error", err.Error(),
+				)
+				break
+			}
+			if len(repos) == 0 {
+				break
+			}
+			for _, gr := range repos {
+				fullName := strings.TrimSpace(gr.FullName)
+				if fullName == "" {
+					continue
+				}
+				owner, name := gr.Owner.Login, gr.Name
+				parts := strings.SplitN(fullName, "/", 2)
+				if len(parts) == 2 {
+					if owner == "" {
+						owner = parts[0]
+					}
+					if name == "" {
+						name = parts[1]
+					}
+				}
+				htmlURL := strings.TrimSpace(gr.HTMLURL)
+				if htmlURL == "" {
+					htmlURL = "https://github.com/" + fullName
+				}
+				repoID := gr.ID
+				in := store.Repository{
+					Type:           store.RepositoryTypeInstallation,
+					SyncStatus:     store.SyncStatusBaseline,
+					GitHubRepoID:   &repoID,
+					Owner:          owner,
+					Name:           name,
+					FullName:       fullName,
+					InstallationID: &instID,
+					IsArchived:     gr.Archived,
+					IsPrivate:      gr.Private,
+					HTMLURL:        htmlURL,
+					DefaultBranch:  gr.DefaultBranch,
+				}
+				existing, err := s.dependencies.Store.Repositories().GetByFullName(r.Context(), fullName)
+				if err == nil {
+					in.ID = existing.ID
+					in.SyncStatus = existing.SyncStatus
+					if existing.SyncStatus == "" {
+						in.SyncStatus = store.SyncStatusBaseline
+					}
+					if _, err := s.dependencies.Store.Repositories().Upsert(r.Context(), in); err != nil {
+						lastErr = err.Error()
+						continue
+					}
+					imported++
+					continue
+				}
+				if err != store.ErrNotFound {
+					lastErr = err.Error()
+					continue
+				}
+				now := time.Now().UTC()
+				in.BaselineStartedAt = &now
+				if _, err := s.dependencies.Store.Repositories().Upsert(r.Context(), in); err != nil {
+					lastErr = err.Error()
+					continue
+				}
+				imported++
+			}
+			if len(repos) < 100 {
+				break
+			}
+		}
+	}
+
+	s.dependencies.Logger.Info(
+		"github installation repositories synced",
+		"request_id", requestIDFromContext(r.Context()),
+		"installations", len(installations),
+		"imported_or_updated", imported,
+	)
+	out := map[string]any{
+		"installations":       len(installations),
+		"imported_or_updated": imported,
+	}
+	if lastErr != "" && imported == 0 {
+		out["last_error"] = lastErr
+		writeJSON(w, http.StatusBadGateway, out)
+		return
+	}
+	if lastErr != "" {
+		out["last_error"] = lastErr
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *server) handleReconcileRepository(w http.ResponseWriter, r *http.Request) {

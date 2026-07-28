@@ -130,6 +130,33 @@ func (c *AppClient) ListSecretScanningAlerts(ctx context.Context, token, owner, 
 	return items, remaining, err
 }
 
+// InstallationRepo 是 GET /installation/repositories 的条目。
+type InstallationRepo struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	FullName string `json:"full_name"`
+	Private  bool   `json:"private"`
+	HTMLURL  string `json:"html_url"`
+	Archived bool   `json:"archived"`
+	Owner    struct {
+		Login string `json:"login"`
+	} `json:"owner"`
+	DefaultBranch string `json:"default_branch"`
+}
+
+// ListInstallationRepositories 分页列出当前 Installation 可访问的仓库。
+func (c *AppClient) ListInstallationRepositories(ctx context.Context, token string, page int) ([]InstallationRepo, int, error) {
+	if page <= 0 {
+		page = 1
+	}
+	path := fmt.Sprintf("/installation/repositories?per_page=100&page=%d", page)
+	var payload struct {
+		Repositories []InstallationRepo `json:"repositories"`
+	}
+	remaining, err := c.DoJSON(ctx, "GET", path, token, &payload)
+	return payload.Repositories, remaining, err
+}
+
 // PublicClient 用于外部公开仓轮询（可选 PAT）。
 type PublicClient struct {
 	PAT     string

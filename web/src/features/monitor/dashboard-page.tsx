@@ -98,7 +98,12 @@ export function DashboardPage() {
           <EmptyState
             title="还没有仓库"
             description="安装 GitHub App 并配置 Webhook 后，仓库会自动出现。也可在 GitHub App 页登记外部公开仓库。"
-            action={<Link to="/github">打开 GitHub App 配置指引</Link>}
+            action={
+              <span className="link-row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+                <Link to="/github">打开 GitHub App 页</Link>
+                <span className="muted">· 安装后点「从 GitHub 同步仓库」可补拉仓库</span>
+              </span>
+            }
           />
         ) : null}
         <ul className="onboarding-list">
