@@ -4,14 +4,15 @@
 
 ## 镜像策略
 
-| 触发条件 | 镜像 / 行为 | 用途 |
-|----------|--------------|------|
-| `main` 推送 | **只跑测试**，不构建 Docker | 合并门禁 |
-| `dev` 推送 | 测试 + 推送 `…:dev` / `…:dev-<sha>` | 开发 / 预发 |
-| Git 标签 `v*` | 测试 + **一次**推送 `…:vX.Y.Z`、`…:X.Y.Z`、`…:X.Y`、`…:latest`、`…:main`、`…:main-<sha>` | 正式发版（amd64 + arm64） |
-| 手动 `workflow_dispatch` | 可按当前分支构建（main 上仅 `main-<sha>`） | 应急补镜像 |
+| 触发条件 | 镜像标签 | 架构 | 用途 |
+|----------|----------|------|------|
+| 推送到 `main` | `main`、`main-<sha>` | amd64 | 主干滚动 |
+| 推送到 `dev` | `dev`、`dev-<sha>` | amd64 | 开发 / 预发 |
+| Git 标签 `v*` | `vX.Y.Z`、`latest` | amd64 + arm64 | 正式发版 |
+| 手动 `workflow_dispatch` | 按当前分支 / tag 规则 | 同上 | 应急补镜像 |
 
-> 发版：合并到 `main`（过测）→ 打 `vX.Y.Z` 并 push tag → 出正式镜像。`latest` / 浮动 `main` **只随正式 tag** 更新。
+> 发版：合并到 `main`（更新 `main` / `main-<sha>`）→ 打 `vX.Y.Z` 并 push tag（更新 `vX.Y.Z` / `latest`）。  
+> 正式 tag 因双架构 + QEMU，通常比 main 的单架构构建更久（约 15–30 分钟）；main/dev 约 3–8 分钟属正常。详见 [发布与镜像](/reference/release)。
 
 镜像仓库：
 
@@ -53,7 +54,7 @@ docker run -d \
 
 ### Docker Compose（推荐）
 
-仓库根目录 `docker-compose.yml` 默认使用：
+仓库根目录 `docker-compose.yml` 默认：
 
 ```yaml
 image: ghcr.io/silentely/repo-sentinel:latest
@@ -61,7 +62,6 @@ image: ghcr.io/silentely/repo-sentinel:latest
 
 ```bash
 cp .env.example .env
-# 编辑 .env 填入密钥与可选管理员凭据
 docker compose pull
 docker compose up -d
 curl -fsS http://127.0.0.1:8080/health/ready
@@ -69,11 +69,11 @@ curl -fsS http://127.0.0.1:8080/health/ready
 
 数据在卷 `reposentinel-data` 的 `/data/reposentinel.db`。
 
-固定版本（生产可钉死）：
+固定版本或跟主干：
 
 ```bash
-# 在 compose 或 run 中改用
-# image: ghcr.io/silentely/repo-sentinel:v0.3.3
+# image: ghcr.io/silentely/repo-sentinel:v0.3.4
+# image: ghcr.io/silentely/repo-sentinel:main
 ```
 
 ### 上线后自检
@@ -116,4 +116,4 @@ docker build -t reposentinel:local \
   --build-arg BUILD_CHANNEL=local .
 ```
 
-生产路径请继续使用 `ghcr.io/silentely/repo-sentinel:latest`（或钉死的 `v*` 标签）。
+生产路径请继续使用 `ghcr.io/silentely/repo-sentinel:latest`（或钉死的 `v*` / 跟进的 `main`）。

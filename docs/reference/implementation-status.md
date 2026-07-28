@@ -25,7 +25,7 @@
 | Outbox 重试 / 死信 | 已交付 | |
 | 仪表盘 / 列表 / GitHub / 关于 | 已交付 | 关于页可检查 GitHub Release |
 | doctor / backup / restore | 已交付 | 备份须同时保管主密钥 |
-| GHCR 镜像 | 已交付 | `v*` 发版推送 `latest`；`main` 推送只跑测试 |
+| GHCR 镜像 | 已交付 | `main`/`dev` 推送对应浮动标签；`v*` 推送 `vX.Y.Z` + `latest` |
 | Prometheus `/metrics` | 已交付 | 进程内计数 + 可选 Bearer；建议内网抓取 |
 
 ## 验证命令

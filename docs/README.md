@@ -1,6 +1,6 @@
 # RepoSentinel 文档
 
-> v0.3.3 · 自托管 GitHub 仓库值守：Webhook、安全告警与可靠通知。
+> v0.3.4 · 自托管 GitHub 仓库值守：Webhook、安全告警与可靠通知。
 
 ## 产品简介
 
@@ -66,6 +66,7 @@ RepoSentinel 用于集中监控 GitHub 仓库的 Issue、Pull Request、Actions 
 | [运维手册](reference/ops.md) | 备份、日志、升级 |
 | [系统架构](reference/architecture.md) | 模块边界与数据流 |
 | [开发规范](reference/development.md) | 测试与迁移 |
+| [发布与镜像](reference/release.md) | 发版清单、GHCR 标签、耗时说明 |
 | [能力与状态](reference/implementation-status.md) | 已交付能力对照 |
 
 ### 帮助
@@ -73,6 +74,8 @@ RepoSentinel 用于集中监控 GitHub 仓库的 Issue、Pull Request、Actions 
 | 文档 | 说明 |
 |------|------|
 | [常见问题](faq.md) | 启动、setup、密钥、通知 |
+| [贡献指南](https://github.com/Silentely/Repo-Sentinel/blob/main/CONTRIBUTING.md) | Issue / PR 要求 |
+| [安全策略](https://github.com/Silentely/Repo-Sentinel/blob/main/SECURITY.md) | 漏洞报告 |
 
 ## 本地预览文档站
 

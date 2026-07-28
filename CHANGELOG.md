@@ -2,18 +2,32 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 SemVer。
 
+## [0.3.4] - 2026-07-28
+
+### Changed
+
+- GHCR 标签：`main` → `main` + `main-<sha>`；`dev` → `dev` + `dev-<sha>`；正式 `v*` → `vX.Y.Z` + `latest`（双架构）
+- 补充项目协作文档：CONTRIBUTING、SECURITY、PR / Issue 模板、Dependabot、发布说明
+
+### Fixed
+
+- 文档与工作流描述与上述标签规则一致
+
 ## [0.3.3] - 2026-07-28
 
 ### Changed
 
 - Docker Compose 默认使用 `ghcr.io/silentely/repo-sentinel:latest`，部署无需本地构建
-- GHCR 工作流：`main` 推送只跑测试；正式 `v*` 一次推送 `vX.Y.Z` / `latest` / `main` 等标签；`dev` 推送预发镜像
-- 用户文档去掉与内部计划/草稿文档的交叉引用；部署说明以 GHCR 拉取为主
+- 用户文档去掉与内部草稿的交叉引用；部署说明以 GHCR 拉取为主
 
 ### Fixed
 
 - 迁移失败时保留底层错误信息，便于排障
 - SQLite Atlas 迁移锁名按连接隔离，避免并行测试争锁导致 CI 失败
+
+### Notes
+
+- 本版曾尝试调整 GHCR 策略；最终标签规则以 **0.3.4** 为准（见上）
 
 ## [0.3.2] - 2026-07-28
 

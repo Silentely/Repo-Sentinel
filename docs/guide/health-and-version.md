@@ -52,7 +52,7 @@ OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
 .tmp/reposentinel version
 ```
 
-`VERSION` 文件是 SemVer 真相源（当前 `0.3.3`）。正式 Tag（`v*`）由 [`.github/workflows/docker.yml`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/workflows/docker.yml) 构建并推送 GHCR，包含 `latest` / `main` 等标签；`main` 分支推送只跑测试不构建镜像；`dev` 推送预发 `dev` 标签。部署请使用 `ghcr.io/silentely/repo-sentinel:latest`（或钉死的 `v*`），无需本地构建。
+`VERSION` 文件是 SemVer 真相源（当前 `0.3.4`）。GHCR 标签规则见 [发布与镜像](/reference/release)：`main` → `main` / `main-<sha>`；`dev` → `dev` / `dev-<sha>`；正式 `v*` → `vX.Y.Z` / `latest`。部署推荐 `ghcr.io/silentely/repo-sentinel:latest`（或钉死的 `v*`），无需本地构建。
 
 ## 更新检查
 

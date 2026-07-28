@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/go-1.26+-00ADD8" alt="Go">
   <img src="https://img.shields.io/badge/node-24+-green" alt="Node.js">
-  <img src="https://img.shields.io/badge/version-0.3.3-C45C26" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.4-C45C26" alt="Version">
   <img src="https://img.shields.io/badge/license-see%20repo-lightgrey" alt="License">
 </p>
 
@@ -126,6 +126,9 @@ REPOSENTINEL_GITHUB_WEBHOOK_SECRET=dev-secret \
 
 | 文档 | 说明 |
 |------|------|
+| [贡献指南](CONTRIBUTING.md) | Issue / PR 要求与开发约定 |
+| [安全策略](SECURITY.md) | 漏洞报告与部署基线 |
+| [发布与镜像](docs/reference/release.md) | GHCR 标签与发版清单 |
 | [快速开始](docs/guide/quick-start.md) | 构建、启动、首次管理员 |
 | [Docker 部署](docs/deploy/docker.md) | Compose、卷、Webhook、Telegram |
 | [管理员与 Session](docs/guide/administrator.md) | 初始化、改密、CLI 重置 |
