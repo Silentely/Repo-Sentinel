@@ -428,21 +428,42 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	if env.WorkflowRun == nil || env.Repository == nil {
 		return Result{}, fmt.Errorf("missing workflow_run payload")
 	}
+	if env.WorkflowRun.ID == 0 {
+		return Result{}, fmt.Errorf("missing workflow_run id")
+	}
 	repo, err := p.ensureRepository(ctx, env.Repository, nil)
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("ensure repository: %w", err)
 	}
 	run := env.WorkflowRun
 	conclusion := ""
 	if run.Conclusion != nil {
 		conclusion = *run.Conclusion
 	}
+	// GitHub 偶发缺字段；入库前补默认值，避免 Ent 必填校验失败。
+	if run.RunAttempt <= 0 {
+		run.RunAttempt = 1
+	}
+	if strings.TrimSpace(run.Status) == "" {
+		run.Status = "unknown"
+	}
+	if run.UpdatedAt.IsZero() {
+		if !run.CreatedAt.IsZero() {
+			run.UpdatedAt = run.CreatedAt
+		} else {
+			run.UpdatedAt = time.Now().UTC()
+		}
+	}
+	name := strings.TrimSpace(run.Name)
+	if name == "" {
+		name = "workflow"
+	}
 	hash := StateHash(strconv.FormatInt(run.ID, 10), run.Status, conclusion, strconv.Itoa(run.RunAttempt), run.HeadSHA)
 	in := store.WorkflowRun{
 		RepositoryID:     repo.ID,
 		GitHubRunID:      run.ID,
 		GitHubWorkflowID: run.WorkflowID,
-		WorkflowName:     run.Name,
+		WorkflowName:     name,
 		RunNumber:        run.RunNumber,
 		Event:            run.Event,
 		HeadBranch:       run.HeadBranch,
@@ -462,7 +483,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	}
 	_, updated, err := p.Store.WorkflowRuns().UpsertIfNewer(ctx, in)
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("upsert workflow_run: %w", err)
 	}
 	if !updated {
 		return Result{Repository: &repo, StaleDiscarded: true}, nil
