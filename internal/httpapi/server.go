@@ -12,6 +12,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
@@ -60,6 +61,8 @@ type Dependencies struct {
 	Reconciler     *syncx.Reconciler
 	// UpdateChecker 可选；关于页远程版本检查。
 	UpdateChecker *updatecheck.Checker
+	// GitHubRuntime 可选；管理台可编辑的 GitHub 配置（env 优先，DB 补缺）。
+	GitHubRuntime *githubx.RuntimeConfig
 	// Background 用于 Webhook 异步规范化；关闭时由 App 取消。
 	Background context.Context
 }
@@ -88,6 +91,7 @@ func New(dependencies Dependencies) http.Handler {
 		dependencies:  dependencies,
 		secureCookies: usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
 	}
+	// 若运行时 Public Base URL 来自管理台，启动后仍以当前快照为准（见 cookiesSecure）。
 	router := chi.NewRouter()
 	router.Use(s.requestIDMiddleware)
 	router.Use(s.realIPMiddleware)
@@ -120,6 +124,7 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/notifications/outbox", s.handleListOutbox)
 			protected.Get("/notifications/channels", s.handleListChannels)
 			protected.Get("/github/installations", s.handleListInstallations)
+			protected.Get("/github/config", s.handleGetGitHubConfig)
 			protected.Get("/system/settings", s.handleGetSettings)
 			protected.Group(func(mutating chi.Router) {
 				mutating.Use(s.csrfMiddleware)
@@ -131,6 +136,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/repositories/{id}/reconcile", s.handleReconcileRepository)
 				mutating.Post("/sync/reconcile", s.handleReconcileAll)
 				mutating.Put("/system/settings", s.handlePutSettings)
+				mutating.Put("/github/config", s.handlePutGitHubConfig)
 				mutating.Post("/system/version/check", s.handleVersionCheck)
 			})
 		})

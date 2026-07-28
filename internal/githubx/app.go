@@ -22,8 +22,10 @@ import (
 type AppClient struct {
 	AppID          int64
 	PrivateKeyPath string
-	HTTP           *http.Client
-	BaseURL        string // 默认 https://api.github.com
+	// PrivateKeyPEM 可选：内存中的 PEM 明文（管理台写入）；优先于路径文件。
+	PrivateKeyPEM string
+	HTTP          *http.Client
+	BaseURL       string // 默认 https://api.github.com
 
 	mu    sync.Mutex
 	key   *rsa.PrivateKey
@@ -35,7 +37,7 @@ type cachedToken struct {
 	ExpiresAt time.Time
 }
 
-// NewAppClient 创建客户端；AppID 或私钥路径为空时仍可构造，调用时再报错。
+// NewAppClient 创建客户端；AppID 或私钥为空时仍可构造，调用时再报错。
 func NewAppClient(appID int64, privateKeyPath string) *AppClient {
 	return &AppClient{
 		AppID:          appID,
@@ -46,9 +48,42 @@ func NewAppClient(appID int64, privateKeyPath string) *AppClient {
 	}
 }
 
-// Configured 表示具备 App 调用条件。
+// Configure 热更新 App 身份与私钥来源，并清空缓存密钥与 Installation Token。
+func (c *AppClient) Configure(appID int64, privateKeyPath, privateKeyPEM string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.AppID = appID
+	c.PrivateKeyPath = strings.TrimSpace(privateKeyPath)
+	c.PrivateKeyPEM = strings.TrimSpace(privateKeyPEM)
+	c.key = nil
+	c.cache = make(map[int64]cachedToken)
+}
+
+// Configured 表示具备 App 调用条件（App ID + 路径或内存 PEM 其一）。
 func (c *AppClient) Configured() bool {
-	return c != nil && c.AppID > 0 && strings.TrimSpace(c.PrivateKeyPath) != ""
+	if c == nil || c.AppID <= 0 {
+		return false
+	}
+	return strings.TrimSpace(c.PrivateKeyPath) != "" || strings.TrimSpace(c.PrivateKeyPEM) != ""
+}
+
+// HasPrivateKeyMaterial 表示已配置路径或 PEM（不验证文件是否可读）。
+func (c *AppClient) HasPrivateKeyMaterial() bool {
+	if c == nil {
+		return false
+	}
+	if strings.TrimSpace(c.PrivateKeyPEM) != "" {
+		return true
+	}
+	path := strings.TrimSpace(c.PrivateKeyPath)
+	if path == "" {
+		return false
+	}
+	st, err := os.Stat(path)
+	return err == nil && !st.IsDir()
 }
 
 func (c *AppClient) loadKey() (*rsa.PrivateKey, error) {
@@ -57,15 +92,35 @@ func (c *AppClient) loadKey() (*rsa.PrivateKey, error) {
 	if c.key != nil {
 		return c.key, nil
 	}
-	raw, err := os.ReadFile(c.PrivateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("read private key: %w", err)
+	var raw []byte
+	var err error
+	if pemText := strings.TrimSpace(c.PrivateKeyPEM); pemText != "" {
+		raw = []byte(pemText)
+	} else {
+		path := strings.TrimSpace(c.PrivateKeyPath)
+		if path == "" {
+			return nil, fmt.Errorf("missing private key")
+		}
+		raw, err = os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read private key: %w", err)
+		}
 	}
+	key, err := parseRSAPrivateKeyPEM(raw)
+	if err != nil {
+		return nil, err
+	}
+	c.key = key
+	return key, nil
+}
+
+func parseRSAPrivateKeyPEM(raw []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(raw)
 	if block == nil {
 		return nil, fmt.Errorf("invalid pem private key")
 	}
 	var key *rsa.PrivateKey
+	var err error
 	switch block.Type {
 	case "RSA PRIVATE KEY":
 		key, err = x509.ParsePKCS1PrivateKey(block.Bytes)
@@ -85,8 +140,13 @@ func (c *AppClient) loadKey() (*rsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.key = key
 	return key, nil
+}
+
+// ValidatePrivateKeyPEM 校验 PEM 是否为可用的 RSA 私钥（不落盘）。
+func ValidatePrivateKeyPEM(pemText string) error {
+	_, err := parseRSAPrivateKeyPEM([]byte(strings.TrimSpace(pemText)))
+	return err
 }
 
 // AppJWT 签发短时 App JWT（约 9 分钟）。

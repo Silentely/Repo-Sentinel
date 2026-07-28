@@ -101,6 +101,8 @@ func apiErrorMessage(errorCode string) string {
 		return "加密主密钥不可用，无法保存敏感配置。"
 	case "external_repo_limit":
 		return "外部公开仓库已达上限（20 个）。"
+	case "github_field_locked":
+		return "该字段已由环境变量设置，管理台不能覆盖；请修改部署配置后重启。"
 	default:
 		return "服务器暂时无法完成请求，请使用 request_id 排查。"
 	}

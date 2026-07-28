@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
@@ -160,6 +161,7 @@ func newAuthenticationResponse(admin auth.Admin, session auth.Session) authentic
 
 func (s *server) setAuthCookies(w http.ResponseWriter, created auth.CreatedSession) {
 	maxAge := int(created.Session.ExpiresAt.Sub(created.Session.CreatedAt).Seconds())
+	secure := s.cookiesSecure()
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    created.Token,
@@ -167,7 +169,7 @@ func (s *server) setAuthCookies(w http.ResponseWriter, created auth.CreatedSessi
 		Expires:  created.Session.ExpiresAt,
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   s.secureCookies,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 	http.SetCookie(w, &http.Cookie{
@@ -177,13 +179,14 @@ func (s *server) setAuthCookies(w http.ResponseWriter, created auth.CreatedSessi
 		Expires:  created.Session.ExpiresAt,
 		MaxAge:   maxAge,
 		HttpOnly: false,
-		Secure:   s.secureCookies,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
 func (s *server) clearAuthCookies(w http.ResponseWriter) {
 	expiredAt := time.Unix(1, 0).UTC()
+	secure := s.cookiesSecure()
 	for _, cookie := range []*http.Cookie{
 		{
 			Name:     SessionCookieName,
@@ -191,7 +194,7 @@ func (s *server) clearAuthCookies(w http.ResponseWriter) {
 			Expires:  expiredAt,
 			MaxAge:   -1,
 			HttpOnly: true,
-			Secure:   s.secureCookies,
+			Secure:   secure,
 			SameSite: http.SameSiteLaxMode,
 		},
 		{
@@ -200,10 +203,20 @@ func (s *server) clearAuthCookies(w http.ResponseWriter) {
 			Expires:  expiredAt,
 			MaxAge:   -1,
 			HttpOnly: false,
-			Secure:   s.secureCookies,
+			Secure:   secure,
 			SameSite: http.SameSiteLaxMode,
 		},
 	} {
 		http.SetCookie(w, cookie)
 	}
+}
+
+// cookiesSecure 优先使用运行时 Public Base URL（可被管理台热更新），否则回退启动时配置。
+func (s *server) cookiesSecure() bool {
+	if s.dependencies.GitHubRuntime != nil {
+		if base := strings.TrimSpace(s.dependencies.GitHubRuntime.Snapshot().PublicBaseURL); base != "" {
+			return usesSecureCookies(base)
+		}
+	}
+	return s.secureCookies
 }

@@ -32,6 +32,11 @@ type githubStatusPayload struct {
 	WebhookPreviousConfigured bool   `json:"webhook_previous_secret_configured"`
 	ExternalPATConfigured     bool   `json:"external_pat_configured"`
 	WebhookPath               string `json:"webhook_path"`
+	AppIDSource               string `json:"app_id_source,omitempty"`
+	ClientIDSource            string `json:"client_id_source,omitempty"`
+	PrivateKeySource          string `json:"private_key_source,omitempty"`
+	WebhookSecretSource       string `json:"webhook_secret_source,omitempty"`
+	PublicBaseURLSource       string `json:"public_base_url_source,omitempty"`
 }
 
 type versionCheckResponse struct {
@@ -71,11 +76,44 @@ func (s *server) localVersion() versionResponse {
 	if s.dependencies.UpdateChecker != nil {
 		enabled = s.dependencies.UpdateChecker.Enabled
 	}
-	gh := s.dependencies.Config.GitHub
-	privateKeyOK := false
-	if path := strings.TrimSpace(gh.PrivateKeyPath); path != "" {
-		if st, err := os.Stat(path); err == nil && !st.IsDir() {
-			privateKeyOK = true
+	publicBase := s.dependencies.Config.HTTP.PublicBaseURL
+	ghStatus := githubStatusPayload{WebhookPath: "/webhooks/github"}
+	if rt := s.dependencies.GitHubRuntime; rt != nil {
+		appID, clientID, privateKey, webhook, previous, externalPAT, base, path := rt.StatusFlags()
+		snap := rt.Snapshot()
+		if base != "" {
+			publicBase = base
+		}
+		ghStatus = githubStatusPayload{
+			AppIDConfigured:           appID,
+			ClientIDConfigured:        clientID,
+			PrivateKeyConfigured:      privateKey,
+			WebhookSecretConfigured:   webhook,
+			WebhookPreviousConfigured: previous,
+			ExternalPATConfigured:     externalPAT,
+			WebhookPath:               path,
+			AppIDSource:               snap.AppIDSource,
+			ClientIDSource:            snap.ClientIDSource,
+			PrivateKeySource:          snap.PrivateKeySource,
+			WebhookSecretSource:       snap.WebhookSecretSource,
+			PublicBaseURLSource:       snap.PublicBaseURLSource,
+		}
+	} else {
+		gh := s.dependencies.Config.GitHub
+		privateKeyOK := false
+		if path := strings.TrimSpace(gh.PrivateKeyPath); path != "" {
+			if st, err := os.Stat(path); err == nil && !st.IsDir() {
+				privateKeyOK = true
+			}
+		}
+		ghStatus = githubStatusPayload{
+			AppIDConfigured:           gh.AppID > 0,
+			ClientIDConfigured:        strings.TrimSpace(gh.ClientID) != "",
+			PrivateKeyConfigured:      privateKeyOK,
+			WebhookSecretConfigured:   strings.TrimSpace(gh.WebhookSecret.Reveal()) != "",
+			WebhookPreviousConfigured: strings.TrimSpace(gh.WebhookPreviousSecret.Reveal()) != "",
+			ExternalPATConfigured:     strings.TrimSpace(gh.ExternalPAT.Reveal()) != "",
+			WebhookPath:               "/webhooks/github",
 		}
 	}
 	return versionResponse{
@@ -88,16 +126,8 @@ func (s *server) localVersion() versionResponse {
 		DatabaseDriver:     s.dependencies.Config.Database.Driver,
 		SchemaVersion:      s.dependencies.SchemaVersion,
 		UpdateCheckEnabled: enabled,
-		PublicBaseURL:      s.dependencies.Config.HTTP.PublicBaseURL,
+		PublicBaseURL:      publicBase,
 		HTTPAddr:           s.dependencies.Config.HTTP.Addr,
-		GitHub: githubStatusPayload{
-			AppIDConfigured:           gh.AppID > 0,
-			ClientIDConfigured:        strings.TrimSpace(gh.ClientID) != "",
-			PrivateKeyConfigured:      privateKeyOK,
-			WebhookSecretConfigured:   strings.TrimSpace(gh.WebhookSecret.Reveal()) != "",
-			WebhookPreviousConfigured: strings.TrimSpace(gh.WebhookPreviousSecret.Reveal()) != "",
-			ExternalPATConfigured:     strings.TrimSpace(gh.ExternalPAT.Reveal()) != "",
-			WebhookPath:               "/webhooks/github",
-		},
+		GitHub:             ghStatus,
 	}
 }

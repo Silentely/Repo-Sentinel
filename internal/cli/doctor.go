@@ -39,6 +39,12 @@ func (r Runner) runDoctor(ctx context.Context, args []string) error {
 	}
 	defer data.Close()
 	fmt.Fprintf(r.stdout, "database_open=true\n")
+	// 管理台可写入 github.runtime_config；doctor 仅报告是否存在记录（不解密）。
+	if setting, err := data.Settings().Get(ctx, "github.runtime_config"); err == nil && len(setting.ValueJSON) > 0 {
+		fmt.Fprintf(r.stdout, "github_runtime_config_in_db=true\n")
+	} else {
+		fmt.Fprintf(r.stdout, "github_runtime_config_in_db=false\n")
+	}
 	if _, err := data.Admins().GetOnly(ctx); err != nil {
 		fmt.Fprintf(r.stdout, "admin_exists=false\n")
 	} else {

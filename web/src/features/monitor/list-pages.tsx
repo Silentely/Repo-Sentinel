@@ -12,7 +12,9 @@ import { toApiError } from "../../lib/api/errors";
 import {
   addExternalRepository,
   checkForUpdates,
+  githubConfigQueryOptions,
   installationsQueryOptions,
+  saveGitHubConfig,
   saveSystemSettings,
   settingsQueryOptions,
   versionQueryOptions,
@@ -183,13 +185,32 @@ export function SecurityPage() {
 export function GitHubPage() {
   const queryClient = useQueryClient();
   const version = useQuery(versionQueryOptions);
+  const githubConfig = useQuery(githubConfigQueryOptions);
   const installations = useQuery(installationsQueryOptions);
   const [externalName, setExternalName] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "ok" | "fail">("idle");
   const [formMessage, setFormMessage] = useState("");
+  const [configMessage, setConfigMessage] = useState("");
+  const [appID, setAppID] = useState("");
+  const [clientID, setClientID] = useState("");
+  const [publicBaseURL, setPublicBaseURL] = useState("");
+  const [privateKeyPath, setPrivateKeyPath] = useState("");
+  const [privateKeyPEM, setPrivateKeyPEM] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
 
-  const gh = version.data?.github;
-  const webhookURL = useMemo(() => buildWebhookURL(version.data), [version.data]);
+  const cfg = githubConfig.data;
+  const webhookURL = useMemo(() => {
+    if (cfg?.webhook_url) return cfg.webhook_url;
+    return buildWebhookURL(version.data);
+  }, [cfg?.webhook_url, version.data]);
+
+  useEffect(() => {
+    if (!cfg) return;
+    setAppID(cfg.app_id > 0 ? String(cfg.app_id) : "");
+    setClientID(cfg.client_id || "");
+    setPublicBaseURL(cfg.public_base_url || "");
+    setPrivateKeyPath(cfg.private_key_path || "");
+  }, [cfg]);
 
   const addExternal = useMutation({
     mutationFn: () => addExternalRepository(externalName.trim()),
@@ -201,15 +222,74 @@ export function GitHubPage() {
     },
   });
 
+  const saveConfig = useMutation({
+    mutationFn: () => {
+      const body: Parameters<typeof saveGitHubConfig>[0] = {};
+      if (!cfg?.app_id_locked) {
+        body.app_id = appID.trim() === "" ? 0 : Number(appID);
+      }
+      if (!cfg?.client_id_locked) {
+        body.client_id = clientID;
+      }
+      if (!cfg?.public_base_url_locked) {
+        body.public_base_url = publicBaseURL;
+      }
+      if (!cfg?.private_key_locked) {
+        if (privateKeyPEM.trim()) {
+          body.private_key_pem = privateKeyPEM.trim();
+        } else if (privateKeyPath.trim()) {
+          body.private_key_path = privateKeyPath.trim();
+        }
+      }
+      if (!cfg?.webhook_secret_locked && webhookSecret.trim()) {
+        body.webhook_secret = webhookSecret.trim();
+      }
+      return saveGitHubConfig(body);
+    },
+    onSuccess: async () => {
+      setConfigMessage("GitHub 配置已保存，立即生效（无需重启）。");
+      setPrivateKeyPEM("");
+      setWebhookSecret("");
+      await queryClient.invalidateQueries({ queryKey: ["github-config"] });
+      await queryClient.invalidateQueries({ queryKey: ["version"] });
+    },
+  });
+
+  const sourceLabel = (source?: string) => {
+    if (source === "env") return "环境变量（锁定）";
+    if (source === "database") return "管理台 / 数据库";
+    return "未设置";
+  };
+
   const checklist = [
-    { ok: Boolean(gh?.webhook_secret_configured), label: "Webhook Secret", hint: "REPOSENTINEL_GITHUB_WEBHOOK_SECRET" },
-    { ok: Boolean(gh?.app_id_configured), label: "App ID", hint: "REPOSENTINEL_GITHUB_APP_ID" },
-    { ok: Boolean(gh?.client_id_configured), label: "Client ID", hint: "REPOSENTINEL_GITHUB_CLIENT_ID" },
-    { ok: Boolean(gh?.private_key_configured), label: "私钥文件可读", hint: "REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH" },
-    { ok: Boolean(gh?.external_pat_configured), label: "外部仓 PAT（可选）", hint: "REPOSENTINEL_EXTERNAL_PAT" },
+    {
+      ok: Boolean(cfg?.webhook_secret_configured),
+      label: "Webhook Secret",
+      hint: sourceLabel(cfg?.webhook_secret_source),
+    },
+    {
+      ok: Boolean(cfg?.app_id_configured),
+      label: "App ID",
+      hint: sourceLabel(cfg?.app_id_source),
+    },
+    {
+      ok: Boolean(cfg?.client_id_configured),
+      label: "Client ID",
+      hint: sourceLabel(cfg?.client_id_source),
+    },
+    {
+      ok: Boolean(cfg?.private_key_configured),
+      label: "私钥",
+      hint: sourceLabel(cfg?.private_key_source),
+    },
+    {
+      ok: Boolean(cfg?.external_pat_configured),
+      label: "外部仓 PAT（可选）",
+      hint: "仅环境变量 REPOSENTINEL_EXTERNAL_PAT",
+    },
   ];
   const readyCount = checklist.filter((c) => c.ok).length;
-  const coreReady = Boolean(gh?.webhook_secret_configured);
+  const coreReady = Boolean(cfg?.webhook_secret_configured);
 
   async function copyWebhook() {
     try {
@@ -229,38 +309,144 @@ export function GitHubPage() {
           <p className="eyebrow">系统</p>
           <h1>GitHub App</h1>
           <p>
-            凭据只能通过环境变量 / 配置文件注入，管理台不收集 App Secret。本页给出状态核对、Webhook 地址与安装步骤；Installation
-            会在 GitHub 推送事件后自动出现。
+            可在本页直接填写 App ID、Client ID、私钥、Webhook Secret 与 Public Base URL；敏感字段加密入库并立即生效。若已用环境变量设置同一字段，则以环境变量为准（管理台锁定，避免漂移）。
           </p>
         </div>
       </section>
 
-      {version.isError ? (
+      {githubConfig.isError ? (
         <ErrorAlert
-          title="无法加载配置状态"
-          message={toApiError(version.error).message}
-          errorCode={toApiError(version.error).errorCode}
+          title="无法加载 GitHub 配置"
+          message={toApiError(githubConfig.error).message}
+          errorCode={toApiError(githubConfig.error).errorCode}
         />
       ) : null}
 
-      <section className="onboarding-card" aria-labelledby="gh-status-title">
+      <section className="onboarding-card channel-form" aria-labelledby="gh-config-title">
         <div className="onboarding-card__header">
-          <h2 id="gh-status-title">运行时配置状态</h2>
-          <span className="muted">
-            {version.isPending ? "检查中…" : `${readyCount} / ${checklist.length} 项已就绪`}
-          </span>
+          <h2 id="gh-config-title">在管理台填写运行时配置</h2>
+          <span className="muted">{cfg ? `${readyCount} / ${checklist.length} 项就绪` : "加载中…"}</span>
         </div>
         <p className="field-hint">
-          以下仅显示「是否已配置」，不会回显 Secret。修改环境变量后需<strong>重启服务</strong>才会更新。
+          {cfg?.note ||
+            "环境变量优先；未用环境变量设置的字段可在此保存。私钥与 Webhook Secret 使用主密钥加密，页面不会回显明文。"}
         </p>
-        <ul className="status-checklist">
+        {configMessage ? (
+          <p className="success-banner" role="status">
+            {configMessage}
+          </p>
+        ) : null}
+        <div className="form-grid">
+          <label className="field--plain">
+            <span>
+              App ID {cfg?.app_id_locked ? <em className="field-lock">环境变量锁定</em> : null}
+            </span>
+            <input
+              inputMode="numeric"
+              value={appID}
+              disabled={cfg?.app_id_locked}
+              onChange={(e) => setAppID(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder="123456"
+              autoComplete="off"
+            />
+          </label>
+          <label className="field--plain">
+            <span>
+              Client ID {cfg?.client_id_locked ? <em className="field-lock">环境变量锁定</em> : null}
+            </span>
+            <input
+              value={clientID}
+              disabled={cfg?.client_id_locked}
+              onChange={(e) => setClientID(e.target.value)}
+              placeholder="Iv1.xxxxxxxx"
+              autoComplete="off"
+            />
+          </label>
+          <label className="field--plain">
+            <span>
+              Public Base URL {cfg?.public_base_url_locked ? <em className="field-lock">环境变量锁定</em> : null}
+            </span>
+            <input
+              value={publicBaseURL}
+              disabled={cfg?.public_base_url_locked}
+              onChange={(e) => setPublicBaseURL(e.target.value)}
+              placeholder="https://monitor.example.com"
+              autoComplete="off"
+            />
+          </label>
+          <label className="field--plain">
+            <span>
+              Webhook Secret {cfg?.webhook_secret_locked ? <em className="field-lock">环境变量锁定</em> : null}
+            </span>
+            <input
+              type="password"
+              value={webhookSecret}
+              disabled={cfg?.webhook_secret_locked}
+              onChange={(e) => setWebhookSecret(e.target.value)}
+              placeholder={cfg?.webhook_secret_configured ? "已配置 · 留空保留" : "与 GitHub App Secret 相同"}
+              autoComplete="off"
+            />
+          </label>
+        </div>
+        <label className="field--plain">
+          <span>
+            私钥 PEM 粘贴 {cfg?.private_key_locked ? <em className="field-lock">环境变量锁定</em> : null}
+          </span>
+          <textarea
+            className="field-textarea"
+            rows={5}
+            value={privateKeyPEM}
+            disabled={cfg?.private_key_locked}
+            onChange={(e) => setPrivateKeyPEM(e.target.value)}
+            placeholder={
+              cfg?.private_key_configured
+                ? "已配置 · 留空保留；若粘贴新 PEM 将覆盖路径配置"
+                : "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+            }
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <label className="field--plain">
+          <span>或：服务器上的私钥路径（二选一）</span>
+          <input
+            value={privateKeyPath}
+            disabled={cfg?.private_key_locked || Boolean(privateKeyPEM.trim())}
+            onChange={(e) => setPrivateKeyPath(e.target.value)}
+            placeholder="/secrets/github-app.pem"
+            autoComplete="off"
+          />
+        </label>
+        <p className="field-hint">
+          推荐直接粘贴 PEM（加密入库，容器无需挂载文件）。若走路径方式，需保证进程能读取该文件。External PAT
+          仍仅支持环境变量。
+        </p>
+        <button
+          className="primary-button primary-button--inline"
+          type="button"
+          disabled={saveConfig.isPending || cfg?.can_edit_in_ui === false}
+          onClick={() => {
+            setConfigMessage("");
+            saveConfig.mutate();
+          }}
+        >
+          {saveConfig.isPending ? "保存中…" : "保存 GitHub 配置"}
+        </button>
+        {saveConfig.isError ? (
+          <ErrorAlert
+            title="保存失败"
+            message={toApiError(saveConfig.error).message}
+            errorCode={toApiError(saveConfig.error).errorCode}
+          />
+        ) : null}
+        <ul className="status-checklist" style={{ marginTop: "1rem" }}>
           {checklist.map((item) => (
             <li key={item.label} data-ok={item.ok ? "true" : "false"}>
               {item.ok ? <CheckCircle2 size={18} aria-hidden="true" /> : <Circle size={18} aria-hidden="true" />}
               <div>
                 <strong>{item.label}</strong>
                 <span className="muted">
-                  {item.ok ? "已配置" : "未配置"} · <code>{item.hint}</code>
+                  {item.ok ? "已配置" : "未配置"} · {item.hint}
                 </span>
               </div>
             </li>
@@ -268,8 +454,8 @@ export function GitHubPage() {
         </ul>
         {!coreReady ? (
           <p className="callout callout--warn" role="status">
-            尚未配置入站 Webhook Secret 时，GitHub 推送会被拒绝。请先设置{" "}
-            <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code> 并与 GitHub App 中填写的 Secret 保持一致。
+            尚未配置入站 Webhook Secret 时，GitHub 推送会被拒绝。在上方填写并保存，或设置环境变量{" "}
+            <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code>。
           </p>
         ) : (
           <p className="callout callout--ok" role="status">
@@ -281,7 +467,8 @@ export function GitHubPage() {
       <section className="onboarding-card" aria-labelledby="gh-webhook-title">
         <h2 id="gh-webhook-title">Webhook 接入</h2>
         <p className="field-hint">
-          在 GitHub App 设置里填写下方 URL，Content type 选 <code>application/json</code>。Secret 使用与环境变量相同的值。
+          在 GitHub App 设置里填写下方 URL，Content type 选 <code>application/json</code>。Secret 与上方「Webhook
+          Secret」保持一致。
         </p>
         <div className="copy-row">
           <code className="copy-row__value">{webhookURL}</code>
@@ -290,9 +477,10 @@ export function GitHubPage() {
             {copyState === "ok" ? "已复制" : copyState === "fail" ? "复制失败" : "复制"}
           </button>
         </div>
-        {!version.data?.public_base_url ? (
+        {!cfg?.public_base_url && !version.data?.public_base_url ? (
           <p className="field-hint">
-            当前未设置 <code>REPOSENTINEL_PUBLIC_BASE_URL</code>，上式使用浏览器地址推导。生产环境请配置公网 HTTPS 基址，避免 Cookie 与 Webhook 地址不一致。
+            当前未设置 Public Base URL，上式使用浏览器地址推导。生产环境请在上方表单或{" "}
+            <code>REPOSENTINEL_PUBLIC_BASE_URL</code> 配置公网 HTTPS 基址。
           </p>
         ) : null}
         <div className="link-row">
@@ -305,38 +493,176 @@ export function GitHubPage() {
         </div>
       </section>
 
+      <section className="onboarding-card" aria-labelledby="gh-form-title">
+        <h2 id="gh-form-title">Create GitHub App 表单怎么填</h2>
+        <p className="field-hint">
+          本产品<strong>不使用</strong>「用户授权 OAuth」登录 GitHub，只用 App 私钥换 Installation Token。创建页里与
+          Callback / Device Flow 相关的项都可以空着或关掉。
+        </p>
+
+        <h3 className="section-subtitle">基本信息</h3>
+        <dl className="field-map">
+          <div>
+            <dt>GitHub App name</dt>
+            <dd>
+              任意全局唯一名，例如 <code>RepoSentinel</code>。与本机产品名无关，可加后缀避免撞名。
+            </dd>
+          </div>
+          <div>
+            <dt>Homepage URL</dt>
+            <dd>
+              填你的管理台公网地址（与 <code>REPOSENTINEL_PUBLIC_BASE_URL</code> 一致）。本地可先填{" "}
+              <code>http://127.0.0.1:8080</code>，Webhook 仍需 GitHub 能访问的 HTTPS。
+            </dd>
+          </div>
+        </dl>
+
+        <h3 className="section-subtitle">Identifying and authorizing users</h3>
+        <dl className="field-map">
+          <div>
+            <dt>Callback URL</dt>
+            <dd>
+              <strong>留空</strong>。RepoSentinel 没有 OAuth 回调路由。
+            </dd>
+          </div>
+          <div>
+            <dt>Expire user authorization tokens</dt>
+            <dd>不勾。</dd>
+          </div>
+          <div>
+            <dt>Request user authorization (OAuth) during installation</dt>
+            <dd>
+              <strong>不勾</strong>。安装时不需要用户 OAuth。
+            </dd>
+          </div>
+          <div>
+            <dt>Enable Device Flow</dt>
+            <dd>
+              <strong>不勾</strong>。
+            </dd>
+          </div>
+        </dl>
+
+        <h3 className="section-subtitle">Post installation</h3>
+        <dl className="field-map">
+          <div>
+            <dt>Setup URL</dt>
+            <dd>可选；可填管理台地址，安装后跳回控制台。不填也不影响收 Webhook。</dd>
+          </div>
+          <div>
+            <dt>Redirect on update</dt>
+            <dd>可选；一般不勾。</dd>
+          </div>
+        </dl>
+
+        <h3 className="section-subtitle">Webhook（必填）</h3>
+        <dl className="field-map">
+          <div>
+            <dt>Active</dt>
+            <dd>
+              <strong>必须勾选</strong>。
+            </dd>
+          </div>
+          <div>
+            <dt>Webhook URL</dt>
+            <dd>
+              填上方复制框中的地址，形如 <code>https://你的域名/webhooks/github</code>。
+            </dd>
+          </div>
+          <div>
+            <dt>Secret</dt>
+            <dd>
+              自己生成一串随机值（如 <code>openssl rand -hex 32</code>），填到 GitHub，并<strong>原样</strong>写入{" "}
+              <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code>。两边必须一致。
+            </dd>
+          </div>
+        </dl>
+
+        <h3 className="section-subtitle">Repository permissions（建议全部 Read-only）</h3>
+        <p className="field-hint">权限决定下方能勾哪些事件。Organization / Account 权限保持 No access 即可。</p>
+        <ul className="bullet-list">
+          <li>
+            <strong>Metadata</strong> → Read-only（必选）
+          </li>
+          <li>
+            <strong>Contents</strong> → Read-only
+          </li>
+          <li>
+            <strong>Issues</strong> → Read-only
+          </li>
+          <li>
+            <strong>Pull requests</strong> → Read-only
+          </li>
+          <li>
+            <strong>Actions</strong> → Read-only（workflow_run / 对账）
+          </li>
+          <li>
+            <strong>Dependabot alerts</strong> → Read-only
+          </li>
+          <li>
+            <strong>Code scanning alerts</strong> → Read-only
+          </li>
+          <li>
+            <strong>Secret scanning alerts</strong> → Read-only
+          </li>
+        </ul>
+
+        <h3 className="section-subtitle">Subscribe to events（勾选）</h3>
+        <ul className="bullet-list">
+          <li>
+            <code>Issues</code>、<code>Pull request</code>、<code>Workflow run</code>
+          </li>
+          <li>
+            <code>Dependabot alert</code>、<code>Code scanning alert</code>、<code>Secret scanning alert</code>
+          </li>
+          <li>
+            <code>Installation</code>、<code>Installation repositories</code>、<code>Repository</code>
+          </li>
+          <li>
+            创建页里的 <code>Installation target</code> / <code>Meta</code> / <code>Security advisory</code>{" "}
+            <strong>可不勾</strong>（本服务不依赖）。
+          </li>
+        </ul>
+        <p className="field-hint">若列表里暂时看不到某事件，先提高对应 Repository permission 再回来勾选。</p>
+
+        <h3 className="section-subtitle">Where can this GitHub App be installed?</h3>
+        <dl className="field-map">
+          <div>
+            <dt>Only on this account</dt>
+            <dd>个人自用推荐：只能装到当前账号（如 @Silentely）。</dd>
+          </div>
+          <div>
+            <dt>Any account</dt>
+            <dd>需要装到多个组织 / 账号时再选。</dd>
+          </div>
+        </dl>
+      </section>
+
       <section className="onboarding-card" aria-labelledby="gh-steps-title">
-        <h2 id="gh-steps-title">推荐配置步骤</h2>
+        <h2 id="gh-steps-title">创建后操作顺序</h2>
         <ol className="guide-steps">
           <li>
-            <strong>创建 App</strong>
-            <span>在 GitHub 开发者设置中新建 GitHub App，Webhook 勾选 Active，URL 填上表地址。</span>
-          </li>
-          <li>
-            <strong>权限（只读为主）</strong>
+            <strong>生成私钥</strong>
             <span>
-              Repository：Contents、Issues、Pull requests、Actions、Metadata、Dependabot alerts、Code scanning
-              alerts、Secret scanning alerts（按需）。
+              App 创建页 <code>Generate a private key</code>，下载 <code>.pem</code>，挂到服务器路径（如{" "}
+              <code>/secrets/github-app.pem</code>）。
             </span>
           </li>
           <li>
-            <strong>订阅事件</strong>
+            <strong>写入环境变量并重启</strong>
             <span>
-              <code>issues</code>、<code>pull_request</code>、<code>workflow_run</code>、三类{" "}
-              <code>*_alert</code>、<code>installation</code>、<code>installation_repositories</code>、
-              <code>repository</code>。
+              <code>REPOSENTINEL_GITHUB_APP_ID</code>、<code>REPOSENTINEL_GITHUB_CLIENT_ID</code>、
+              <code>REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH</code>、与 GitHub 一致的{" "}
+              <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code>；生产再加 <code>REPOSENTINEL_PUBLIC_BASE_URL</code>。
             </span>
           </li>
           <li>
-            <strong>注入运行时</strong>
-            <span>
-              写入 App ID、Client ID、私钥路径与 <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code>，然后重启
-              RepoSentinel。
-            </span>
+            <strong>Install App</strong>
+            <span>在 GitHub 安装到目标仓库。仅创建 App、未 Install，本页不会出现 Installation。</span>
           </li>
           <li>
-            <strong>安装到仓库</strong>
-            <span>Install App → 选择账号与仓库。新仓会先进入「基线中」，在仪表盘点「完成基线」后才发实时通知。</span>
+            <strong>完成基线</strong>
+            <span>仪表盘中新仓为「基线中」；确认快照后点「完成基线」，之后才发实时通知。</span>
           </li>
         </ol>
       </section>
