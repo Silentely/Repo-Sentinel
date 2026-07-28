@@ -7,8 +7,8 @@ CREATE TABLE "github_installations" (
   "target_type" text NOT NULL DEFAULT '',
   "permissions_json" json NULL,
   "suspended" text NOT NULL DEFAULT 'false',
-  "created_at" datetime NOT NULL,
-  "updated_at" datetime NOT NULL,
+  "created_at" timestamptz NOT NULL,
+  "updated_at" timestamptz NOT NULL,
   PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "githubinstallation_installation_id" ON "github_installations" ("installation_id");
@@ -27,12 +27,12 @@ CREATE TABLE "repositories" (
   "is_private" boolean NOT NULL DEFAULT FALSE,
   "html_url" text NOT NULL DEFAULT '',
   "default_branch" text NOT NULL DEFAULT '',
-  "baseline_started_at" datetime NULL,
-  "baseline_finished_at" datetime NULL,
-  "last_synced_at" datetime NULL,
+  "baseline_started_at" timestamptz NULL,
+  "baseline_finished_at" timestamptz NULL,
+  "last_synced_at" timestamptz NULL,
   "last_sync_error_code" text NOT NULL DEFAULT '',
-  "created_at" datetime NOT NULL,
-  "updated_at" datetime NOT NULL,
+  "created_at" timestamptz NOT NULL,
+  "updated_at" timestamptz NOT NULL,
   PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "repository_full_name" ON "repositories" ("full_name");
@@ -51,8 +51,8 @@ CREATE TABLE "webhook_deliveries" (
   "status" text NOT NULL DEFAULT 'accepted',
   "error_code" text NOT NULL DEFAULT '',
   "payload" bytea NULL,
-  "received_at" datetime NOT NULL,
-  "processed_at" datetime NULL,
+  "received_at" timestamptz NOT NULL,
+  "processed_at" timestamptz NULL,
   PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "webhookdelivery_delivery_id" ON "webhook_deliveries" ("delivery_id");
@@ -74,10 +74,10 @@ CREATE TABLE "work_items" (
   "draft" boolean NOT NULL DEFAULT FALSE,
   "merged" boolean NOT NULL DEFAULT FALSE,
   "html_url" text NOT NULL DEFAULT '',
-  "source_updated_at" datetime NOT NULL,
+  "source_updated_at" timestamptz NOT NULL,
   "state_hash" text NOT NULL,
-  "created_at" datetime NOT NULL,
-  "updated_at" datetime NOT NULL,
+  "created_at" timestamptz NOT NULL,
+  "updated_at" timestamptz NOT NULL,
   PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "workitem_repository_id_number" ON "work_items" ("repository_id", "number");
@@ -101,12 +101,12 @@ CREATE TABLE "workflow_runs" (
   "actor" text NOT NULL DEFAULT '',
   "run_attempt" integer NOT NULL DEFAULT 1,
   "html_url" text NOT NULL DEFAULT '',
-  "run_started_at" datetime NULL,
-  "run_updated_at" datetime NOT NULL,
-  "run_completed_at" datetime NULL,
+  "run_started_at" timestamptz NULL,
+  "run_updated_at" timestamptz NOT NULL,
+  "run_completed_at" timestamptz NULL,
   "state_hash" text NOT NULL,
-  "created_at" datetime NOT NULL,
-  "updated_at" datetime NOT NULL,
+  "created_at" timestamptz NOT NULL,
+  "updated_at" timestamptz NOT NULL,
   PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "workflowrun_repository_id_github_run_id" ON "workflow_runs" ("repository_id", "github_run_id");
@@ -125,10 +125,10 @@ CREATE TABLE "security_alerts" (
   "rule_or_dependency" text NOT NULL DEFAULT '',
   "dismissed_reason" text NOT NULL DEFAULT '',
   "html_url" text NOT NULL DEFAULT '',
-  "source_updated_at" datetime NOT NULL,
+  "source_updated_at" timestamptz NOT NULL,
   "state_hash" text NOT NULL,
-  "created_at" datetime NOT NULL,
-  "updated_at" datetime NOT NULL,
+  "created_at" timestamptz NOT NULL,
+  "updated_at" timestamptz NOT NULL,
   PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "securityalert_repository_id_alert_kind_alert_number" ON "security_alerts" ("repository_id", "alert_kind", "alert_number");
@@ -149,14 +149,14 @@ CREATE TABLE "events" (
   "actor" text NOT NULL DEFAULT '',
   "workflow_run_id" integer NULL,
   "workflow_conclusion" text NOT NULL DEFAULT '',
-  "occurred_at" datetime NOT NULL,
-  "source_updated_at" datetime NULL,
+  "occurred_at" timestamptz NOT NULL,
+  "source_updated_at" timestamptz NULL,
   "html_url" text NOT NULL DEFAULT '',
   "payload_summary" json NULL,
   "suppress_notification" boolean NOT NULL DEFAULT FALSE,
   "dedupe_fingerprint" text NOT NULL,
   "state_hash" text NOT NULL DEFAULT '',
-  "created_at" datetime NOT NULL,
+  "created_at" timestamptz NOT NULL,
   PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "event_dedupe_fingerprint" ON "events" ("dedupe_fingerprint");
@@ -173,8 +173,8 @@ CREATE TABLE "notification_channels" (
   "target" text NOT NULL DEFAULT '',
   "secret_envelope" text NOT NULL DEFAULT '',
   "allow_private" boolean NOT NULL DEFAULT FALSE,
-  "created_at" datetime NOT NULL,
-  "updated_at" datetime NOT NULL,
+  "created_at" timestamptz NOT NULL,
+  "updated_at" timestamptz NOT NULL,
   PRIMARY KEY ("id")
 );
 CREATE INDEX "notificationchannel_channel_type_enabled" ON "notification_channels" ("channel_type", "enabled");
@@ -188,15 +188,15 @@ CREATE TABLE "notification_outbox" (
   "idempotency_key" text NOT NULL,
   "status" text NOT NULL DEFAULT 'pending',
   "attempt_count" integer NOT NULL DEFAULT 0,
-  "next_attempt_at" datetime NOT NULL,
-  "locked_until" datetime NULL,
+  "next_attempt_at" timestamptz NOT NULL,
+  "locked_until" timestamptz NULL,
   "last_error_code" text NOT NULL DEFAULT '',
   "title" text NOT NULL DEFAULT '',
   "body_text" text NOT NULL,
   "body_json" json NULL,
   "parse_mode" text NOT NULL DEFAULT 'HTML',
-  "created_at" datetime NOT NULL,
-  "updated_at" datetime NOT NULL,
+  "created_at" timestamptz NOT NULL,
+  "updated_at" timestamptz NOT NULL,
   PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "notificationoutbox_idempotency_key" ON "notification_outbox" ("idempotency_key");
@@ -211,9 +211,9 @@ CREATE TABLE "sync_cursors" (
   "resource" text NOT NULL,
   "cursor_value" text NOT NULL DEFAULT '',
   "etag" text NOT NULL DEFAULT '',
-  "last_success_at" datetime NULL,
+  "last_success_at" timestamptz NULL,
   "last_error_code" text NOT NULL DEFAULT '',
-  "updated_at" datetime NOT NULL,
+  "updated_at" timestamptz NOT NULL,
   PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "synccursor_repository_id_resource" ON "sync_cursors" ("repository_id", "resource");
@@ -225,12 +225,12 @@ CREATE TABLE "scheduled_jobs" (
   "payload_json" text NOT NULL DEFAULT '{}',
   "status" text NOT NULL DEFAULT 'pending',
   "attempt_count" integer NOT NULL DEFAULT 0,
-  "run_at" datetime NOT NULL,
-  "locked_until" datetime NULL,
+  "run_at" timestamptz NOT NULL,
+  "locked_until" timestamptz NULL,
   "last_error_code" text NOT NULL DEFAULT '',
-  "created_at" datetime NOT NULL,
-  "updated_at" datetime NOT NULL,
-  "completed_at" datetime NULL,
+  "created_at" timestamptz NOT NULL,
+  "updated_at" timestamptz NOT NULL,
+  "completed_at" timestamptz NULL,
   PRIMARY KEY ("id")
 );
 CREATE INDEX "scheduledjob_status_run_at" ON "scheduled_jobs" ("status", "run_at");
