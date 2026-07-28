@@ -12,7 +12,9 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
+	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -53,6 +55,8 @@ type Dependencies struct {
 	SchemaVersion  string
 	Frontend       fs.FS
 	KeyRing        *cryptox.KeyRing
+	Aggregator     *rules.Aggregator
+	Reconciler     *syncx.Reconciler
 	// Background 用于 Webhook 异步规范化；关闭时由 App 取消。
 	Background context.Context
 }
@@ -109,6 +113,8 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/events", s.handleListEvents)
 			protected.Get("/notifications/outbox", s.handleListOutbox)
 			protected.Get("/notifications/channels", s.handleListChannels)
+			protected.Get("/github/installations", s.handleListInstallations)
+			protected.Get("/system/settings", s.handleGetSettings)
 			protected.Group(func(mutating chi.Router) {
 				mutating.Use(s.csrfMiddleware)
 				mutating.Post("/auth/logout", s.handleLogout)
@@ -116,6 +122,9 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Put("/notifications/channels/{type}", s.handleUpsertChannel)
 				mutating.Post("/notifications/outbox/{id}/retry", s.handleRetryOutbox)
 				mutating.Post("/repositories/{id}/activate", s.handleActivateRepository)
+				mutating.Post("/repositories/{id}/reconcile", s.handleReconcileRepository)
+				mutating.Post("/sync/reconcile", s.handleReconcileAll)
+				mutating.Put("/system/settings", s.handlePutSettings)
 			})
 		})
 	})

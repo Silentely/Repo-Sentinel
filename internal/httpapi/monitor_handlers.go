@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -244,4 +245,85 @@ func listFilterFromRequest(r *http.Request) store.ListFilter {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
 	return store.ListFilter{Page: page, PerPage: perPage}
+}
+
+func (s *server) handleListInstallations(w http.ResponseWriter, r *http.Request) {
+	items, err := s.dependencies.Store.Installations().List(r.Context())
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (s *server) handleReconcileRepository(w http.ResponseWriter, r *http.Request) {
+	if s.dependencies.Reconciler == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, "reconcile_unavailable", nil)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	repo, err := s.dependencies.Store.Repositories().Get(r.Context(), id)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	go func() {
+		_ = s.dependencies.Reconciler.ReconcileRepository(s.dependencies.Background, repo)
+	}()
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "repository_id": id})
+}
+
+func (s *server) handleReconcileAll(w http.ResponseWriter, r *http.Request) {
+	if s.dependencies.Reconciler == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, "reconcile_unavailable", nil)
+		return
+	}
+	go func() {
+		_ = s.dependencies.Reconciler.ReconcileAll(s.dependencies.Background, 20)
+	}()
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued"})
+}
+
+func (s *server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	out := map[string]any{
+		"admin.timezone":            "UTC",
+		"digest.local_time":         "09:00",
+		"digest.send_empty":         false,
+		"notify.aggregate_window_sec": 60,
+		"notify.burst_threshold":    15,
+	}
+	for key := range out {
+		if s, err := s.dependencies.Store.Settings().Get(r.Context(), key); err == nil {
+			var v any
+			if json.Unmarshal(s.ValueJSON, &v) == nil {
+				out[key] = v
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
+	var body map[string]any
+	if !s.decodeRequestJSON(w, r, &body) {
+		return
+	}
+	allowed := map[string]bool{
+		"admin.timezone": true, "digest.local_time": true, "digest.send_empty": true,
+		"notify.aggregate_window_sec": true, "notify.burst_threshold": true, "notify.burst_window_sec": true,
+	}
+	for k, v := range body {
+		if !allowed[k] {
+			continue
+		}
+		raw, _ := json.Marshal(v)
+		_, err := s.dependencies.Store.Settings().Upsert(r.Context(), store.SystemSetting{
+			ID: ulid.Make().String(), Key: k, ValueJSON: raw, UpdatedAt: time.Now().UTC(), UpdatedBy: "admin",
+		})
+		if err != nil {
+			s.writeMappedError(w, r, err)
+			return
+		}
+	}
+	s.handleGetSettings(w, r)
 }

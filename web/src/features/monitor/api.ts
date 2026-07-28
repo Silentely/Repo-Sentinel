@@ -104,3 +104,17 @@ export async function upsertChannel(
     body: JSON.stringify(body),
   });
 }
+
+export async function reconcileRepository(id: string): Promise<void> {
+  await apiRequest(`/api/v1/repositories/${id}/reconcile`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function reconcileAll(): Promise<void> {
+  await apiRequest("/api/v1/sync/reconcile", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}

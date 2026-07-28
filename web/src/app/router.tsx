@@ -17,6 +17,13 @@ import { useSession } from "../features/auth/use-session";
 import { queryClient } from "../lib/query-client";
 import { DashboardPage } from "../features/monitor/dashboard-page";
 import { NotifyPage } from "../features/monitor/notify-page";
+import {
+  AboutPage,
+  ActionsPage,
+  GitHubPage,
+  SecurityPage,
+  WorkItemsPage,
+} from "../features/monitor/list-pages";
 import { RootLayout, RouteLoading } from "./root-layout";
 
 export interface RouterContext {
@@ -57,10 +64,48 @@ const notifyRoute = createRoute({
   component: NotifyPage,
 });
 
+const workItemsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/work-items",
+  component: WorkItemsPage,
+});
+
+const actionsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/actions",
+  component: ActionsPage,
+});
+
+const securityRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/security",
+  component: SecurityPage,
+});
+
+const githubRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/github",
+  component: GitHubPage,
+});
+
+const aboutRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/about",
+  component: AboutPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
-  authenticatedRoute.addChildren([indexRoute, notifyRoute]),
+  authenticatedRoute.addChildren([
+    indexRoute,
+    notifyRoute,
+    workItemsRoute,
+    actionsRoute,
+    securityRoute,
+    githubRoute,
+    aboutRoute,
+  ]),
 ]);
 
 export const router = createRouter({

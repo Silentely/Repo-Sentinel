@@ -1,0 +1,153 @@
+package githubx
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/url"
+	"time"
+)
+
+// IssueItem GitHub issues API 条目（含 PR）。
+type IssueItem struct {
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	State     string    `json:"state"`
+	HTMLURL   string    `json:"html_url"`
+	UpdatedAt time.Time `json:"updated_at"`
+	User      struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	PullRequest *struct {
+		URL string `json:"url"`
+	} `json:"pull_request"`
+	Draft  bool `json:"draft"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+	Assignees []struct {
+		Login string `json:"login"`
+	} `json:"assignees"`
+	Milestone *struct {
+		Title string `json:"title"`
+	} `json:"milestone"`
+}
+
+// WorkflowRunItem Actions run。
+type WorkflowRunItem struct {
+	ID         int64     `json:"id"`
+	Name       string    `json:"name"`
+	WorkflowID int64     `json:"workflow_id"`
+	RunNumber  int       `json:"run_number"`
+	Event      string    `json:"event"`
+	Status     string    `json:"status"`
+	Conclusion *string   `json:"conclusion"`
+	HTMLURL    string    `json:"html_url"`
+	HeadBranch string    `json:"head_branch"`
+	HeadSHA    string    `json:"head_sha"`
+	RunAttempt int       `json:"run_attempt"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	CreatedAt  time.Time `json:"created_at"`
+	Actor      struct {
+		Login string `json:"login"`
+	} `json:"actor"`
+}
+
+// AlertItem 安全告警通用结构。
+type AlertItem struct {
+	Number          int       `json:"number"`
+	State           string    `json:"state"`
+	HTMLURL         string    `json:"html_url"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	Severity        string    `json:"severity"`
+	DismissedReason string    `json:"dismissed_reason"`
+	Dependency      *struct {
+		Package struct {
+			Name string `json:"name"`
+		} `json:"package"`
+	} `json:"dependency"`
+	SecurityAdvisory *struct {
+		Severity string `json:"severity"`
+		Summary  string `json:"summary"`
+	} `json:"security_advisory"`
+	Rule *struct {
+		ID       string `json:"id"`
+		Severity string `json:"severity"`
+	} `json:"rule"`
+	SecretType            string `json:"secret_type"`
+	SecretTypeDisplayName string `json:"secret_type_display_name"`
+}
+
+// ListIssues 分页拉取 issues（含 PR）。
+func (c *AppClient) ListIssues(ctx context.Context, token, owner, repo string, since *time.Time, page int) ([]IssueItem, int, error) {
+	q := url.Values{}
+	q.Set("state", "all")
+	q.Set("per_page", "100")
+	q.Set("page", fmt.Sprintf("%d", page))
+	q.Set("sort", "updated")
+	q.Set("direction", "desc")
+	if since != nil {
+		q.Set("since", since.UTC().Format(time.RFC3339))
+	}
+	path := fmt.Sprintf("/repos/%s/%s/issues?%s", owner, repo, q.Encode())
+	var items []IssueItem
+	remaining, err := c.DoJSON(ctx, "GET", path, token, &items)
+	return items, remaining, err
+}
+
+// ListWorkflowRuns 拉取 workflow runs。
+func (c *AppClient) ListWorkflowRuns(ctx context.Context, token, owner, repo string, page int) ([]WorkflowRunItem, int, error) {
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs?per_page=50&page=%d", owner, repo, page)
+	var payload struct {
+		WorkflowRuns []WorkflowRunItem `json:"workflow_runs"`
+	}
+	remaining, err := c.DoJSON(ctx, "GET", path, token, &payload)
+	return payload.WorkflowRuns, remaining, err
+}
+
+// ListDependabotAlerts 拉取 dependabot alerts。
+func (c *AppClient) ListDependabotAlerts(ctx context.Context, token, owner, repo string, page int) ([]AlertItem, int, error) {
+	path := fmt.Sprintf("/repos/%s/%s/dependabot/alerts?per_page=50&page=%d&state=all", owner, repo, page)
+	var items []AlertItem
+	remaining, err := c.DoJSON(ctx, "GET", path, token, &items)
+	return items, remaining, err
+}
+
+// ListCodeScanningAlerts 拉取 code scanning alerts。
+func (c *AppClient) ListCodeScanningAlerts(ctx context.Context, token, owner, repo string, page int) ([]AlertItem, int, error) {
+	path := fmt.Sprintf("/repos/%s/%s/code-scanning/alerts?per_page=50&page=%d&state=all", owner, repo, page)
+	var items []AlertItem
+	remaining, err := c.DoJSON(ctx, "GET", path, token, &items)
+	return items, remaining, err
+}
+
+// ListSecretScanningAlerts 拉取 secret scanning alerts。
+func (c *AppClient) ListSecretScanningAlerts(ctx context.Context, token, owner, repo string, page int) ([]AlertItem, int, error) {
+	path := fmt.Sprintf("/repos/%s/%s/secret-scanning/alerts?per_page=50&page=%d&state=all", owner, repo, page)
+	var items []AlertItem
+	remaining, err := c.DoJSON(ctx, "GET", path, token, &items)
+	return items, remaining, err
+}
+
+// PublicClient 用于外部公开仓轮询（可选 PAT）。
+type PublicClient struct {
+	PAT     string
+	HTTP    *http.Client
+	BaseURL string
+}
+
+// ListPublicIssues 列出公开仓 issues。
+func (c *PublicClient) ListPublicIssues(ctx context.Context, owner, repo string, since *time.Time, page int) ([]IssueItem, int, error) {
+	app := &AppClient{
+		HTTP:    c.HTTP,
+		BaseURL: c.BaseURL,
+	}
+	if app.HTTP == nil {
+		app.HTTP = &http.Client{Timeout: 30 * time.Second}
+	}
+	if app.BaseURL == "" {
+		app.BaseURL = "https://api.github.com"
+	}
+	return app.ListIssues(ctx, c.PAT, owner, repo, since, page)
+}
