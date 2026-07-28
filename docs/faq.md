@@ -14,6 +14,21 @@
 
 可在环境变量中设置 `REPOSENTINEL_TELEGRAM_TOKEN` 与 `REPOSENTINEL_TELEGRAM_CHAT_ID`（启动时写入渠道），或在「渠道配置」页保存。Token 使用主密钥加密存储。
 
+### `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` 和页面里的「签名 Secret」是一回事吗？
+
+**不是。** 两套 Secret 方向相反：
+
+| 配置 | 方向 | 用途 |
+|------|------|------|
+| `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` | **入站** GitHub → RepoSentinel | 校验 GitHub 推送的 `X-Hub-Signature-256`，必须配置才能收事件 |
+| 渠道页「HTTP Webhook · 签名 Secret」/ `REPOSENTINEL_HTTP_WEBHOOK_SECRET` | **出站** RepoSentinel → 你的 URL | 可选；配置后在请求头带 `X-GitHub-Monitor-Signature-256` |
+
+HTTP 出站 Secret 用环境变量**或**管理台二选一即可：环境变量只在该渠道尚不存在时种子写入数据库，之后以页面保存为准，不必两边都填。
+
+### 日志太多怎么办？
+
+默认 `info` 下**不再**打印每条页面/API 访问记录（已降为 `debug`）。`info` 保留登录成功/失败、Webhook 受理与处理、通知投递等重点事件。需要访问明细时设 `REPOSENTINEL_LOG_LEVEL=debug`。
+
 ## 安装与启动
 
 ### setup 提示不允许远程初始化？

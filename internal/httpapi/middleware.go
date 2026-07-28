@@ -39,7 +39,8 @@ func (s *server) accessLogMiddleware(next http.Handler) http.Handler {
 		startedAt := time.Now()
 		wrapped := &statusResponseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(wrapped, r)
-		s.dependencies.Logger.Info(
+		// 页面与 API 的逐请求访问日志默认不刷屏；排查时将 logging.level 设为 debug。
+		s.dependencies.Logger.Debug(
 			"http request",
 			"request_id", requestIDFromContext(r.Context()),
 			"method", r.Method,

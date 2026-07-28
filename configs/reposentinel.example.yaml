@@ -38,8 +38,8 @@ github:
   client_id: ""
   # GitHub App 私钥文件路径；文件内容不写入配置。
   private_key_path: ""
-  # Webhook Secret 通过 REPOSENTINEL_GITHUB_WEBHOOK_SECRET 提供。
-  # 上一把 Webhook Secret 通过 REPOSENTINEL_GITHUB_WEBHOOK_PREVIOUS_SECRET 提供。
+  # 入站：GitHub → 本服务。Secret 通过 REPOSENTINEL_GITHUB_WEBHOOK_SECRET 提供。
+  # 上一把入站 Secret 通过 REPOSENTINEL_GITHUB_WEBHOOK_PREVIOUS_SECRET 提供。
   # 外部仓库 PAT 通过 REPOSENTINEL_EXTERNAL_PAT 提供。
 
 notify:
@@ -48,11 +48,12 @@ notify:
     chat_id: ""
     # Bot Token 通过 REPOSENTINEL_TELEGRAM_TOKEN 提供。
   http_webhook:
-    # 通用 HTTP Webhook 地址。
+    # 出站：本服务 → 你的接收端 HTTPS URL（也可用管理台「渠道配置」填写）。
     url: ""
     # 是否允许通知发送到私网地址。
     allow_private: false
-    # Webhook 签名 Secret 通过 REPOSENTINEL_HTTP_WEBHOOK_SECRET 提供。
+    # 出站签名 Secret 通过 REPOSENTINEL_HTTP_WEBHOOK_SECRET 提供（可选）。
+    # 与 REPOSENTINEL_GITHUB_WEBHOOK_SECRET 无关；管理台同名字段为同一用途的运行时配置。
 
 logging:
   # 日志格式可选 json 或 text。

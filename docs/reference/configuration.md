@@ -127,8 +127,8 @@ openssl rand -hex 32
 | `REPOSENTINEL_GITHUB_APP_ID` | App 数字 ID |
 | `REPOSENTINEL_GITHUB_CLIENT_ID` | Client ID |
 | `REPOSENTINEL_GITHUB_PRIVATE_KEY_PATH` | 私钥文件路径 |
-| `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` | 当前 Webhook Secret |
-| `REPOSENTINEL_GITHUB_WEBHOOK_PREVIOUS_SECRET` | 轮换中的上一把 Secret |
+| `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` | **入站**：GitHub → 本服务 Webhook 签名 Secret（`X-Hub-Signature-256`） |
+| `REPOSENTINEL_GITHUB_WEBHOOK_PREVIOUS_SECRET` | 轮换中的上一把入站 Secret |
 | `REPOSENTINEL_EXTERNAL_PAT` | 外部公开仓访问用 PAT（可选） |
 
 ### 通知
@@ -137,9 +137,11 @@ openssl rand -hex 32
 |------|------|
 | `REPOSENTINEL_TELEGRAM_TOKEN` | Bot Token |
 | `REPOSENTINEL_TELEGRAM_CHAT_ID` | 目标 Chat ID |
-| `REPOSENTINEL_HTTP_WEBHOOK_URL` | 通用 HTTPS Webhook |
-| `REPOSENTINEL_HTTP_WEBHOOK_SECRET` | Webhook 签名 Secret |
+| `REPOSENTINEL_HTTP_WEBHOOK_URL` | **出站**：本服务 → 你的接收端 HTTPS URL |
+| `REPOSENTINEL_HTTP_WEBHOOK_SECRET` | **出站**签名 Secret（`X-GitHub-Monitor-Signature-256`）；与 GitHub 入站 Secret 无关 |
 | `REPOSENTINEL_HTTP_WEBHOOK_ALLOW_PRIVATE` | 是否允许私网目标，默认 `false` |
+
+> 管理台「渠道配置」页的 HTTP 签名 Secret 与 `REPOSENTINEL_HTTP_WEBHOOK_SECRET` 是同一用途：环境变量仅在渠道尚不存在时种子写入数据库；之后以页面保存为准，无需两边重复填写。`REPOSENTINEL_GITHUB_WEBHOOK_SECRET` 只服务 GitHub 入站，不可混用。
 
 ### 日志
 

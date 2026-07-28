@@ -28,8 +28,9 @@
   --text-primary: oklch(0.92 0.017 70);
   --text-secondary: oklch(0.75 0.022 65);
   --text-muted: oklch(0.59 0.022 60);
-  --accent: oklch(0.69 0.13 43);
-  --accent-fg: oklch(0.19 0.024 45);
+  /* 暗色下强调色略提亮，保证侧栏选中与主按钮文字可读 */
+  --accent: oklch(0.74 0.13 43);
+  --accent-fg: oklch(0.16 0.02 45);
   --danger: oklch(0.7 0.16 28);
   --warning: oklch(0.78 0.14 78);
   --success: oklch(0.7 0.13 145);

@@ -66,3 +66,13 @@ export async function logout(): Promise<void> {
     body: JSON.stringify({}),
   });
 }
+
+export async function changePassword(input: {
+  current_password: string;
+  new_password: string;
+}): Promise<void> {
+  await apiRequest<{ changed: boolean }>("/api/v1/auth/password", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}

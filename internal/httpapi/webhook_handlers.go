@@ -31,11 +31,21 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		secrets = append(secrets, v)
 	}
 	if len(secrets) == 0 {
+		s.dependencies.Logger.Warn(
+			"github webhook rejected",
+			"request_id", requestIDFromContext(r.Context()),
+			"error_code", "webhook_not_configured",
+		)
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, "webhook_not_configured", nil)
 		return
 	}
 	if !githubx.VerifySignature(body, r.Header.Get("X-Hub-Signature-256"), secrets...) {
 		MetricsIncWebhookInvalidSig()
+		s.dependencies.Logger.Warn(
+			"github webhook rejected",
+			"request_id", requestIDFromContext(r.Context()),
+			"error_code", "invalid_signature",
+		)
 		s.writeAPIError(w, r, http.StatusUnauthorized, "invalid_signature", nil)
 		return
 	}
@@ -49,6 +59,11 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 
 	if existing, err := s.dependencies.Store.WebhookDeliveries().GetByDeliveryID(r.Context(), deliveryID); err == nil {
 		MetricsIncWebhookDuplicate()
+		s.dependencies.Logger.Info(
+			"github webhook duplicate",
+			"delivery_id", existing.DeliveryID,
+			"event_type", eventType,
+		)
 		writeJSON(w, http.StatusAccepted, map[string]any{
 			"status":      "duplicate",
 			"delivery_id": existing.DeliveryID,
@@ -63,6 +78,11 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == store.ErrConflict {
 			MetricsIncWebhookDuplicate()
+			s.dependencies.Logger.Info(
+				"github webhook duplicate",
+				"delivery_id", deliveryID,
+				"event_type", eventType,
+			)
 			writeJSON(w, http.StatusAccepted, map[string]any{"status": "duplicate", "delivery_id": deliveryID})
 			return
 		}
@@ -72,6 +92,12 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// 尽快 202，后台规范化
 	MetricsIncWebhookAccepted()
+	s.dependencies.Logger.Info(
+		"github webhook accepted",
+		"delivery_id", deliveryID,
+		"event_type", eventType,
+		"payload_bytes", len(body),
+	)
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"status":      "accepted",
 		"delivery_id": deliveryID,
@@ -108,4 +134,11 @@ func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body [
 		}
 	}
 	_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(ctx, rowID, store.DeliveryProcessed, "")
+	s.dependencies.Logger.Info(
+		"github webhook processed",
+		"delivery_id", deliveryID,
+		"event_type", eventType,
+		"repo", repoName,
+		"suppressed", res.SuppressNotify,
+	)
 }

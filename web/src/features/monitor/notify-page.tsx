@@ -92,13 +92,16 @@ export function NotifyPage() {
         </ul>
       </section>
 
-      <section className="onboarding-card">
+      <section className="onboarding-card channel-form">
         <h2>Telegram</h2>
-        <label className="field">
+        <p className="field-hint">
+          向 Bot 发消息的目标。Token 也可通过环境变量 <code>REPOSENTINEL_TELEGRAM_TOKEN</code> 在启动时初始化；页面保存会写入数据库并加密存储。
+        </p>
+        <label className="field--plain">
           <span>Chat ID</span>
           <input value={telegramTarget} onChange={(e) => setTelegramTarget(e.target.value)} placeholder="-100..." />
         </label>
-        <label className="field">
+        <label className="field--plain">
           <span>Bot Token（留空则保留原密钥）</span>
           <input
             type="password"
@@ -108,8 +111,8 @@ export function NotifyPage() {
             autoComplete="off"
           />
         </label>
-        <button className="primary-button" type="button" disabled={saveTelegram.isPending} onClick={() => saveTelegram.mutate()}>
-          保存 Telegram
+        <button className="primary-button primary-button--inline" type="button" disabled={saveTelegram.isPending} onClick={() => saveTelegram.mutate()}>
+          {saveTelegram.isPending ? "保存中…" : "保存 Telegram"}
         </button>
         {saveTelegram.isError ? (
           <ErrorAlert
@@ -120,18 +123,32 @@ export function NotifyPage() {
         ) : null}
       </section>
 
-      <section className="onboarding-card">
+      <section className="onboarding-card channel-form">
         <h2>HTTP Webhook</h2>
-        <label className="field">
+        <p className="field-hint">
+          这是<strong>出站通知</strong>：RepoSentinel 把告警 POST 到你的 HTTPS 地址。签名 Secret 可选，配置后会在请求头附带{" "}
+          <code>X-GitHub-Monitor-Signature-256</code>，供接收端校验。
+        </p>
+        <p className="field-hint">
+          与 <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code> <strong>不是同一个</strong>：后者是 GitHub → 本服务的入站 Webhook 校验；本页 Secret 对应{" "}
+          <code>REPOSENTINEL_HTTP_WEBHOOK_SECRET</code>（启动时种子）或此处手填，二选一即可，不必重复配置。
+        </p>
+        <label className="field--plain">
           <span>HTTPS URL</span>
-          <input value={httpTarget} onChange={(e) => setHttpTarget(e.target.value)} placeholder="https://..." />
+          <input value={httpTarget} onChange={(e) => setHttpTarget(e.target.value)} placeholder="https://hooks.example.com/notify" />
         </label>
-        <label className="field">
+        <label className="field--plain">
           <span>签名 Secret（可选）</span>
-          <input type="password" value={httpSecret} onChange={(e) => setHttpSecret(e.target.value)} autoComplete="off" />
+          <input
+            type="password"
+            value={httpSecret}
+            onChange={(e) => setHttpSecret(e.target.value)}
+            placeholder="留空则不签名；已配置时留空保留原值"
+            autoComplete="off"
+          />
         </label>
-        <button className="primary-button" type="button" disabled={saveHTTP.isPending} onClick={() => saveHTTP.mutate()}>
-          保存 HTTP Webhook
+        <button className="primary-button primary-button--inline" type="button" disabled={saveHTTP.isPending} onClick={() => saveHTTP.mutate()}>
+          {saveHTTP.isPending ? "保存中…" : "保存 HTTP Webhook"}
         </button>
         {saveHTTP.isError ? (
           <ErrorAlert
