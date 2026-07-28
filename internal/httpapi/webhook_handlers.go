@@ -120,7 +120,13 @@ func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body [
 	res, err := proc.Process(ctx, eventType, deliveryID, body)
 	if err != nil {
 		_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(ctx, rowID, store.DeliveryFailed, "normalize_failed")
-		s.dependencies.Logger.Error("webhook normalize failed", "delivery_id", deliveryID, "error_code", "normalize_failed")
+		s.dependencies.Logger.Error(
+			"webhook normalize failed",
+			"delivery_id", deliveryID,
+			"event_type", eventType,
+			"error_code", "normalize_failed",
+			"error", err.Error(),
+		)
 		return
 	}
 	repoName := ""

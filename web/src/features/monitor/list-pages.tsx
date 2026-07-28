@@ -81,30 +81,34 @@ export function WorkItemsPage() {
     <ListShell
       eyebrow="仓库"
       title="Issues / Pull Requests"
-      description="自有仓与外部公开仓的工作项。Webhook 或对账同步后会出现在这里。"
+      description="自有仓与外部公开仓的工作项。Webhook 或仪表盘「对账」同步后会出现在这里。"
     >
       {q.data?.items.length ? (
         <ul className="event-list">
-          {q.data.items.map((it) => (
-            <li key={it.id}>
-              <span className="event-kind">{it.kind}</span>
-              <strong>
-                #{it.number} {it.title}
-              </strong>
-              <span className="muted">{it.state}</span>
-              {it.html_url ? (
-                <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">
-                  打开
-                </a>
-              ) : null}
-            </li>
-          ))}
+          {q.data.items.map((it) => {
+            const num = it.number ?? 0;
+            const title = (it.title || "").trim() || "（无标题）";
+            return (
+              <li key={it.id}>
+                <span className="event-kind">{it.kind || "item"}</span>
+                <strong>
+                  #{num} {title}
+                </strong>
+                <span className="muted">{it.state || "—"}{it.author ? ` · ${it.author}` : ""}</span>
+                {it.html_url ? (
+                  <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">
+                    打开
+                  </a>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <EmptyState
           title="暂无工作项"
-          description="先完成 GitHub App 安装与 Webhook，再在仪表盘确认仓库已出现。"
-          action={<Link to="/github">去配置 GitHub App</Link>}
+          description="先完成 GitHub App 安装，再在仪表盘对仓库点「对账」或等待 Issue/PR Webhook。"
+          action={<Link to="/">回仪表盘对账</Link>}
         />
       )}
     </ListShell>
@@ -117,29 +121,37 @@ export function ActionsPage() {
     queryFn: () => apiRequest<Page<WorkflowRun>>("/api/v1/workflow-runs?per_page=50"),
   });
   return (
-    <ListShell eyebrow="仓库" title="Actions" description="Workflow Run 结论与恢复状态，来自 workflow_run 事件或对账。">
+    <ListShell
+      eyebrow="仓库"
+      title="Actions"
+      description="Workflow Run 结论与恢复状态。来自 workflow_run Webhook，或仪表盘对自有仓「对账」。"
+    >
       {q.data?.items.length ? (
         <ul className="event-list">
-          {q.data.items.map((run) => (
-            <li key={run.id}>
-              <span className="event-kind">{run.conclusion || run.status}</span>
-              <strong>
-                {run.workflow_name} #{run.run_number}
-              </strong>
-              <span className="muted">{run.head_branch}</span>
-              {run.html_url ? (
-                <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">
-                  打开
-                </a>
-              ) : null}
-            </li>
-          ))}
+          {q.data.items.map((run) => {
+            const name = (run.workflow_name || "").trim() || "workflow";
+            const num = run.run_number ?? 0;
+            return (
+              <li key={run.id}>
+                <span className="event-kind">{run.conclusion || run.status || "run"}</span>
+                <strong>
+                  {name} #{num}
+                </strong>
+                <span className="muted">{run.head_branch || "—"}</span>
+                {run.html_url ? (
+                  <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">
+                    打开
+                  </a>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <EmptyState
           title="暂无 Actions 运行"
-          description="App 需具备 Actions 读取权限，并订阅 workflow_run 事件。"
-          action={<Link to="/github">查看配置步骤</Link>}
+          description="确认 App 有 Actions 只读权限并订阅了 workflow_run。若 Webhook 曾失败，可在仪表盘对仓库点「对账」补拉历史 Run。"
+          action={<Link to="/">回仪表盘对账</Link>}
         />
       )}
     </ListShell>
@@ -159,27 +171,32 @@ export function SecurityPage() {
     >
       {q.data?.items.length ? (
         <ul className="event-list">
-          {q.data.items.map((a) => (
-            <li key={a.id}>
-              <span className="event-kind">{a.alert_kind}</span>
-              <strong>
-                #{a.alert_number} {a.rule_or_dependency || a.severity}
-              </strong>
-              <span className="muted">
-                {a.state} · {a.severity}
-              </span>
-              {a.html_url ? (
-                <a className="quiet-button" href={a.html_url} target="_blank" rel="noreferrer">
-                  打开
-                </a>
-              ) : null}
-            </li>
-          ))}
+          {q.data.items.map((a) => {
+            const num = a.alert_number ?? 0;
+            const label = (a.rule_or_dependency || a.severity || "").trim() || "告警";
+            return (
+              <li key={a.id}>
+                <span className="event-kind">{a.alert_kind || "alert"}</span>
+                <strong>
+                  #{num} {label}
+                </strong>
+                <span className="muted">
+                  {a.state || "—"}
+                  {a.severity ? ` · ${a.severity}` : ""}
+                </span>
+                {a.html_url ? (
+                  <a className="quiet-button" href={a.html_url} target="_blank" rel="noreferrer">
+                    打开
+                  </a>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <EmptyState
           title="暂无安全告警"
-          description="在 GitHub 仓库开启安全功能，并为 App 授予相应只读权限后，告警会出现在这里。"
+          description="在 GitHub 开启仓库安全功能，并授予 Dependabot / Code scanning / Secret scanning 只读权限后，Webhook 或对账会写入此处。"
           action={<Link to="/github">查看权限清单</Link>}
         />
       )}
@@ -753,9 +770,11 @@ export function GitHubPage() {
               <li key={inst.id}>
                 <span className="event-kind">{inst.account_type || "account"}</span>
                 <strong>{inst.account_login || "（未知账号）"}</strong>
-                <span className="muted">installation {inst.installation_id}</span>
+                <span className="muted">
+                  installation {inst.installation_id > 0 ? inst.installation_id : "—"}
+                </span>
                 <span className="muted">{inst.suspended === "true" ? "已挂起" : "正常"}</span>
-                {inst.installation_id ? (
+                {inst.installation_id > 0 ? (
                   <a
                     className="quiet-button"
                     href={`https://github.com/settings/installations/${inst.installation_id}`}

@@ -19,8 +19,8 @@ const (
 	WorkItemKindIssue = "issue"
 	WorkItemKindPR    = "pull_request"
 
-	AlertKindDependabot    = "dependabot"
-	AlertKindCodeScanning  = "code_scanning"
+	AlertKindDependabot     = "dependabot"
+	AlertKindCodeScanning   = "code_scanning"
 	AlertKindSecretScanning = "secret_scanning"
 
 	ChannelTelegram    = "telegram"
@@ -39,182 +39,182 @@ const (
 
 // GitHubInstallation 领域模型。
 type GitHubInstallation struct {
-	ID               string
-	InstallationID   int64
-	AccountLogin     string
-	AccountType      string
-	TargetType       string
-	PermissionsJSON  map[string]any
-	Suspended        string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID              string         `json:"id"`
+	InstallationID  int64          `json:"installation_id"`
+	AccountLogin    string         `json:"account_login"`
+	AccountType     string         `json:"account_type"`
+	TargetType      string         `json:"target_type"`
+	PermissionsJSON map[string]any `json:"permissions,omitempty"`
+	Suspended       string         `json:"suspended"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
 // Repository 领域模型。
 type Repository struct {
-	ID                 string
-	Type               string
-	SyncStatus         string
-	GitHubRepoID       *int64
-	Owner              string
-	Name               string
-	FullName           string
-	InstallationID     *string
-	IsArchived         bool
-	IsPrivate          bool
-	HTMLURL            string
-	DefaultBranch      string
-	BaselineStartedAt  *time.Time
-	BaselineFinishedAt *time.Time
-	LastSyncedAt       *time.Time
-	LastSyncErrorCode  string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                 string     `json:"id"`
+	Type               string     `json:"type"`
+	SyncStatus         string     `json:"sync_status"`
+	GitHubRepoID       *int64     `json:"github_repo_id,omitempty"`
+	Owner              string     `json:"owner"`
+	Name               string     `json:"name"`
+	FullName           string     `json:"full_name"`
+	InstallationID     *string    `json:"installation_id,omitempty"`
+	IsArchived         bool       `json:"is_archived"`
+	IsPrivate          bool       `json:"is_private"`
+	HTMLURL            string     `json:"html_url"`
+	DefaultBranch      string     `json:"default_branch"`
+	BaselineStartedAt  *time.Time `json:"baseline_started_at,omitempty"`
+	BaselineFinishedAt *time.Time `json:"baseline_finished_at,omitempty"`
+	LastSyncedAt       *time.Time `json:"last_synced_at,omitempty"`
+	LastSyncErrorCode  string     `json:"last_sync_error_code,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 // WebhookDelivery 领域模型。
 type WebhookDelivery struct {
-	ID                  string
-	DeliveryID          string
-	EventType           string
-	Action              string
-	RepositoryFullName  string
-	Status              string
-	ErrorCode           string
-	Payload             []byte
-	ReceivedAt          time.Time
-	ProcessedAt         *time.Time
+	ID                 string     `json:"id"`
+	DeliveryID         string     `json:"delivery_id"`
+	EventType          string     `json:"event_type"`
+	Action             string     `json:"action,omitempty"`
+	RepositoryFullName string     `json:"repository_full_name,omitempty"`
+	Status             string     `json:"status"`
+	ErrorCode          string     `json:"error_code,omitempty"`
+	Payload            []byte     `json:"-"`
+	ReceivedAt         time.Time  `json:"received_at"`
+	ProcessedAt        *time.Time `json:"processed_at,omitempty"`
 }
 
 // WorkItem 领域模型。
 type WorkItem struct {
-	ID              string
-	RepositoryID    string
-	Number          int
-	Kind            string
-	State           string
-	Title           string
-	Author          string
-	LabelsJSON      []any
-	AssigneesJSON   []any
-	Milestone       string
-	Draft           bool
-	Merged          bool
-	HTMLURL         string
-	SourceUpdatedAt time.Time
-	StateHash       string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string    `json:"id"`
+	RepositoryID    string    `json:"repository_id"`
+	Number          int       `json:"number"`
+	Kind            string    `json:"kind"`
+	State           string    `json:"state"`
+	Title           string    `json:"title"`
+	Author          string    `json:"author"`
+	LabelsJSON      []any     `json:"labels,omitempty"`
+	AssigneesJSON   []any     `json:"assignees,omitempty"`
+	Milestone       string    `json:"milestone,omitempty"`
+	Draft           bool      `json:"draft"`
+	Merged          bool      `json:"merged"`
+	HTMLURL         string    `json:"html_url"`
+	SourceUpdatedAt time.Time `json:"source_updated_at"`
+	StateHash       string    `json:"state_hash,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // WorkflowRun 领域模型。
 type WorkflowRun struct {
-	ID                 string
-	RepositoryID       string
-	GitHubRunID        int64
-	GitHubWorkflowID   int64
-	WorkflowName       string
-	RunNumber          int
-	Event              string
-	HeadBranch         string
-	HeadSHA            string
-	Status             string
-	Conclusion         *string
-	PreviousConclusion *string
-	Actor              string
-	RunAttempt         int
-	HTMLURL            string
-	RunStartedAt       *time.Time
-	RunUpdatedAt       time.Time
-	RunCompletedAt     *time.Time
-	StateHash          string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                 string     `json:"id"`
+	RepositoryID       string     `json:"repository_id"`
+	GitHubRunID        int64      `json:"github_run_id"`
+	GitHubWorkflowID   int64      `json:"github_workflow_id"`
+	WorkflowName       string     `json:"workflow_name"`
+	RunNumber          int        `json:"run_number"`
+	Event              string     `json:"event"`
+	HeadBranch         string     `json:"head_branch"`
+	HeadSHA            string     `json:"head_sha"`
+	Status             string     `json:"status"`
+	Conclusion         *string    `json:"conclusion,omitempty"`
+	PreviousConclusion *string    `json:"previous_conclusion,omitempty"`
+	Actor              string     `json:"actor"`
+	RunAttempt         int        `json:"run_attempt"`
+	HTMLURL            string     `json:"html_url"`
+	RunStartedAt       *time.Time `json:"run_started_at,omitempty"`
+	RunUpdatedAt       time.Time  `json:"run_updated_at"`
+	RunCompletedAt     *time.Time `json:"run_completed_at,omitempty"`
+	StateHash          string     `json:"state_hash,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 // SecurityAlert 领域模型。
 type SecurityAlert struct {
-	ID                string
-	RepositoryID      string
-	AlertKind         string
-	AlertNumber       int
-	State             string
-	Severity          string
-	RuleOrDependency  string
-	DismissedReason   string
-	HTMLURL           string
-	SourceUpdatedAt   time.Time
-	StateHash         string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID               string    `json:"id"`
+	RepositoryID     string    `json:"repository_id"`
+	AlertKind        string    `json:"alert_kind"`
+	AlertNumber      int       `json:"alert_number"`
+	State            string    `json:"state"`
+	Severity         string    `json:"severity"`
+	RuleOrDependency string    `json:"rule_or_dependency"`
+	DismissedReason  string    `json:"dismissed_reason,omitempty"`
+	HTMLURL          string    `json:"html_url"`
+	SourceUpdatedAt  time.Time `json:"source_updated_at"`
+	StateHash        string    `json:"state_hash,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // Event 规范化业务事件。
 type Event struct {
-	ID                   string
-	Source               string
-	Kind                 string
-	Action               string
-	RepositoryID         *string
-	SubjectNumber        *int
-	Title                string
-	Severity             string
-	Actor                string
-	WorkflowRunID        *int64
-	WorkflowConclusion   string
-	OccurredAt           time.Time
-	SourceUpdatedAt      *time.Time
-	HTMLURL              string
-	PayloadSummary       map[string]any
-	SuppressNotification bool
-	DedupeFingerprint    string
-	StateHash            string
-	CreatedAt            time.Time
+	ID                   string         `json:"id"`
+	Source               string         `json:"source"`
+	Kind                 string         `json:"kind"`
+	Action               string         `json:"action"`
+	RepositoryID         *string        `json:"repository_id,omitempty"`
+	SubjectNumber        *int           `json:"subject_number,omitempty"`
+	Title                string         `json:"title"`
+	Severity             string         `json:"severity"`
+	Actor                string         `json:"actor"`
+	WorkflowRunID        *int64         `json:"workflow_run_id,omitempty"`
+	WorkflowConclusion   string         `json:"workflow_conclusion,omitempty"`
+	OccurredAt           time.Time      `json:"occurred_at"`
+	SourceUpdatedAt      *time.Time     `json:"source_updated_at,omitempty"`
+	HTMLURL              string         `json:"html_url"`
+	PayloadSummary       map[string]any `json:"payload_summary,omitempty"`
+	SuppressNotification bool           `json:"suppress_notification"`
+	DedupeFingerprint    string         `json:"dedupe_fingerprint,omitempty"`
+	StateHash            string         `json:"state_hash,omitempty"`
+	CreatedAt            time.Time      `json:"created_at"`
 }
 
 // NotificationChannel 通知渠道。
 type NotificationChannel struct {
-	ID             string
-	ChannelType    string
-	Name           string
-	Enabled        bool
-	Target         string
-	SecretEnvelope string
-	AllowPrivate   bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID             string    `json:"id"`
+	ChannelType    string    `json:"channel_type"`
+	Name           string    `json:"name"`
+	Enabled        bool      `json:"enabled"`
+	Target         string    `json:"target"`
+	SecretEnvelope string    `json:"-"`
+	AllowPrivate   bool      `json:"allow_private"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // NotificationOutbox 待投递通知。
 type NotificationOutbox struct {
-	ID             string
-	ChannelID      string
-	EventID        *string
-	AggregateKey   string
-	IdempotencyKey string
-	Status         string
-	AttemptCount   int
-	NextAttemptAt  time.Time
-	LockedUntil    *time.Time
-	LastErrorCode  string
-	Title          string
-	BodyText       string
-	BodyJSON       map[string]any
-	ParseMode      string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID             string         `json:"id"`
+	ChannelID      string         `json:"channel_id"`
+	EventID        *string        `json:"event_id,omitempty"`
+	AggregateKey   string         `json:"aggregate_key,omitempty"`
+	IdempotencyKey string         `json:"idempotency_key,omitempty"`
+	Status         string         `json:"status"`
+	AttemptCount   int            `json:"attempt_count"`
+	NextAttemptAt  time.Time      `json:"next_attempt_at"`
+	LockedUntil    *time.Time     `json:"locked_until,omitempty"`
+	LastErrorCode  string         `json:"last_error_code,omitempty"`
+	Title          string         `json:"title"`
+	BodyText       string         `json:"body_text,omitempty"`
+	BodyJSON       map[string]any `json:"body_json,omitempty"`
+	ParseMode      string         `json:"parse_mode,omitempty"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 // SyncCursor 同步游标。
 type SyncCursor struct {
-	ID             string
-	RepositoryID   string
-	Resource       string
-	CursorValue    string
-	ETag           string
-	LastSuccessAt  *time.Time
-	LastErrorCode  string
-	UpdatedAt      time.Time
+	ID            string
+	RepositoryID  string
+	Resource      string
+	CursorValue   string
+	ETag          string
+	LastSuccessAt *time.Time
+	LastErrorCode string
+	UpdatedAt     time.Time
 }
 
 // ListFilter 通用列表筛选。
@@ -231,9 +231,9 @@ type ListFilter struct {
 
 // PageResult 分页结果元数据。
 type PageResult struct {
-	Page    int
-	PerPage int
-	Total   int
+	Page    int `json:"page"`
+	PerPage int `json:"per_page"`
+	Total   int `json:"total"`
 }
 
 // RepositoryStore 仓库持久化。
@@ -324,15 +324,15 @@ type CursorStore interface {
 
 // DashboardStats 仪表盘聚合。
 type DashboardStats struct {
-	OpenIssues       int `json:"open_issues"`
-	OpenPulls        int `json:"open_pulls"`
-	FailedActions    int `json:"failed_actions"`
-	OpenSecurity     int `json:"open_security"`
-	Events24h        int `json:"events_24h"`
-	OutboxDead       int `json:"outbox_dead"`
-	ReposActive       int `json:"repos_active"`
-	ReposBaseline     int `json:"repos_baseline"`
-	ChannelsEnabled  int `json:"channels_enabled"`
+	OpenIssues      int `json:"open_issues"`
+	OpenPulls       int `json:"open_pulls"`
+	FailedActions   int `json:"failed_actions"`
+	OpenSecurity    int `json:"open_security"`
+	Events24h       int `json:"events_24h"`
+	OutboxDead      int `json:"outbox_dead"`
+	ReposActive     int `json:"repos_active"`
+	ReposBaseline   int `json:"repos_baseline"`
+	ChannelsEnabled int `json:"channels_enabled"`
 }
 
 // MustJSON 将对象编码为 RawMessage（测试与设置辅助）。

@@ -115,8 +115,11 @@ export function DashboardPage() {
                 <CircleDashed aria-hidden="true" size={18} />
               )}
               <span>
-                <strong>{repo.full_name}</strong>
-                <span className="muted"> · {syncLabel(repo.sync_status)} · {repo.type === "external_public" ? "外部" : "自有"}</span>
+                <strong>{repo.full_name || `${repo.owner}/${repo.name}`.replace(/^\/|\/$/g, "") || repo.id}</strong>
+                <span className="muted">
+                  {" "}
+                  · {syncLabel(repo.sync_status || "")} · {repo.type === "external_public" ? "外部" : "自有"}
+                </span>
               </span>
               {repo.sync_status === "baseline_sync" ? (
                 <button
