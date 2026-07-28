@@ -2,11 +2,23 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 SemVer。
 
+## [0.3.3] - 2026-07-28
+
+### Changed
+
+- Docker Compose 默认使用 `ghcr.io/silentely/repo-sentinel:latest`，部署无需本地构建
+- GHCR 工作流：`main` 推送只跑测试；正式 `v*` 一次推送 `vX.Y.Z` / `latest` / `main` 等标签；`dev` 推送预发镜像
+- 用户文档去掉与内部计划/草稿文档的交叉引用；部署说明以 GHCR 拉取为主
+
+### Fixed
+
+- 迁移失败时保留底层错误信息，便于排障
+
 ## [0.3.2] - 2026-07-28
 
 ### Added
 
-- 关于页「检查更新」：对齐 TG-SignPulse，优先 GitHub HTML `releases/latest` 302 解析 tag，失败再回退 API JSON；可关；失败 soft-fail
+- 关于页「检查更新」：优先 GitHub HTML `releases/latest` 302 解析 tag，失败再回退 API JSON；可关；失败 soft-fail
 - `POST /api/v1/system/version/check` 与版本响应字段 `update_check_enabled`
 - `syncx` 外部仓轮询与 `digest` 每日摘要单元测试；聚合多实例时间桶幂等测试
 
@@ -18,7 +30,7 @@
 
 ### Fixed
 
-- 文档与 Compose 版本号与 `VERSION` 对齐；运维手册标明 backup/restore、`/metrics` 已实现
+- 文档版本号与 `VERSION` 一致；运维手册标明 backup/restore、`/metrics` 已实现
 
 ## [0.3.1] - 2026-07-28
 

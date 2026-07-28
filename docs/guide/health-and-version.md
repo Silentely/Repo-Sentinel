@@ -52,11 +52,11 @@ OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
 .tmp/reposentinel version
 ```
 
-`VERSION` 文件是 SemVer 真相源（当前 `0.3.2`）。正式 Tag（`v*`）与 `main`/`dev` 推送会由 [`.github/workflows/docker.yml`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/workflows/docker.yml) 构建并推送到 GHCR（`ghcr.io/<owner>/repo-sentinel`）。本地 Compose 构建可通过 `docker-compose.yml` 的 `VERSION` build arg 注入。
+`VERSION` 文件是 SemVer 真相源（当前 `0.3.3`）。正式 Tag（`v*`）由 [`.github/workflows/docker.yml`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/workflows/docker.yml) 构建并推送 GHCR，包含 `latest` / `main` 等标签；`main` 分支推送只跑测试不构建镜像；`dev` 推送预发 `dev` 标签。部署请使用 `ghcr.io/silentely/repo-sentinel:latest`（或钉死的 `v*`），无需本地构建。
 
 ## 更新检查
 
-管理后台「关于与版本」提供 **检查更新**（对齐 TG-SignPulse：优先 `github.com/.../releases/latest` 302 解析 tag，失败再回退 API JSON；失败 soft-fail；成功结果进程内缓存约 6 小时）。
+管理后台「关于与版本」提供 **检查更新**：优先通过 `github.com/.../releases/latest` 的 302 Location 解析 tag（不占用 API 配额），失败再回退 API JSON；失败 soft-fail；成功结果进程内缓存约 6 小时。
 
 | 配置 | 说明 |
 |------|------|

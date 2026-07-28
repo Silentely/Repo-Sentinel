@@ -1,15 +1,9 @@
-# RepoSentinel SQLite 单容器生产样例
+# RepoSentinel 生产样例：直接拉取 GHCR 镜像，无需本地构建。
 # 使用前请设置 .env 中的密钥与管理员凭据。
 
 services:
   reposentinel:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        VERSION: "0.3.2"
-        BUILD_CHANNEL: "release"
-    image: reposentinel:local
+    image: ghcr.io/silentely/repo-sentinel:latest
     container_name: reposentinel
     restart: unless-stopped
     init: true

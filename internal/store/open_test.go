@@ -62,7 +62,7 @@ func TestOpen拒绝数据库Revision超过程序目录(t *testing.T) {
 	}
 
 	_, err = store.Open(t.Context(), cfg)
-	if err == nil || err.Error() != "database migration failed" {
-		t.Fatalf("未来 revision 打开错误=%v，期望固定安全迁移错误", err)
+	if err == nil || !strings.Contains(err.Error(), "database migration failed") {
+		t.Fatalf("未来 revision 打开错误=%v，期望包含 database migration failed", err)
 	}
 }

@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/go-1.26+-00ADD8" alt="Go">
   <img src="https://img.shields.io/badge/node-24+-green" alt="Node.js">
-  <img src="https://img.shields.io/badge/version-0.3.2-C45C26" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.3.3-C45C26" alt="Version">
   <img src="https://img.shields.io/badge/license-see%20repo-lightgrey" alt="License">
 </p>
 
@@ -68,8 +68,7 @@ RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。�
 │  Integration       GitHub App Webhook + REST             │
 │                    Telegram Bot API / HTTP Webhook       │
 ├─────────────────────────────────────────────────────────┤
-│  Infrastructure    Docker Multi-stage                    │
-│                    Compose 单容器样例                    │
+│  Infrastructure    GHCR 镜像 · Compose 单容器样例        │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -83,16 +82,19 @@ RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。�
 - 或：Go 1.26+、Node.js 24+、pnpm 10.34.5（源码构建）
 - 一个 GitHub App（接收 Webhook）与可选的 Telegram Bot
 
-### Docker Compose
+### Docker Compose（推荐：拉取 GHCR，无需本地构建）
 
 ```bash
 cp .env.example .env
 # 必填 REPOSENTINEL_ENCRYPTION_KEY（openssl rand -base64 32）
 # 建议填写 Webhook Secret、管理员账号或首次本机初始化
 
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 curl -fsS http://127.0.0.1:8080/health/ready
 ```
+
+默认镜像：`ghcr.io/silentely/repo-sentinel:latest`（仅随正式 `v*` 发版更新）。私有包需先 `docker login ghcr.io`。
 
 浏览器打开 <http://127.0.0.1:8080>，完成唯一管理员创建（或使用环境变量预置）。
 
