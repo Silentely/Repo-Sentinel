@@ -28,6 +28,7 @@ interface WorkItem {
   state: string;
   html_url: string;
   author: string;
+  repository_full_name?: string;
 }
 
 interface WorkflowRun {
@@ -38,6 +39,7 @@ interface WorkflowRun {
   conclusion?: string | null;
   status: string;
   html_url: string;
+  repository_full_name?: string;
 }
 
 interface SecurityAlert {
@@ -48,6 +50,7 @@ interface SecurityAlert {
   severity: string;
   rule_or_dependency: string;
   html_url: string;
+  repository_full_name?: string;
 }
 
 function LoadingIndicator() {
@@ -83,7 +86,8 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
             const itemTitle = (it.title || "").trim() || "（无标题）";
             return (
               <li key={it.id}>
-                <span className="event-kind">{it.state || "—"}</span>
+                <span className={`event-kind state-${it.state || "open"}`}>{it.state || "—"}</span>
+                {it.repository_full_name ? <span className="event-repo">{it.repository_full_name}</span> : null}
                 <strong>#{num} {itemTitle}</strong>
                 <span className="muted">{it.author ? ` · ${it.author}` : ""}</span>
                 {it.html_url ? (
@@ -244,9 +248,11 @@ export function ActionsPage() {
           {q.data.items.map((run) => {
             const name = (run.workflow_name || "").trim() || "workflow";
             const num = run.run_number ?? 0;
+            const conclusion = run.conclusion || run.status || "run";
             return (
               <li key={run.id}>
-                <span className="event-kind">{run.conclusion || run.status || "run"}</span>
+                <span className={`event-kind state-${conclusion}`}>{conclusion}</span>
+                {run.repository_full_name ? <span className="event-repo">{run.repository_full_name}</span> : null}
                 <strong>{name} #{num}</strong>
                 <span className="muted">{run.head_branch || "—"}</span>
                 {run.html_url ? <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">打开</a> : null}
@@ -276,9 +282,9 @@ export function SecurityPage() {
   return (
     <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning。">
       <div className="filter-bar">
+        <button className={`quiet-button${state === "" ? " active" : ""}`} type="button" onClick={() => setState("")}>全部</button>
         <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>Open</button>
         <button className={`quiet-button${state === "dismissed" ? " active" : ""}`} type="button" onClick={() => setState("dismissed")}>Dismissed</button>
-        <button className={`quiet-button${state === "" ? " active" : ""}`} type="button" onClick={() => setState("")}>全部</button>
         <span className="filter-bar__sep" />
         <button className={`quiet-button${alertKind === "" ? " active" : ""}`} type="button" onClick={() => setAlertKind("")}>全部类型</button>
         <button className={`quiet-button${alertKind === "dependabot" ? " active" : ""}`} type="button" onClick={() => setAlertKind("dependabot")}>Dependabot</button>
@@ -292,7 +298,8 @@ export function SecurityPage() {
             const label = (a.rule_or_dependency || a.severity || "").trim() || "告警";
             return (
               <li key={a.id}>
-                <span className="event-kind">{a.alert_kind || "alert"}</span>
+                <span className={`event-kind state-${a.state || "open"}`}>{a.alert_kind || "alert"}</span>
+                {a.repository_full_name ? <span className="event-repo">{a.repository_full_name}</span> : null}
                 <strong>#{num} {label}</strong>
                 <span className="muted">{a.state || "—"}{a.severity ? ` · ${a.severity}` : ""}</span>
                 {a.html_url ? <a className="quiet-button" href={a.html_url} target="_blank" rel="noreferrer">打开</a> : null}

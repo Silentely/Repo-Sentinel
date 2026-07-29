@@ -93,9 +93,10 @@ type WebhookDelivery struct {
 
 // WorkItem 领域模型。
 type WorkItem struct {
-	ID              string    `json:"id"`
-	RepositoryID    string    `json:"repository_id"`
-	Number          int       `json:"number"`
+	ID                 string    `json:"id"`
+	RepositoryID       string    `json:"repository_id"`
+	RepositoryFullName string    `json:"repository_full_name,omitempty"`
+	Number             int       `json:"number"`
 	Kind            string    `json:"kind"`
 	State           string    `json:"state"`
 	Title           string    `json:"title"`
@@ -116,6 +117,7 @@ type WorkItem struct {
 type WorkflowRun struct {
 	ID                 string     `json:"id"`
 	RepositoryID       string     `json:"repository_id"`
+	RepositoryFullName string     `json:"repository_full_name,omitempty"`
 	GitHubRunID        int64      `json:"github_run_id"`
 	GitHubWorkflowID   int64      `json:"github_workflow_id"`
 	WorkflowName       string     `json:"workflow_name"`
@@ -141,6 +143,7 @@ type WorkflowRun struct {
 type SecurityAlert struct {
 	ID               string    `json:"id"`
 	RepositoryID     string    `json:"repository_id"`
+	RepositoryFullName string  `json:"repository_full_name,omitempty"`
 	AlertKind        string    `json:"alert_kind"`
 	AlertNumber      int       `json:"alert_number"`
 	State            string    `json:"state"`

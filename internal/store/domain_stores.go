@@ -448,6 +448,30 @@ func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem) (WorkIte
 	return workItemFromEntity(entity), true, nil
 }
 
+// repoFullNameByID 批量查询仓库全名，返回 id→full_name 映射。
+func repoFullNameByID(ctx context.Context, client *entclient.Client, ids []string) map[string]string {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(ids))
+	unique := ids[:0]
+	for _, id := range ids {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			unique = append(unique, id)
+		}
+	}
+	rows, err := client.Repository.Query().Where(repository.IDIn(unique...)).All(ctx)
+	if err != nil {
+		return nil
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[r.ID] = r.FullName
+	}
+	return out
+}
+
 func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, PageResult, error) {
 	f = normalizePage(f)
 	q := s.client.WorkItem.Query()
@@ -470,8 +494,16 @@ func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, Pag
 		return nil, PageResult{}, mapStoreError(err)
 	}
 	out := make([]WorkItem, 0, len(rows))
+	repoIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, workItemFromEntity(row))
+		repoIDs = append(repoIDs, row.RepositoryID)
+	}
+	names := repoFullNameByID(ctx, s.client, repoIDs)
+	for i := range out {
+		if n, ok := names[out[i].RepositoryID]; ok {
+			out[i].RepositoryFullName = n
+		}
 	}
 	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
 }
@@ -625,8 +657,16 @@ func (s *workflowRunStore) List(ctx context.Context, f ListFilter) ([]WorkflowRu
 		return nil, PageResult{}, mapStoreError(err)
 	}
 	out := make([]WorkflowRun, 0, len(rows))
+	repoIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, workflowRunFromEntity(row))
+		repoIDs = append(repoIDs, row.RepositoryID)
+	}
+	names := repoFullNameByID(ctx, s.client, repoIDs)
+	for i := range out {
+		if n, ok := names[out[i].RepositoryID]; ok {
+			out[i].RepositoryFullName = n
+		}
 	}
 	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
 }
@@ -740,8 +780,16 @@ func (s *securityAlertStore) List(ctx context.Context, f ListFilter) ([]Security
 		return nil, PageResult{}, mapStoreError(err)
 	}
 	out := make([]SecurityAlert, 0, len(rows))
+	repoIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, securityAlertFromEntity(row))
+		repoIDs = append(repoIDs, row.RepositoryID)
+	}
+	names := repoFullNameByID(ctx, s.client, repoIDs)
+	for i := range out {
+		if n, ok := names[out[i].RepositoryID]; ok {
+			out[i].RepositoryFullName = n
+		}
 	}
 	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
 }

@@ -121,15 +121,10 @@ export function DashboardPage() {
                   · {syncLabel(repo.sync_status || "")} · {repo.type === "external_public" ? "外部" : "自有"}
                 </span>
               </span>
-              {repo.sync_status === "baseline_sync" ? (
-                <button
-                  className="quiet-button"
-                  type="button"
-                  disabled={activate.isPending}
-                  onClick={() => activate.mutate(repo.id)}
-                >
-                  完成基线
-                </button>
+              {repo.html_url ? (
+                <a className="quiet-button" href={repo.html_url} target="_blank" rel="noreferrer">
+                  <ExternalLink size={14} aria-hidden="true" /> GitHub
+                </a>
               ) : null}
               {repo.type !== "external_public" ? (
                 <button
@@ -141,10 +136,15 @@ export function DashboardPage() {
                   对账
                 </button>
               ) : null}
-              {repo.html_url ? (
-                <a className="quiet-button" href={repo.html_url} target="_blank" rel="noreferrer">
-                  <ExternalLink size={14} aria-hidden="true" /> GitHub
-                </a>
+              {repo.sync_status === "baseline_sync" ? (
+                <button
+                  className="quiet-button"
+                  type="button"
+                  disabled={activate.isPending}
+                  onClick={() => activate.mutate(repo.id)}
+                >
+                  完成基线
+                </button>
               ) : null}
             </li>
           ))}
