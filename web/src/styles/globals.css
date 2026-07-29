@@ -1302,6 +1302,39 @@ a.primary-button {
 
 .mt-md { margin-top: 0.75rem; }
 
+/* ── 事件状态颜色 ── */
+
+.state-open,
+.state-reopened { background: color-mix(in oklch, #e8970a 18%, var(--bg-surface)); color: #c47f00; }
+.state-closed { background: color-mix(in oklch, #1a9f5c 16%, var(--bg-surface)); color: #15803d; }
+.state-completed,
+.state-merged { background: color-mix(in oklch, #7c3aed 14%, var(--bg-surface)); color: #6d28d9; }
+.state-success { background: color-mix(in oklch, #1a9f5c 16%, var(--bg-surface)); color: #15803d; }
+.state-failure,
+.state-cancelled,
+.state-timed_out { background: color-mix(in oklch, #dc2626 14%, var(--bg-surface)); color: #b91c1c; }
+.state-dismissed,
+.state-resolved { background: color-mix(in oklch, #6b7280 14%, var(--bg-surface)); color: #4b5563; }
+.state-in_progress,
+.state-queued,
+.state-pending,
+.state-waiting { background: color-mix(in oklch, #3b82f6 14%, var(--bg-surface)); color: #2563eb; }
+
+.event-repo {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 550;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 /* ── 折叠面板 ── */
 
 .collapse-section {
