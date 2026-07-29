@@ -331,6 +331,7 @@ function RepoCard({ repo, onToggle, saving }: { repo: Repository; onToggle: (s: 
         <div className="repo-card__title">
           <strong>{repo.full_name || `${repo.owner}/${repo.name}`}</strong>
           {repo.is_private && <span className="private-badge">🔒</span>}
+          {repo.type === "external_public" && <span className="type-badge">外部</span>}
           {repo.default_branch && <span className="branch-badge">{repo.default_branch}</span>}
         </div>
         <div className="repo-card__status">
