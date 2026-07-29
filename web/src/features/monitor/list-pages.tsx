@@ -682,11 +682,8 @@ export function GitHubPage() {
       </section>
 
       <section className="onboarding-card" aria-labelledby="gh-webhook-title">
-        <h2 id="gh-webhook-title">Webhook 接入</h2>
-        <p className="field-hint">
-          在 GitHub App 设置里填写下方 URL，Content type 选 <code>application/json</code>。Secret 与上方「Webhook
-          Secret」保持一致。
-        </p>
+        <h2 id="gh-webhook-title">Webhook URL</h2>
+        <p className="field-hint">在 GitHub App 设置中填入此 URL，Content type 选 <code>application/json</code>。</p>
         <div className="copy-row">
           <code className="copy-row__value">{webhookURL}</code>
           <button className="quiet-button" type="button" onClick={() => void copyWebhook()}>
@@ -711,156 +708,56 @@ export function GitHubPage() {
       </section>
 
       <section className="onboarding-card" aria-labelledby="gh-form-title">
-        <h2 id="gh-form-title">Create GitHub App 表单怎么填</h2>
-        <p className="field-hint">
-          本产品<strong>不使用</strong>「用户授权 OAuth」登录 GitHub，只用 App 私钥换 Installation Token。创建页里与
-          Callback / Device Flow 相关的项都可以空着或关掉。
-        </p>
+        <h2 id="gh-form-title">创建 GitHub App 要点</h2>
+        <details className="collapse-section">
+          <summary>展开查看详细填写指南</summary>
+          <div className="collapse-body">
+            <p className="field-hint">
+              本产品<strong>不使用</strong> OAuth 登录，只用 App 私钥换 Installation Token。Callback / Device Flow 相关项都空着或关掉。
+            </p>
 
-        <h3 className="section-subtitle">基本信息</h3>
-        <dl className="field-map">
-          <div>
-            <dt>GitHub App name</dt>
-            <dd>
-              任意全局唯一名，例如 <code>RepoSentinel</code>。与本机产品名无关，可加后缀避免撞名。
-            </dd>
-          </div>
-          <div>
-            <dt>Homepage URL</dt>
-            <dd>
-              填你的管理台公网地址（与 <code>REPOSENTINEL_PUBLIC_BASE_URL</code> 一致）。本地可先填{" "}
-              <code>http://127.0.0.1:8080</code>，Webhook 仍需 GitHub 能访问的 HTTPS。
-            </dd>
-          </div>
-        </dl>
+            <h3 className="section-subtitle">基本信息</h3>
+            <dl className="field-map">
+              <div><dt>App name</dt><dd>任意唯一名，如 <code>RepoSentinel</code></dd></div>
+              <div><dt>Homepage URL</dt><dd>填管理台公网地址</dd></div>
+            </dl>
 
-        <h3 className="section-subtitle">Identifying and authorizing users</h3>
-        <dl className="field-map">
-          <div>
-            <dt>Callback URL</dt>
-            <dd>
-              <strong>留空</strong>。RepoSentinel 没有 OAuth 回调路由。
-            </dd>
-          </div>
-          <div>
-            <dt>Expire user authorization tokens</dt>
-            <dd>不勾。</dd>
-          </div>
-          <div>
-            <dt>Request user authorization (OAuth) during installation</dt>
-            <dd>
-              <strong>不勾</strong>。安装时不需要用户 OAuth。
-            </dd>
-          </div>
-          <div>
-            <dt>Enable Device Flow</dt>
-            <dd>
-              <strong>不勾</strong>。
-            </dd>
-          </div>
-        </dl>
+            <h3 className="section-subtitle">Identifying and authorizing</h3>
+            <p className="field-hint">全部<strong>留空或不勾</strong>（无 OAuth 回调）。</p>
 
-        <h3 className="section-subtitle">Post installation</h3>
-        <dl className="field-map">
-          <div>
-            <dt>Setup URL</dt>
-            <dd>可选；可填管理台地址，安装后跳回控制台。不填也不影响收 Webhook。</dd>
-          </div>
-          <div>
-            <dt>Redirect on update</dt>
-            <dd>可选；一般不勾。</dd>
-          </div>
-        </dl>
+            <h3 className="section-subtitle">Webhook（必填）</h3>
+            <dl className="field-map">
+              <div><dt>Active</dt><dd><strong>必须勾选</strong></dd></div>
+              <div><dt>URL</dt><dd>填上方复制框地址</dd></div>
+              <div><dt>Secret</dt><dd><code>openssl rand -hex 32</code> 生成，两边一致</dd></div>
+            </dl>
 
-        <h3 className="section-subtitle">Webhook（必填）</h3>
-        <dl className="field-map">
-          <div>
-            <dt>Active</dt>
-            <dd>
-              <strong>必须勾选</strong>。
-            </dd>
-          </div>
-          <div>
-            <dt>Webhook URL</dt>
-            <dd>
-              填上方复制框中的地址，形如 <code>https://你的域名/webhooks/github</code>。
-            </dd>
-          </div>
-          <div>
-            <dt>Secret</dt>
-            <dd>
-              自己生成一串随机值（如 <code>openssl rand -hex 32</code>），填到 GitHub，并<strong>原样</strong>写入{" "}
-              <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code>。两边必须一致。
-            </dd>
-          </div>
-        </dl>
+            <h3 className="section-subtitle">Repository permissions → 全部 Read-only</h3>
+            <p className="field-hint">Metadata、Contents、Issues、Pull requests、Actions、Dependabot/Code/Secret scanning alerts</p>
 
-        <h3 className="section-subtitle">Repository permissions（建议全部 Read-only）</h3>
-        <p className="field-hint">权限决定下方能勾哪些事件。Organization / Account 权限保持 No access 即可。</p>
-        <ul className="bullet-list">
-          <li>
-            <strong>Metadata</strong> → Read-only（必选）
-          </li>
-          <li>
-            <strong>Contents</strong> → Read-only
-          </li>
-          <li>
-            <strong>Issues</strong> → Read-only
-          </li>
-          <li>
-            <strong>Pull requests</strong> → Read-only
-          </li>
-          <li>
-            <strong>Actions</strong> → Read-only（workflow_run / 对账）
-          </li>
-          <li>
-            <strong>Dependabot alerts</strong> → Read-only
-          </li>
-          <li>
-            <strong>Code scanning alerts</strong> → Read-only
-          </li>
-          <li>
-            <strong>Secret scanning alerts</strong> → Read-only
-          </li>
-        </ul>
+            <h3 className="section-subtitle">Subscribe to events</h3>
+            <p className="field-hint">
+              勾选：<code>Issues</code> <code>Pull request</code> <code>Workflow run</code> <code>Dependabot alert</code> <code>Code scanning alert</code> <code>Secret scanning alert</code> <code>Installation</code> <code>Installation repositories</code> <code>Repository</code>
+            </p>
 
-        <h3 className="section-subtitle">Subscribe to events（勾选）</h3>
-        <ul className="bullet-list">
-          <li>
-            <code>Issues</code>、<code>Pull request</code>、<code>Workflow run</code>
-          </li>
-          <li>
-            <code>Dependabot alert</code>、<code>Code scanning alert</code>、<code>Secret scanning alert</code>
-          </li>
-          <li>
-            <code>Installation</code>、<code>Installation repositories</code>、<code>Repository</code>
-          </li>
-          <li>
-            创建页里的 <code>Installation target</code> / <code>Meta</code> / <code>Security advisory</code>{" "}
-            <strong>可不勾</strong>（本服务不依赖）。
-          </li>
-        </ul>
-        <p className="field-hint">若列表里暂时看不到某事件，先提高对应 Repository permission 再回来勾选。</p>
-
-        <h3 className="section-subtitle">Where can this GitHub App be installed?</h3>
-        <dl className="field-map">
-          <div>
-            <dt>Only on this account</dt>
-            <dd>个人自用推荐：只能装到当前账号（如 @Silentely）。</dd>
+            <h3 className="section-subtitle">安装范围</h3>
+            <p className="field-hint">个人自用选「Only on this account」；多账号选「Any account」。</p>
           </div>
-          <div>
-            <dt>Any account</dt>
-            <dd>需要装到多个组织 / 账号时再选。</dd>
-          </div>
-        </dl>
+        </details>
+        <div className="link-row" style={{ marginTop: "0.75rem" }}>
+          <a className="quiet-button" href={GITHUB_NEW_APP} target="_blank" rel="noreferrer">
+            <ExternalLink size={14} aria-hidden="true" /> 创建 GitHub App
+          </a>
+          <a className="quiet-button" href={DOCS_GITHUB_APP} target="_blank" rel="noreferrer">
+            <ExternalLink size={14} aria-hidden="true" /> 部署文档
+          </a>
+        </div>
       </section>
 
       <section className="onboarding-card" aria-labelledby="gh-install-action-title">
-        <h2 id="gh-install-action-title">安装到仓库（在 GitHub 完成）</h2>
+        <h2 id="gh-install-action-title">安装到仓库</h2>
         <p className="field-hint">
-          本管理台<strong>不能代替</strong> GitHub 授权安装。保存凭据后，须到 GitHub 点 Install，GitHub 会推送{" "}
-          <code>installation</code> 事件；仓库会出现在仪表盘（基线中）。若你已安装但仪表盘仍空，多半是旧版本未解析{" "}
-          <code>repositories</code> 字段——点下方「从 GitHub 同步仓库」补拉即可。
+          保存凭据后，须到 GitHub 点 Install。仪表盘仓库为空？点「从 GitHub 同步仓库」补拉。
         </p>
         <div className="link-row">
           <a className="primary-button primary-button--inline" href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer">
@@ -898,28 +795,17 @@ export function GitHubPage() {
             {syncMessage}
           </p>
         ) : null}
-        <ol className="guide-steps" style={{ marginTop: "1rem" }}>
-          <li>
-            <strong>打开安装页</strong>
-            <span>
-              点击「去 GitHub 安装 / 管理 App」→ 找到 <code>repo-sentinel-bot</code>（或你的 App 名）→ Install / Configure。
-            </span>
-          </li>
-          <li>
-            <strong>选择仓库</strong>
-            <span>可选 All repositories 或 Only select；保存后 GitHub 会 POST <code>/webhooks/github</code>。</span>
-          </li>
-          <li>
-            <strong>回到本页刷新</strong>
-            <span>
-              Installation 列表应出现账号；仪表盘应出现仓库（状态「基线中」）。没有仓库就点「从 GitHub 同步仓库」。
-            </span>
-          </li>
-          <li>
-            <strong>完成基线</strong>
-            <span>仪表盘对需要监控的仓点「完成基线」后，才会发实时通知（避免首次洪流）。</span>
-          </li>
-        </ol>
+        <details className="collapse-section" style={{ marginTop: "0.75rem" }}>
+          <summary>安装步骤（4 步）</summary>
+          <div className="collapse-body">
+            <ol className="guide-steps">
+              <li><strong>打开安装页</strong><span>点「去 GitHub 安装」→ 找到 App → Install</span></li>
+              <li><strong>选择仓库</strong><span>All 或 Only select，保存后 GitHub 自动推送</span></li>
+              <li><strong>回本页刷新</strong><span>Installation 列表出现账号，仪表盘出现仓库</span></li>
+              <li><strong>完成基线</strong><span>仪表盘点「完成基线」后开始发实时通知</span></li>
+            </ol>
+          </div>
+        </details>
       </section>
 
       <section className="onboarding-card" aria-labelledby="gh-install-title">
