@@ -15,10 +15,25 @@ import {
   setSecurityAlertIgnored,
   setWorkItemIgnored,
   setWorkflowRunIgnored,
+  settingsQueryOptions,
   updateRepositorySettings,
   type Repository,
   type RepositorySettings,
 } from "./api";
+
+function FeatureGuard({ featureKey, featureName, children }: { featureKey: string; featureName: string; children: ReactNode }) {
+  const settings = useQuery(settingsQueryOptions);
+  if (settings.isLoading) return null;
+  const enabled = settings.data?.[featureKey as keyof typeof settings.data] !== false;
+  if (!enabled) {
+    return (
+      <ListShell eyebrow="仓库" title={featureName} description="">
+        <EmptyState title={`${featureName} 功能已禁用`} description="可在「关于与设置 → 功能模块开关」中重新启用。" action={<Link to="/about">打开设置</Link>} />
+      </ListShell>
+    );
+  }
+  return <>{children}</>;
+}
 
 interface WorkItem {
   id: string;
@@ -360,21 +375,25 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
 
 export function IssuesPage() {
   return (
-    <WorkItemsList
-      kind="issue"
-      title="Issues"
-      description="自有仓与外部公开仓的 Issue 列表。默认显示 Open，已归档仓库与已忽略项不计入。"
-    />
+    <FeatureGuard featureKey="feature.issues" featureName="Issues">
+      <WorkItemsList
+        kind="issue"
+        title="Issues"
+        description="自有仓与外部公开仓的 Issue 列表。默认显示 Open，已归档仓库与已忽略项不计入。"
+      />
+    </FeatureGuard>
   );
 }
 
 export function PullRequestsPage() {
   return (
-    <WorkItemsList
-      kind="pull_request"
-      title="Pull Requests"
-      description="自有仓与外部公开仓的 PR 列表。默认显示 Open，已归档仓库与已忽略项不计入。"
-    />
+    <FeatureGuard featureKey="feature.pull_requests" featureName="Pull Requests">
+      <WorkItemsList
+        kind="pull_request"
+        title="Pull Requests"
+        description="自有仓与外部公开仓的 PR 列表。默认显示 Open，已归档仓库与已忽略项不计入。"
+      />
+    </FeatureGuard>
   );
 }
 
@@ -542,6 +561,8 @@ function Toggle({
 }
 
 export function ActionsPage() {
+  const settings = useQuery(settingsQueryOptions);
+  const featureEnabled = settings.data?.["feature.actions"] !== false;
   const queryClient = useQueryClient();
   const { active: activeRepos } = useActiveRepos();
   const [repoId, setRepoId] = useState<string>("");
@@ -569,6 +590,14 @@ export function ActionsPage() {
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
+
+  if (!featureEnabled) {
+    return (
+      <ListShell eyebrow="仓库" title="Actions" description="Workflow Run 结论与恢复状态。">
+        <EmptyState title="Actions 功能已禁用" description="可在「关于与设置 → 功能模块开关」中重新启用。" action={<Link to="/about">打开设置</Link>} />
+      </ListShell>
+    );
+  }
 
   return (
     <ListShell
@@ -669,6 +698,8 @@ export function ActionsPage() {
 }
 
 export function SecurityPage() {
+  const settings = useQuery(settingsQueryOptions);
+  const featureEnabled = settings.data?.["feature.security_alerts"] !== false;
   const queryClient = useQueryClient();
   const { active: activeRepos } = useActiveRepos();
   const [state, setState] = useState<string>("open");
@@ -698,6 +729,14 @@ export function SecurityPage() {
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
+
+  if (!featureEnabled) {
+    return (
+      <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning 安全告警。">
+        <EmptyState title="安全告警功能已禁用" description="可在「关于与设置 → 功能模块开关」中重新启用。" action={<Link to="/about">打开设置</Link>} />
+      </ListShell>
+    );
+  }
 
   return (
     <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning 安全告警。">
