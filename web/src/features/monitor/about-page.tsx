@@ -177,9 +177,9 @@ export function AboutPage() {
         </div>
         <p className="field-hint">Issues、PR、安全告警的 Closed/Dismissed 列表默认只显示最近指定数量的条目。</p>
         <label className="check-row"><input type="checkbox" checked={digestEmpty} onChange={(e) => setDigestEmpty(e.target.checked)} /><span>无事件时仍发送空摘要</span></label>
-        <div className="form-grid" style={{ marginTop: 16 }}>
-          <h3 style={{ gridColumn: "1 / -1", fontSize: "0.95rem", marginBottom: 0 }}>功能模块开关</h3>
-          <p className="field-hint" style={{ gridColumn: "1 / -1" }}>关闭后对应模块在侧边栏和列表中将显示为禁用状态。不影响已有的 Webhook 数据入库。</p>
+        <div className="form-grid form-grid--section">
+          <h3 className="section-title">功能模块开关</h3>
+          <p className="field-hint section-hint">关闭后对应模块在侧边栏和列表中将显示为禁用状态。不影响已有的 Webhook 数据入库。</p>
           <label className="check-row"><input type="checkbox" checked={featureIssues} onChange={(e) => setFeatureIssues(e.target.checked)} /><span>Issues</span></label>
           <label className="check-row"><input type="checkbox" checked={featurePRs} onChange={(e) => setFeaturePRs(e.target.checked)} /><span>Pull Requests</span></label>
           <label className="check-row"><input type="checkbox" checked={featureActions} onChange={(e) => setFeatureActions(e.target.checked)} /><span>Actions</span></label>
