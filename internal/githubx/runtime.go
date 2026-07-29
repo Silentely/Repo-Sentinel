@@ -69,8 +69,8 @@ func (r *RuntimeConfig) ApplyToClient() {
 }
 
 // Replace 用完整快照替换可变字段（保留 Client 指针）。
-func (r *RuntimeConfig) Replace(next RuntimeConfig) {
-	if r == nil {
+func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
+	if r == nil || next == nil {
 		return
 	}
 	r.mu.Lock()
