@@ -109,6 +109,15 @@ type WorkItem struct {
 	HTMLURL         string    `json:"html_url"`
 	SourceUpdatedAt time.Time `json:"source_updated_at"`
 	StateHash       string    `json:"state_hash,omitempty"`
+	// 新增 Review 相关字段
+	ReviewState    string   `json:"review_state,omitempty"`    // 最新审核状态：APPROVED, CHANGES_REQUESTED, COMMENTED, PENDING
+	ReviewDecision string   `json:"review_decision,omitempty"` // 审核决策：approved, changes_requested
+	Reviewers      []string `json:"reviewers,omitempty"`       // 已请求审核的人
+	// 新增 Check Runs 相关字段
+	CheckStatus     string `json:"check_status,omitempty"`     // 检查状态：success, failure, pending
+	CheckConclusion string `json:"check_conclusion,omitempty"` // 检查结论
+	ChecksTotal     int    `json:"checks_total,omitempty"`     // 总检查数
+	ChecksPassed    int    `json:"checks_passed,omitempty"`    // 通过检查数
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

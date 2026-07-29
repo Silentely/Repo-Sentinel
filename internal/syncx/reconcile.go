@@ -135,6 +135,65 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 				Author: it.User.Login, LabelsJSON: labels, AssigneesJSON: assignees, Milestone: milestone,
 				Draft: it.Draft, HTMLURL: it.HTMLURL, SourceUpdatedAt: it.UpdatedAt, StateHash: hash,
 			}
+
+			// 获取 PR 的 Review 和 Check 状态（仅对 PR 且非基线同步）
+			if kind == store.WorkItemKindPR && !baseline {
+				// 获取 Review 状态
+				reviews, reviewErr := r.GitHub.ListPRReviews(ctx, token, repo.Owner, repo.Name, it.Number)
+				if reviewErr == nil && len(reviews) > 0 {
+					// 找到最新的 Review（按 SubmittedAt 时间排序）
+					latestReview := reviews[0]
+					for _, rv := range reviews[1:] {
+						if rv.SubmittedAt.After(latestReview.SubmittedAt) {
+							latestReview = rv
+						}
+					}
+					item.ReviewState = latestReview.State
+					// 计算审核决策
+					if latestReview.State == "APPROVED" {
+						item.ReviewDecision = "approved"
+					} else if latestReview.State == "CHANGES_REQUESTED" {
+						item.ReviewDecision = "changes_requested"
+					}
+				}
+
+				// 获取 Requested Reviewers
+				requestedReviewers, reviewersErr := r.GitHub.ListRequestedReviewers(ctx, token, repo.Owner, repo.Name, it.Number)
+				if reviewersErr == nil {
+					item.Reviewers = requestedReviewers
+				}
+
+				// 获取 PR 详情以获取 head SHA（Issues API 不返回此字段）
+				prDetail, prErr := r.GitHub.GetPRDetail(ctx, token, repo.Owner, repo.Name, it.Number)
+				if prErr == nil && prDetail.Head.SHA != "" {
+					// 获取 Check Runs
+					checkRuns, checkErr := r.GitHub.ListCheckRuns(ctx, token, repo.Owner, repo.Name, prDetail.Head.SHA)
+					if checkErr == nil {
+						item.ChecksTotal = len(checkRuns)
+						passed := 0
+						hasFailure := false
+						for _, cr := range checkRuns {
+							if cr.Conclusion == "success" {
+								passed++
+							} else if cr.Conclusion == "failure" || cr.Conclusion == "timed_out" {
+								hasFailure = true
+							}
+						}
+						item.ChecksPassed = passed
+						if hasFailure {
+							item.CheckStatus = "failure"
+							item.CheckConclusion = "failure"
+						} else if passed == len(checkRuns) {
+							item.CheckStatus = "success"
+							item.CheckConclusion = "success"
+						} else {
+							item.CheckStatus = "pending"
+							item.CheckConclusion = "pending"
+						}
+					}
+				}
+			}
+
 			saved, updated, err := r.Store.WorkItems().UpsertIfNewer(ctx, item)
 			if err != nil || !updated || baseline {
 				continue

@@ -39,6 +39,20 @@ const (
 	FieldSourceUpdatedAt = "source_updated_at"
 	// FieldStateHash holds the string denoting the state_hash field in the database.
 	FieldStateHash = "state_hash"
+	// FieldReviewState holds the string denoting the review_state field in the database.
+	FieldReviewState = "review_state"
+	// FieldReviewDecision holds the string denoting the review_decision field in the database.
+	FieldReviewDecision = "review_decision"
+	// FieldReviewers holds the string denoting the reviewers field in the database.
+	FieldReviewers = "reviewers"
+	// FieldCheckStatus holds the string denoting the check_status field in the database.
+	FieldCheckStatus = "check_status"
+	// FieldCheckConclusion holds the string denoting the check_conclusion field in the database.
+	FieldCheckConclusion = "check_conclusion"
+	// FieldChecksTotal holds the string denoting the checks_total field in the database.
+	FieldChecksTotal = "checks_total"
+	// FieldChecksPassed holds the string denoting the checks_passed field in the database.
+	FieldChecksPassed = "checks_passed"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -64,6 +78,13 @@ var Columns = []string{
 	FieldHTMLURL,
 	FieldSourceUpdatedAt,
 	FieldStateHash,
+	FieldReviewState,
+	FieldReviewDecision,
+	FieldReviewers,
+	FieldCheckStatus,
+	FieldCheckConclusion,
+	FieldChecksTotal,
+	FieldChecksPassed,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -89,6 +110,18 @@ var (
 	DefaultMerged bool
 	// DefaultHTMLURL holds the default value on creation for the "html_url" field.
 	DefaultHTMLURL string
+	// DefaultReviewState holds the default value on creation for the "review_state" field.
+	DefaultReviewState string
+	// DefaultReviewDecision holds the default value on creation for the "review_decision" field.
+	DefaultReviewDecision string
+	// DefaultCheckStatus holds the default value on creation for the "check_status" field.
+	DefaultCheckStatus string
+	// DefaultCheckConclusion holds the default value on creation for the "check_conclusion" field.
+	DefaultCheckConclusion string
+	// DefaultChecksTotal holds the default value on creation for the "checks_total" field.
+	DefaultChecksTotal int
+	// DefaultChecksPassed holds the default value on creation for the "checks_passed" field.
+	DefaultChecksPassed int
 )
 
 // OrderOption defines the ordering options for the WorkItem queries.
@@ -157,6 +190,36 @@ func BySourceUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByStateHash orders the results by the state_hash field.
 func ByStateHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStateHash, opts...).ToFunc()
+}
+
+// ByReviewState orders the results by the review_state field.
+func ByReviewState(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReviewState, opts...).ToFunc()
+}
+
+// ByReviewDecision orders the results by the review_decision field.
+func ByReviewDecision(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReviewDecision, opts...).ToFunc()
+}
+
+// ByCheckStatus orders the results by the check_status field.
+func ByCheckStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCheckStatus, opts...).ToFunc()
+}
+
+// ByCheckConclusion orders the results by the check_conclusion field.
+func ByCheckConclusion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCheckConclusion, opts...).ToFunc()
+}
+
+// ByChecksTotal orders the results by the checks_total field.
+func ByChecksTotal(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChecksTotal, opts...).ToFunc()
+}
+
+// ByChecksPassed orders the results by the checks_passed field.
+func ByChecksPassed(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChecksPassed, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

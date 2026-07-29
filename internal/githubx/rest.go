@@ -130,6 +130,87 @@ func (c *AppClient) ListSecretScanningAlerts(ctx context.Context, token, owner, 
 	return items, remaining, err
 }
 
+// PRReviewItem PR 审核条目。
+type PRReviewItem struct {
+	ID     int64  `json:"id"`
+	State  string `json:"state"`
+	User   struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	Body        string    `json:"body"`
+	SubmittedAt time.Time `json:"submitted_at"`
+}
+
+// ListPRReviews 拉取 PR 的审核列表。
+func (c *AppClient) ListPRReviews(ctx context.Context, token, owner, repo string, prNumber int) ([]PRReviewItem, error) {
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", owner, repo, prNumber)
+	var items []PRReviewItem
+	_, err := c.DoJSON(ctx, "GET", path, token, &items)
+	return items, err
+}
+
+// CheckRunItem 检查运行条目。
+type CheckRunItem struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	Output     struct {
+		Title string `json:"title"`
+	} `json:"output"`
+}
+
+// ListCheckRuns 拉取 commit 的检查运行列表。
+func (c *AppClient) ListCheckRuns(ctx context.Context, token, owner, repo, ref string) ([]CheckRunItem, error) {
+	path := fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", owner, repo, ref)
+	var payload struct {
+		CheckRuns []CheckRunItem `json:"check_runs"`
+	}
+	_, err := c.DoJSON(ctx, "GET", path, token, &payload)
+	return payload.CheckRuns, err
+}
+
+// ListRequestedReviewers 拉取 PR 的请求审核人列表。
+func (c *AppClient) ListRequestedReviewers(ctx context.Context, token, owner, repo string, prNumber int) ([]string, error) {
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/requested_reviewers", owner, repo, prNumber)
+	var payload struct {
+		Users []struct {
+			Login string `json:"login"`
+		} `json:"users"`
+		Teams []struct {
+			Slug string `json:"slug"`
+		} `json:"teams"`
+	}
+	_, err := c.DoJSON(ctx, "GET", path, token, &payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var reviewers []string
+	for _, u := range payload.Users {
+		reviewers = append(reviewers, u.Login)
+	}
+	for _, t := range payload.Teams {
+		reviewers = append(reviewers, t.Slug)
+	}
+	return reviewers, nil
+}
+
+// PRDetailItem PR 详情条目（用于获取 head SHA）。
+type PRDetailItem struct {
+	Head struct {
+		SHA string `json:"sha"`
+	} `json:"head"`
+}
+
+// GetPRDetail 拉取 PR 详情（获取 head SHA）。
+func (c *AppClient) GetPRDetail(ctx context.Context, token, owner, repo string, prNumber int) (PRDetailItem, error) {
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, prNumber)
+	var item PRDetailItem
+	_, err := c.DoJSON(ctx, "GET", path, token, &item)
+	return item, err
+}
+
 // InstallationRepo 是 GET /installation/repositories 的条目。
 type InstallationRepo struct {
 	ID       int64  `json:"id"`

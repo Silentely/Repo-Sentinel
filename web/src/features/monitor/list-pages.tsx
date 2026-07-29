@@ -29,6 +29,22 @@ interface WorkItem {
   html_url: string;
   author: string;
   repository_full_name?: string;
+  // 新增字段：展示后端已有但前端未展示的数据
+  draft?: boolean;
+  merged?: boolean;
+  labels?: string[];
+  assignees?: string[];
+  milestone?: string;
+  source_updated_at?: string;
+  // 新增 Review 相关字段
+  review_state?: string;
+  review_decision?: string;
+  reviewers?: string[];
+  // 新增 Check Runs 相关字段
+  check_status?: string;
+  check_conclusion?: string;
+  checks_total?: number;
+  checks_passed?: number;
 }
 
 interface WorkflowRun {
@@ -40,6 +56,12 @@ interface WorkflowRun {
   status: string;
   html_url: string;
   repository_full_name?: string;
+  // 新增字段：展示后端已有但前端未展示的数据
+  actor?: string;
+  event?: string;
+  run_attempt?: number;
+  run_started_at?: string;
+  run_completed_at?: string;
 }
 
 interface SecurityAlert {
@@ -62,8 +84,31 @@ function LoadingIndicator() {
   );
 }
 
+// 格式化相对时间
+function formatRelativeTime(dateString: string): string {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '';
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  // 未来时间不显示
+  if (diffMs < 0) return '';
+  const diffSeconds = Math.floor(diffMs / 1000);
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSeconds < 60) return '刚刚';
+  if (diffMinutes < 60) return `${diffMinutes} 分钟前`;
+  if (diffHours < 24) return `${diffHours} 小时前`;
+  if (diffDays < 30) return `${diffDays} 天前`;
+  return date.toLocaleDateString('zh-CN');
+}
+
 function WorkItemsList({ kind, title, description }: { kind: string; title: string; description: string }) {
   const [state, setState] = useState<string>("open");
+  const [reviewFilter, setReviewFilter] = useState<string>("");
+  const [checkFilter, setCheckFilter] = useState<string>("");
   const q = useQuery({
     queryKey: ["work-items", kind, state],
     queryFn: () => {
@@ -72,24 +117,98 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
       return apiRequest<Page<WorkItem>>(`/api/v1/work-items?${params.toString()}`);
     },
   });
+
+  // 客户端筛选
+  const filteredItems = (q.data?.items || []).filter((it) => {
+    // 审核状态筛选
+    if (reviewFilter === "approved" && it.review_decision !== "approved") return false;
+    if (reviewFilter === "changes_requested" && it.review_decision !== "changes_requested") return false;
+    if (reviewFilter === "pending" && it.review_decision) return false;
+
+    // 检查状态筛选
+    if (checkFilter === "passed" && it.check_status !== "success") return false;
+    if (checkFilter === "failed" && it.check_status !== "failure") return false;
+    if (checkFilter === "pending" && it.check_status) return false;
+
+    return true;
+  });
+
   return (
     <ListShell eyebrow="仓库" title={title} description={description}>
       <div className="filter-bar">
         <button className={`quiet-button${state === "" ? " active" : ""}`} type="button" onClick={() => setState("")}>全部</button>
         <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>Open</button>
         <button className={`quiet-button${state === "closed" ? " active" : ""}`} type="button" onClick={() => setState("closed")}>Closed</button>
+        {kind === "pull_request" && (
+          <>
+            <span className="filter-bar__sep" />
+            <button className={`quiet-button${reviewFilter === "" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("")}>全部审核</button>
+            <button className={`quiet-button${reviewFilter === "approved" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("approved")}>Approved</button>
+            <button className={`quiet-button${reviewFilter === "changes_requested" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("changes_requested")}>Changes Requested</button>
+            <button className={`quiet-button${reviewFilter === "pending" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("pending")}>Pending Review</button>
+            <span className="filter-bar__sep" />
+            <button className={`quiet-button${checkFilter === "" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("")}>全部检查</button>
+            <button className={`quiet-button${checkFilter === "passed" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("passed")}>Checks Passed</button>
+            <button className={`quiet-button${checkFilter === "failed" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("failed")}>Checks Failed</button>
+            <button className={`quiet-button${checkFilter === "pending" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("pending")}>Checks Pending</button>
+          </>
+        )}
       </div>
-      {q.isLoading ? <LoadingIndicator /> : q.data?.items.length ? (
+      {q.isLoading ? <LoadingIndicator /> : filteredItems.length ? (
         <ul className="event-list">
-          {q.data.items.map((it) => {
+          {filteredItems.map((it) => {
             const num = it.number ?? 0;
             const itemTitle = (it.title || "").trim() || "（无标题）";
             return (
               <li key={it.id}>
-                <span className={`event-kind state-${it.state || "open"}`}>{it.state || "—"}</span>
-                {it.repository_full_name ? <span className="event-repo">{it.repository_full_name}</span> : null}
-                <strong>#{num} {itemTitle}</strong>
-                <span className="muted">{it.author ? ` · ${it.author}` : ""}</span>
+                <div className="pr-header">
+                  <span className={`event-kind state-${it.state || "open"}`}>{it.state || "—"}</span>
+                  {it.draft && <span className="draft-badge">Draft</span>}
+                  {it.merged && <span className="merged-badge">Merged</span>}
+                  {it.repository_full_name ? <span className="event-repo">{it.repository_full_name}</span> : null}
+                  <strong>#{num} {itemTitle}</strong>
+                </div>
+                <div className="pr-meta">
+                  <span className="muted">{it.author ? ` · ${it.author}` : ""}</span>
+                  {it.labels && it.labels.length > 0 && (
+                    <div className="labels">
+                      {it.labels.slice(0, 3).map((label, idx) => (
+                        <span key={idx} className="label">{label}</span>
+                      ))}
+                      {it.labels.length > 3 && <span className="label-more">+{it.labels.length - 3}</span>}
+                    </div>
+                  )}
+                  {it.assignees && it.assignees.length > 0 && (
+                    <span className="assignees">→ {it.assignees.join(', ')}</span>
+                  )}
+                  {it.milestone && <span className="milestone">🎯 {it.milestone}</span>}
+                  {it.source_updated_at && (
+                    <span className="updated-at">{formatRelativeTime(it.source_updated_at)}</span>
+                  )}
+                </div>
+                <div className="pr-status">
+                  {/* Review 状态 */}
+                  {it.review_decision ? (
+                    <span className={`review-badge review-${it.review_decision}`}>
+                      {it.review_decision === 'approved' ? '✅ Approved' :
+                       it.review_decision === 'changes_requested' ? '❌ Changes Requested' :
+                       it.review_state || 'Pending'}
+                    </span>
+                  ) : it.reviewers && it.reviewers.length > 0 ? (
+                    <span className="review-badge review-pending">⏳ Pending Review</span>
+                  ) : null}
+                  {it.reviewers && it.reviewers.length > 0 && (
+                    <span className="reviewers">👀 {it.reviewers.join(', ')}</span>
+                  )}
+                  {/* Check 状态 */}
+                  {it.checks_total && it.checks_total > 0 && (
+                    <span className={`check-badge check-${it.check_status || 'pending'}`}>
+                      {it.check_status === 'success' ? '✅' :
+                       it.check_status === 'failure' ? '❌' : '⏳'}
+                      {it.checks_passed}/{it.checks_total} checks
+                    </span>
+                  )}
+                </div>
                 {it.html_url ? (
                   <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">打开</a>
                 ) : null}
@@ -209,11 +328,23 @@ function RepoCard({ repo, onToggle, saving }: { repo: Repository; onToggle: (s: 
   return (
     <li className="repo-card">
       <div className="repo-card__header">
-        <strong>{repo.full_name || `${repo.owner}/${repo.name}`}</strong>
-        <span className="muted">
-          {repo.sync_status === "active" ? "正常" : repo.sync_status === "archived" ? "已归档" : repo.sync_status === "baseline_sync" ? "基线中" : repo.sync_status}
-          {repo.is_archived ? " · GitHub 已归档" : ""}
-        </span>
+        <div className="repo-card__title">
+          <strong>{repo.full_name || `${repo.owner}/${repo.name}`}</strong>
+          {repo.is_private && <span className="private-badge">🔒</span>}
+          {repo.default_branch && <span className="branch-badge">{repo.default_branch}</span>}
+        </div>
+        <div className="repo-card__status">
+          <span className="muted">
+            {repo.sync_status === "active" ? "正常" : repo.sync_status === "archived" ? "已归档" : repo.sync_status === "baseline_sync" ? "基线中" : repo.sync_status}
+            {repo.is_archived ? " · GitHub 已归档" : ""}
+          </span>
+          {repo.last_synced_at && (
+            <span className="last-synced">最后同步: {formatRelativeTime(repo.last_synced_at)}</span>
+          )}
+          {repo.last_sync_error_code && (
+            <span className="sync-error">同步错误: {repo.last_sync_error_code}</span>
+          )}
+        </div>
       </div>
       <div className="repo-card__toggles">
         <Toggle label="监控" checked={repo.monitor_enabled} disabled={saving} onChange={(v) => onToggle({ monitor_enabled: v })} />
@@ -251,10 +382,22 @@ export function ActionsPage() {
             const conclusion = run.conclusion || run.status || "run";
             return (
               <li key={run.id}>
-                <span className={`event-kind state-${conclusion}`}>{conclusion}</span>
-                {run.repository_full_name ? <span className="event-repo">{run.repository_full_name}</span> : null}
-                <strong>{name} #{num}</strong>
-                <span className="muted">{run.head_branch || "—"}</span>
+                <div className="run-header">
+                  <span className={`event-kind state-${conclusion}`}>{conclusion}</span>
+                  {run.event && <span className="event-type">{run.event}</span>}
+                  {run.run_attempt && run.run_attempt > 1 && (
+                    <span className="attempt-badge">Attempt #{run.run_attempt}</span>
+                  )}
+                  {run.repository_full_name ? <span className="event-repo">{run.repository_full_name}</span> : null}
+                  <strong>{name} #{num}</strong>
+                  <span className="muted">{run.head_branch || "—"}</span>
+                </div>
+                <div className="run-meta">
+                  {run.actor && <span className="actor">by {run.actor}</span>}
+                  {run.run_started_at && (
+                    <span className="started-at">{formatRelativeTime(run.run_started_at)}</span>
+                  )}
+                </div>
                 {run.html_url ? <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">打开</a> : null}
               </li>
             );
