@@ -190,7 +190,7 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 	base.WebhookSecretSource = sourceLabel(strings.TrimSpace(base.WebhookSecret) != "", "env")
 	base.PublicBaseURLSource = sourceLabel(base.PublicBaseURL != "", "env")
 	base.ExternalPATSource = sourceLabel(strings.TrimSpace(base.ExternalPAT) != "", "env")
-	rt.Replace(base)
+	rt.Replace(&base)
 	if err := githubx.MergeFromStore(r.Context(), s.dependencies.Store, s.dependencies.KeyRing, rt); err != nil {
 		s.writeMappedError(w, r, err)
 		return

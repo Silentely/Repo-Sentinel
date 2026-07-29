@@ -128,6 +128,6 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 		snap.PublicBaseURLSource = "database"
 	}
 
-	rt.Replace(snap)
+	rt.Replace(&snap)
 	return nil
 }
