@@ -47,6 +47,7 @@ export function RootLayout({ session }: RootLayoutProps) {
   const openPRs = stats?.open_pulls ?? 0;
   const failedActions = stats?.failed_actions ?? 0;
   const openSecurity = stats?.open_security ?? 0;
+  const outboxDead = stats?.outbox_dead ?? 0;
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -105,6 +106,7 @@ export function RootLayout({ session }: RootLayoutProps) {
           <Link to="/notifications" activeProps={{ "aria-current": "page" }}>
             <Bell aria-hidden="true" size={17} />
             <span>渠道配置</span>
+            {outboxDead > 0 && <span className="nav-badge nav-badge--warning">{outboxDead}</span>}
           </Link>
           <span className="app-nav__label">系统</span>
           <Link to="/github" activeProps={{ "aria-current": "page" }}>
