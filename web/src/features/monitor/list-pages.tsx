@@ -1,30 +1,18 @@
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CheckCircle2, Circle, Copy, ExternalLink } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
-import { changePassword } from "../auth/api";
 import { apiRequest } from "../../lib/api/client";
 import { toApiError } from "../../lib/api/errors";
 import {
-  addExternalRepository,
-  checkForUpdates,
-  githubConfigQueryOptions,
-  installationsQueryOptions,
   repositoriesQueryOptions,
-  saveGitHubConfig,
-  saveSystemSettings,
-  settingsQueryOptions,
-  syncInstallationRepositories,
   updateRepositorySettings,
-  versionQueryOptions,
   type Repository,
   type RepositorySettings,
-  type SystemSettings,
-  type VersionInfo,
 } from "./api";
 
 interface Page<T> {
@@ -62,17 +50,14 @@ interface SecurityAlert {
   html_url: string;
 }
 
-const DOCS_GITHUB_APP =
-  "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/deploy/docker.md#4-github-app创建表单逐项";
-const DOCS_CONFIG =
-  "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/reference/configuration.md";
-const DOCS_FAQ = "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/faq.md";
-const DOCS_CHANGELOG = "https://github.com/Silentely/Repo-Sentinel/blob/main/CHANGELOG.md";
-const GITHUB_NEW_APP = "https://github.com/settings/apps/new";
-/** 用户级 GitHub Apps 列表；可点进具体 App 再 Install。 */
-const GITHUB_APPS_SETTINGS = "https://github.com/settings/apps";
-/** 当前账号已安装的 Apps（含 Install / Configure）。 */
-const GITHUB_INSTALLATIONS = "https://github.com/settings/installations";
+function LoadingIndicator() {
+  return (
+    <div className="loading-indicator">
+      <Loader2 size={20} className="spin" aria-hidden="true" />
+      <span>加载中…</span>
+    </div>
+  );
+}
 
 function WorkItemsList({ kind, title, description }: { kind: string; title: string; description: string }) {
   const [state, setState] = useState<string>("open");
@@ -91,15 +76,15 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
         <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>Open</button>
         <button className={`quiet-button${state === "closed" ? " active" : ""}`} type="button" onClick={() => setState("closed")}>Closed</button>
       </div>
-      {q.data?.items.length ? (
+      {q.isLoading ? <LoadingIndicator /> : q.data?.items.length ? (
         <ul className="event-list">
           {q.data.items.map((it) => {
             const num = it.number ?? 0;
-            const title = (it.title || "").trim() || "（无标题）";
+            const itemTitle = (it.title || "").trim() || "（无标题）";
             return (
               <li key={it.id}>
                 <span className="event-kind">{it.state || "—"}</span>
-                <strong>#{num} {title}</strong>
+                <strong>#{num} {itemTitle}</strong>
                 <span className="muted">{it.author ? ` · ${it.author}` : ""}</span>
                 {it.html_url ? (
                   <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">打开</a>
@@ -120,23 +105,11 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
 }
 
 export function IssuesPage() {
-  return (
-    <WorkItemsList
-      kind="issue"
-      title="Issues"
-      description="自有仓与外部公开仓的 Issue 列表。支持按状态筛选：Open 为活跃、Closed 为已关闭（含归档历史）。"
-    />
-  );
+  return <WorkItemsList kind="issue" title="Issues" description="自有仓与外部公开仓的 Issue 列表。默认显示 Open。" />;
 }
 
 export function PullRequestsPage() {
-  return (
-    <WorkItemsList
-      kind="pull_request"
-      title="Pull Requests"
-      description="自有仓与外部公开仓的 PR 列表。支持按状态筛选：Open 为进行中、Closed/Merged 为已完结（含归档历史）。"
-    />
-  );
+  return <WorkItemsList kind="pull_request" title="Pull Requests" description="自有仓与外部公开仓的 PR 列表。默认显示 Open。" />;
 }
 
 export function ReposPage() {
@@ -153,7 +126,6 @@ export function ReposPage() {
       return updateRepositorySettings(id, settings);
     },
     onMutate: async ({ id, settings }) => {
-      // 乐观更新：立即修改本地缓存，避免 refetch 导致列表跳动。
       await queryClient.cancelQueries({ queryKey: ["repositories"] });
       const prev = queryClient.getQueryData<{ items: Repository[] }>(["repositories"]);
       queryClient.setQueryData<{ items: Repository[] }>(["repositories"], (old) => {
@@ -163,7 +135,6 @@ export function ReposPage() {
           items: old.items.map((r) => {
             if (r.id !== id) return r;
             const updated = { ...r, ...settings };
-            // 归档时联动取消所有开关
             if (settings.is_archived === true) {
               updated.monitor_enabled = false;
               updated.issues_enabled = false;
@@ -171,7 +142,6 @@ export function ReposPage() {
               updated.actions_enabled = false;
               updated.alerts_enabled = false;
             }
-            // 取消归档时恢复所有开关
             if (settings.is_archived === false) {
               updated.monitor_enabled = true;
               updated.issues_enabled = true;
@@ -188,14 +158,12 @@ export function ReposPage() {
     onError: (error, _vars, context) => {
       setSavingId(null);
       setErrorMsg(toApiError(error).message || "保存失败");
-      // 回滚乐观更新
       if (context?.prev) {
         queryClient.setQueryData(["repositories"], context.prev);
       }
     },
     onSuccess: async () => {
       setSavingId(null);
-      // 仅刷新 dashboard 统计（不 refetch 列表，避免跳动）
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
@@ -206,7 +174,7 @@ export function ReposPage() {
   const displayed = showArchived ? archivedRepos : activeRepos;
 
   return (
-    <ListShell eyebrow="仓库" title="仓库管理" description="管理仓库监控开关、能力开关和归档状态。关闭某项能力后，该仓库对应类型的 Webhook 事件将被忽略。">
+    <ListShell eyebrow="仓库" title="仓库管理" description="管理仓库监控开关、能力开关和归档状态。">
       {errorMsg ? <ErrorAlert title="更新失败" message={errorMsg} /> : null}
       <div className="filter-bar">
         <button className={`quiet-button${!showArchived ? " active" : ""}`} type="button" onClick={() => setShowArchived(false)}>
@@ -216,15 +184,10 @@ export function ReposPage() {
           已归档 ({archivedRepos.length})
         </button>
       </div>
-      {displayed.length ? (
+      {repos.isLoading ? <LoadingIndicator /> : displayed.length ? (
         <ul className="repo-settings-list">
           {displayed.map((repo) => (
-            <RepoCard
-              key={repo.id}
-              repo={repo}
-              onToggle={(settings) => updateSettings.mutate({ id: repo.id, settings })}
-              saving={savingId === repo.id}
-            />
+            <RepoCard key={repo.id} repo={repo} onToggle={(settings) => updateSettings.mutate({ id: repo.id, settings })} saving={savingId === repo.id} />
           ))}
         </ul>
       ) : (
@@ -249,18 +212,12 @@ function RepoCard({ repo, onToggle, saving }: { repo: Repository; onToggle: (s: 
         </span>
       </div>
       <div className="repo-card__toggles">
-        <Toggle label="监控" checked={repo.monitor_enabled} disabled={saving}
-          onChange={(v) => onToggle({ monitor_enabled: v })} />
-        <Toggle label="Issues" checked={repo.issues_enabled} disabled={saving}
-          onChange={(v) => onToggle({ issues_enabled: v })} />
-        <Toggle label="PR" checked={repo.pr_enabled} disabled={saving}
-          onChange={(v) => onToggle({ pr_enabled: v })} />
-        <Toggle label="Actions" checked={repo.actions_enabled} disabled={saving}
-          onChange={(v) => onToggle({ actions_enabled: v })} />
-        <Toggle label="安全告警" checked={repo.alerts_enabled} disabled={saving}
-          onChange={(v) => onToggle({ alerts_enabled: v })} />
-        <Toggle label="归档" checked={repo.is_archived} disabled={saving}
-          onChange={(v) => onToggle({ is_archived: v })} />
+        <Toggle label="监控" checked={repo.monitor_enabled} disabled={saving} onChange={(v) => onToggle({ monitor_enabled: v })} />
+        <Toggle label="Issues" checked={repo.issues_enabled} disabled={saving} onChange={(v) => onToggle({ issues_enabled: v })} />
+        <Toggle label="PR" checked={repo.pr_enabled} disabled={saving} onChange={(v) => onToggle({ pr_enabled: v })} />
+        <Toggle label="Actions" checked={repo.actions_enabled} disabled={saving} onChange={(v) => onToggle({ actions_enabled: v })} />
+        <Toggle label="安全告警" checked={repo.alerts_enabled} disabled={saving} onChange={(v) => onToggle({ alerts_enabled: v })} />
+        <Toggle label="归档" checked={repo.is_archived} disabled={saving} onChange={(v) => onToggle({ is_archived: v })} />
       </div>
     </li>
   );
@@ -269,12 +226,7 @@ function RepoCard({ repo, onToggle, saving }: { repo: Repository; onToggle: (s: 
 function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="toggle-row">
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-      />
+      <input type="checkbox" checked={checked} disabled={disabled} aria-label={label} onChange={(e) => onChange(e.target.checked)} />
       <span>{label}</span>
     </label>
   );
@@ -286,12 +238,8 @@ export function ActionsPage() {
     queryFn: () => apiRequest<Page<WorkflowRun>>("/api/v1/workflow-runs?per_page=50"),
   });
   return (
-    <ListShell
-      eyebrow="仓库"
-      title="Actions"
-      description="Workflow Run 结论与恢复状态。来自 workflow_run Webhook，或仪表盘对自有仓「对账」。"
-    >
-      {q.data?.items.length ? (
+    <ListShell eyebrow="仓库" title="Actions" description="Workflow Run 结论与恢复状态。">
+      {q.isLoading ? <LoadingIndicator /> : q.data?.items.length ? (
         <ul className="event-list">
           {q.data.items.map((run) => {
             const name = (run.workflow_name || "").trim() || "workflow";
@@ -299,25 +247,15 @@ export function ActionsPage() {
             return (
               <li key={run.id}>
                 <span className="event-kind">{run.conclusion || run.status || "run"}</span>
-                <strong>
-                  {name} #{num}
-                </strong>
+                <strong>{name} #{num}</strong>
                 <span className="muted">{run.head_branch || "—"}</span>
-                {run.html_url ? (
-                  <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">
-                    打开
-                  </a>
-                ) : null}
+                {run.html_url ? <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">打开</a> : null}
               </li>
             );
           })}
         </ul>
       ) : (
-        <EmptyState
-          title="暂无 Actions 运行"
-          description="确认 App 有 Actions 只读权限并订阅了 workflow_run。若 Webhook 曾失败，可在仪表盘对仓库点「对账」补拉历史 Run。"
-          action={<Link to="/">回仪表盘对账</Link>}
-        />
+        <EmptyState title="暂无 Actions 运行" description="确认 App 有 Actions 只读权限并订阅了 workflow_run。" action={<Link to="/">回仪表盘对账</Link>} />
       )}
     </ListShell>
   );
@@ -336,11 +274,7 @@ export function SecurityPage() {
     },
   });
   return (
-    <ListShell
-      eyebrow="仓库"
-      title="安全告警"
-      description="Dependabot / Code Scanning / Secret Scanning。外部公开仓不读取安全告警。"
-    >
+    <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning。">
       <div className="filter-bar">
         <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>Open</button>
         <button className={`quiet-button${state === "dismissed" ? " active" : ""}`} type="button" onClick={() => setState("dismissed")}>Dismissed</button>
@@ -351,7 +285,7 @@ export function SecurityPage() {
         <button className={`quiet-button${alertKind === "code_scanning" ? " active" : ""}`} type="button" onClick={() => setAlertKind("code_scanning")}>Code Scanning</button>
         <button className={`quiet-button${alertKind === "secret_scanning" ? " active" : ""}`} type="button" onClick={() => setAlertKind("secret_scanning")}>Secret Scanning</button>
       </div>
-      {q.data?.items.length ? (
+      {q.isLoading ? <LoadingIndicator /> : q.data?.items.length ? (
         <ul className="event-list">
           {q.data.items.map((a) => {
             const num = a.alert_number ?? 0;
@@ -359,18 +293,9 @@ export function SecurityPage() {
             return (
               <li key={a.id}>
                 <span className="event-kind">{a.alert_kind || "alert"}</span>
-                <strong>
-                  #{num} {label}
-                </strong>
-                <span className="muted">
-                  {a.state || "—"}
-                  {a.severity ? ` · ${a.severity}` : ""}
-                </span>
-                {a.html_url ? (
-                  <a className="quiet-button" href={a.html_url} target="_blank" rel="noreferrer">
-                    打开
-                  </a>
-                ) : null}
+                <strong>#{num} {label}</strong>
+                <span className="muted">{a.state || "—"}{a.severity ? ` · ${a.severity}` : ""}</span>
+                {a.html_url ? <a className="quiet-button" href={a.html_url} target="_blank" rel="noreferrer">打开</a> : null}
               </li>
             );
           })}
@@ -378,7 +303,7 @@ export function SecurityPage() {
       ) : (
         <EmptyState
           title={state === "dismissed" ? "没有已忽略的告警" : "暂无安全告警"}
-          description={state === "dismissed" ? "已忽略的告警会显示在这里。" : "在 GitHub 开启仓库安全功能，并授予 Dependabot / Code scanning / Secret scanning 只读权限后，Webhook 或对账会写入此处。"}
+          description={state === "dismissed" ? "已忽略的告警会显示在这里。" : "在 GitHub 开启仓库安全功能后，Webhook 或对账会写入此处。"}
           action={<Link to="/github">查看权限清单</Link>}
         />
       )}
@@ -386,946 +311,7 @@ export function SecurityPage() {
   );
 }
 
-export function GitHubPage() {
-  const queryClient = useQueryClient();
-  const version = useQuery(versionQueryOptions);
-  const githubConfig = useQuery(githubConfigQueryOptions);
-  const installations = useQuery(installationsQueryOptions);
-  const [externalName, setExternalName] = useState("");
-  const [copyState, setCopyState] = useState<"idle" | "ok" | "fail">("idle");
-  const [formMessage, setFormMessage] = useState("");
-  const [syncMessage, setSyncMessage] = useState("");
-  const [configMessage, setConfigMessage] = useState("");
-  const [appID, setAppID] = useState("");
-  const [clientID, setClientID] = useState("");
-  const [publicBaseURL, setPublicBaseURL] = useState("");
-  const [privateKeyPath, setPrivateKeyPath] = useState("");
-  const [privateKeyPEM, setPrivateKeyPEM] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState("");
-
-  const cfg = githubConfig.data;
-  const webhookURL = useMemo(() => {
-    if (cfg?.webhook_url) return cfg.webhook_url;
-    return buildWebhookURL(version.data);
-  }, [cfg?.webhook_url, version.data]);
-
-  useEffect(() => {
-    if (!cfg) return;
-    setAppID(cfg.app_id > 0 ? String(cfg.app_id) : "");
-    setClientID(cfg.client_id || "");
-    setPublicBaseURL(cfg.public_base_url || "");
-    setPrivateKeyPath(cfg.private_key_path || "");
-  }, [cfg]);
-
-  const addExternal = useMutation({
-    mutationFn: () => addExternalRepository(externalName.trim()),
-    onSuccess: async () => {
-      setExternalName("");
-      setFormMessage("外部公开仓库已登记，将进入基线同步。");
-      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
-
-  const syncRepos = useMutation({
-    mutationFn: () => syncInstallationRepositories(),
-    onSuccess: async (res) => {
-      setSyncMessage(
-        `已从 GitHub 同步：${res.imported_or_updated} 个仓库（${res.installations} 个 Installation）。请到仪表盘查看基线状态并「完成基线」。`,
-      );
-      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      await queryClient.invalidateQueries({ queryKey: ["installations"] });
-    },
-  });
-
-  const saveConfig = useMutation({
-    mutationFn: () => {
-      const body: Parameters<typeof saveGitHubConfig>[0] = {};
-      if (!cfg?.app_id_locked) {
-        body.app_id = appID.trim() === "" ? 0 : Number(appID);
-      }
-      if (!cfg?.client_id_locked) {
-        body.client_id = clientID;
-      }
-      if (!cfg?.public_base_url_locked) {
-        body.public_base_url = publicBaseURL;
-      }
-      if (!cfg?.private_key_locked) {
-        if (privateKeyPEM.trim()) {
-          body.private_key_pem = privateKeyPEM.trim();
-        } else if (privateKeyPath.trim()) {
-          body.private_key_path = privateKeyPath.trim();
-        }
-      }
-      if (!cfg?.webhook_secret_locked && webhookSecret.trim()) {
-        body.webhook_secret = webhookSecret.trim();
-      }
-      return saveGitHubConfig(body);
-    },
-    onSuccess: async () => {
-      setConfigMessage("GitHub 配置已保存，立即生效（无需重启）。");
-      setPrivateKeyPEM("");
-      setWebhookSecret("");
-      await queryClient.invalidateQueries({ queryKey: ["github-config"] });
-      await queryClient.invalidateQueries({ queryKey: ["version"] });
-    },
-  });
-
-  const sourceLabel = (source?: string) => {
-    if (source === "env") return "环境变量（锁定）";
-    if (source === "database") return "管理台 / 数据库";
-    return "未设置";
-  };
-
-  const checklist = [
-    {
-      ok: Boolean(cfg?.webhook_secret_configured),
-      label: "Webhook Secret",
-      hint: sourceLabel(cfg?.webhook_secret_source),
-    },
-    {
-      ok: Boolean(cfg?.app_id_configured),
-      label: "App ID",
-      hint: sourceLabel(cfg?.app_id_source),
-    },
-    {
-      ok: Boolean(cfg?.client_id_configured),
-      label: "Client ID",
-      hint: sourceLabel(cfg?.client_id_source),
-    },
-    {
-      ok: Boolean(cfg?.private_key_configured),
-      label: "私钥",
-      hint: sourceLabel(cfg?.private_key_source),
-    },
-    {
-      ok: Boolean(cfg?.external_pat_configured),
-      label: "外部仓 PAT（可选）",
-      hint: "仅环境变量 REPOSENTINEL_EXTERNAL_PAT",
-    },
-  ];
-  const readyCount = checklist.filter((c) => c.ok).length;
-  const coreReady = Boolean(cfg?.webhook_secret_configured);
-
-  async function copyWebhook() {
-    try {
-      await navigator.clipboard.writeText(webhookURL);
-      setCopyState("ok");
-      window.setTimeout(() => setCopyState("idle"), 1800);
-    } catch {
-      setCopyState("fail");
-      window.setTimeout(() => setCopyState("idle"), 2200);
-    }
-  }
-
-  return (
-    <>
-      <section className="page-intro">
-        <div>
-          <p className="eyebrow">系统</p>
-          <h1>GitHub App</h1>
-          <p>
-            可在本页直接填写 App ID、Client ID、私钥、Webhook Secret 与 Public Base URL；敏感字段加密入库并立即生效。若已用环境变量设置同一字段，则以环境变量为准（管理台锁定，避免漂移）。
-          </p>
-        </div>
-      </section>
-
-      {githubConfig.isError ? (
-        <ErrorAlert
-          title="无法加载 GitHub 配置"
-          message={toApiError(githubConfig.error).message}
-          errorCode={toApiError(githubConfig.error).errorCode}
-        />
-      ) : null}
-
-      <section className="onboarding-card channel-form" aria-labelledby="gh-config-title">
-        <div className="onboarding-card__header">
-          <h2 id="gh-config-title">在管理台填写运行时配置</h2>
-          <span className="muted">{cfg ? `${readyCount} / ${checklist.length} 项就绪` : "加载中…"}</span>
-        </div>
-        <p className="field-hint">
-          {cfg?.note ||
-            "环境变量优先；未用环境变量设置的字段可在此保存。私钥与 Webhook Secret 使用主密钥加密，页面不会回显明文。"}
-        </p>
-        {configMessage ? (
-          <p className="success-banner" role="status">
-            {configMessage}
-          </p>
-        ) : null}
-        <div className="form-grid">
-          <label className="field--plain">
-            <span>
-              App ID {cfg?.app_id_locked ? <em className="field-lock">环境变量锁定</em> : null}
-            </span>
-            <input
-              inputMode="numeric"
-              value={appID}
-              disabled={cfg?.app_id_locked}
-              onChange={(e) => setAppID(e.target.value.replace(/[^\d]/g, ""))}
-              placeholder="123456"
-              autoComplete="off"
-            />
-          </label>
-          <label className="field--plain">
-            <span>
-              Client ID {cfg?.client_id_locked ? <em className="field-lock">环境变量锁定</em> : null}
-            </span>
-            <input
-              value={clientID}
-              disabled={cfg?.client_id_locked}
-              onChange={(e) => setClientID(e.target.value)}
-              placeholder="Iv1.xxxxxxxx"
-              autoComplete="off"
-            />
-          </label>
-          <label className="field--plain">
-            <span>
-              Public Base URL {cfg?.public_base_url_locked ? <em className="field-lock">环境变量锁定</em> : null}
-            </span>
-            <input
-              value={publicBaseURL}
-              disabled={cfg?.public_base_url_locked}
-              onChange={(e) => setPublicBaseURL(e.target.value)}
-              placeholder="https://monitor.example.com"
-              autoComplete="off"
-            />
-          </label>
-          <label className="field--plain">
-            <span>
-              Webhook Secret {cfg?.webhook_secret_locked ? <em className="field-lock">环境变量锁定</em> : null}
-            </span>
-            <input
-              type="password"
-              value={webhookSecret}
-              disabled={cfg?.webhook_secret_locked}
-              onChange={(e) => setWebhookSecret(e.target.value)}
-              placeholder={cfg?.webhook_secret_configured ? "已配置 · 留空保留" : "与 GitHub App Secret 相同"}
-              autoComplete="off"
-            />
-          </label>
-        </div>
-        <label className="field--plain">
-          <span>
-            私钥 PEM 粘贴 {cfg?.private_key_locked ? <em className="field-lock">环境变量锁定</em> : null}
-          </span>
-          <textarea
-            className="field-textarea"
-            rows={5}
-            value={privateKeyPEM}
-            disabled={cfg?.private_key_locked}
-            onChange={(e) => setPrivateKeyPEM(e.target.value)}
-            placeholder={
-              cfg?.private_key_configured
-                ? "已配置 · 留空保留；若粘贴新 PEM 将覆盖路径配置"
-                : "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
-            }
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="field--plain">
-          <span>或：服务器上的私钥路径（二选一）</span>
-          <input
-            value={privateKeyPath}
-            disabled={cfg?.private_key_locked || Boolean(privateKeyPEM.trim())}
-            onChange={(e) => setPrivateKeyPath(e.target.value)}
-            placeholder="/secrets/github-app.pem"
-            autoComplete="off"
-          />
-        </label>
-        <p className="field-hint">
-          推荐直接粘贴 PEM（加密入库，容器无需挂载文件）。若走路径方式，需保证进程能读取该文件。External PAT
-          仍仅支持环境变量。
-        </p>
-        <button
-          className="primary-button primary-button--inline"
-          type="button"
-          disabled={saveConfig.isPending || cfg?.can_edit_in_ui === false}
-          onClick={() => {
-            setConfigMessage("");
-            saveConfig.mutate();
-          }}
-        >
-          {saveConfig.isPending ? "保存中…" : "保存 GitHub 配置"}
-        </button>
-        {saveConfig.isError ? (
-          <ErrorAlert
-            title="保存失败"
-            message={toApiError(saveConfig.error).message}
-            errorCode={toApiError(saveConfig.error).errorCode}
-          />
-        ) : null}
-        <ul className="status-checklist" style={{ marginTop: "1rem" }}>
-          {checklist.map((item) => (
-            <li key={item.label} data-ok={item.ok ? "true" : "false"}>
-              {item.ok ? <CheckCircle2 size={18} aria-hidden="true" /> : <Circle size={18} aria-hidden="true" />}
-              <div>
-                <strong>{item.label}</strong>
-                <span className="muted">
-                  {item.ok ? "已配置" : "未配置"} · {item.hint}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
-        {!coreReady ? (
-          <p className="callout callout--warn" role="status">
-            尚未配置入站 Webhook Secret 时，GitHub 推送会被拒绝。在上方填写并保存，或设置环境变量{" "}
-            <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code>。
-          </p>
-        ) : (
-          <p className="callout callout--ok" role="status">
-            入站验签已就绪。若仍无 Installation，请确认 Webhook URL 可被 GitHub 访问，并已安装 App 到目标仓库。
-          </p>
-        )}
-      </section>
-
-      <section className="onboarding-card" aria-labelledby="gh-webhook-title">
-        <h2 id="gh-webhook-title">Webhook URL</h2>
-        <p className="field-hint">在 GitHub App 设置中填入此 URL，Content type 选 <code>application/json</code>。</p>
-        <div className="copy-row">
-          <code className="copy-row__value">{webhookURL}</code>
-          <button className="quiet-button" type="button" onClick={() => void copyWebhook()}>
-            <Copy size={15} aria-hidden="true" />
-            {copyState === "ok" ? "已复制" : copyState === "fail" ? "复制失败" : "复制"}
-          </button>
-        </div>
-        {!cfg?.public_base_url && !version.data?.public_base_url ? (
-          <p className="field-hint">
-            当前未设置 Public Base URL，上式使用浏览器地址推导。生产环境请在上方表单或{" "}
-            <code>REPOSENTINEL_PUBLIC_BASE_URL</code> 配置公网 HTTPS 基址。
-          </p>
-        ) : null}
-        <div className="link-row">
-          <a className="quiet-button" href={GITHUB_NEW_APP} target="_blank" rel="noreferrer">
-            <ExternalLink size={14} aria-hidden="true" /> 创建 GitHub App
-          </a>
-          <a className="quiet-button" href={DOCS_GITHUB_APP} target="_blank" rel="noreferrer">
-            <ExternalLink size={14} aria-hidden="true" /> 部署文档
-          </a>
-        </div>
-      </section>
-
-      <section className="onboarding-card" aria-labelledby="gh-form-title">
-        <h2 id="gh-form-title">创建 GitHub App 要点</h2>
-        <details className="collapse-section">
-          <summary>展开查看详细填写指南</summary>
-          <div className="collapse-body">
-            <p className="field-hint">
-              本产品<strong>不使用</strong> OAuth 登录，只用 App 私钥换 Installation Token。Callback / Device Flow 相关项都空着或关掉。
-            </p>
-
-            <h3 className="section-subtitle">基本信息</h3>
-            <dl className="field-map">
-              <div><dt>App name</dt><dd>任意唯一名，如 <code>RepoSentinel</code></dd></div>
-              <div><dt>Homepage URL</dt><dd>填管理台公网地址</dd></div>
-            </dl>
-
-            <h3 className="section-subtitle">Identifying and authorizing</h3>
-            <p className="field-hint">全部<strong>留空或不勾</strong>（无 OAuth 回调）。</p>
-
-            <h3 className="section-subtitle">Webhook（必填）</h3>
-            <dl className="field-map">
-              <div><dt>Active</dt><dd><strong>必须勾选</strong></dd></div>
-              <div><dt>URL</dt><dd>填上方复制框地址</dd></div>
-              <div><dt>Secret</dt><dd><code>openssl rand -hex 32</code> 生成，两边一致</dd></div>
-            </dl>
-
-            <h3 className="section-subtitle">Repository permissions → 全部 Read-only</h3>
-            <p className="field-hint">Metadata、Contents、Issues、Pull requests、Actions、Dependabot/Code/Secret scanning alerts</p>
-
-            <h3 className="section-subtitle">Subscribe to events</h3>
-            <p className="field-hint">
-              勾选：<code>Issues</code> <code>Pull request</code> <code>Workflow run</code> <code>Dependabot alert</code> <code>Code scanning alert</code> <code>Secret scanning alert</code> <code>Installation</code> <code>Installation repositories</code> <code>Repository</code>
-            </p>
-
-            <h3 className="section-subtitle">安装范围</h3>
-            <p className="field-hint">个人自用选「Only on this account」；多账号选「Any account」。</p>
-          </div>
-        </details>
-        <div className="link-row" style={{ marginTop: "0.75rem" }}>
-          <a className="quiet-button" href={GITHUB_NEW_APP} target="_blank" rel="noreferrer">
-            <ExternalLink size={14} aria-hidden="true" /> 创建 GitHub App
-          </a>
-          <a className="quiet-button" href={DOCS_GITHUB_APP} target="_blank" rel="noreferrer">
-            <ExternalLink size={14} aria-hidden="true" /> 部署文档
-          </a>
-        </div>
-      </section>
-
-      <section className="onboarding-card" aria-labelledby="gh-install-action-title">
-        <h2 id="gh-install-action-title">安装到仓库</h2>
-        <p className="field-hint">
-          保存凭据后，须到 GitHub 点 Install。仪表盘仓库为空？点「从 GitHub 同步仓库」补拉。
-        </p>
-        <div className="link-row">
-          <a className="primary-button primary-button--inline" href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer">
-            <ExternalLink size={15} aria-hidden="true" /> 去 GitHub 安装 / 管理 App
-          </a>
-          <a className="quiet-button" href={GITHUB_APPS_SETTINGS} target="_blank" rel="noreferrer">
-            <ExternalLink size={14} aria-hidden="true" /> 我的 GitHub Apps
-          </a>
-          <button
-            className="quiet-button"
-            type="button"
-            disabled={syncRepos.isPending || !cfg?.app_id_configured || !cfg?.private_key_configured}
-            onClick={() => {
-              setSyncMessage("");
-              syncRepos.mutate();
-            }}
-            title={
-              !cfg?.app_id_configured || !cfg?.private_key_configured
-                ? "需先配置 App ID 与私钥"
-                : "用 Installation Token 拉取已授权仓库"
-            }
-          >
-            {syncRepos.isPending ? "同步中…" : "从 GitHub 同步仓库"}
-          </button>
-        </div>
-        {syncRepos.isError ? (
-          <ErrorAlert
-            title="同步失败"
-            message={toApiError(syncRepos.error).message}
-            errorCode={toApiError(syncRepos.error).errorCode}
-          />
-        ) : null}
-        {syncMessage ? (
-          <p className="success-banner" role="status" style={{ marginTop: "0.75rem" }}>
-            {syncMessage}
-          </p>
-        ) : null}
-        <details className="collapse-section" style={{ marginTop: "0.75rem" }}>
-          <summary>安装步骤（4 步）</summary>
-          <div className="collapse-body">
-            <ol className="guide-steps">
-              <li><strong>打开安装页</strong><span>点「去 GitHub 安装」→ 找到 App → Install</span></li>
-              <li><strong>选择仓库</strong><span>All 或 Only select，保存后 GitHub 自动推送</span></li>
-              <li><strong>回本页刷新</strong><span>Installation 列表出现账号，仪表盘出现仓库</span></li>
-              <li><strong>完成基线</strong><span>仪表盘点「完成基线」后开始发实时通知</span></li>
-            </ol>
-          </div>
-        </details>
-      </section>
-
-      <section className="onboarding-card" aria-labelledby="gh-install-title">
-        <div className="onboarding-card__header">
-          <h2 id="gh-install-title">已记录的 Installation</h2>
-          <div className="link-row">
-            <button
-              className="quiet-button"
-              type="button"
-              disabled={installations.isFetching}
-              onClick={() => void installations.refetch()}
-            >
-              {installations.isFetching ? "刷新中…" : "刷新"}
-            </button>
-            <a className="quiet-button" href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer">
-              <ExternalLink size={14} aria-hidden="true" /> 去 GitHub 安装
-            </a>
-          </div>
-        </div>
-        {installations.isError ? (
-          <ErrorAlert
-            title="无法加载 Installation"
-            message={toApiError(installations.error).message}
-            errorCode={toApiError(installations.error).errorCode}
-          />
-        ) : null}
-        {(installations.data?.items ?? []).length ? (
-          <ul className="event-list">
-            {installations.data!.items.map((inst) => (
-              <li key={inst.id}>
-                <span className="event-kind">{inst.account_type || "account"}</span>
-                <strong>{inst.account_login || "（未知账号）"}</strong>
-                <span className="muted">
-                  installation {inst.installation_id > 0 ? inst.installation_id : "—"}
-                </span>
-                <span className="muted">{inst.suspended === "true" ? "已挂起" : "正常"}</span>
-                {inst.installation_id > 0 ? (
-                  <a
-                    className="quiet-button"
-                    href={`https://github.com/settings/installations/${inst.installation_id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    配置
-                  </a>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyState
-            eyebrow="等待事件"
-            title="尚未收到 Installation"
-            description="请先在 GitHub 安装 App。安装后本列表会出现账号；若只有 Installation 没有仓库，点上方「从 GitHub 同步仓库」。"
-            action={
-              <a href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer">
-                去 GitHub 安装 App
-              </a>
-            }
-          />
-        )}
-      </section>
-
-      <section className="onboarding-card channel-form" aria-labelledby="gh-external-title">
-        <h2 id="gh-external-title">登记外部公开仓库</h2>
-        <p className="field-hint">
-          用于关注非本 App 安装范围内的<strong>公开</strong>仓（最多 20 个）。不读取安全告警；可选配置{" "}
-          <code>REPOSENTINEL_EXTERNAL_PAT</code> 以提高 API 配额。
-        </p>
-        {formMessage ? (
-          <p className="success-banner" role="status">
-            {formMessage}
-          </p>
-        ) : null}
-        <label className="field--plain">
-          <span>仓库全名</span>
-          <input
-            value={externalName}
-            onChange={(e) => setExternalName(e.target.value)}
-            placeholder="owner/repo"
-            autoComplete="off"
-          />
-        </label>
-        <button
-          className="primary-button primary-button--inline"
-          type="button"
-          disabled={addExternal.isPending || !externalName.trim()}
-          onClick={() => {
-            setFormMessage("");
-            addExternal.mutate();
-          }}
-        >
-          {addExternal.isPending ? "登记中…" : "添加外部仓"}
-        </button>
-        {addExternal.isError ? (
-          <ErrorAlert
-            title="无法添加"
-            message={toApiError(addExternal.error).message}
-            errorCode={toApiError(addExternal.error).errorCode}
-          />
-        ) : null}
-      </section>
-    </>
-  );
-}
-
-export function AboutPage() {
-  const queryClient = useQueryClient();
-  const version = useQuery(versionQueryOptions);
-  const settings = useQuery(settingsQueryOptions);
-  const [checking, setChecking] = useState(false);
-  const [banner, setBanner] = useState<{
-    kind: "update" | "latest" | "error" | "info";
-    text: string;
-    url?: string | null;
-  } | null>(null);
-  const [settingsMsg, setSettingsMsg] = useState("");
-  const [passwordMsg, setPasswordMsg] = useState("");
-  const [passwordError, setPasswordError] = useState<string>();
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [timezone, setTimezone] = useState("UTC");
-  const [digestTime, setDigestTime] = useState("09:00");
-  const [digestEmpty, setDigestEmpty] = useState(false);
-  const [aggregateSec, setAggregateSec] = useState(60);
-  const [burstThreshold, setBurstThreshold] = useState(15);
-  const [closedDisplayLimit, setClosedDisplayLimit] = useState(20);
-
-  useEffect(() => {
-    if (!settings.data) return;
-    setTimezone(String(settings.data["admin.timezone"] ?? "UTC"));
-    setDigestTime(String(settings.data["digest.local_time"] ?? "09:00"));
-    setDigestEmpty(Boolean(settings.data["digest.send_empty"]));
-    setAggregateSec(Number(settings.data["notify.aggregate_window_sec"] ?? 60));
-    setBurstThreshold(Number(settings.data["notify.burst_threshold"] ?? 15));
-    setClosedDisplayLimit(Number(settings.data["display.closed_limit"] ?? 20));
-  }, [settings.data]);
-
-  const v = version.data || {};
-  const saveSettings = useMutation({
-    mutationFn: (body: SystemSettings) => saveSystemSettings(body),
-    onSuccess: async () => {
-      setSettingsMsg("系统偏好已保存。");
-      await queryClient.invalidateQueries({ queryKey: ["system-settings"] });
-    },
-  });
-  const savePassword = useMutation({
-    mutationFn: () =>
-      changePassword({
-        current_password: currentPassword,
-        new_password: newPassword,
-      }),
-    onSuccess: () => {
-      setPasswordMsg("密码已更新，其它会话将失效，请使用新密码登录。");
-      setPasswordError(undefined);
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    },
-    onError: (error) => {
-      setPasswordMsg("");
-      setPasswordError(toApiError(error).message);
-    },
-  });
-
-  const checkUpdate = async (force = true) => {
-    setChecking(true);
-    try {
-      const res = await checkForUpdates(force);
-      const uc = res.update_check;
-      if (!uc.enabled) {
-        setBanner({ kind: "info", text: "远程更新检查已关闭（REPOSENTINEL_UPDATE_CHECK）。" });
-        return;
-      }
-      if (uc.error && !uc.latest_version) {
-        setBanner({ kind: "error", text: `检查失败：${uc.error}` });
-        return;
-      }
-      const url = safeHttpUrl(uc.latest_url);
-      if (uc.update_available && uc.latest_version) {
-        setBanner({
-          kind: "update",
-          text: `发现新版本 v${uc.latest_version}（当前 v${res.version.version || v.version || "—"}）`,
-          url,
-        });
-        return;
-      }
-      setBanner({
-        kind: "latest",
-        text: uc.latest_version
-          ? `已是最新（远程 v${uc.latest_version}${uc.cached ? " · 缓存" : ""}）`
-          : "未获取到远程版本信息",
-        url,
-      });
-    } catch (e) {
-      setBanner({
-        kind: "error",
-        text: e instanceof Error ? e.message : "检查更新失败",
-      });
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  function submitPassword() {
-    setPasswordMsg("");
-    setPasswordError(undefined);
-    if (Array.from(newPassword).length < 12) {
-      setPasswordError("新密码至少需要 12 个 Unicode 字符。");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordError("两次输入的新密码不一致。");
-      return;
-    }
-    savePassword.mutate();
-  }
-
-  return (
-    <>
-      <section className="page-intro">
-        <div>
-          <p className="eyebrow">系统</p>
-          <h1>关于与设置</h1>
-          <p>
-            RepoSentinel 是自托管的 GitHub 仓库值守台：接收 Webhook、汇总 Issue / PR / Actions /
-            安全告警，并按渠道投递通知。本页集中版本信息、更新检查、账号与运行偏好。
-          </p>
-        </div>
-      </section>
-
-      <section className="onboarding-card" aria-labelledby="about-product-title">
-        <h2 id="about-product-title">你在用什么</h2>
-        <p>
-          单管理员实例，数据与密钥都在你控制的环境中。GitHub 凭据与入站 Secret 只走环境变量；通知 Token /
-          出站 Secret 可在「渠道配置」加密保存。
-        </p>
-        <div className="link-row">
-          <a className="quiet-button" href={DOCS_CONFIG} target="_blank" rel="noreferrer">
-            <ExternalLink size={14} aria-hidden="true" /> 配置参考
-          </a>
-          <a className="quiet-button" href={DOCS_FAQ} target="_blank" rel="noreferrer">
-            <ExternalLink size={14} aria-hidden="true" /> 常见问题
-          </a>
-          <a className="quiet-button" href={DOCS_CHANGELOG} target="_blank" rel="noreferrer">
-            <ExternalLink size={14} aria-hidden="true" /> 变更日志
-          </a>
-          <Link className="quiet-button" to="/github">
-            GitHub App 指引
-          </Link>
-          <Link className="quiet-button" to="/notifications">
-            通知渠道
-          </Link>
-        </div>
-      </section>
-
-      <section className="onboarding-card" aria-labelledby="about-build-title">
-        <div className="onboarding-card__header">
-          <h2 id="about-build-title">构建与运行</h2>
-          <button
-            type="button"
-            className="quiet-button"
-            disabled={checking || version.isLoading}
-            onClick={() => void checkUpdate(true)}
-          >
-            {checking ? "检查中…" : "检查更新"}
-          </button>
-        </div>
-        {version.isError ? (
-          <ErrorAlert
-            title="无法加载版本"
-            message={toApiError(version.error).message}
-            errorCode={toApiError(version.error).errorCode}
-          />
-        ) : null}
-        {banner ? (
-          <div
-            className={
-              banner.kind === "update"
-                ? "about-banner about-banner--update"
-                : banner.kind === "latest"
-                  ? "about-banner about-banner--latest"
-                  : banner.kind === "error"
-                    ? "about-banner about-banner--error"
-                    : "about-banner about-banner--info"
-            }
-          >
-            <div>{banner.text}</div>
-            {banner.kind === "update" ? (
-              <p className="muted">升级请拉取新镜像或替换二进制，并阅读 CHANGELOG。</p>
-            ) : null}
-            {banner.url ? (
-              <a href={banner.url} target="_blank" rel="noopener noreferrer">
-                打开 Release 页面
-              </a>
-            ) : null}
-          </div>
-        ) : null}
-        <dl className="meta-grid">
-          <div>
-            <dt>版本</dt>
-            <dd>{v.version || "—"}</dd>
-          </div>
-          <div>
-            <dt>构建渠道</dt>
-            <dd>{v.build_channel || "—"}</dd>
-          </div>
-          <div>
-            <dt>Git SHA</dt>
-            <dd className="mono">{v.git_sha || "—"}</dd>
-          </div>
-          <div>
-            <dt>分支</dt>
-            <dd>{v.git_branch || "—"}</dd>
-          </div>
-          <div>
-            <dt>构建时间</dt>
-            <dd>{v.build_time || "—"}</dd>
-          </div>
-          <div>
-            <dt>Go</dt>
-            <dd>{v.go_version || "—"}</dd>
-          </div>
-          <div>
-            <dt>数据库</dt>
-            <dd>{v.database_driver || "—"}</dd>
-          </div>
-          <div>
-            <dt>Schema</dt>
-            <dd className="mono">{v.schema_version || "—"}</dd>
-          </div>
-          <div>
-            <dt>监听地址</dt>
-            <dd className="mono">{v.http_addr || "—"}</dd>
-          </div>
-          <div>
-            <dt>Public Base URL</dt>
-            <dd className="mono">{v.public_base_url || "（未设置）"}</dd>
-          </div>
-          <div>
-            <dt>更新检查</dt>
-            <dd>{v.update_check_enabled === false ? "已关闭" : "已开启"}</dd>
-          </div>
-          <div>
-            <dt>Webhook 路径</dt>
-            <dd className="mono">{v.github?.webhook_path || "/webhooks/github"}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section className="onboarding-card channel-form" aria-labelledby="about-settings-title">
-        <h2 id="about-settings-title">运行偏好</h2>
-        <p className="field-hint">
-          时区与摘要时间影响本地展示与摘要调度语义；聚合窗口用于短时合并同类通知，降低刷屏。保存后立即写入数据库。
-        </p>
-        {settingsMsg ? (
-          <p className="success-banner" role="status">
-            {settingsMsg}
-          </p>
-        ) : null}
-        {settings.isError ? (
-          <ErrorAlert
-            title="无法加载设置"
-            message={toApiError(settings.error).message}
-            errorCode={toApiError(settings.error).errorCode}
-          />
-        ) : null}
-        <div className="form-grid">
-          <label className="field--plain">
-            <span>管理员时区</span>
-            <input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="UTC 或 Asia/Shanghai" />
-          </label>
-          <label className="field--plain">
-            <span>每日摘要本地时间</span>
-            <input value={digestTime} onChange={(e) => setDigestTime(e.target.value)} placeholder="09:00" />
-          </label>
-          <label className="field--plain">
-            <span>通知聚合窗口（秒）</span>
-            <input
-              type="number"
-              min={0}
-              value={aggregateSec}
-              onChange={(e) => setAggregateSec(Number(e.target.value) || 0)}
-            />
-          </label>
-          <label className="field--plain">
-            <span>超频阈值</span>
-            <input
-              type="number"
-              min={1}
-              value={burstThreshold}
-              onChange={(e) => setBurstThreshold(Number(e.target.value) || 1)}
-            />
-          </label>
-          <label className="field--plain">
-            <span>已关闭/已忽略显示数量</span>
-            <input
-              type="number"
-              min={1}
-              max={200}
-              value={closedDisplayLimit}
-              onChange={(e) => setClosedDisplayLimit(Math.min(200, Math.max(1, Number(e.target.value) || 1)))}
-            />
-          </label>
-        </div>
-        <p className="field-hint">
-          Issues、PR、安全告警的 Closed/Dismissed 列表默认只显示最近指定数量的条目，避免历史数据无限增长。
-        </p>
-        <label className="check-row">
-          <input type="checkbox" checked={digestEmpty} onChange={(e) => setDigestEmpty(e.target.checked)} />
-          <span>无事件时仍发送空摘要</span>
-        </label>
-        <button
-          className="primary-button primary-button--inline"
-          type="button"
-          disabled={saveSettings.isPending}
-          onClick={() => {
-            setSettingsMsg("");
-            saveSettings.mutate({
-              "admin.timezone": timezone.trim() || "UTC",
-              "digest.local_time": digestTime.trim() || "09:00",
-              "digest.send_empty": digestEmpty,
-              "notify.aggregate_window_sec": aggregateSec,
-              "notify.burst_threshold": burstThreshold,
-              "display.closed_limit": closedDisplayLimit,
-            });
-          }}
-        >
-          {saveSettings.isPending ? "保存中…" : "保存偏好"}
-        </button>
-        {saveSettings.isError ? (
-          <ErrorAlert
-            title="保存失败"
-            message={toApiError(saveSettings.error).message}
-            errorCode={toApiError(saveSettings.error).errorCode}
-          />
-        ) : null}
-      </section>
-
-      <section className="onboarding-card channel-form" aria-labelledby="about-password-title">
-        <h2 id="about-password-title">修改管理员密码</h2>
-        <p className="field-hint">
-          修改成功后其它会话会失效。若已遗失当前密码，请在服务器上使用 CLI：
-          <code> admin reset-password --password-stdin</code>。
-        </p>
-        {passwordMsg ? (
-          <p className="success-banner" role="status">
-            {passwordMsg}
-          </p>
-        ) : null}
-        {passwordError ? <ErrorAlert title="无法修改密码" message={passwordError} /> : null}
-        <label className="field--plain">
-          <span>当前密码</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-          />
-        </label>
-        <label className="field--plain">
-          <span>新密码（至少 12 个字符）</span>
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-          />
-        </label>
-        <label className="field--plain">
-          <span>确认新密码</span>
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-          />
-        </label>
-        <button
-          className="primary-button primary-button--inline"
-          type="button"
-          disabled={savePassword.isPending || !currentPassword || !newPassword}
-          onClick={submitPassword}
-        >
-          {savePassword.isPending ? "更新中…" : "更新密码"}
-        </button>
-      </section>
-
-      <section className="onboarding-card" aria-labelledby="about-ops-title">
-        <h2 id="about-ops-title">运维提示</h2>
-        <ul className="bullet-list">
-          <li>
-            健康检查：<code>GET /health/live</code> 与 <code>GET /health/ready</code>。
-          </li>
-          <li>
-            配置自检：服务器上运行 <code>reposentinel doctor</code>。
-          </li>
-          <li>
-            备份：维护窗口执行 <code>reposentinel backup</code>，并同时保管{" "}
-            <code>REPOSENTINEL_ENCRYPTION_KEY</code>。
-          </li>
-          <li>日志默认 info 只保留重点事件；访问明细请设 <code>REPOSENTINEL_LOG_LEVEL=debug</code>。</li>
-        </ul>
-      </section>
-    </>
-  );
-}
-
-function ListShell({
-  eyebrow = "仓库值守",
-  title,
-  description,
-  children,
-}: {
-  eyebrow?: string;
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
+export function ListShell({ eyebrow = "仓库值守", title, description, children }: { eyebrow?: string; title: string; description: string; children: ReactNode }) {
   return (
     <>
       <section className="page-intro">
@@ -1338,27 +324,4 @@ function ListShell({
       <section className="onboarding-card">{children}</section>
     </>
   );
-}
-
-function buildWebhookURL(version?: VersionInfo): string {
-  const path = version?.github?.webhook_path || "/webhooks/github";
-  const base = (version?.public_base_url || (typeof window !== "undefined" ? window.location.origin : "")).replace(
-    /\/$/,
-    "",
-  );
-  if (!base) {
-    return path;
-  }
-  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
-}
-
-function safeHttpUrl(raw?: string | null): string | null {
-  if (!raw) return null;
-  try {
-    const u = new URL(String(raw).trim());
-    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
-    return u.toString();
-  } catch {
-    return null;
-  }
 }

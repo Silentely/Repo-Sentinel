@@ -18,14 +18,14 @@ import { queryClient } from "../lib/query-client";
 import { DashboardPage } from "../features/monitor/dashboard-page";
 import { NotifyPage } from "../features/monitor/notify-page";
 import {
-  AboutPage,
   ActionsPage,
-  GitHubPage,
   IssuesPage,
   PullRequestsPage,
   ReposPage,
   SecurityPage,
 } from "../features/monitor/list-pages";
+import { GitHubPage } from "../features/monitor/github-page";
+import { AboutPage } from "../features/monitor/about-page";
 import { RootLayout, RouteLoading } from "./root-layout";
 
 export interface RouterContext {
