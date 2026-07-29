@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../../lib/api/client";
 import { ErrorAlert } from "../../components/error-alert";
 import { toApiError } from "../../lib/api/errors";
-import { upsertChannel } from "./api";
+import { upsertChannel, testChannel, deleteChannel, toggleChannel } from "./api";
 
 interface ChannelRow {
   id: string;
@@ -13,6 +13,7 @@ interface ChannelRow {
   enabled: boolean;
   target: string;
   secret_configured: boolean;
+  updated_at?: string;
 }
 
 export function NotifyPage() {
@@ -27,6 +28,12 @@ export function NotifyPage() {
   const [httpTarget, setHttpTarget] = useState("");
   const [httpSecret, setHttpSecret] = useState("");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const invalidateAll = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["channels"] });
+    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+  };
 
   const saveTelegram = useMutation({
     mutationFn: () =>
@@ -38,9 +45,12 @@ export function NotifyPage() {
       }),
     onSuccess: async () => {
       setMessage("Telegram 渠道已保存。");
+      setError("");
       setTelegramSecret("");
-      await queryClient.invalidateQueries({ queryKey: ["channels"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await invalidateAll();
+    },
+    onError: (err) => {
+      setError(toApiError(err).message);
     },
   });
 
@@ -54,10 +64,59 @@ export function NotifyPage() {
       }),
     onSuccess: async () => {
       setMessage("HTTP Webhook 渠道已保存。");
+      setError("");
       setHttpSecret("");
-      await queryClient.invalidateQueries({ queryKey: ["channels"] });
+      await invalidateAll();
+    },
+    onError: (err) => {
+      setError(toApiError(err).message);
     },
   });
+
+  const testMut = useMutation({
+    mutationFn: (type: "telegram" | "http_webhook") => testChannel(type),
+    onSuccess: () => {
+      setMessage("测试通知已发送，请检查您的通知渠道。");
+      setError("");
+    },
+    onError: (err) => {
+      setError(toApiError(err).message);
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (type: "telegram" | "http_webhook") => deleteChannel(type),
+    onSuccess: async () => {
+      setMessage("渠道已删除。");
+      setError("");
+      await invalidateAll();
+    },
+    onError: (err) => {
+      setError(toApiError(err).message);
+    },
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: ({ type, enabled }: { type: "telegram" | "http_webhook"; enabled: boolean }) =>
+      toggleChannel(type, enabled),
+    onSuccess: async () => {
+      setMessage("渠道状态已更新。");
+      setError("");
+      await invalidateAll();
+    },
+    onError: (err) => {
+      setError(toApiError(err).message);
+    },
+  });
+
+  const telegramCh = channels.data?.items.find((ch) => ch.channel_type === "telegram");
+  const httpCh = channels.data?.items.find((ch) => ch.channel_type === "http_webhook");
+
+  const handleDelete = (type: "telegram" | "http_webhook") => {
+    if (window.confirm(`确定要删除 ${type === "telegram" ? "Telegram" : "HTTP Webhook"} 渠道吗？`)) {
+      deleteMut.mutate(type);
+    }
+  };
 
   return (
     <>
@@ -77,26 +136,68 @@ export function NotifyPage() {
         />
       ) : null}
       {message ? <p className="success-banner" role="status">{message}</p> : null}
+      {error ? <ErrorAlert title="操作失败" message={error} /> : null}
 
+      {/* 渠道状态概览 */}
       <section className="onboarding-card">
         <h2>当前渠道</h2>
         <ul className="event-list">
           {(channels.data?.items ?? []).map((ch) => (
-            <li key={ch.id}>
-              <span className="event-kind">{ch.channel_type}</span>
+            <li key={ch.id} className="channel-row">
+              <span className={`event-kind ${ch.enabled ? "status-sent" : "status-dead"}`}>
+                {ch.channel_type === "telegram" ? "📱 Telegram" : "🌐 HTTP Webhook"}
+              </span>
               <strong>{ch.enabled ? "已启用" : "已禁用"}</strong>
-              <span>{ch.target || "（无目标）"}</span>
+              <span className="channel-target">{ch.target || "（无目标）"}</span>
               <span className="muted">{ch.secret_configured ? "密钥已配置" : "无密钥"}</span>
+              <div className="channel-actions">
+                <button
+                  className="quiet-button"
+                  type="button"
+                  onClick={() =>
+                    toggleMut.mutate({ type: ch.channel_type as "telegram" | "http_webhook", enabled: !ch.enabled })
+                  }
+                  disabled={toggleMut.isPending}
+                >
+                  {ch.enabled ? "禁用" : "启用"}
+                </button>
+                <button
+                  className="quiet-button"
+                  type="button"
+                  onClick={() => testMut.mutate(ch.channel_type as "telegram" | "http_webhook")}
+                  disabled={testMut.isPending || !ch.enabled}
+                >
+                  {testMut.isPending ? "发送中…" : "测试"}
+                </button>
+                <button
+                  className="quiet-button quiet-button--danger"
+                  type="button"
+                  onClick={() => handleDelete(ch.channel_type as "telegram" | "http_webhook")}
+                  disabled={deleteMut.isPending}
+                >
+                  删除
+                </button>
+              </div>
             </li>
           ))}
+          {(channels.data?.items ?? []).length === 0 && (
+            <li className="muted">尚未配置任何渠道，请在下方添加。</li>
+          )}
         </ul>
       </section>
 
+      {/* Telegram 配置 */}
       <section className="onboarding-card channel-form">
         <h2>Telegram</h2>
         <p className="field-hint">
           向 Bot 发消息的目标。Token 也可通过环境变量 <code>REPOSENTINEL_TELEGRAM_TOKEN</code> 在启动时初始化；页面保存会写入数据库并加密存储。
         </p>
+        {telegramCh && (
+          <p className="field-hint">
+            当前状态：<strong>{telegramCh.enabled ? "已启用" : "已禁用"}</strong>
+            {telegramCh.target && <> · Chat ID: <code>{telegramCh.target}</code></>}
+          </p>
+        )}
         <label className="field--plain">
           <span>Chat ID</span>
           <input value={telegramTarget} onChange={(e) => setTelegramTarget(e.target.value)} placeholder="-100..." />
@@ -111,18 +212,19 @@ export function NotifyPage() {
             autoComplete="off"
           />
         </label>
-        <button className="primary-button primary-button--inline" type="button" disabled={saveTelegram.isPending} onClick={() => saveTelegram.mutate()}>
-          {saveTelegram.isPending ? "保存中…" : "保存 Telegram"}
-        </button>
-        {saveTelegram.isError ? (
-          <ErrorAlert
-            title="保存失败"
-            message={toApiError(saveTelegram.error).message}
-            errorCode={toApiError(saveTelegram.error).errorCode}
-          />
-        ) : null}
+        <div className="channel-form__buttons">
+          <button className="primary-button primary-button--inline" type="button" disabled={saveTelegram.isPending} onClick={() => saveTelegram.mutate()}>
+            {saveTelegram.isPending ? "保存中…" : "保存 Telegram"}
+          </button>
+          {telegramCh?.enabled && (
+            <button className="secondary-button" type="button" disabled={testMut.isPending} onClick={() => testMut.mutate("telegram")}>
+              {testMut.isPending ? "发送中…" : "🔔 发送测试通知"}
+            </button>
+          )}
+        </div>
       </section>
 
+      {/* HTTP Webhook 配置 */}
       <section className="onboarding-card channel-form">
         <h2>HTTP Webhook</h2>
         <p className="field-hint">
@@ -133,6 +235,12 @@ export function NotifyPage() {
           与 <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code> <strong>不是同一个</strong>：后者是 GitHub → 本服务的入站 Webhook 校验；本页 Secret 对应{" "}
           <code>REPOSENTINEL_HTTP_WEBHOOK_SECRET</code>（启动时种子）或此处手填，二选一即可，不必重复配置。
         </p>
+        {httpCh && (
+          <p className="field-hint">
+            当前状态：<strong>{httpCh.enabled ? "已启用" : "已禁用"}</strong>
+            {httpCh.target && <> · URL: <code>{httpCh.target}</code></>}
+          </p>
+        )}
         <label className="field--plain">
           <span>HTTPS URL</span>
           <input value={httpTarget} onChange={(e) => setHttpTarget(e.target.value)} placeholder="https://hooks.example.com/notify" />
@@ -147,16 +255,16 @@ export function NotifyPage() {
             autoComplete="off"
           />
         </label>
-        <button className="primary-button primary-button--inline" type="button" disabled={saveHTTP.isPending} onClick={() => saveHTTP.mutate()}>
-          {saveHTTP.isPending ? "保存中…" : "保存 HTTP Webhook"}
-        </button>
-        {saveHTTP.isError ? (
-          <ErrorAlert
-            title="保存失败"
-            message={toApiError(saveHTTP.error).message}
-            errorCode={toApiError(saveHTTP.error).errorCode}
-          />
-        ) : null}
+        <div className="channel-form__buttons">
+          <button className="primary-button primary-button--inline" type="button" disabled={saveHTTP.isPending} onClick={() => saveHTTP.mutate()}>
+            {saveHTTP.isPending ? "保存中…" : "保存 HTTP Webhook"}
+          </button>
+          {httpCh?.enabled && (
+            <button className="secondary-button" type="button" disabled={testMut.isPending} onClick={() => testMut.mutate("http_webhook")}>
+              {testMut.isPending ? "发送中…" : "🔔 发送测试通知"}
+            </button>
+          )}
+        </div>
       </section>
     </>
   );

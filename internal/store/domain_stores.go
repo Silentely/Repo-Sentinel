@@ -1006,6 +1006,19 @@ func (s *channelStore) DisableOthersOfType(ctx context.Context, channelType, kee
 	return mapStoreError(err)
 }
 
+func (s *channelStore) Delete(ctx context.Context, id string) error {
+	err := s.client.NotificationChannel.DeleteOneID(id).Exec(ctx)
+	return mapStoreError(err)
+}
+
+func (s *channelStore) ToggleEnabled(ctx context.Context, id string, enabled bool) error {
+	_, err := s.client.NotificationChannel.UpdateOneID(id).
+		SetEnabled(enabled).
+		SetUpdatedAt(time.Now().UTC()).
+		Save(ctx)
+	return mapStoreError(err)
+}
+
 func channelFromEntity(e *entclient.NotificationChannel) NotificationChannel {
 	return NotificationChannel{
 		ID: e.ID, ChannelType: e.ChannelType, Name: e.Name, Enabled: e.Enabled,
@@ -1032,6 +1045,13 @@ func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (Notifi
 	if in.ParseMode == "" {
 		in.ParseMode = "HTML"
 	}
+	bodyJSON := in.BodyJSON
+	if in.HTMLURL != "" {
+		if bodyJSON == nil {
+			bodyJSON = make(map[string]any)
+		}
+		bodyJSON["html_url"] = in.HTMLURL
+	}
 	c := s.client.NotificationOutbox.Create().
 		SetID(in.ID).
 		SetChannelID(in.ChannelID).
@@ -1043,7 +1063,7 @@ func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (Notifi
 		SetLastErrorCode(in.LastErrorCode).
 		SetTitle(in.Title).
 		SetBodyText(in.BodyText).
-		SetBodyJSON(in.BodyJSON).
+		SetBodyJSON(bodyJSON).
 		SetParseMode(in.ParseMode).
 		SetCreatedAt(now).
 		SetUpdatedAt(now)
@@ -1162,13 +1182,17 @@ func (s *outboxStore) RetryDead(ctx context.Context, id string, next time.Time) 
 }
 
 func outboxFromEntity(e *entclient.NotificationOutbox) NotificationOutbox {
-	return NotificationOutbox{
+	out := NotificationOutbox{
 		ID: e.ID, ChannelID: e.ChannelID, EventID: e.EventID, AggregateKey: e.AggregateKey,
 		IdempotencyKey: e.IdempotencyKey, Status: e.Status, AttemptCount: e.AttemptCount,
 		NextAttemptAt: e.NextAttemptAt, LockedUntil: e.LockedUntil, LastErrorCode: e.LastErrorCode,
 		Title: e.Title, BodyText: e.BodyText, BodyJSON: e.BodyJSON, ParseMode: e.ParseMode,
 		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
+	if v, ok := e.BodyJSON["html_url"].(string); ok {
+		out.HTMLURL = v
+	}
+	return out
 }
 
 // --- cursors ---

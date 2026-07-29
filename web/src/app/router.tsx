@@ -17,6 +17,7 @@ import { useSession } from "../features/auth/use-session";
 import { queryClient } from "../lib/query-client";
 import { DashboardPage } from "../features/monitor/dashboard-page";
 import { NotifyPage } from "../features/monitor/notify-page";
+import { OutboxPage } from "../features/monitor/outbox-page";
 import {
   ActionsPage,
   IssuesPage,
@@ -64,6 +65,12 @@ const notifyRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/notifications",
   component: NotifyPage,
+});
+
+const outboxRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/notifications/outbox",
+  component: OutboxPage,
 });
 
 const issuesRoute = createRoute({
@@ -114,6 +121,7 @@ const routeTree = rootRoute.addChildren([
   authenticatedRoute.addChildren([
     indexRoute,
     notifyRoute,
+    outboxRoute,
     issuesRoute,
     pullRequestsRoute,
     reposRoute,

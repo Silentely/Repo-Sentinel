@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"html"
+	htmlpkg "html"
 	"strings"
 	"time"
 
@@ -31,7 +31,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	if err != nil {
 		return err
 	}
-	title, body := renderMessage(res.Event, repoFullName)
+	title, body, htmlURL := renderMessage(res.Event, repoFullName)
 	for _, ch := range channels {
 		if !ch.Enabled {
 			continue
@@ -40,7 +40,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		if _, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &res.Event.ID,
 			IdempotencyKey: idem, Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
-			Title: title, BodyText: body, BodyJSON: map[string]any{
+			Title: title, BodyText: body, HTMLURL: htmlURL, BodyJSON: map[string]any{
 				"event_id": res.Event.ID, "kind": res.Event.Kind, "action": res.Event.Action,
 			},
 			ParseMode: "HTML",
@@ -91,7 +91,7 @@ func normalizerIsFailure(c string) bool {
 	}
 }
 
-func renderMessage(ev *store.Event, repo string) (string, string) {
+func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 	emoji := "📋"
 	switch {
 	case ev.Kind == store.WorkItemKindIssue && ev.Action == "opened":
@@ -113,29 +113,38 @@ func renderMessage(ev *store.Event, repo string) (string, string) {
 	case ev.Kind == "workflow_run":
 		emoji = "❌"
 	}
-	title := fmt.Sprintf("%s %s", emoji, html.EscapeString(ev.Title))
+
+	title = fmt.Sprintf("%s %s", emoji, htmlpkg.EscapeString(ev.Title))
+
 	var b strings.Builder
+	// 标题行
 	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
+	// 分隔线
+	b.WriteString("────────────────\n")
+	// 详情字段
 	if repo != "" {
-		b.WriteString(fmt.Sprintf("仓库：<code>%s</code>\n", html.EscapeString(repo)))
+		b.WriteString(fmt.Sprintf("📦 仓库：<code>%s</code>\n", htmlpkg.EscapeString(repo)))
 	}
-	b.WriteString(fmt.Sprintf("类型：%s / %s\n", html.EscapeString(ev.Kind), html.EscapeString(ev.Action)))
+	b.WriteString(fmt.Sprintf("📋 类型：%s / %s\n", htmlpkg.EscapeString(ev.Kind), htmlpkg.EscapeString(ev.Action)))
 	if ev.Actor != "" {
-		b.WriteString(fmt.Sprintf("操作者：%s\n", html.EscapeString(ev.Actor)))
+		b.WriteString(fmt.Sprintf("👤 操作者：%s\n", htmlpkg.EscapeString(ev.Actor)))
 	}
 	if ev.Severity != "" {
-		b.WriteString(fmt.Sprintf("严重度：%s\n", html.EscapeString(ev.Severity)))
+		b.WriteString(fmt.Sprintf("⚠️ 严重度：%s\n", htmlpkg.EscapeString(ev.Severity)))
 	}
 	if ev.WorkflowConclusion != "" {
-		b.WriteString(fmt.Sprintf("结论：%s\n", html.EscapeString(ev.WorkflowConclusion)))
+		b.WriteString(fmt.Sprintf("📊 结论：%s\n", htmlpkg.EscapeString(ev.WorkflowConclusion)))
 	}
 	if ev.SubjectNumber != nil {
-		b.WriteString(fmt.Sprintf("编号：#%d\n", *ev.SubjectNumber))
+		b.WriteString(fmt.Sprintf("🔢 编号：#%d\n", *ev.SubjectNumber))
 	}
+	// 分隔线 + 链接
 	if ev.HTMLURL != "" {
-		b.WriteString(fmt.Sprintf("<a href=\"%s\">在 GitHub 中打开</a>", html.EscapeString(ev.HTMLURL)))
+		b.WriteString("────────────────\n")
+		b.WriteString(fmt.Sprintf("<a href=\"%s\">🔗 在 GitHub 中查看</a>", htmlpkg.EscapeString(ev.HTMLURL)))
+		htmlURL = ev.HTMLURL
 	}
-	return title, b.String()
+	return title, b.String(), htmlURL
 }
 
 func idempotencyKey(channelID, eventID, variant string) string {

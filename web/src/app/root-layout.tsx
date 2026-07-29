@@ -7,6 +7,7 @@ import {
   Info,
   ListTodo,
   LogOut,
+  Send,
   Shield,
   ShieldCheck,
   Workflow,
@@ -107,6 +108,10 @@ export function RootLayout({ session }: RootLayoutProps) {
             <Bell aria-hidden="true" size={17} />
             <span>渠道配置</span>
             {outboxDead > 0 && <span className="nav-badge nav-badge--warning">{outboxDead}</span>}
+          </Link>
+          <Link to="/notifications/outbox" activeProps={{ "aria-current": "page" }}>
+            <Send aria-hidden="true" size={17} />
+            <span>投递记录</span>
           </Link>
           <span className="app-nav__label">系统</span>
           <Link to="/github" activeProps={{ "aria-current": "page" }}>

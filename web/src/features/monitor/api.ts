@@ -120,6 +120,26 @@ export async function upsertChannel(
   });
 }
 
+export async function testChannel(type: "telegram" | "http_webhook"): Promise<{ status: string }> {
+  return apiRequest(`/api/v1/notifications/channels/${type}/test`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function deleteChannel(type: "telegram" | "http_webhook"): Promise<void> {
+  await apiRequest(`/api/v1/notifications/channels/${type}`, {
+    method: "DELETE",
+  });
+}
+
+export async function toggleChannel(type: "telegram" | "http_webhook", enabled: boolean): Promise<void> {
+  await apiRequest(`/api/v1/notifications/channels/${type}/toggle`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function reconcileRepository(id: string): Promise<void> {
   await apiRequest(`/api/v1/repositories/${id}/reconcile`, {
     method: "POST",
