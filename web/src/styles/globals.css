@@ -435,15 +435,15 @@ a.primary-button {
 }
 
 .nav-badge--warning {
-  color: #fff;
-  background: var(--warning);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--warning) 40%, transparent);
+  color: var(--warning);
+  background: color-mix(in oklch, var(--warning) 15%, var(--bg-surface));
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--warning) 30%, transparent);
 }
 
 .nav-badge--danger {
-  color: #fff;
-  background: var(--danger);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--danger) 40%, transparent);
+  color: var(--danger);
+  background: color-mix(in oklch, var(--danger) 15%, var(--bg-surface));
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--danger) 30%, transparent);
 }
 
 .app-sidebar__version {
@@ -2141,4 +2141,182 @@ a.primary-button {
   background: color-mix(in oklch, var(--danger) 10%, transparent);
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
+}
+
+/* --- 骨架屏加载 --- */
+.skeleton-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.skeleton-row__badge,
+.skeleton-row__text {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg-muted) 25%, color-mix(in oklch, var(--bg-muted) 60%, var(--bg-surface)) 50%, var(--bg-muted) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-row__badge {
+  width: 4rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+}
+
+.skeleton-row__text--lg {
+  width: 40%;
+  height: 1rem;
+}
+
+.skeleton-row__text--sm {
+  width: 15%;
+  height: 0.85rem;
+}
+
+.skeleton-row__text--xs {
+  width: 10%;
+  height: 0.75rem;
+  margin-left: auto;
+}
+
+@keyframes skeleton-pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* --- Outbox 工具栏 --- */
+.outbox-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.outbox-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.channel-tag {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var(--bg-muted);
+}
+
+.event-list__item--selected {
+  background: color-mix(in oklch, var(--accent) 6%, var(--bg-surface));
+  border-left: 3px solid var(--accent);
+}
+
+/* --- 详情抽屉 --- */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: color-mix(in oklch, var(--bg-canvas) 60%, transparent);
+  display: flex;
+  justify-content: flex-end;
+  animation: drawer-fade-in 0.15s ease;
+}
+
+@keyframes drawer-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.drawer-panel {
+  width: min(28rem, 90vw);
+  height: 100%;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: -8px 0 24px color-mix(in oklch, var(--bg-canvas) 40%, transparent);
+  display: flex;
+  flex-direction: column;
+  animation: drawer-slide-in 0.2s ease;
+  overflow-y: auto;
+}
+
+@keyframes drawer-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.drawer-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.drawer-panel__header h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.drawer-panel__body {
+  padding: 1.25rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.drawer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.drawer-field dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.drawer-field dd {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.drawer-field dd code {
+  font-size: 0.8rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: var(--bg-muted);
+}
+
+.drawer-field dd a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .outbox-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .drawer-panel {
+    width: 100vw;
+  }
 }
