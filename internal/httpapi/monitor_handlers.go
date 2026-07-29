@@ -86,7 +86,29 @@ func (s *server) handleActivateRepository(w http.ResponseWriter, r *http.Request
 	now := time.Now().UTC()
 	repo.BaselineFinishedAt = &now
 	repo.SyncStatus = store.SyncStatusActive
-	repo, _ = s.dependencies.Store.Repositories().Upsert(r.Context(), repo)
+	repo, err = s.dependencies.Store.Repositories().Upsert(r.Context(), repo)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, repo)
+}
+
+func (s *server) handleUpdateRepositorySettings(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var body store.RepositorySettings
+	if !s.decodeRequestJSON(w, r, &body) {
+		return
+	}
+	if err := s.dependencies.Store.Repositories().UpdateSettings(r.Context(), id, body); err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	repo, err := s.dependencies.Store.Repositories().Get(r.Context(), id)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, repo)
 }
 
@@ -163,7 +185,7 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 			"id": ch.ID, "channel_type": ch.ChannelType, "name": ch.Name,
 			"enabled": ch.Enabled, "target": ch.Target, "allow_private": ch.AllowPrivate,
 			"secret_configured": ch.SecretEnvelope != "",
-			"updated_at": ch.UpdatedAt,
+			"updated_at":        ch.UpdatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": masked})
@@ -427,11 +449,11 @@ func (s *server) handleReconcileAll(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{
-		"admin.timezone":            "UTC",
-		"digest.local_time":         "09:00",
-		"digest.send_empty":         false,
+		"admin.timezone":              "UTC",
+		"digest.local_time":           "09:00",
+		"digest.send_empty":           false,
 		"notify.aggregate_window_sec": 60,
-		"notify.burst_threshold":    15,
+		"notify.burst_threshold":      15,
 	}
 	for key := range out {
 		if s, err := s.dependencies.Store.Settings().Get(r.Context(), key); err == nil {

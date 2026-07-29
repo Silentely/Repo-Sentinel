@@ -29,6 +29,16 @@ const (
 	FieldIsArchived = "is_archived"
 	// FieldIsPrivate holds the string denoting the is_private field in the database.
 	FieldIsPrivate = "is_private"
+	// FieldMonitorEnabled holds the string denoting the monitor_enabled field in the database.
+	FieldMonitorEnabled = "monitor_enabled"
+	// FieldIssuesEnabled holds the string denoting the issues_enabled field in the database.
+	FieldIssuesEnabled = "issues_enabled"
+	// FieldPrEnabled holds the string denoting the pr_enabled field in the database.
+	FieldPrEnabled = "pr_enabled"
+	// FieldActionsEnabled holds the string denoting the actions_enabled field in the database.
+	FieldActionsEnabled = "actions_enabled"
+	// FieldAlertsEnabled holds the string denoting the alerts_enabled field in the database.
+	FieldAlertsEnabled = "alerts_enabled"
 	// FieldHTMLURL holds the string denoting the html_url field in the database.
 	FieldHTMLURL = "html_url"
 	// FieldDefaultBranch holds the string denoting the default_branch field in the database.
@@ -61,6 +71,11 @@ var Columns = []string{
 	FieldInstallationID,
 	FieldIsArchived,
 	FieldIsPrivate,
+	FieldMonitorEnabled,
+	FieldIssuesEnabled,
+	FieldPrEnabled,
+	FieldActionsEnabled,
+	FieldAlertsEnabled,
 	FieldHTMLURL,
 	FieldDefaultBranch,
 	FieldBaselineStartedAt,
@@ -88,6 +103,16 @@ var (
 	DefaultIsArchived bool
 	// DefaultIsPrivate holds the default value on creation for the "is_private" field.
 	DefaultIsPrivate bool
+	// DefaultMonitorEnabled holds the default value on creation for the "monitor_enabled" field.
+	DefaultMonitorEnabled bool
+	// DefaultIssuesEnabled holds the default value on creation for the "issues_enabled" field.
+	DefaultIssuesEnabled bool
+	// DefaultPrEnabled holds the default value on creation for the "pr_enabled" field.
+	DefaultPrEnabled bool
+	// DefaultActionsEnabled holds the default value on creation for the "actions_enabled" field.
+	DefaultActionsEnabled bool
+	// DefaultAlertsEnabled holds the default value on creation for the "alerts_enabled" field.
+	DefaultAlertsEnabled bool
 	// DefaultHTMLURL holds the default value on creation for the "html_url" field.
 	DefaultHTMLURL string
 	// DefaultDefaultBranch holds the default value on creation for the "default_branch" field.
@@ -147,6 +172,31 @@ func ByIsArchived(opts ...sql.OrderTermOption) OrderOption {
 // ByIsPrivate orders the results by the is_private field.
 func ByIsPrivate(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsPrivate, opts...).ToFunc()
+}
+
+// ByMonitorEnabled orders the results by the monitor_enabled field.
+func ByMonitorEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMonitorEnabled, opts...).ToFunc()
+}
+
+// ByIssuesEnabled orders the results by the issues_enabled field.
+func ByIssuesEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIssuesEnabled, opts...).ToFunc()
+}
+
+// ByPrEnabled orders the results by the pr_enabled field.
+func ByPrEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPrEnabled, opts...).ToFunc()
+}
+
+// ByActionsEnabled orders the results by the actions_enabled field.
+func ByActionsEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldActionsEnabled, opts...).ToFunc()
+}
+
+// ByAlertsEnabled orders the results by the alerts_enabled field.
+func ByAlertsEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAlertsEnabled, opts...).ToFunc()
 }
 
 // ByHTMLURL orders the results by the html_url field.

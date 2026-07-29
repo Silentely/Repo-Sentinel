@@ -21,8 +21,10 @@ import {
   AboutPage,
   ActionsPage,
   GitHubPage,
+  IssuesPage,
+  PullRequestsPage,
+  ReposPage,
   SecurityPage,
-  WorkItemsPage,
 } from "../features/monitor/list-pages";
 import { RootLayout, RouteLoading } from "./root-layout";
 
@@ -64,10 +66,22 @@ const notifyRoute = createRoute({
   component: NotifyPage,
 });
 
-const workItemsRoute = createRoute({
+const issuesRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
-  path: "/work-items",
-  component: WorkItemsPage,
+  path: "/issues",
+  component: IssuesPage,
+});
+
+const pullRequestsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/pull-requests",
+  component: PullRequestsPage,
+});
+
+const reposRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/repos",
+  component: ReposPage,
 });
 
 const actionsRoute = createRoute({
@@ -100,7 +114,9 @@ const routeTree = rootRoute.addChildren([
   authenticatedRoute.addChildren([
     indexRoute,
     notifyRoute,
-    workItemsRoute,
+    issuesRoute,
+    pullRequestsRoute,
+    reposRoute,
     actionsRoute,
     securityRoute,
     githubRoute,

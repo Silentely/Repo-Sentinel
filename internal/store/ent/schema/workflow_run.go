@@ -54,4 +54,3 @@ func (WorkflowRun) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "workflow_runs"},
 	}
 }
-

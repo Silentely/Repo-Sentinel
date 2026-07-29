@@ -22,23 +22,23 @@ func TestProcessIssueOpenedCreatesEvent(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"action": "opened",
 		"issue": map[string]any{
-			"number": 7,
-			"title":  "hello",
-			"state":  "open",
-			"html_url": "https://github.com/acme/demo/issues/7",
-			"user": map[string]any{"login": "alice"},
+			"number":     7,
+			"title":      "hello",
+			"state":      "open",
+			"html_url":   "https://github.com/acme/demo/issues/7",
+			"user":       map[string]any{"login": "alice"},
 			"updated_at": time.Now().UTC().Format(time.RFC3339),
-			"labels": []any{},
-			"assignees": []any{},
+			"labels":     []any{},
+			"assignees":  []any{},
 		},
 		"repository": map[string]any{
-			"id": 99,
-			"name": "demo",
-			"full_name": "acme/demo",
-			"private": false,
-			"html_url": "https://github.com/acme/demo",
+			"id":             99,
+			"name":           "demo",
+			"full_name":      "acme/demo",
+			"private":        false,
+			"html_url":       "https://github.com/acme/demo",
 			"default_branch": "main",
-			"owner": map[string]any{"login": "acme"},
+			"owner":          map[string]any{"login": "acme"},
 		},
 	})
 
@@ -182,5 +182,195 @@ func TestProcessInstallationRepositoriesAdded(t *testing.T) {
 	}
 	if len(page) != 1 || page[0].FullName != "acme/one" || !page[0].IsPrivate {
 		t.Fatalf("repositories_added 未导入: %+v", page)
+	}
+}
+
+// TestProcessWorkflowRunWithMissingFields 验证 GitHub 偶发缺字段时 workflow_run 仍能安全入库。
+func TestProcessWorkflowRunWithMissingFields(t *testing.T) {
+	dbURL := "file:" + filepath.Join(t.TempDir(), "wf.db")
+	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+
+	// 模拟 GitHub 偶发缺 actor、head_branch、head_sha、html_url 等字段。
+	payload, _ := json.Marshal(map[string]any{
+		"workflow_run": map[string]any{
+			"id":            999001,
+			"name":          "",
+			"workflow_id":   10,
+			"run_number":    5,
+			"event":         "push",
+			"status":        "completed",
+			"conclusion":    "success",
+			"run_attempt":   0,
+			"head_branch":   "",
+			"head_sha":      "",
+			"html_url":      "",
+			"run_started_at": time.Now().UTC().Format(time.RFC3339),
+			"updated_at":    time.Now().UTC().Format(time.RFC3339),
+		},
+		"repository": map[string]any{
+			"id":             200,
+			"name":           "test-repo",
+			"full_name":      "acme/test-repo",
+			"private":        false,
+			"html_url":       "https://github.com/acme/test-repo",
+			"default_branch": "main",
+			"owner":          map[string]any{"login": "acme"},
+		},
+	})
+
+	proc := &normalizer.Processor{Store: data}
+	res, err := proc.Process(t.Context(), "workflow_run", "delivery-wf-1", payload)
+	if err != nil {
+		t.Fatalf("缺字段 workflow_run 应安全处理，但报错: %v", err)
+	}
+	if res.Repository == nil {
+		t.Fatal("期望返回仓库")
+	}
+
+	// 验证入库的 workflow_run 使用了默认值。
+	run, err := data.WorkflowRuns().GetByRepoRunID(t.Context(), res.Repository.ID, 999001)
+	if err != nil {
+		t.Fatalf("workflow_run 未入库: %v", err)
+	}
+	if run.Actor == "" {
+		t.Fatal("actor 应有默认值")
+	}
+	if run.HeadBranch == "" {
+		t.Fatal("head_branch 应有默认值")
+	}
+	if run.HeadSHA == "" {
+		t.Fatal("head_sha 应有默认值")
+	}
+	if run.HTMLURL == "" {
+		t.Fatal("html_url 应有默认值")
+	}
+	if run.RunAttempt < 1 {
+		t.Fatalf("run_attempt 应 >=1，实际 %d", run.RunAttempt)
+	}
+	if run.WorkflowName == "" {
+		t.Fatal("workflow_name 应有默认值")
+	}
+}
+
+// TestUpsertPreservesCapabilitySettings 验证 Upsert 不会覆盖用户配置的能力开关。
+func TestUpsertPreservesCapabilitySettings(t *testing.T) {
+	dbURL := "file:" + filepath.Join(t.TempDir(), "cap.db")
+	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+
+	// 创建仓库（能力开关由 DB 默认值 true）。
+	repo, err := data.Repositories().Upsert(t.Context(), store.Repository{
+		ID:       "repo-1",
+		Type:     store.RepositoryTypeInstallation,
+		Owner:    "acme",
+		Name:     "demo",
+		FullName: "acme/demo",
+		HTMLURL:  "https://github.com/acme/demo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !repo.MonitorEnabled {
+		t.Fatal("新仓库 monitor_enabled 应默认 true")
+	}
+
+	// 用户关闭 Issues 开关。
+	falseVal := false
+	if err := data.Repositories().UpdateSettings(t.Context(), repo.ID, store.RepositorySettings{
+		IssuesEnabled: &falseVal,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Upsert 同步元数据不应覆盖能力开关。
+	_, err = data.Repositories().Upsert(t.Context(), store.Repository{
+		Type:     store.RepositoryTypeInstallation,
+		Owner:    "acme",
+		Name:     "demo",
+		FullName: "acme/demo",
+		HTMLURL:  "https://github.com/acme/demo",
+		IsPrivate: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err := data.Repositories().Get(t.Context(), repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.IssuesEnabled {
+		t.Fatal("Upsert 不应覆盖用户关闭的 issues_enabled")
+	}
+	if !saved.MonitorEnabled {
+		t.Fatal("Upsert 不应覆盖 monitor_enabled")
+	}
+	if !saved.IsPrivate {
+		t.Fatal("Upsert 应更新 is_private 元数据")
+	}
+}
+
+// TestUpdateSettingsAndArchive 验证 UpdateSettings 的归档联动。
+func TestUpdateSettingsAndArchive(t *testing.T) {
+	dbURL := "file:" + filepath.Join(t.TempDir(), "arch.db")
+	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+
+	repo, err := data.Repositories().Upsert(t.Context(), store.Repository{
+		ID:       "repo-2",
+		Type:     store.RepositoryTypeInstallation,
+		Owner:    "acme",
+		Name:     "demo",
+		FullName: "acme/demo",
+		HTMLURL:  "https://github.com/acme/demo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 归档仓库。
+	archiveVal := true
+	if err := data.Repositories().UpdateSettings(t.Context(), repo.ID, store.RepositorySettings{
+		IsArchived: &archiveVal,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := data.Repositories().Get(t.Context(), repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !saved.IsArchived {
+		t.Fatal("归档应设置 is_archived=true")
+	}
+	if saved.SyncStatus != store.SyncStatusArchived {
+		t.Fatalf("归档应联动 sync_status=archived，实际 %q", saved.SyncStatus)
+	}
+
+	// 取消归档。
+	unarchiveVal := false
+	if err := data.Repositories().UpdateSettings(t.Context(), repo.ID, store.RepositorySettings{
+		IsArchived: &unarchiveVal,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err = data.Repositories().Get(t.Context(), repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.IsArchived {
+		t.Fatal("取消归档应设置 is_archived=false")
+	}
+	if saved.SyncStatus != store.SyncStatusActive {
+		t.Fatalf("取消归档应联动 sync_status=active，实际 %q", saved.SyncStatus)
 	}
 }

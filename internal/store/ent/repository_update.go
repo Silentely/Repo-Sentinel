@@ -173,6 +173,76 @@ func (_u *RepositoryUpdate) SetNillableIsPrivate(v *bool) *RepositoryUpdate {
 	return _u
 }
 
+// SetMonitorEnabled sets the "monitor_enabled" field.
+func (_u *RepositoryUpdate) SetMonitorEnabled(v bool) *RepositoryUpdate {
+	_u.mutation.SetMonitorEnabled(v)
+	return _u
+}
+
+// SetNillableMonitorEnabled sets the "monitor_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdate) SetNillableMonitorEnabled(v *bool) *RepositoryUpdate {
+	if v != nil {
+		_u.SetMonitorEnabled(*v)
+	}
+	return _u
+}
+
+// SetIssuesEnabled sets the "issues_enabled" field.
+func (_u *RepositoryUpdate) SetIssuesEnabled(v bool) *RepositoryUpdate {
+	_u.mutation.SetIssuesEnabled(v)
+	return _u
+}
+
+// SetNillableIssuesEnabled sets the "issues_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdate) SetNillableIssuesEnabled(v *bool) *RepositoryUpdate {
+	if v != nil {
+		_u.SetIssuesEnabled(*v)
+	}
+	return _u
+}
+
+// SetPrEnabled sets the "pr_enabled" field.
+func (_u *RepositoryUpdate) SetPrEnabled(v bool) *RepositoryUpdate {
+	_u.mutation.SetPrEnabled(v)
+	return _u
+}
+
+// SetNillablePrEnabled sets the "pr_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdate) SetNillablePrEnabled(v *bool) *RepositoryUpdate {
+	if v != nil {
+		_u.SetPrEnabled(*v)
+	}
+	return _u
+}
+
+// SetActionsEnabled sets the "actions_enabled" field.
+func (_u *RepositoryUpdate) SetActionsEnabled(v bool) *RepositoryUpdate {
+	_u.mutation.SetActionsEnabled(v)
+	return _u
+}
+
+// SetNillableActionsEnabled sets the "actions_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdate) SetNillableActionsEnabled(v *bool) *RepositoryUpdate {
+	if v != nil {
+		_u.SetActionsEnabled(*v)
+	}
+	return _u
+}
+
+// SetAlertsEnabled sets the "alerts_enabled" field.
+func (_u *RepositoryUpdate) SetAlertsEnabled(v bool) *RepositoryUpdate {
+	_u.mutation.SetAlertsEnabled(v)
+	return _u
+}
+
+// SetNillableAlertsEnabled sets the "alerts_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdate) SetNillableAlertsEnabled(v *bool) *RepositoryUpdate {
+	if v != nil {
+		_u.SetAlertsEnabled(*v)
+	}
+	return _u
+}
+
 // SetHTMLURL sets the "html_url" field.
 func (_u *RepositoryUpdate) SetHTMLURL(v string) *RepositoryUpdate {
 	_u.mutation.SetHTMLURL(v)
@@ -366,6 +436,21 @@ func (_u *RepositoryUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	if value, ok := _u.mutation.IsPrivate(); ok {
 		_spec.SetField(repository.FieldIsPrivate, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.MonitorEnabled(); ok {
+		_spec.SetField(repository.FieldMonitorEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IssuesEnabled(); ok {
+		_spec.SetField(repository.FieldIssuesEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PrEnabled(); ok {
+		_spec.SetField(repository.FieldPrEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ActionsEnabled(); ok {
+		_spec.SetField(repository.FieldActionsEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AlertsEnabled(); ok {
+		_spec.SetField(repository.FieldAlertsEnabled, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.HTMLURL(); ok {
 		_spec.SetField(repository.FieldHTMLURL, field.TypeString, value)
 	}
@@ -557,6 +642,76 @@ func (_u *RepositoryUpdateOne) SetIsPrivate(v bool) *RepositoryUpdateOne {
 func (_u *RepositoryUpdateOne) SetNillableIsPrivate(v *bool) *RepositoryUpdateOne {
 	if v != nil {
 		_u.SetIsPrivate(*v)
+	}
+	return _u
+}
+
+// SetMonitorEnabled sets the "monitor_enabled" field.
+func (_u *RepositoryUpdateOne) SetMonitorEnabled(v bool) *RepositoryUpdateOne {
+	_u.mutation.SetMonitorEnabled(v)
+	return _u
+}
+
+// SetNillableMonitorEnabled sets the "monitor_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdateOne) SetNillableMonitorEnabled(v *bool) *RepositoryUpdateOne {
+	if v != nil {
+		_u.SetMonitorEnabled(*v)
+	}
+	return _u
+}
+
+// SetIssuesEnabled sets the "issues_enabled" field.
+func (_u *RepositoryUpdateOne) SetIssuesEnabled(v bool) *RepositoryUpdateOne {
+	_u.mutation.SetIssuesEnabled(v)
+	return _u
+}
+
+// SetNillableIssuesEnabled sets the "issues_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdateOne) SetNillableIssuesEnabled(v *bool) *RepositoryUpdateOne {
+	if v != nil {
+		_u.SetIssuesEnabled(*v)
+	}
+	return _u
+}
+
+// SetPrEnabled sets the "pr_enabled" field.
+func (_u *RepositoryUpdateOne) SetPrEnabled(v bool) *RepositoryUpdateOne {
+	_u.mutation.SetPrEnabled(v)
+	return _u
+}
+
+// SetNillablePrEnabled sets the "pr_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdateOne) SetNillablePrEnabled(v *bool) *RepositoryUpdateOne {
+	if v != nil {
+		_u.SetPrEnabled(*v)
+	}
+	return _u
+}
+
+// SetActionsEnabled sets the "actions_enabled" field.
+func (_u *RepositoryUpdateOne) SetActionsEnabled(v bool) *RepositoryUpdateOne {
+	_u.mutation.SetActionsEnabled(v)
+	return _u
+}
+
+// SetNillableActionsEnabled sets the "actions_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdateOne) SetNillableActionsEnabled(v *bool) *RepositoryUpdateOne {
+	if v != nil {
+		_u.SetActionsEnabled(*v)
+	}
+	return _u
+}
+
+// SetAlertsEnabled sets the "alerts_enabled" field.
+func (_u *RepositoryUpdateOne) SetAlertsEnabled(v bool) *RepositoryUpdateOne {
+	_u.mutation.SetAlertsEnabled(v)
+	return _u
+}
+
+// SetNillableAlertsEnabled sets the "alerts_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdateOne) SetNillableAlertsEnabled(v *bool) *RepositoryUpdateOne {
+	if v != nil {
+		_u.SetAlertsEnabled(*v)
 	}
 	return _u
 }
@@ -783,6 +938,21 @@ func (_u *RepositoryUpdateOne) sqlSave(ctx context.Context) (_node *Repository, 
 	}
 	if value, ok := _u.mutation.IsPrivate(); ok {
 		_spec.SetField(repository.FieldIsPrivate, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.MonitorEnabled(); ok {
+		_spec.SetField(repository.FieldMonitorEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IssuesEnabled(); ok {
+		_spec.SetField(repository.FieldIssuesEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PrEnabled(); ok {
+		_spec.SetField(repository.FieldPrEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ActionsEnabled(); ok {
+		_spec.SetField(repository.FieldActionsEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AlertsEnabled(); ok {
+		_spec.SetField(repository.FieldAlertsEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.HTMLURL(); ok {
 		_spec.SetField(repository.FieldHTMLURL, field.TypeString, value)

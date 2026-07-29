@@ -38,4 +38,3 @@ func (SyncCursor) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "sync_cursors"},
 	}
 }
-

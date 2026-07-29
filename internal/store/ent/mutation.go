@@ -6428,6 +6428,11 @@ type RepositoryMutation struct {
 	installation_id      *string
 	is_archived          *bool
 	is_private           *bool
+	monitor_enabled      *bool
+	issues_enabled       *bool
+	pr_enabled           *bool
+	actions_enabled      *bool
+	alerts_enabled       *bool
 	html_url             *string
 	default_branch       *string
 	baseline_started_at  *time.Time
@@ -6917,6 +6922,186 @@ func (m *RepositoryMutation) ResetIsPrivate() {
 	m.is_private = nil
 }
 
+// SetMonitorEnabled sets the "monitor_enabled" field.
+func (m *RepositoryMutation) SetMonitorEnabled(b bool) {
+	m.monitor_enabled = &b
+}
+
+// MonitorEnabled returns the value of the "monitor_enabled" field in the mutation.
+func (m *RepositoryMutation) MonitorEnabled() (r bool, exists bool) {
+	v := m.monitor_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonitorEnabled returns the old "monitor_enabled" field's value of the Repository entity.
+// If the Repository object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepositoryMutation) OldMonitorEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonitorEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonitorEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonitorEnabled: %w", err)
+	}
+	return oldValue.MonitorEnabled, nil
+}
+
+// ResetMonitorEnabled resets all changes to the "monitor_enabled" field.
+func (m *RepositoryMutation) ResetMonitorEnabled() {
+	m.monitor_enabled = nil
+}
+
+// SetIssuesEnabled sets the "issues_enabled" field.
+func (m *RepositoryMutation) SetIssuesEnabled(b bool) {
+	m.issues_enabled = &b
+}
+
+// IssuesEnabled returns the value of the "issues_enabled" field in the mutation.
+func (m *RepositoryMutation) IssuesEnabled() (r bool, exists bool) {
+	v := m.issues_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIssuesEnabled returns the old "issues_enabled" field's value of the Repository entity.
+// If the Repository object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepositoryMutation) OldIssuesEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIssuesEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIssuesEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIssuesEnabled: %w", err)
+	}
+	return oldValue.IssuesEnabled, nil
+}
+
+// ResetIssuesEnabled resets all changes to the "issues_enabled" field.
+func (m *RepositoryMutation) ResetIssuesEnabled() {
+	m.issues_enabled = nil
+}
+
+// SetPrEnabled sets the "pr_enabled" field.
+func (m *RepositoryMutation) SetPrEnabled(b bool) {
+	m.pr_enabled = &b
+}
+
+// PrEnabled returns the value of the "pr_enabled" field in the mutation.
+func (m *RepositoryMutation) PrEnabled() (r bool, exists bool) {
+	v := m.pr_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrEnabled returns the old "pr_enabled" field's value of the Repository entity.
+// If the Repository object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepositoryMutation) OldPrEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrEnabled: %w", err)
+	}
+	return oldValue.PrEnabled, nil
+}
+
+// ResetPrEnabled resets all changes to the "pr_enabled" field.
+func (m *RepositoryMutation) ResetPrEnabled() {
+	m.pr_enabled = nil
+}
+
+// SetActionsEnabled sets the "actions_enabled" field.
+func (m *RepositoryMutation) SetActionsEnabled(b bool) {
+	m.actions_enabled = &b
+}
+
+// ActionsEnabled returns the value of the "actions_enabled" field in the mutation.
+func (m *RepositoryMutation) ActionsEnabled() (r bool, exists bool) {
+	v := m.actions_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActionsEnabled returns the old "actions_enabled" field's value of the Repository entity.
+// If the Repository object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepositoryMutation) OldActionsEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActionsEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActionsEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActionsEnabled: %w", err)
+	}
+	return oldValue.ActionsEnabled, nil
+}
+
+// ResetActionsEnabled resets all changes to the "actions_enabled" field.
+func (m *RepositoryMutation) ResetActionsEnabled() {
+	m.actions_enabled = nil
+}
+
+// SetAlertsEnabled sets the "alerts_enabled" field.
+func (m *RepositoryMutation) SetAlertsEnabled(b bool) {
+	m.alerts_enabled = &b
+}
+
+// AlertsEnabled returns the value of the "alerts_enabled" field in the mutation.
+func (m *RepositoryMutation) AlertsEnabled() (r bool, exists bool) {
+	v := m.alerts_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAlertsEnabled returns the old "alerts_enabled" field's value of the Repository entity.
+// If the Repository object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepositoryMutation) OldAlertsEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAlertsEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAlertsEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAlertsEnabled: %w", err)
+	}
+	return oldValue.AlertsEnabled, nil
+}
+
+// ResetAlertsEnabled resets all changes to the "alerts_enabled" field.
+func (m *RepositoryMutation) ResetAlertsEnabled() {
+	m.alerts_enabled = nil
+}
+
 // SetHTMLURL sets the "html_url" field.
 func (m *RepositoryMutation) SetHTMLURL(s string) {
 	m.html_url = &s
@@ -7278,7 +7463,7 @@ func (m *RepositoryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RepositoryMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 22)
 	if m._type != nil {
 		fields = append(fields, repository.FieldType)
 	}
@@ -7305,6 +7490,21 @@ func (m *RepositoryMutation) Fields() []string {
 	}
 	if m.is_private != nil {
 		fields = append(fields, repository.FieldIsPrivate)
+	}
+	if m.monitor_enabled != nil {
+		fields = append(fields, repository.FieldMonitorEnabled)
+	}
+	if m.issues_enabled != nil {
+		fields = append(fields, repository.FieldIssuesEnabled)
+	}
+	if m.pr_enabled != nil {
+		fields = append(fields, repository.FieldPrEnabled)
+	}
+	if m.actions_enabled != nil {
+		fields = append(fields, repository.FieldActionsEnabled)
+	}
+	if m.alerts_enabled != nil {
+		fields = append(fields, repository.FieldAlertsEnabled)
 	}
 	if m.html_url != nil {
 		fields = append(fields, repository.FieldHTMLURL)
@@ -7356,6 +7556,16 @@ func (m *RepositoryMutation) Field(name string) (ent.Value, bool) {
 		return m.IsArchived()
 	case repository.FieldIsPrivate:
 		return m.IsPrivate()
+	case repository.FieldMonitorEnabled:
+		return m.MonitorEnabled()
+	case repository.FieldIssuesEnabled:
+		return m.IssuesEnabled()
+	case repository.FieldPrEnabled:
+		return m.PrEnabled()
+	case repository.FieldActionsEnabled:
+		return m.ActionsEnabled()
+	case repository.FieldAlertsEnabled:
+		return m.AlertsEnabled()
 	case repository.FieldHTMLURL:
 		return m.HTMLURL()
 	case repository.FieldDefaultBranch:
@@ -7399,6 +7609,16 @@ func (m *RepositoryMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldIsArchived(ctx)
 	case repository.FieldIsPrivate:
 		return m.OldIsPrivate(ctx)
+	case repository.FieldMonitorEnabled:
+		return m.OldMonitorEnabled(ctx)
+	case repository.FieldIssuesEnabled:
+		return m.OldIssuesEnabled(ctx)
+	case repository.FieldPrEnabled:
+		return m.OldPrEnabled(ctx)
+	case repository.FieldActionsEnabled:
+		return m.OldActionsEnabled(ctx)
+	case repository.FieldAlertsEnabled:
+		return m.OldAlertsEnabled(ctx)
 	case repository.FieldHTMLURL:
 		return m.OldHTMLURL(ctx)
 	case repository.FieldDefaultBranch:
@@ -7486,6 +7706,41 @@ func (m *RepositoryMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIsPrivate(v)
+		return nil
+	case repository.FieldMonitorEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonitorEnabled(v)
+		return nil
+	case repository.FieldIssuesEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIssuesEnabled(v)
+		return nil
+	case repository.FieldPrEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrEnabled(v)
+		return nil
+	case repository.FieldActionsEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActionsEnabled(v)
+		return nil
+	case repository.FieldAlertsEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAlertsEnabled(v)
 		return nil
 	case repository.FieldHTMLURL:
 		v, ok := value.(string)
@@ -7666,6 +7921,21 @@ func (m *RepositoryMutation) ResetField(name string) error {
 		return nil
 	case repository.FieldIsPrivate:
 		m.ResetIsPrivate()
+		return nil
+	case repository.FieldMonitorEnabled:
+		m.ResetMonitorEnabled()
+		return nil
+	case repository.FieldIssuesEnabled:
+		m.ResetIssuesEnabled()
+		return nil
+	case repository.FieldPrEnabled:
+		m.ResetPrEnabled()
+		return nil
+	case repository.FieldActionsEnabled:
+		m.ResetActionsEnabled()
+		return nil
+	case repository.FieldAlertsEnabled:
+		m.ResetAlertsEnabled()
 		return nil
 	case repository.FieldHTMLURL:
 		m.ResetHTMLURL()

@@ -49,4 +49,3 @@ func (NotificationOutbox) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "notification_outbox"},
 	}
 }
-

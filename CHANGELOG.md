@@ -2,6 +2,27 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 SemVer。
 
+## [0.3.5] - 2026-07-29
+
+### Added
+
+- 仓库能力开关：单仓独立控制监控、Issues、PR、Actions、安全告警的开关
+- 仓库归档功能：管理台一键归档/取消归档，联动同步状态
+- 侧边栏 Issues / Pull Requests 拆分为独立页面，支持 Open/Closed 状态筛选
+- 仓库管理页面：集中管理所有仓库的能力开关与归档状态
+- `PATCH /api/v1/repositories/{id}/settings` API 端点
+- 数据库迁移 `20260729000100_repo_capability_toggles`（PostgreSQL + SQLite）
+
+### Fixed
+
+- 修复 `workflow_run` Webhook 处理时 GitHub 偶发缺字段导致数据库写入失败
+- 修复 `mapStoreError` 吞掉原始错误信息，现在保留完整错误链便于排障
+- 修复 `handleActivateRepository` 未检查 Upsert 返回错误
+
+### Changed
+
+- `Upsert` 不再覆盖用户配置的仓库能力开关，能力开关仅通过 `UpdateSettings` 修改
+
 ## [0.3.4] - 2026-07-28
 
 ### Changed

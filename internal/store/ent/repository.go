@@ -35,6 +35,16 @@ type Repository struct {
 	IsArchived bool `json:"is_archived,omitempty"`
 	// IsPrivate holds the value of the "is_private" field.
 	IsPrivate bool `json:"is_private,omitempty"`
+	// MonitorEnabled holds the value of the "monitor_enabled" field.
+	MonitorEnabled bool `json:"monitor_enabled,omitempty"`
+	// IssuesEnabled holds the value of the "issues_enabled" field.
+	IssuesEnabled bool `json:"issues_enabled,omitempty"`
+	// PrEnabled holds the value of the "pr_enabled" field.
+	PrEnabled bool `json:"pr_enabled,omitempty"`
+	// ActionsEnabled holds the value of the "actions_enabled" field.
+	ActionsEnabled bool `json:"actions_enabled,omitempty"`
+	// AlertsEnabled holds the value of the "alerts_enabled" field.
+	AlertsEnabled bool `json:"alerts_enabled,omitempty"`
 	// HTMLURL holds the value of the "html_url" field.
 	HTMLURL string `json:"html_url,omitempty"`
 	// DefaultBranch holds the value of the "default_branch" field.
@@ -59,7 +69,7 @@ func (*Repository) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case repository.FieldIsArchived, repository.FieldIsPrivate:
+		case repository.FieldIsArchived, repository.FieldIsPrivate, repository.FieldMonitorEnabled, repository.FieldIssuesEnabled, repository.FieldPrEnabled, repository.FieldActionsEnabled, repository.FieldAlertsEnabled:
 			values[i] = new(sql.NullBool)
 		case repository.FieldGithubRepoID:
 			values[i] = new(sql.NullInt64)
@@ -143,6 +153,36 @@ func (_m *Repository) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field is_private", values[i])
 			} else if value.Valid {
 				_m.IsPrivate = value.Bool
+			}
+		case repository.FieldMonitorEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field monitor_enabled", values[i])
+			} else if value.Valid {
+				_m.MonitorEnabled = value.Bool
+			}
+		case repository.FieldIssuesEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field issues_enabled", values[i])
+			} else if value.Valid {
+				_m.IssuesEnabled = value.Bool
+			}
+		case repository.FieldPrEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field pr_enabled", values[i])
+			} else if value.Valid {
+				_m.PrEnabled = value.Bool
+			}
+		case repository.FieldActionsEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field actions_enabled", values[i])
+			} else if value.Valid {
+				_m.ActionsEnabled = value.Bool
+			}
+		case repository.FieldAlertsEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field alerts_enabled", values[i])
+			} else if value.Valid {
+				_m.AlertsEnabled = value.Bool
 			}
 		case repository.FieldHTMLURL:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -261,6 +301,21 @@ func (_m *Repository) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("is_private=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IsPrivate))
+	builder.WriteString(", ")
+	builder.WriteString("monitor_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MonitorEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("issues_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.IssuesEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("pr_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PrEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("actions_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ActionsEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("alerts_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AlertsEnabled))
 	builder.WriteString(", ")
 	builder.WriteString("html_url=")
 	builder.WriteString(_m.HTMLURL)

@@ -458,6 +458,19 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	if name == "" {
 		name = "workflow"
 	}
+	actor := strings.TrimSpace(run.Actor.Login)
+	if actor == "" {
+		actor = "unknown"
+	}
+	if strings.TrimSpace(run.HeadBranch) == "" {
+		run.HeadBranch = "unknown"
+	}
+	if strings.TrimSpace(run.HeadSHA) == "" {
+		run.HeadSHA = "0000000000000000000000000000000000000000"
+	}
+	if strings.TrimSpace(run.HTMLURL) == "" {
+		run.HTMLURL = fmt.Sprintf("https://github.com/%s/actions/runs/%d", env.Repository.FullName, run.ID)
+	}
 	hash := StateHash(strconv.FormatInt(run.ID, 10), run.Status, conclusion, strconv.Itoa(run.RunAttempt), run.HeadSHA)
 	in := store.WorkflowRun{
 		RepositoryID:     repo.ID,
@@ -470,7 +483,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		HeadSHA:          run.HeadSHA,
 		Status:           run.Status,
 		Conclusion:       run.Conclusion,
-		Actor:            run.Actor.Login,
+		Actor:            actor,
 		RunAttempt:       run.RunAttempt,
 		HTMLURL:          run.HTMLURL,
 		RunStartedAt:     run.RunStartedAt,
@@ -501,7 +514,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	srcUpdated := run.UpdatedAt
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: "workflow_run", Action: "completed",
-		RepositoryID: &repo.ID, Title: run.Name, Actor: run.Actor.Login, WorkflowRunID: &runID,
+		RepositoryID: &repo.ID, Title: run.Name, Actor: actor, WorkflowRunID: &runID,
 		WorkflowConclusion: *run.Conclusion, OccurredAt: run.UpdatedAt, SourceUpdatedAt: &srcUpdated,
 		HTMLURL: run.HTMLURL,
 		PayloadSummary: map[string]any{

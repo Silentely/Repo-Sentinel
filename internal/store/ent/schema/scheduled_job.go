@@ -42,4 +42,3 @@ func (ScheduledJob) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "scheduled_jobs"},
 	}
 }
-

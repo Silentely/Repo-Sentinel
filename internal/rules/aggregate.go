@@ -19,7 +19,7 @@ type Aggregator struct {
 	BurstThreshold int
 	BurstWindow    time.Duration
 
-	mu    sync.Mutex
+	mu sync.Mutex
 	// key: repoID|category
 	buckets map[string]*aggBucket
 	// burst: repoID -> timestamps

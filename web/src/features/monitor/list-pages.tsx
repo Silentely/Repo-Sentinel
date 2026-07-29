@@ -14,11 +14,15 @@ import {
   checkForUpdates,
   githubConfigQueryOptions,
   installationsQueryOptions,
+  repositoriesQueryOptions,
   saveGitHubConfig,
   saveSystemSettings,
   settingsQueryOptions,
   syncInstallationRepositories,
+  updateRepositorySettings,
   versionQueryOptions,
+  type Repository,
+  type RepositorySettings,
   type SystemSettings,
   type VersionInfo,
 } from "./api";
@@ -70,19 +74,23 @@ const GITHUB_APPS_SETTINGS = "https://github.com/settings/apps";
 /** 当前账号已安装的 Apps（含 Install / Configure）。 */
 const GITHUB_INSTALLATIONS = "https://github.com/settings/installations";
 
-export function WorkItemsPage() {
-  const kind = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("kind") || "" : "";
+function WorkItemsList({ kind, title, description }: { kind: string; title: string; description: string }) {
+  const [state, setState] = useState<string>("");
   const q = useQuery({
-    queryKey: ["work-items", kind],
-    queryFn: () =>
-      apiRequest<Page<WorkItem>>(`/api/v1/work-items?per_page=50${kind ? `&kind=${encodeURIComponent(kind)}` : ""}`),
+    queryKey: ["work-items", kind, state],
+    queryFn: () => {
+      const params = new URLSearchParams({ per_page: "50", kind });
+      if (state) params.set("state", state);
+      return apiRequest<Page<WorkItem>>(`/api/v1/work-items?${params.toString()}`);
+    },
   });
   return (
-    <ListShell
-      eyebrow="仓库"
-      title="Issues / Pull Requests"
-      description="自有仓与外部公开仓的工作项。Webhook 或仪表盘「对账」同步后会出现在这里。"
-    >
+    <ListShell eyebrow="仓库" title={title} description={description}>
+      <div className="filter-bar">
+        <button className={`quiet-button${state === "" ? " active" : ""}`} type="button" onClick={() => setState("")}>全部</button>
+        <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>Open</button>
+        <button className={`quiet-button${state === "closed" ? " active" : ""}`} type="button" onClick={() => setState("closed")}>Closed</button>
+      </div>
       {q.data?.items.length ? (
         <ul className="event-list">
           {q.data.items.map((it) => {
@@ -90,15 +98,11 @@ export function WorkItemsPage() {
             const title = (it.title || "").trim() || "（无标题）";
             return (
               <li key={it.id}>
-                <span className="event-kind">{it.kind || "item"}</span>
-                <strong>
-                  #{num} {title}
-                </strong>
-                <span className="muted">{it.state || "—"}{it.author ? ` · ${it.author}` : ""}</span>
+                <span className="event-kind">{it.state || "—"}</span>
+                <strong>#{num} {title}</strong>
+                <span className="muted">{it.author ? ` · ${it.author}` : ""}</span>
                 {it.html_url ? (
-                  <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">
-                    打开
-                  </a>
+                  <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">打开</a>
                 ) : null}
               </li>
             );
@@ -106,12 +110,122 @@ export function WorkItemsPage() {
         </ul>
       ) : (
         <EmptyState
-          title="暂无工作项"
-          description="先完成 GitHub App 安装，再在仪表盘对仓库点「对账」或等待 Issue/PR Webhook。"
+          title={state === "closed" ? "没有已关闭的项目" : "暂无工作项"}
+          description={state === "closed" ? "已关闭的 Issues 或 PR 会显示在这里。" : "先完成 GitHub App 安装，再在仪表盘对仓库点「对账」或等待 Webhook。"}
           action={<Link to="/">回仪表盘对账</Link>}
         />
       )}
     </ListShell>
+  );
+}
+
+export function IssuesPage() {
+  return (
+    <WorkItemsList
+      kind="issue"
+      title="Issues"
+      description="自有仓与外部公开仓的 Issue 列表。支持按状态筛选：Open 为活跃、Closed 为已关闭（含归档历史）。"
+    />
+  );
+}
+
+export function PullRequestsPage() {
+  return (
+    <WorkItemsList
+      kind="pull_request"
+      title="Pull Requests"
+      description="自有仓与外部公开仓的 PR 列表。支持按状态筛选：Open 为进行中、Closed/Merged 为已完结（含归档历史）。"
+    />
+  );
+}
+
+export function ReposPage() {
+  const queryClient = useQueryClient();
+  const repos = useQuery(repositoriesQueryOptions);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const updateSettings = useMutation({
+    mutationFn: ({ id, settings }: { id: string; settings: RepositorySettings }) => {
+      setErrorMsg(null);
+      setSavingId(id);
+      return updateRepositorySettings(id, settings);
+    },
+    onSuccess: async () => {
+      setSavingId(null);
+      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (error) => {
+      setSavingId(null);
+      setErrorMsg(toApiError(error).message || "保存失败");
+    },
+  });
+
+  return (
+    <ListShell eyebrow="仓库" title="仓库管理" description="管理仓库监控开关、能力开关和归档状态。关闭某项能力后，该仓库对应类型的 Webhook 事件将被忽略。">
+      {errorMsg ? <ErrorAlert title="更新失败" message={errorMsg} /> : null}
+      {repos.data?.items.length ? (
+        <ul className="repo-settings-list">
+          {repos.data.items.map((repo) => (
+            <RepoCard
+              key={repo.id}
+              repo={repo}
+              onToggle={(settings) => updateSettings.mutate({ id: repo.id, settings })}
+              saving={savingId === repo.id}
+            />
+          ))}
+        </ul>
+      ) : (
+        <EmptyState
+          title="暂无仓库"
+          description="安装 GitHub App 后仓库会自动出现。"
+          action={<Link to="/github">打开 GitHub App 页</Link>}
+        />
+      )}
+    </ListShell>
+  );
+}
+
+function RepoCard({ repo, onToggle, saving }: { repo: Repository; onToggle: (s: RepositorySettings) => void; saving: boolean }) {
+  return (
+    <li className="repo-card">
+      <div className="repo-card__header">
+        <strong>{repo.full_name || `${repo.owner}/${repo.name}`}</strong>
+        <span className="muted">
+          {repo.sync_status === "active" ? "正常" : repo.sync_status === "archived" ? "已归档" : repo.sync_status === "baseline_sync" ? "基线中" : repo.sync_status}
+          {repo.is_archived ? " · GitHub 已归档" : ""}
+        </span>
+      </div>
+      <div className="repo-card__toggles">
+        <Toggle label="监控" checked={repo.monitor_enabled} disabled={saving}
+          onChange={(v) => onToggle({ monitor_enabled: v })} />
+        <Toggle label="Issues" checked={repo.issues_enabled} disabled={saving}
+          onChange={(v) => onToggle({ issues_enabled: v })} />
+        <Toggle label="PR" checked={repo.pr_enabled} disabled={saving}
+          onChange={(v) => onToggle({ pr_enabled: v })} />
+        <Toggle label="Actions" checked={repo.actions_enabled} disabled={saving}
+          onChange={(v) => onToggle({ actions_enabled: v })} />
+        <Toggle label="安全告警" checked={repo.alerts_enabled} disabled={saving}
+          onChange={(v) => onToggle({ alerts_enabled: v })} />
+        <Toggle label="归档" checked={repo.is_archived} disabled={saving}
+          onChange={(v) => onToggle({ is_archived: v })} />
+      </div>
+    </li>
+  );
+}
+
+function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="toggle-row">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>{label}</span>
+    </label>
   );
 }
 

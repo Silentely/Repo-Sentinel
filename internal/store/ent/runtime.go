@@ -130,16 +130,36 @@ func init() {
 	repositoryDescIsPrivate := repositoryFields[9].Descriptor()
 	// repository.DefaultIsPrivate holds the default value on creation for the is_private field.
 	repository.DefaultIsPrivate = repositoryDescIsPrivate.Default.(bool)
+	// repositoryDescMonitorEnabled is the schema descriptor for monitor_enabled field.
+	repositoryDescMonitorEnabled := repositoryFields[10].Descriptor()
+	// repository.DefaultMonitorEnabled holds the default value on creation for the monitor_enabled field.
+	repository.DefaultMonitorEnabled = repositoryDescMonitorEnabled.Default.(bool)
+	// repositoryDescIssuesEnabled is the schema descriptor for issues_enabled field.
+	repositoryDescIssuesEnabled := repositoryFields[11].Descriptor()
+	// repository.DefaultIssuesEnabled holds the default value on creation for the issues_enabled field.
+	repository.DefaultIssuesEnabled = repositoryDescIssuesEnabled.Default.(bool)
+	// repositoryDescPrEnabled is the schema descriptor for pr_enabled field.
+	repositoryDescPrEnabled := repositoryFields[12].Descriptor()
+	// repository.DefaultPrEnabled holds the default value on creation for the pr_enabled field.
+	repository.DefaultPrEnabled = repositoryDescPrEnabled.Default.(bool)
+	// repositoryDescActionsEnabled is the schema descriptor for actions_enabled field.
+	repositoryDescActionsEnabled := repositoryFields[13].Descriptor()
+	// repository.DefaultActionsEnabled holds the default value on creation for the actions_enabled field.
+	repository.DefaultActionsEnabled = repositoryDescActionsEnabled.Default.(bool)
+	// repositoryDescAlertsEnabled is the schema descriptor for alerts_enabled field.
+	repositoryDescAlertsEnabled := repositoryFields[14].Descriptor()
+	// repository.DefaultAlertsEnabled holds the default value on creation for the alerts_enabled field.
+	repository.DefaultAlertsEnabled = repositoryDescAlertsEnabled.Default.(bool)
 	// repositoryDescHTMLURL is the schema descriptor for html_url field.
-	repositoryDescHTMLURL := repositoryFields[10].Descriptor()
+	repositoryDescHTMLURL := repositoryFields[15].Descriptor()
 	// repository.DefaultHTMLURL holds the default value on creation for the html_url field.
 	repository.DefaultHTMLURL = repositoryDescHTMLURL.Default.(string)
 	// repositoryDescDefaultBranch is the schema descriptor for default_branch field.
-	repositoryDescDefaultBranch := repositoryFields[11].Descriptor()
+	repositoryDescDefaultBranch := repositoryFields[16].Descriptor()
 	// repository.DefaultDefaultBranch holds the default value on creation for the default_branch field.
 	repository.DefaultDefaultBranch = repositoryDescDefaultBranch.Default.(string)
 	// repositoryDescLastSyncErrorCode is the schema descriptor for last_sync_error_code field.
-	repositoryDescLastSyncErrorCode := repositoryFields[15].Descriptor()
+	repositoryDescLastSyncErrorCode := repositoryFields[20].Descriptor()
 	// repository.DefaultLastSyncErrorCode holds the default value on creation for the last_sync_error_code field.
 	repository.DefaultLastSyncErrorCode = repositoryDescLastSyncErrorCode.Default.(string)
 	scheduledjobFields := schema.ScheduledJob{}.Fields()

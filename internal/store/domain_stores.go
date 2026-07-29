@@ -13,8 +13,8 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
-	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workitem"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workitem"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -126,6 +126,7 @@ func (s *repositoryStore) Upsert(ctx context.Context, in Repository) (Repository
 	now := time.Now().UTC()
 	existing, err := s.client.Repository.Query().Where(repository.FullNameEQ(in.FullName)).Only(ctx)
 	if err == nil {
+		// 能力开关由 UpdateSettings 单独管理；Upsert 仅同步元数据，保留用户配置。
 		upd := s.client.Repository.UpdateOneID(existing.ID).
 			SetType(in.Type).
 			SetSyncStatus(in.SyncStatus).
@@ -255,6 +256,34 @@ func (s *repositoryStore) UpdateSyncStatus(ctx context.Context, id, status strin
 	return mapStoreError(err)
 }
 
+func (s *repositoryStore) UpdateSettings(ctx context.Context, id string, settings RepositorySettings) error {
+	upd := s.client.Repository.UpdateOneID(id).SetUpdatedAt(time.Now().UTC())
+	if settings.MonitorEnabled != nil {
+		upd.SetMonitorEnabled(*settings.MonitorEnabled)
+	}
+	if settings.IssuesEnabled != nil {
+		upd.SetIssuesEnabled(*settings.IssuesEnabled)
+	}
+	if settings.PrEnabled != nil {
+		upd.SetPrEnabled(*settings.PrEnabled)
+	}
+	if settings.ActionsEnabled != nil {
+		upd.SetActionsEnabled(*settings.ActionsEnabled)
+	}
+	if settings.AlertsEnabled != nil {
+		upd.SetAlertsEnabled(*settings.AlertsEnabled)
+	}
+	if settings.IsArchived != nil {
+		upd.SetIsArchived(*settings.IsArchived)
+		if *settings.IsArchived {
+			upd.SetSyncStatus(SyncStatusArchived)
+		} else {
+			upd.SetSyncStatus(SyncStatusActive)
+		}
+	}
+	return mapStoreError(upd.Exec(ctx))
+}
+
 func (s *repositoryStore) CountByType(ctx context.Context, repoType string) (int, error) {
 	n, err := s.client.Repository.Query().Where(repository.TypeEQ(repoType)).Count(ctx)
 	return n, mapStoreError(err)
@@ -264,7 +293,10 @@ func repositoryFromEntity(e *entclient.Repository) Repository {
 	return Repository{
 		ID: e.ID, Type: e.Type, SyncStatus: e.SyncStatus, GitHubRepoID: e.GithubRepoID,
 		Owner: e.Owner, Name: e.Name, FullName: e.FullName, InstallationID: e.InstallationID,
-		IsArchived: e.IsArchived, IsPrivate: e.IsPrivate, HTMLURL: e.HTMLURL, DefaultBranch: e.DefaultBranch,
+		IsArchived: e.IsArchived, IsPrivate: e.IsPrivate,
+		MonitorEnabled: e.MonitorEnabled, IssuesEnabled: e.IssuesEnabled,
+		PrEnabled: e.PrEnabled, ActionsEnabled: e.ActionsEnabled, AlertsEnabled: e.AlertsEnabled,
+		HTMLURL: e.HTMLURL, DefaultBranch: e.DefaultBranch,
 		BaselineStartedAt: e.BaselineStartedAt, BaselineFinishedAt: e.BaselineFinishedAt,
 		LastSyncedAt: e.LastSyncedAt, LastSyncErrorCode: e.LastSyncErrorCode,
 		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,

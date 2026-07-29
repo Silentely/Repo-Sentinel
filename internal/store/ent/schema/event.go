@@ -52,4 +52,3 @@ func (Event) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "events"},
 	}
 }
-

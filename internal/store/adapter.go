@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	entclient "github.com/Silentely/Repo-Sentinel/internal/store/ent"
 )
@@ -19,7 +20,8 @@ func mapStoreError(err error) error {
 	case entclient.IsConstraintError(err):
 		return ErrConflict
 	default:
-		return errDatabaseOperation
+		// 保留原始错误信息，便于排查；外层调用方仍可用 errors.Is 匹配 errDatabaseOperation。
+		return fmt.Errorf("%w: %w", errDatabaseOperation, err)
 	}
 }
 

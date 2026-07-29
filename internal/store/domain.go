@@ -62,6 +62,11 @@ type Repository struct {
 	InstallationID     *string    `json:"installation_id,omitempty"`
 	IsArchived         bool       `json:"is_archived"`
 	IsPrivate          bool       `json:"is_private"`
+	MonitorEnabled     bool       `json:"monitor_enabled"`
+	IssuesEnabled      bool       `json:"issues_enabled"`
+	PrEnabled          bool       `json:"pr_enabled"`
+	ActionsEnabled     bool       `json:"actions_enabled"`
+	AlertsEnabled      bool       `json:"alerts_enabled"`
 	HTMLURL            string     `json:"html_url"`
 	DefaultBranch      string     `json:"default_branch"`
 	BaselineStartedAt  *time.Time `json:"baseline_started_at,omitempty"`
@@ -244,7 +249,18 @@ type RepositoryStore interface {
 	GetByGitHubRepoID(context.Context, int64) (Repository, error)
 	List(context.Context, ListFilter) ([]Repository, PageResult, error)
 	UpdateSyncStatus(context.Context, string, string) error
+	UpdateSettings(context.Context, string, RepositorySettings) error
 	CountByType(context.Context, string) (int, error)
+}
+
+// RepositorySettings 仓库能力开关与归档设置。
+type RepositorySettings struct {
+	MonitorEnabled *bool `json:"monitor_enabled,omitempty"`
+	IssuesEnabled  *bool `json:"issues_enabled,omitempty"`
+	PrEnabled      *bool `json:"pr_enabled,omitempty"`
+	ActionsEnabled *bool `json:"actions_enabled,omitempty"`
+	AlertsEnabled  *bool `json:"alerts_enabled,omitempty"`
+	IsArchived     *bool `json:"is_archived,omitempty"`
 }
 
 // InstallationStore GitHub App 安装。
