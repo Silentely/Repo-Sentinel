@@ -414,6 +414,33 @@ a.primary-button {
   background: color-mix(in oklch, var(--accent) 20%, var(--bg-surface));
 }
 
+/* 侧边栏导航徽章 */
+.nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-fg);
+  background: var(--accent);
+  line-height: 1;
+}
+
+.nav-badge--warning {
+  color: #fff;
+  background: var(--warning);
+}
+
+.nav-badge--danger {
+  color: #fff;
+  background: var(--danger);
+}
+
 .app-nav span:not(.app-nav__label) {
   opacity: 0.54;
 }

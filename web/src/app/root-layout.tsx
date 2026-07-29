@@ -21,6 +21,7 @@ import {
   readyStatusQueryOptions,
   type AuthenticationResponse,
 } from "../features/auth/api";
+import { dashboardQueryOptions } from "../features/monitor/api";
 
 export interface RootLayoutProps {
   session: AuthenticationResponse;
@@ -31,6 +32,7 @@ export function RootLayout({ session }: RootLayoutProps) {
   const queryClient = useQueryClient();
   const [loggingOut, setLoggingOut] = useState(false);
   const ready = useQuery(readyStatusQueryOptions);
+  const dashboard = useQuery(dashboardQueryOptions);
 
   const healthState = ready.isPending
     ? "warning"
@@ -38,6 +40,13 @@ export function RootLayout({ session }: RootLayoutProps) {
       ? "error"
       : "ready";
   const healthLabel = healthState === "ready" ? "服务正常" : healthState === "warning" ? "检查中" : "需要关注";
+
+  // 侧边栏徽章数据
+  const stats = dashboard.data;
+  const openIssues = stats?.open_issues ?? 0;
+  const openPRs = stats?.open_pulls ?? 0;
+  const failedActions = stats?.failed_actions ?? 0;
+  const openSecurity = stats?.open_security ?? 0;
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -75,18 +84,22 @@ export function RootLayout({ session }: RootLayoutProps) {
           <Link to="/issues" activeProps={{ "aria-current": "page" }}>
             <ListTodo aria-hidden="true" size={17} />
             <span>Issues</span>
+            {openIssues > 0 && <span className="nav-badge">{openIssues}</span>}
           </Link>
           <Link to="/pull-requests" activeProps={{ "aria-current": "page" }}>
             <GitPullRequest aria-hidden="true" size={17} />
             <span>Pull Requests</span>
+            {openPRs > 0 && <span className="nav-badge">{openPRs}</span>}
           </Link>
           <Link to="/actions" activeProps={{ "aria-current": "page" }}>
             <Workflow aria-hidden="true" size={17} />
             <span>Actions</span>
+            {failedActions > 0 && <span className="nav-badge nav-badge--warning">{failedActions}</span>}
           </Link>
           <Link to="/security" activeProps={{ "aria-current": "page" }}>
             <Shield aria-hidden="true" size={17} />
             <span>安全告警</span>
+            {openSecurity > 0 && <span className="nav-badge nav-badge--danger">{openSecurity}</span>}
           </Link>
           <span className="app-nav__label">通知</span>
           <Link to="/notifications" activeProps={{ "aria-current": "page" }}>
