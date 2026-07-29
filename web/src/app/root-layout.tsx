@@ -104,7 +104,7 @@ export function RootLayout({ session }: RootLayoutProps) {
             {openSecurity > 0 && <span className="nav-badge nav-badge--danger">{openSecurity}</span>}
           </Link>
           <span className="app-nav__label">通知</span>
-          <Link to="/notifications" activeProps={{ "aria-current": "page" }}>
+          <Link to="/notifications" activeProps={{ "aria-current": "page" }} activeOptions={{ exact: true }}>
             <Bell aria-hidden="true" size={17} />
             <span>渠道配置</span>
             {outboxDead > 0 && <span className="nav-badge nav-badge--warning">{outboxDead}</span>}

@@ -5,6 +5,7 @@ import { apiRequest } from "../../lib/api/client";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { toApiError } from "../../lib/api/errors";
+import { formatRelativeTime } from "../../lib/format";
 import { retryOutbox, type OutboxItem, type Page } from "./api";
 
 export function OutboxPage() {
@@ -34,7 +35,7 @@ export function OutboxPage() {
     { label: "待发送", value: "pending" },
     { label: "发送中", value: "sending" },
     { label: "已发送", value: "sent" },
-    { label: "死信", value: "dead" },
+    { label: "投递失败", value: "dead" },
   ];
 
   return (
@@ -43,7 +44,7 @@ export function OutboxPage() {
         <div>
           <p className="eyebrow">通知</p>
           <h1>投递记录</h1>
-          <p>查看通知投递状态，重试失败的死信消息。</p>
+          <p>查看通知投递状态，重试失败的投递消息。</p>
         </div>
       </section>
 
@@ -108,22 +109,9 @@ function statusLabel(status: string): string {
     case "sent":
       return "已发送";
     case "dead":
-      return "死信";
+      return "投递失败";
     default:
       return status;
   }
 }
 
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 60) return "刚刚";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} 分钟前`;
-  const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour} 小时前`;
-  const diffDay = Math.floor(diffHour / 24);
-  return `${diffDay} 天前`;
-}
