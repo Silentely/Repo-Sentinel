@@ -129,7 +129,7 @@ export function DashboardPage() {
           <Metric label="失败 Actions" value={stats?.failed_actions} />
           <Metric label="开放安全告警" value={stats?.open_security} />
           <Metric label="24h 事件" value={stats?.events_24h} />
-          <Metric label="通知死信" value={stats?.outbox_dead} />
+          <Metric label="投递失败" value={stats?.outbox_dead} />
         </div>
         <div className="status-grid status-grid--secondary">
           <Metric label="活跃仓库" value={stats?.repos_active} />
