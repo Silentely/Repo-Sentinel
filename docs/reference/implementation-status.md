@@ -23,7 +23,8 @@
 | 通知聚合 / 超频降级 | 已交付 | 默认 60s / 15 条 / 5 分钟；多实例靠 Outbox 时间桶幂等 |
 | 每日摘要 | 已交付 | 默认本地 09:00 窗口；settings 可配 |
 | Outbox 重试 / 死信 | 已交付 | |
-| 仪表盘 / 列表 / GitHub / 关于 | 已交付 | 关于页可检查 GitHub Release |
+| 仪表盘 / 列表 / GitHub / 关于 | 已交付 | 关于页可检查 GitHub Release；列表支持按仓筛选与本地忽略；仪表盘区块可折叠并记住状态 |
+| 归档仓数据隔离 | 已交付 | 列表与侧栏计数默认排除已归档仓库；历史项仍保留在库中 |
 | doctor / backup / restore | 已交付 | 备份须同时保管主密钥 |
 | GHCR 镜像 | 已交付 | `main`/`dev` 推送对应浮动标签；`v*` 推送 `vX.Y.Z` + `latest` |
 | Prometheus `/metrics` | 已交付 | 进程内计数 + 可选 Bearer；建议内网抓取 |

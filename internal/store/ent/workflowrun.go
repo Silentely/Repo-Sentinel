@@ -53,6 +53,8 @@ type WorkflowRun struct {
 	RunCompletedAt *time.Time `json:"run_completed_at,omitempty"`
 	// StateHash holds the value of the "state_hash" field.
 	StateHash string `json:"state_hash,omitempty"`
+	// Ignored holds the value of the "ignored" field.
+	Ignored bool `json:"ignored,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -65,6 +67,8 @@ func (*WorkflowRun) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case workflowrun.FieldIgnored:
+			values[i] = new(sql.NullBool)
 		case workflowrun.FieldGithubRunID, workflowrun.FieldGithubWorkflowID, workflowrun.FieldRunNumber, workflowrun.FieldRunAttempt:
 			values[i] = new(sql.NullInt64)
 		case workflowrun.FieldID, workflowrun.FieldRepositoryID, workflowrun.FieldWorkflowName, workflowrun.FieldEvent, workflowrun.FieldHeadBranch, workflowrun.FieldHeadSha, workflowrun.FieldStatus, workflowrun.FieldConclusion, workflowrun.FieldPreviousConclusion, workflowrun.FieldActor, workflowrun.FieldHTMLURL, workflowrun.FieldStateHash:
@@ -204,6 +208,12 @@ func (_m *WorkflowRun) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.StateHash = value.String
 			}
+		case workflowrun.FieldIgnored:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field ignored", values[i])
+			} else if value.Valid {
+				_m.Ignored = value.Bool
+			}
 		case workflowrun.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -313,6 +323,9 @@ func (_m *WorkflowRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("state_hash=")
 	builder.WriteString(_m.StateHash)
+	builder.WriteString(", ")
+	builder.WriteString("ignored=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Ignored))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

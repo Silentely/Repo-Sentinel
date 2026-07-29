@@ -53,6 +53,8 @@ const (
 	FieldChecksTotal = "checks_total"
 	// FieldChecksPassed holds the string denoting the checks_passed field in the database.
 	FieldChecksPassed = "checks_passed"
+	// FieldIgnored holds the string denoting the ignored field in the database.
+	FieldIgnored = "ignored"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -85,6 +87,7 @@ var Columns = []string{
 	FieldCheckConclusion,
 	FieldChecksTotal,
 	FieldChecksPassed,
+	FieldIgnored,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -122,6 +125,8 @@ var (
 	DefaultChecksTotal int
 	// DefaultChecksPassed holds the default value on creation for the "checks_passed" field.
 	DefaultChecksPassed int
+	// DefaultIgnored holds the default value on creation for the "ignored" field.
+	DefaultIgnored bool
 )
 
 // OrderOption defines the ordering options for the WorkItem queries.
@@ -220,6 +225,11 @@ func ByChecksTotal(opts ...sql.OrderTermOption) OrderOption {
 // ByChecksPassed orders the results by the checks_passed field.
 func ByChecksPassed(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldChecksPassed, opts...).ToFunc()
+}
+
+// ByIgnored orders the results by the ignored field.
+func ByIgnored(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIgnored, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

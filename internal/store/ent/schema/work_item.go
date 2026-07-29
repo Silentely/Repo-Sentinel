@@ -39,6 +39,8 @@ func (WorkItem) Fields() []ent.Field {
 		field.String("check_conclusion").Default(""), // success, failure, timed_out, cancelled, neutral, skipped
 		field.Int("checks_total").Default(0),
 		field.Int("checks_passed").Default(0),
+		// ignored：用户手动忽略的长期打开 Issue/PR，列表默认隐藏。
+		field.Bool("ignored").Default(false),
 		field.Time("created_at").Immutable(),
 		field.Time("updated_at"),
 	}
@@ -48,6 +50,7 @@ func (WorkItem) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("repository_id", "number").Unique(),
 		index.Fields("repository_id", "kind", "state"),
+		index.Fields("ignored", "kind", "state"),
 		index.Fields("updated_at"),
 	}
 }

@@ -356,6 +356,20 @@ func (_u *WorkItemUpdate) AddChecksPassed(v int) *WorkItemUpdate {
 	return _u
 }
 
+// SetIgnored sets the "ignored" field.
+func (_u *WorkItemUpdate) SetIgnored(v bool) *WorkItemUpdate {
+	_u.mutation.SetIgnored(v)
+	return _u
+}
+
+// SetNillableIgnored sets the "ignored" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableIgnored(v *bool) *WorkItemUpdate {
+	if v != nil {
+		_u.SetIgnored(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *WorkItemUpdate) SetUpdatedAt(v time.Time) *WorkItemUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -506,6 +520,9 @@ func (_u *WorkItemUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedChecksPassed(); ok {
 		_spec.AddField(workitem.FieldChecksPassed, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.Ignored(); ok {
+		_spec.SetField(workitem.FieldIgnored, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(workitem.FieldUpdatedAt, field.TypeTime, value)
@@ -857,6 +874,20 @@ func (_u *WorkItemUpdateOne) AddChecksPassed(v int) *WorkItemUpdateOne {
 	return _u
 }
 
+// SetIgnored sets the "ignored" field.
+func (_u *WorkItemUpdateOne) SetIgnored(v bool) *WorkItemUpdateOne {
+	_u.mutation.SetIgnored(v)
+	return _u
+}
+
+// SetNillableIgnored sets the "ignored" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableIgnored(v *bool) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetIgnored(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *WorkItemUpdateOne) SetUpdatedAt(v time.Time) *WorkItemUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -1037,6 +1068,9 @@ func (_u *WorkItemUpdateOne) sqlSave(ctx context.Context) (_node *WorkItem, err 
 	}
 	if value, ok := _u.mutation.AddedChecksPassed(); ok {
 		_spec.AddField(workitem.FieldChecksPassed, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.Ignored(); ok {
+		_spec.SetField(workitem.FieldIgnored, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(workitem.FieldUpdatedAt, field.TypeTime, value)

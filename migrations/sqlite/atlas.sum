@@ -1,5 +1,6 @@
-h1:4HQtSP9EWG1iikK6pKj1J5DuEh5ak+Xk1nT8VH+kxtg=
+h1:ajtZJk2x82uUbUTDu2+ckvegySqE2nV+bb0eoR3MvhM=
 20260727000100_initial.sql h1:IZH3NW1MvYSmhBbiJfrMsVfIafVUkDEcDjJ1nVWiU8k=
 20260728000100_domain_core.sql h1:lmdbx1mJCthTGw+1leGYhe2yoMZ7MRLqoCfOGYBdbcQ=
 20260729000100_repo_capability_toggles.sql h1:r6Qv4zeU5Sn70i93B+7E3HP+TOQQpu5Tt72s5w8Hq7c=
 20260729000200_workitem_review_checks.sql h1:YhQ1J68tfeIHeWrDShF6Fq1TbTNsQgJlG9N3IJouHIw=
+20260729000300_item_ignored.sql h1:sJzWikl13pzr4l5KZ1pIuCVuU0Ct5yTqbwg1fIsU0rc=

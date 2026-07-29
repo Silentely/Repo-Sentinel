@@ -332,6 +332,20 @@ func (_u *WorkflowRunUpdate) SetNillableStateHash(v *string) *WorkflowRunUpdate 
 	return _u
 }
 
+// SetIgnored sets the "ignored" field.
+func (_u *WorkflowRunUpdate) SetIgnored(v bool) *WorkflowRunUpdate {
+	_u.mutation.SetIgnored(v)
+	return _u
+}
+
+// SetNillableIgnored sets the "ignored" field if the given value is not nil.
+func (_u *WorkflowRunUpdate) SetNillableIgnored(v *bool) *WorkflowRunUpdate {
+	if v != nil {
+		_u.SetIgnored(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *WorkflowRunUpdate) SetUpdatedAt(v time.Time) *WorkflowRunUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -464,6 +478,9 @@ func (_u *WorkflowRunUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.StateHash(); ok {
 		_spec.SetField(workflowrun.FieldStateHash, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Ignored(); ok {
+		_spec.SetField(workflowrun.FieldIgnored, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(workflowrun.FieldUpdatedAt, field.TypeTime, value)
@@ -792,6 +809,20 @@ func (_u *WorkflowRunUpdateOne) SetNillableStateHash(v *string) *WorkflowRunUpda
 	return _u
 }
 
+// SetIgnored sets the "ignored" field.
+func (_u *WorkflowRunUpdateOne) SetIgnored(v bool) *WorkflowRunUpdateOne {
+	_u.mutation.SetIgnored(v)
+	return _u
+}
+
+// SetNillableIgnored sets the "ignored" field if the given value is not nil.
+func (_u *WorkflowRunUpdateOne) SetNillableIgnored(v *bool) *WorkflowRunUpdateOne {
+	if v != nil {
+		_u.SetIgnored(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *WorkflowRunUpdateOne) SetUpdatedAt(v time.Time) *WorkflowRunUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -954,6 +985,9 @@ func (_u *WorkflowRunUpdateOne) sqlSave(ctx context.Context) (_node *WorkflowRun
 	}
 	if value, ok := _u.mutation.StateHash(); ok {
 		_spec.SetField(workflowrun.FieldStateHash, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Ignored(); ok {
+		_spec.SetField(workflowrun.FieldIgnored, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(workflowrun.FieldUpdatedAt, field.TypeTime, value)

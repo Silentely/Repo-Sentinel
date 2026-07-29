@@ -79,7 +79,8 @@ export const dashboardQueryOptions = queryOptions({
 
 export const repositoriesQueryOptions = queryOptions({
   queryKey: ["repositories"] as const,
-  queryFn: () => apiRequest<Page<Repository>>("/api/v1/repositories?per_page=50"),
+  // 列表筛选下拉与仪表盘共用；上限对齐后端 normalizePage(100)。
+  queryFn: () => apiRequest<Page<Repository>>("/api/v1/repositories?per_page=100"),
   staleTime: 15_000,
 });
 
@@ -160,6 +161,30 @@ export async function updateRepositorySettings(id: string, settings: RepositoryS
   return apiRequest<Repository>(`/api/v1/repositories/${id}/settings`, {
     method: "PATCH",
     body: JSON.stringify(settings),
+  });
+}
+
+/** 设置 Issue/PR 本地忽略标记（不回写 GitHub）。 */
+export async function setWorkItemIgnored(id: string, ignored: boolean): Promise<void> {
+  await apiRequest(`/api/v1/work-items/${id}/ignored`, {
+    method: "PATCH",
+    body: JSON.stringify({ ignored }),
+  });
+}
+
+/** 设置 Workflow Run 本地忽略标记。 */
+export async function setWorkflowRunIgnored(id: string, ignored: boolean): Promise<void> {
+  await apiRequest(`/api/v1/workflow-runs/${id}/ignored`, {
+    method: "PATCH",
+    body: JSON.stringify({ ignored }),
+  });
+}
+
+/** 设置安全告警本地忽略标记（与 GitHub dismissed 独立）。 */
+export async function setSecurityAlertIgnored(id: string, ignored: boolean): Promise<void> {
+  await apiRequest(`/api/v1/security-alerts/${id}/ignored`, {
+    method: "PATCH",
+    body: JSON.stringify({ ignored }),
   });
 }
 

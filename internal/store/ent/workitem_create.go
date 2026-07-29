@@ -234,6 +234,20 @@ func (_c *WorkItemCreate) SetNillableChecksPassed(v *int) *WorkItemCreate {
 	return _c
 }
 
+// SetIgnored sets the "ignored" field.
+func (_c *WorkItemCreate) SetIgnored(v bool) *WorkItemCreate {
+	_c.mutation.SetIgnored(v)
+	return _c
+}
+
+// SetNillableIgnored sets the "ignored" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableIgnored(v *bool) *WorkItemCreate {
+	if v != nil {
+		_c.SetIgnored(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *WorkItemCreate) SetCreatedAt(v time.Time) *WorkItemCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -331,6 +345,10 @@ func (_c *WorkItemCreate) defaults() {
 		v := workitem.DefaultChecksPassed
 		_c.mutation.SetChecksPassed(v)
 	}
+	if _, ok := _c.mutation.Ignored(); !ok {
+		v := workitem.DefaultIgnored
+		_c.mutation.SetIgnored(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -388,6 +406,9 @@ func (_c *WorkItemCreate) check() error {
 	}
 	if _, ok := _c.mutation.ChecksPassed(); !ok {
 		return &ValidationError{Name: "checks_passed", err: errors.New(`ent: missing required field "WorkItem.checks_passed"`)}
+	}
+	if _, ok := _c.mutation.Ignored(); !ok {
+		return &ValidationError{Name: "ignored", err: errors.New(`ent: missing required field "WorkItem.ignored"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "WorkItem.created_at"`)}
@@ -513,6 +534,10 @@ func (_c *WorkItemCreate) createSpec() (*WorkItem, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ChecksPassed(); ok {
 		_spec.SetField(workitem.FieldChecksPassed, field.TypeInt, value)
 		_node.ChecksPassed = value
+	}
+	if value, ok := _c.mutation.Ignored(); ok {
+		_spec.SetField(workitem.FieldIgnored, field.TypeBool, value)
+		_node.Ignored = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(workitem.FieldCreatedAt, field.TypeTime, value)

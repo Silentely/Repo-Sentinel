@@ -47,6 +47,8 @@ const (
 	FieldRunCompletedAt = "run_completed_at"
 	// FieldStateHash holds the string denoting the state_hash field in the database.
 	FieldStateHash = "state_hash"
+	// FieldIgnored holds the string denoting the ignored field in the database.
+	FieldIgnored = "ignored"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -76,6 +78,7 @@ var Columns = []string{
 	FieldRunUpdatedAt,
 	FieldRunCompletedAt,
 	FieldStateHash,
+	FieldIgnored,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -109,6 +112,8 @@ var (
 	DefaultRunAttempt int
 	// DefaultHTMLURL holds the default value on creation for the "html_url" field.
 	DefaultHTMLURL string
+	// DefaultIgnored holds the default value on creation for the "ignored" field.
+	DefaultIgnored bool
 )
 
 // OrderOption defines the ordering options for the WorkflowRun queries.
@@ -207,6 +212,11 @@ func ByRunCompletedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByStateHash orders the results by the state_hash field.
 func ByStateHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStateHash, opts...).ToFunc()
+}
+
+// ByIgnored orders the results by the ignored field.
+func ByIgnored(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIgnored, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

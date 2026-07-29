@@ -232,6 +232,20 @@ func (_c *WorkflowRunCreate) SetStateHash(v string) *WorkflowRunCreate {
 	return _c
 }
 
+// SetIgnored sets the "ignored" field.
+func (_c *WorkflowRunCreate) SetIgnored(v bool) *WorkflowRunCreate {
+	_c.mutation.SetIgnored(v)
+	return _c
+}
+
+// SetNillableIgnored sets the "ignored" field if the given value is not nil.
+func (_c *WorkflowRunCreate) SetNillableIgnored(v *bool) *WorkflowRunCreate {
+	if v != nil {
+		_c.SetIgnored(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *WorkflowRunCreate) SetCreatedAt(v time.Time) *WorkflowRunCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -321,6 +335,10 @@ func (_c *WorkflowRunCreate) defaults() {
 		v := workflowrun.DefaultHTMLURL
 		_c.mutation.SetHTMLURL(v)
 	}
+	if _, ok := _c.mutation.Ignored(); !ok {
+		v := workflowrun.DefaultIgnored
+		_c.mutation.SetIgnored(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -366,6 +384,9 @@ func (_c *WorkflowRunCreate) check() error {
 	}
 	if _, ok := _c.mutation.StateHash(); !ok {
 		return &ValidationError{Name: "state_hash", err: errors.New(`ent: missing required field "WorkflowRun.state_hash"`)}
+	}
+	if _, ok := _c.mutation.Ignored(); !ok {
+		return &ValidationError{Name: "ignored", err: errors.New(`ent: missing required field "WorkflowRun.ignored"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "WorkflowRun.created_at"`)}
@@ -479,6 +500,10 @@ func (_c *WorkflowRunCreate) createSpec() (*WorkflowRun, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.StateHash(); ok {
 		_spec.SetField(workflowrun.FieldStateHash, field.TypeString, value)
 		_node.StateHash = value
+	}
+	if value, ok := _c.mutation.Ignored(); ok {
+		_spec.SetField(workflowrun.FieldIgnored, field.TypeBool, value)
+		_node.Ignored = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(workflowrun.FieldCreatedAt, field.TypeTime, value)

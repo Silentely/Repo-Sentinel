@@ -22,9 +22,10 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | Webhook 接收 | 验签（含 previous Secret）、Delivery 幂等、异步规范化 |
 | 事件与资源 | Issue/PR、Workflow Run、三类安全告警、安装与仓库元数据 |
 | 仓库能力开关 | 单仓独立开关：监控、Issues、PR、Actions、安全告警；归档联动 |
+| 列表筛选与忽略 | 按仓库筛选；本地忽略长期打开项（不回写 GitHub）；默认排除归档仓与已忽略项 |
 | 基线与乱序 | 新仓基线抑制通知；陈旧 `source_updated_at` 丢弃回滚 |
 | 通知 | Outbox、Telegram、HTTP Webhook、死信重试、短时聚合与超频摘要 |
-| 管理后台 | 仪表盘、仓库管理、Issues/PR 独立列表、Actions、安全告警、投递、渠道配置、主题 |
+| 管理后台 | 仪表盘（可折叠区块）、仓库管理、Issues/PR/Actions/安全告警列表、投递、渠道配置、主题 |
 | 运维 CLI | `doctor` / `backup` / `restore`、配置校验、密码重置 |
 | 容器部署 | GHCR 镜像（`latest` 随正式 tag）、Compose 拉取部署、健康检查与 `/metrics` |
 

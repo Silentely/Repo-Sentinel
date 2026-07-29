@@ -154,6 +154,11 @@ func ChecksPassed(v int) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldChecksPassed, v))
 }
 
+// Ignored applies equality check predicate on the "ignored" field. It's identical to IgnoredEQ.
+func Ignored(v bool) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldIgnored, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldCreatedAt, v))
@@ -1152,6 +1157,16 @@ func ChecksPassedLT(v int) predicate.WorkItem {
 // ChecksPassedLTE applies the LTE predicate on the "checks_passed" field.
 func ChecksPassedLTE(v int) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldLTE(FieldChecksPassed, v))
+}
+
+// IgnoredEQ applies the EQ predicate on the "ignored" field.
+func IgnoredEQ(v bool) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldIgnored, v))
+}
+
+// IgnoredNEQ applies the NEQ predicate on the "ignored" field.
+func IgnoredNEQ(v bool) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldIgnored, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

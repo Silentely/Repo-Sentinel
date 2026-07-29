@@ -60,6 +60,8 @@ type WorkItem struct {
 	ChecksTotal int `json:"checks_total,omitempty"`
 	// ChecksPassed holds the value of the "checks_passed" field.
 	ChecksPassed int `json:"checks_passed,omitempty"`
+	// Ignored holds the value of the "ignored" field.
+	Ignored bool `json:"ignored,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -74,7 +76,7 @@ func (*WorkItem) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case workitem.FieldLabelsJSON, workitem.FieldAssigneesJSON, workitem.FieldReviewers:
 			values[i] = new([]byte)
-		case workitem.FieldDraft, workitem.FieldMerged:
+		case workitem.FieldDraft, workitem.FieldMerged, workitem.FieldIgnored:
 			values[i] = new(sql.NullBool)
 		case workitem.FieldNumber, workitem.FieldChecksTotal, workitem.FieldChecksPassed:
 			values[i] = new(sql.NullInt64)
@@ -235,6 +237,12 @@ func (_m *WorkItem) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ChecksPassed = int(value.Int64)
 			}
+		case workitem.FieldIgnored:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field ignored", values[i])
+			} else if value.Valid {
+				_m.Ignored = value.Bool
+			}
 		case workitem.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -345,6 +353,9 @@ func (_m *WorkItem) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("checks_passed=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ChecksPassed))
+	builder.WriteString(", ")
+	builder.WriteString("ignored=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Ignored))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

@@ -198,6 +198,10 @@ func init() {
 	securityalertDescHTMLURL := securityalertFields[8].Descriptor()
 	// securityalert.DefaultHTMLURL holds the default value on creation for the html_url field.
 	securityalert.DefaultHTMLURL = securityalertDescHTMLURL.Default.(string)
+	// securityalertDescIgnored is the schema descriptor for ignored field.
+	securityalertDescIgnored := securityalertFields[11].Descriptor()
+	// securityalert.DefaultIgnored holds the default value on creation for the ignored field.
+	securityalert.DefaultIgnored = securityalertDescIgnored.Default.(bool)
 	synccursorFields := schema.SyncCursor{}.Fields()
 	_ = synccursorFields
 	// synccursorDescCursorValue is the schema descriptor for cursor_value field.
@@ -276,6 +280,10 @@ func init() {
 	workitemDescChecksPassed := workitemFields[21].Descriptor()
 	// workitem.DefaultChecksPassed holds the default value on creation for the checks_passed field.
 	workitem.DefaultChecksPassed = workitemDescChecksPassed.Default.(int)
+	// workitemDescIgnored is the schema descriptor for ignored field.
+	workitemDescIgnored := workitemFields[22].Descriptor()
+	// workitem.DefaultIgnored holds the default value on creation for the ignored field.
+	workitem.DefaultIgnored = workitemDescIgnored.Default.(bool)
 	workflowrunFields := schema.WorkflowRun{}.Fields()
 	_ = workflowrunFields
 	// workflowrunDescWorkflowName is the schema descriptor for workflow_name field.
@@ -314,4 +322,8 @@ func init() {
 	workflowrunDescHTMLURL := workflowrunFields[14].Descriptor()
 	// workflowrun.DefaultHTMLURL holds the default value on creation for the html_url field.
 	workflowrun.DefaultHTMLURL = workflowrunDescHTMLURL.Default.(string)
+	// workflowrunDescIgnored is the schema descriptor for ignored field.
+	workflowrunDescIgnored := workflowrunFields[19].Descriptor()
+	// workflowrun.DefaultIgnored holds the default value on creation for the ignored field.
+	workflowrun.DefaultIgnored = workflowrunDescIgnored.Default.(bool)
 }
