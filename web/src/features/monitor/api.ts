@@ -23,6 +23,11 @@ export interface Repository {
   name: string;
   is_private: boolean;
   is_archived: boolean;
+  monitor_enabled: boolean;
+  issues_enabled: boolean;
+  pr_enabled: boolean;
+  actions_enabled: boolean;
+  alerts_enabled: boolean;
   html_url: string;
   updated_at: string;
 }
@@ -109,6 +114,22 @@ export async function reconcileRepository(id: string): Promise<void> {
   await apiRequest(`/api/v1/repositories/${id}/reconcile`, {
     method: "POST",
     body: JSON.stringify({}),
+  });
+}
+
+export interface RepositorySettings {
+  monitor_enabled?: boolean;
+  issues_enabled?: boolean;
+  pr_enabled?: boolean;
+  actions_enabled?: boolean;
+  alerts_enabled?: boolean;
+  is_archived?: boolean;
+}
+
+export async function updateRepositorySettings(id: string, settings: RepositorySettings): Promise<Repository> {
+  return apiRequest<Repository>(`/api/v1/repositories/${id}/settings`, {
+    method: "PATCH",
+    body: JSON.stringify(settings),
   });
 }
 

@@ -134,6 +134,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/notifications/outbox/{id}/retry", s.handleRetryOutbox)
 				mutating.Post("/repositories/{id}/activate", s.handleActivateRepository)
 				mutating.Post("/repositories/{id}/reconcile", s.handleReconcileRepository)
+				mutating.Patch("/repositories/{id}/settings", s.handleUpdateRepositorySettings)
 				mutating.Post("/sync/reconcile", s.handleReconcileAll)
 				mutating.Put("/system/settings", s.handlePutSettings)
 				mutating.Put("/github/config", s.handlePutGitHubConfig)

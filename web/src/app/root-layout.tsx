@@ -1,6 +1,8 @@
 import {
   Activity,
+  Archive,
   GitBranch,
+  GitPullRequest,
   FolderGit2,
   Info,
   ListTodo,
@@ -66,9 +68,17 @@ export function RootLayout({ session }: RootLayoutProps) {
             <span>仪表盘</span>
           </Link>
           <span className="app-nav__label">仓库</span>
-          <Link to="/work-items" activeProps={{ "aria-current": "page" }}>
+          <Link to="/repos" activeProps={{ "aria-current": "page" }}>
+            <Archive aria-hidden="true" size={17} />
+            <span>仓库管理</span>
+          </Link>
+          <Link to="/issues" activeProps={{ "aria-current": "page" }}>
             <ListTodo aria-hidden="true" size={17} />
-            <span>Issues / PR</span>
+            <span>Issues</span>
+          </Link>
+          <Link to="/pull-requests" activeProps={{ "aria-current": "page" }}>
+            <GitPullRequest aria-hidden="true" size={17} />
+            <span>Pull Requests</span>
           </Link>
           <Link to="/actions" activeProps={{ "aria-current": "page" }}>
             <Workflow aria-hidden="true" size={17} />

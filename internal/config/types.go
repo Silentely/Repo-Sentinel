@@ -7,17 +7,17 @@ import (
 
 // Config 汇总 RepoSentinel 的全部配置。
 type Config struct {
-	HTTP         HTTPConfig           `yaml:"http"`
-	Database     DatabaseConfig       `yaml:"database"`
-	Admin        AdminBootstrapConfig `yaml:"admin"`
-	Setup        SetupConfig          `yaml:"setup"`
-	Encryption   EncryptionConfig     `yaml:"encryption"`
-	GitHub       GitHubConfig         `yaml:"github"`
-	Notify       NotifyConfig         `yaml:"notify"`
-	Logging      LoggingConfig        `yaml:"logging"`
-	Metrics      MetricsConfig        `yaml:"metrics"`
-	UpdateCheck  UpdateCheckConfig    `yaml:"update_check"`
-	Aggregation  AggregationConfig    `yaml:"aggregation"`
+	HTTP        HTTPConfig           `yaml:"http"`
+	Database    DatabaseConfig       `yaml:"database"`
+	Admin       AdminBootstrapConfig `yaml:"admin"`
+	Setup       SetupConfig          `yaml:"setup"`
+	Encryption  EncryptionConfig     `yaml:"encryption"`
+	GitHub      GitHubConfig         `yaml:"github"`
+	Notify      NotifyConfig         `yaml:"notify"`
+	Logging     LoggingConfig        `yaml:"logging"`
+	Metrics     MetricsConfig        `yaml:"metrics"`
+	UpdateCheck UpdateCheckConfig    `yaml:"update_check"`
+	Aggregation AggregationConfig    `yaml:"aggregation"`
 }
 
 // MetricsConfig 描述 Prometheus /metrics 暴露策略。

@@ -46,4 +46,3 @@ func (SecurityAlert) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "security_alerts"},
 	}
 }
-

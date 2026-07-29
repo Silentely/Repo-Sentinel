@@ -109,6 +109,31 @@ func IsPrivate(v bool) predicate.Repository {
 	return predicate.Repository(sql.FieldEQ(FieldIsPrivate, v))
 }
 
+// MonitorEnabled applies equality check predicate on the "monitor_enabled" field. It's identical to MonitorEnabledEQ.
+func MonitorEnabled(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldMonitorEnabled, v))
+}
+
+// IssuesEnabled applies equality check predicate on the "issues_enabled" field. It's identical to IssuesEnabledEQ.
+func IssuesEnabled(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldIssuesEnabled, v))
+}
+
+// PrEnabled applies equality check predicate on the "pr_enabled" field. It's identical to PrEnabledEQ.
+func PrEnabled(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldPrEnabled, v))
+}
+
+// ActionsEnabled applies equality check predicate on the "actions_enabled" field. It's identical to ActionsEnabledEQ.
+func ActionsEnabled(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldActionsEnabled, v))
+}
+
+// AlertsEnabled applies equality check predicate on the "alerts_enabled" field. It's identical to AlertsEnabledEQ.
+func AlertsEnabled(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldAlertsEnabled, v))
+}
+
 // HTMLURL applies equality check predicate on the "html_url" field. It's identical to HTMLURLEQ.
 func HTMLURL(v string) predicate.Repository {
 	return predicate.Repository(sql.FieldEQ(FieldHTMLURL, v))
@@ -617,6 +642,56 @@ func IsPrivateEQ(v bool) predicate.Repository {
 // IsPrivateNEQ applies the NEQ predicate on the "is_private" field.
 func IsPrivateNEQ(v bool) predicate.Repository {
 	return predicate.Repository(sql.FieldNEQ(FieldIsPrivate, v))
+}
+
+// MonitorEnabledEQ applies the EQ predicate on the "monitor_enabled" field.
+func MonitorEnabledEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldMonitorEnabled, v))
+}
+
+// MonitorEnabledNEQ applies the NEQ predicate on the "monitor_enabled" field.
+func MonitorEnabledNEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldNEQ(FieldMonitorEnabled, v))
+}
+
+// IssuesEnabledEQ applies the EQ predicate on the "issues_enabled" field.
+func IssuesEnabledEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldIssuesEnabled, v))
+}
+
+// IssuesEnabledNEQ applies the NEQ predicate on the "issues_enabled" field.
+func IssuesEnabledNEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldNEQ(FieldIssuesEnabled, v))
+}
+
+// PrEnabledEQ applies the EQ predicate on the "pr_enabled" field.
+func PrEnabledEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldPrEnabled, v))
+}
+
+// PrEnabledNEQ applies the NEQ predicate on the "pr_enabled" field.
+func PrEnabledNEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldNEQ(FieldPrEnabled, v))
+}
+
+// ActionsEnabledEQ applies the EQ predicate on the "actions_enabled" field.
+func ActionsEnabledEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldActionsEnabled, v))
+}
+
+// ActionsEnabledNEQ applies the NEQ predicate on the "actions_enabled" field.
+func ActionsEnabledNEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldNEQ(FieldActionsEnabled, v))
+}
+
+// AlertsEnabledEQ applies the EQ predicate on the "alerts_enabled" field.
+func AlertsEnabledEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldAlertsEnabled, v))
+}
+
+// AlertsEnabledNEQ applies the NEQ predicate on the "alerts_enabled" field.
+func AlertsEnabledNEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldNEQ(FieldAlertsEnabled, v))
 }
 
 // HTMLURLEQ applies the EQ predicate on the "html_url" field.

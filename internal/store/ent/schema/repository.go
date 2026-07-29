@@ -25,6 +25,12 @@ func (Repository) Fields() []ent.Field {
 		field.String("installation_id").Optional().Nillable(),
 		field.Bool("is_archived").Default(false),
 		field.Bool("is_private").Default(false),
+		// 单个仓库能力开关（新增）
+		field.Bool("monitor_enabled").Default(true),
+		field.Bool("issues_enabled").Default(true),
+		field.Bool("pr_enabled").Default(true),
+		field.Bool("actions_enabled").Default(true),
+		field.Bool("alerts_enabled").Default(true),
 		field.String("html_url").Default(""),
 		field.String("default_branch").Default(""),
 		field.Time("baseline_started_at").Optional().Nillable(),
@@ -52,4 +58,3 @@ func (Repository) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "repositories"},
 	}
 }
-

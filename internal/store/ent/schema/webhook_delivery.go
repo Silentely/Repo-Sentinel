@@ -42,4 +42,3 @@ func (WebhookDelivery) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "webhook_deliveries"},
 	}
 }
-

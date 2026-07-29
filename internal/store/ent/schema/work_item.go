@@ -49,4 +49,3 @@ func (WorkItem) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "work_items"},
 	}
 }
-

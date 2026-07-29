@@ -19,7 +19,7 @@ func (NotificationChannel) Fields() []ent.Field {
 		field.String("channel_type"), // telegram | http_webhook
 		field.String("name").Default(""),
 		field.Bool("enabled").Default(false),
-		field.String("target").Default(""), // chat_id 或 URL
+		field.String("target").Default(""),          // chat_id 或 URL
 		field.String("secret_envelope").Default(""), // 加密 token/签名密钥
 		field.Bool("allow_private").Default(false),
 		field.Time("created_at").Immutable(),
@@ -39,4 +39,3 @@ func (NotificationChannel) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "notification_channels"},
 	}
 }
-

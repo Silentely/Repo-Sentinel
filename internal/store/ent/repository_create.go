@@ -114,6 +114,76 @@ func (_c *RepositoryCreate) SetNillableIsPrivate(v *bool) *RepositoryCreate {
 	return _c
 }
 
+// SetMonitorEnabled sets the "monitor_enabled" field.
+func (_c *RepositoryCreate) SetMonitorEnabled(v bool) *RepositoryCreate {
+	_c.mutation.SetMonitorEnabled(v)
+	return _c
+}
+
+// SetNillableMonitorEnabled sets the "monitor_enabled" field if the given value is not nil.
+func (_c *RepositoryCreate) SetNillableMonitorEnabled(v *bool) *RepositoryCreate {
+	if v != nil {
+		_c.SetMonitorEnabled(*v)
+	}
+	return _c
+}
+
+// SetIssuesEnabled sets the "issues_enabled" field.
+func (_c *RepositoryCreate) SetIssuesEnabled(v bool) *RepositoryCreate {
+	_c.mutation.SetIssuesEnabled(v)
+	return _c
+}
+
+// SetNillableIssuesEnabled sets the "issues_enabled" field if the given value is not nil.
+func (_c *RepositoryCreate) SetNillableIssuesEnabled(v *bool) *RepositoryCreate {
+	if v != nil {
+		_c.SetIssuesEnabled(*v)
+	}
+	return _c
+}
+
+// SetPrEnabled sets the "pr_enabled" field.
+func (_c *RepositoryCreate) SetPrEnabled(v bool) *RepositoryCreate {
+	_c.mutation.SetPrEnabled(v)
+	return _c
+}
+
+// SetNillablePrEnabled sets the "pr_enabled" field if the given value is not nil.
+func (_c *RepositoryCreate) SetNillablePrEnabled(v *bool) *RepositoryCreate {
+	if v != nil {
+		_c.SetPrEnabled(*v)
+	}
+	return _c
+}
+
+// SetActionsEnabled sets the "actions_enabled" field.
+func (_c *RepositoryCreate) SetActionsEnabled(v bool) *RepositoryCreate {
+	_c.mutation.SetActionsEnabled(v)
+	return _c
+}
+
+// SetNillableActionsEnabled sets the "actions_enabled" field if the given value is not nil.
+func (_c *RepositoryCreate) SetNillableActionsEnabled(v *bool) *RepositoryCreate {
+	if v != nil {
+		_c.SetActionsEnabled(*v)
+	}
+	return _c
+}
+
+// SetAlertsEnabled sets the "alerts_enabled" field.
+func (_c *RepositoryCreate) SetAlertsEnabled(v bool) *RepositoryCreate {
+	_c.mutation.SetAlertsEnabled(v)
+	return _c
+}
+
+// SetNillableAlertsEnabled sets the "alerts_enabled" field if the given value is not nil.
+func (_c *RepositoryCreate) SetNillableAlertsEnabled(v *bool) *RepositoryCreate {
+	if v != nil {
+		_c.SetAlertsEnabled(*v)
+	}
+	return _c
+}
+
 // SetHTMLURL sets the "html_url" field.
 func (_c *RepositoryCreate) SetHTMLURL(v string) *RepositoryCreate {
 	_c.mutation.SetHTMLURL(v)
@@ -263,6 +333,26 @@ func (_c *RepositoryCreate) defaults() {
 		v := repository.DefaultIsPrivate
 		_c.mutation.SetIsPrivate(v)
 	}
+	if _, ok := _c.mutation.MonitorEnabled(); !ok {
+		v := repository.DefaultMonitorEnabled
+		_c.mutation.SetMonitorEnabled(v)
+	}
+	if _, ok := _c.mutation.IssuesEnabled(); !ok {
+		v := repository.DefaultIssuesEnabled
+		_c.mutation.SetIssuesEnabled(v)
+	}
+	if _, ok := _c.mutation.PrEnabled(); !ok {
+		v := repository.DefaultPrEnabled
+		_c.mutation.SetPrEnabled(v)
+	}
+	if _, ok := _c.mutation.ActionsEnabled(); !ok {
+		v := repository.DefaultActionsEnabled
+		_c.mutation.SetActionsEnabled(v)
+	}
+	if _, ok := _c.mutation.AlertsEnabled(); !ok {
+		v := repository.DefaultAlertsEnabled
+		_c.mutation.SetAlertsEnabled(v)
+	}
 	if _, ok := _c.mutation.HTMLURL(); !ok {
 		v := repository.DefaultHTMLURL
 		_c.mutation.SetHTMLURL(v)
@@ -299,6 +389,21 @@ func (_c *RepositoryCreate) check() error {
 	}
 	if _, ok := _c.mutation.IsPrivate(); !ok {
 		return &ValidationError{Name: "is_private", err: errors.New(`ent: missing required field "Repository.is_private"`)}
+	}
+	if _, ok := _c.mutation.MonitorEnabled(); !ok {
+		return &ValidationError{Name: "monitor_enabled", err: errors.New(`ent: missing required field "Repository.monitor_enabled"`)}
+	}
+	if _, ok := _c.mutation.IssuesEnabled(); !ok {
+		return &ValidationError{Name: "issues_enabled", err: errors.New(`ent: missing required field "Repository.issues_enabled"`)}
+	}
+	if _, ok := _c.mutation.PrEnabled(); !ok {
+		return &ValidationError{Name: "pr_enabled", err: errors.New(`ent: missing required field "Repository.pr_enabled"`)}
+	}
+	if _, ok := _c.mutation.ActionsEnabled(); !ok {
+		return &ValidationError{Name: "actions_enabled", err: errors.New(`ent: missing required field "Repository.actions_enabled"`)}
+	}
+	if _, ok := _c.mutation.AlertsEnabled(); !ok {
+		return &ValidationError{Name: "alerts_enabled", err: errors.New(`ent: missing required field "Repository.alerts_enabled"`)}
 	}
 	if _, ok := _c.mutation.HTMLURL(); !ok {
 		return &ValidationError{Name: "html_url", err: errors.New(`ent: missing required field "Repository.html_url"`)}
@@ -385,6 +490,26 @@ func (_c *RepositoryCreate) createSpec() (*Repository, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IsPrivate(); ok {
 		_spec.SetField(repository.FieldIsPrivate, field.TypeBool, value)
 		_node.IsPrivate = value
+	}
+	if value, ok := _c.mutation.MonitorEnabled(); ok {
+		_spec.SetField(repository.FieldMonitorEnabled, field.TypeBool, value)
+		_node.MonitorEnabled = value
+	}
+	if value, ok := _c.mutation.IssuesEnabled(); ok {
+		_spec.SetField(repository.FieldIssuesEnabled, field.TypeBool, value)
+		_node.IssuesEnabled = value
+	}
+	if value, ok := _c.mutation.PrEnabled(); ok {
+		_spec.SetField(repository.FieldPrEnabled, field.TypeBool, value)
+		_node.PrEnabled = value
+	}
+	if value, ok := _c.mutation.ActionsEnabled(); ok {
+		_spec.SetField(repository.FieldActionsEnabled, field.TypeBool, value)
+		_node.ActionsEnabled = value
+	}
+	if value, ok := _c.mutation.AlertsEnabled(); ok {
+		_spec.SetField(repository.FieldAlertsEnabled, field.TypeBool, value)
+		_node.AlertsEnabled = value
 	}
 	if value, ok := _c.mutation.HTMLURL(); ok {
 		_spec.SetField(repository.FieldHTMLURL, field.TypeString, value)

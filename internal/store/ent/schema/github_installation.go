@@ -39,4 +39,3 @@ func (GitHubInstallation) Annotations() []schema.Annotation {
 		entsql.Annotation{Table: "github_installations"},
 	}
 }
-
