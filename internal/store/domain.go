@@ -218,6 +218,7 @@ type NotificationOutbox struct {
 	BodyText       string         `json:"body_text,omitempty"`
 	BodyJSON       map[string]any `json:"body_json,omitempty"`
 	ParseMode      string         `json:"parse_mode,omitempty"`
+	HTMLURL        string         `json:"html_url,omitempty"` // Telegram inline keyboard 跳转链接
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
@@ -330,6 +331,8 @@ type ChannelStore interface {
 	GetEnabledByType(context.Context, string) (NotificationChannel, error)
 	List(context.Context) ([]NotificationChannel, error)
 	DisableOthersOfType(context.Context, string, string) error
+	Delete(context.Context, string) error
+	ToggleEnabled(context.Context, string, bool) error
 }
 
 // OutboxStore 通知 Outbox。

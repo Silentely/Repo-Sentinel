@@ -112,7 +112,7 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox) err
 	}
 	switch ch.ChannelType {
 	case store.ChannelTelegram:
-		return w.sendTelegram(ctx, ch.Target, secret, item.BodyText)
+		return w.sendTelegram(ctx, ch.Target, secret, item.BodyText, item.HTMLURL)
 	case store.ChannelHTTPWebhook:
 		return w.sendHTTP(ctx, ch, secret, item)
 	default:
@@ -134,17 +134,31 @@ func (w *Worker) decryptSecret(ctx context.Context, envelope string) (string, er
 	return string(res.Plaintext), nil
 }
 
-func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text string) error {
+func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text, htmlURL string) error {
 	if token == "" || chatID == "" {
 		return fmt.Errorf("telegram_not_configured")
 	}
 	api := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
-	body, _ := json.Marshal(map[string]any{
+	return w.sendTelegramDirect(ctx, api, chatID, token, text, htmlURL)
+}
+
+// sendTelegramDirect 发送 Telegram 消息，api 参数为完整 URL，便于测试时替换端点。
+func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, text, htmlURL string) error {
+	payload := map[string]any{
 		"chat_id":                  chatID,
 		"text":                     text,
 		"parse_mode":               "HTML",
 		"disable_web_page_preview": true,
-	})
+	}
+	// 有 GitHub 链接时附加 inline keyboard 按钮
+	if htmlURL != "" {
+		payload["reply_markup"] = map[string]any{
+			"inline_keyboard": [][]map[string]string{
+				{{"text": "🔗 在 GitHub 中查看", "url": htmlURL}},
+			},
+		}
+	}
+	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, api, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -156,13 +170,21 @@ func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text string) e
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusTooManyRequests {
+		// 解析 Telegram 返回的 retry_after 字段
+		var tgResp struct {
+			Parameters struct {
+				RetryAfter int `json:"retry_after"`
+			} `json:"parameters"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&tgResp); err == nil && tgResp.Parameters.RetryAfter > 0 {
+			return &retryAfterError{seconds: tgResp.Parameters.RetryAfter, code: "telegram_rate_limited"}
+		}
 		return &retryAfterError{seconds: 30, code: "telegram_rate_limited"}
 	}
 	if resp.StatusCode >= 500 || resp.StatusCode == 408 || resp.StatusCode == 425 {
 		return fmt.Errorf("telegram_http_%d", resp.StatusCode)
 	}
 	if resp.StatusCode >= 400 {
-		// 不回传响应体，避免把上游错误详情写入日志。
 		return fmt.Errorf("telegram_client_error_%d", resp.StatusCode)
 	}
 	return nil

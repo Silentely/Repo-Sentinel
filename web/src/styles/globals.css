@@ -863,6 +863,81 @@ a.primary-button {
   margin-top: 0.25rem;
 }
 
+.channel-form__buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.channel-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.channel-target {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.channel-actions {
+  display: flex;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.secondary-button:hover {
+  background: var(--bg-muted);
+  border-color: var(--accent);
+}
+
+.secondary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quiet-button--active {
+  background: color-mix(in oklch, var(--accent) 15%, var(--bg-surface));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.quiet-button--danger {
+  color: var(--danger);
+}
+
+.quiet-button--danger:hover {
+  background: color-mix(in oklch, var(--danger) 12%, var(--bg-surface));
+  border-color: var(--danger);
+}
+
+.outbox-filters {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
 .success-banner {
   padding: 0.75rem 1rem;
   border-radius: 12px;

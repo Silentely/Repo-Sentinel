@@ -290,6 +290,93 @@ func (s *server) handleRetryOutbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "queued", "id": id})
 }
 
+func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
+	channelType := chi.URLParam(r, "type")
+	if channelType != store.ChannelTelegram && channelType != store.ChannelHTTPWebhook {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+		return
+	}
+	ch, err := s.dependencies.Store.Channels().GetEnabledByType(r.Context(), channelType)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	_, err = s.dependencies.Store.Outbox().Create(r.Context(), store.NotificationOutbox{
+		ID: ulid.Make().String(), ChannelID: ch.ID,
+		Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
+		Title:    "🔔 测试通知",
+		BodyText: "🔔 <b>测试通知</b>\n────────────────\n来自 RepoSentinel 的测试消息。\n如果您收到了这条消息，说明通知渠道配置正确！",
+		ParseMode: "HTML",
+	})
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "queued", "channel_type": channelType})
+}
+
+func (s *server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
+	channelType := chi.URLParam(r, "type")
+	if channelType != store.ChannelTelegram && channelType != store.ChannelHTTPWebhook {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+		return
+	}
+	ch, err := s.dependencies.Store.Channels().GetEnabledByType(r.Context(), channelType)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	if err := s.dependencies.Store.Channels().Delete(r.Context(), ch.ID); err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "deleted", "channel_type": channelType})
+}
+
+func (s *server) handleToggleChannel(w http.ResponseWriter, r *http.Request) {
+	channelType := chi.URLParam(r, "type")
+	if channelType != store.ChannelTelegram && channelType != store.ChannelHTTPWebhook {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+		return
+	}
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if !s.decodeRequestJSON(w, r, &body) {
+		return
+	}
+	ch, err := s.dependencies.Store.Channels().GetEnabledByType(r.Context(), channelType)
+	if err != nil {
+		// 如果没有已启用的渠道，尝试获取任意一个
+		all, listErr := s.dependencies.Store.Channels().List(r.Context())
+		if listErr != nil {
+			s.writeMappedError(w, r, listErr)
+			return
+		}
+		found := false
+		for _, c := range all {
+			if c.ChannelType == channelType {
+				ch = c
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, nil)
+			return
+		}
+	}
+	if err := s.dependencies.Store.Channels().ToggleEnabled(r.Context(), ch.ID, body.Enabled); err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":        "ok",
+		"channel_type":  channelType,
+		"enabled":       body.Enabled,
+	})
+}
+
 func listFilterFromRequest(r *http.Request) store.ListFilter {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
