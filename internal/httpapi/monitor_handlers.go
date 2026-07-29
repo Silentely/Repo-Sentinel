@@ -248,12 +248,50 @@ func (s *server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
 	f.Status = r.URL.Query().Get("status")
+	channelTypeFilter := r.URL.Query().Get("channel_type")
 	items, page, err := s.dependencies.Store.Outbox().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+	// 按渠道类型过滤：先查渠道 ID，再筛选 outbox 条目
+	if channelTypeFilter != "" {
+		channels, chErr := s.dependencies.Store.Channels().List(r.Context())
+		if chErr == nil {
+			allowed := make(map[string]bool, len(channels))
+			for _, ch := range channels {
+				if ch.ChannelType == channelTypeFilter {
+					allowed[ch.ID] = true
+				}
+			}
+			filtered := make([]store.NotificationOutbox, 0, len(items))
+			for _, item := range items {
+				if allowed[item.ChannelID] {
+					filtered = append(filtered, item)
+				}
+			}
+			items = filtered
+			page.Total = len(filtered)
+		}
+	}
+	// 附带 channel_type 便于前端展示
+	channels, _ := s.dependencies.Store.Channels().List(r.Context())
+	chMap := make(map[string]string, len(channels))
+	for _, ch := range channels {
+		chMap[ch.ID] = ch.ChannelType
+	}
+	enriched := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		entry := map[string]any{
+			"id": item.ID, "channel_id": item.ChannelID, "status": item.Status,
+			"title": item.Title, "attempt_count": item.AttemptCount,
+			"last_error_code": item.LastErrorCode, "html_url": item.HTMLURL,
+			"created_at": item.CreatedAt, "updated_at": item.UpdatedAt,
+			"channel_type": chMap[item.ChannelID],
+		}
+		enriched = append(enriched, entry)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": enriched, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
 }
 
 func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {

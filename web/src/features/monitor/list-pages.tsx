@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { EyeOff, Loader2, RotateCcw } from "lucide-react";
+import { EyeOff, RotateCcw } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
@@ -96,10 +96,16 @@ type IgnoredMode = "active" | "ignored";
 
 function LoadingIndicator() {
   return (
-    <div className="loading-indicator">
-      <Loader2 size={20} className="spin" aria-hidden="true" />
-      <span>加载中…</span>
-    </div>
+    <ul className="skeleton-list" aria-label="加载中" role="status">
+      {Array.from({ length: 5 }, (_, i) => (
+        <li key={i} className="skeleton-row">
+          <span className="skeleton-row__badge" />
+          <span className="skeleton-row__text skeleton-row__text--lg" />
+          <span className="skeleton-row__text skeleton-row__text--sm" />
+          <span className="skeleton-row__text skeleton-row__text--xs" />
+        </li>
+      ))}
+    </ul>
   );
 }
 

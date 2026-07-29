@@ -56,11 +56,15 @@ export interface MonitorEvent {
 
 export interface OutboxItem {
   id: string;
+  channel_id: string;
+  channel_type: string;
   status: string;
   title: string;
   attempt_count: number;
   last_error_code: string;
+  html_url: string;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Page<T> {
