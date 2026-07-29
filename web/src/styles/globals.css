@@ -334,7 +334,8 @@ a.primary-button {
 .app-shell {
   display: grid;
   grid-template-columns: 236px minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .app-sidebar {
@@ -344,6 +345,7 @@ a.primary-button {
   padding: 28px 18px;
   border-right: 1px solid var(--border-subtle);
   background: color-mix(in oklch, var(--bg-surface) 82%, var(--bg-canvas));
+  overflow-y: auto;
 }
 
 .app-brand {
@@ -427,6 +429,7 @@ a.primary-button {
 
 .app-main {
   min-width: 0;
+  overflow-y: auto;
 }
 
 .app-topbar {
@@ -706,6 +709,8 @@ a.primary-button {
 
   .app-shell {
     display: block;
+    height: auto;
+    overflow: visible;
   }
 
   .app-sidebar {
@@ -1271,4 +1276,34 @@ a.primary-button {
   background: var(--border-subtle);
   align-self: center;
   margin: 0 0.25rem;
+}
+
+/* ── 折叠面板 ── */
+
+.collapse-section {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  padding: 0;
+}
+
+.collapse-section summary {
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.collapse-section summary:hover {
+  color: var(--text-primary);
+  background: var(--bg-muted);
+}
+
+.collapse-section[open] summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.collapse-body {
+  padding: 1rem;
 }
