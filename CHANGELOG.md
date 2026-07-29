@@ -13,6 +13,8 @@
 - 安全告警页增加 Dependabot / Code Scanning / Secret Scanning 分类筛选，默认显示 Open
 - 已关闭/已忽略项目显示数量限制：系统设置可配置（默认 20 条），避免历史数据无限增长
 - 仓库管理页面：集中管理所有仓库的能力开关与归档状态
+- GitHub App 页面精简：表单指南和安装步骤改为折叠面板，默认收起
+- 修复侧边栏随主内容滚动，改为固定定位
 - `PATCH /api/v1/repositories/{id}/settings` API 端点
 - 数据库迁移 `20260729000100_repo_capability_toggles`（PostgreSQL + SQLite）
 
