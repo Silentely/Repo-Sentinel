@@ -1,7 +1,7 @@
 import {
   Activity,
   Archive,
-  GitBranch,
+  Bell,
   GitPullRequest,
   FolderGit2,
   Info,
@@ -103,7 +103,7 @@ export function RootLayout({ session }: RootLayoutProps) {
           </Link>
           <span className="app-nav__label">通知</span>
           <Link to="/notifications" activeProps={{ "aria-current": "page" }}>
-            <GitBranch aria-hidden="true" size={17} />
+            <Bell aria-hidden="true" size={17} />
             <span>渠道配置</span>
           </Link>
           <span className="app-nav__label">系统</span>
