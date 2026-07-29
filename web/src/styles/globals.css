@@ -434,6 +434,18 @@ a.primary-button {
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent) 35%, transparent);
 }
 
+.nav-badge--info {
+  color: var(--info);
+  background: color-mix(in oklch, var(--info) 15%, var(--bg-surface));
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--info) 30%, transparent);
+}
+
+.nav-badge--success {
+  color: var(--success);
+  background: color-mix(in oklch, var(--success) 15%, var(--bg-surface));
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--success) 30%, transparent);
+}
+
 .nav-badge--warning {
   color: var(--warning);
   background: color-mix(in oklch, var(--warning) 15%, var(--bg-surface));

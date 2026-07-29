@@ -93,12 +93,12 @@ export function RootLayout({ session }: RootLayoutProps) {
           <Link to="/issues" activeProps={{ "aria-current": "page" }}>
             <ListTodo aria-hidden="true" size={17} />
             <span>Issues</span>
-            {openIssues > 0 && <span className="nav-badge">{openIssues}</span>}
+            {openIssues > 0 && <span className="nav-badge nav-badge--info">{openIssues}</span>}
           </Link>
           <Link to="/pull-requests" activeProps={{ "aria-current": "page" }}>
             <GitPullRequest aria-hidden="true" size={17} />
             <span>Pull Requests</span>
-            {openPRs > 0 && <span className="nav-badge">{openPRs}</span>}
+            {openPRs > 0 && <span className="nav-badge nav-badge--success">{openPRs}</span>}
           </Link>
           <Link to="/actions" activeProps={{ "aria-current": "page" }}>
             <Workflow aria-hidden="true" size={17} />
