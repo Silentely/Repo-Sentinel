@@ -7,6 +7,8 @@ import (
 	"io/fs"
 )
 
+//go:generate go run ./tools/atlas-hash all
+
 //go:embed sqlite/*.sql sqlite/atlas.sum postgres/*.sql postgres/atlas.sum
 var files embed.FS
 

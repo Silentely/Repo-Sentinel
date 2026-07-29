@@ -137,20 +137,20 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
     <ListShell eyebrow="仓库" title={title} description={description}>
       <div className="filter-bar">
         <button className={`quiet-button${state === "" ? " active" : ""}`} type="button" onClick={() => setState("")}>全部</button>
-        <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>Open</button>
-        <button className={`quiet-button${state === "closed" ? " active" : ""}`} type="button" onClick={() => setState("closed")}>Closed</button>
+        <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>进行中</button>
+        <button className={`quiet-button${state === "closed" ? " active" : ""}`} type="button" onClick={() => setState("closed")}>已关闭</button>
         {kind === "pull_request" && (
           <>
             <span className="filter-bar__sep" />
             <button className={`quiet-button${reviewFilter === "" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("")}>全部审核</button>
-            <button className={`quiet-button${reviewFilter === "approved" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("approved")}>Approved</button>
-            <button className={`quiet-button${reviewFilter === "changes_requested" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("changes_requested")}>Changes Requested</button>
-            <button className={`quiet-button${reviewFilter === "pending" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("pending")}>Pending Review</button>
+            <button className={`quiet-button${reviewFilter === "approved" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("approved")}>已通过</button>
+            <button className={`quiet-button${reviewFilter === "changes_requested" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("changes_requested")}>需修改</button>
+            <button className={`quiet-button${reviewFilter === "pending" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("pending")}>待审核</button>
             <span className="filter-bar__sep" />
             <button className={`quiet-button${checkFilter === "" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("")}>全部检查</button>
-            <button className={`quiet-button${checkFilter === "passed" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("passed")}>Checks Passed</button>
-            <button className={`quiet-button${checkFilter === "failed" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("failed")}>Checks Failed</button>
-            <button className={`quiet-button${checkFilter === "pending" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("pending")}>Checks Pending</button>
+            <button className={`quiet-button${checkFilter === "passed" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("passed")}>已通过</button>
+            <button className={`quiet-button${checkFilter === "failed" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("failed")}>未通过</button>
+            <button className={`quiet-button${checkFilter === "pending" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("pending")}>进行中</button>
           </>
         )}
       </div>
@@ -190,12 +190,12 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                   {/* Review 状态 */}
                   {it.review_decision ? (
                     <span className={`review-badge review-${it.review_decision}`}>
-                      {it.review_decision === 'approved' ? '✅ Approved' :
-                       it.review_decision === 'changes_requested' ? '❌ Changes Requested' :
-                       it.review_state || 'Pending'}
+                      {it.review_decision === 'approved' ? '✅ 审核通过' :
+                       it.review_decision === 'changes_requested' ? '❌ 需要修改' :
+                       it.review_state || '审核中'}
                     </span>
                   ) : it.reviewers && it.reviewers.length > 0 ? (
-                    <span className="review-badge review-pending">⏳ Pending Review</span>
+                    <span className="review-badge review-pending">⏳ 等待审核</span>
                   ) : null}
                   {it.reviewers && it.reviewers.length > 0 && (
                     <span className="reviewers">👀 {it.reviewers.join(', ')}</span>
@@ -205,12 +205,12 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                     <span className={`check-badge check-${it.check_status || 'pending'}`}>
                       {it.check_status === 'success' ? '✅' :
                        it.check_status === 'failure' ? '❌' : '⏳'}
-                      {it.checks_passed}/{it.checks_total} checks
+                      {it.checks_passed}/{it.checks_total} 项检查通过
                     </span>
                   )}
                 </div>
                 {it.html_url ? (
-                  <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">打开</a>
+                  <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">在 GitHub 查看</a>
                 ) : null}
               </li>
             );
@@ -219,8 +219,8 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
       ) : (
         <EmptyState
           title={state === "closed" ? "没有已关闭的项目" : "暂无工作项"}
-          description={state === "closed" ? "已关闭的 Issues 或 PR 会显示在这里。" : "先完成 GitHub App 安装，再在仪表盘对仓库点「对账」或等待 Webhook。"}
-          action={<Link to="/">回仪表盘对账</Link>}
+          description={state === "closed" ? "已关闭的 Issues 或 PR 会显示在这里。" : "安装 GitHub App 并完成对账后，相关数据会自动同步到这里。"}
+          action={<Link to="/">返回仪表盘</Link>}
         />
       )}
     </ListShell>
@@ -399,13 +399,13 @@ export function ActionsPage() {
                     <span className="started-at">{formatRelativeTime(run.run_started_at)}</span>
                   )}
                 </div>
-                {run.html_url ? <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">打开</a> : null}
+                {run.html_url ? <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">在 GitHub 查看</a> : null}
               </li>
             );
           })}
         </ul>
       ) : (
-        <EmptyState title="暂无 Actions 运行" description="确认 App 有 Actions 只读权限并订阅了 workflow_run。" action={<Link to="/">回仪表盘对账</Link>} />
+        <EmptyState title="暂无 Actions 运行" description="确认 GitHub App 已开启 Actions 读取权限并订阅 workflow_run 事件。" action={<Link to="/">返回仪表盘</Link>} />
       )}
     </ListShell>
   );
@@ -424,16 +424,16 @@ export function SecurityPage() {
     },
   });
   return (
-    <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning。">
+    <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning 安全告警。">
       <div className="filter-bar">
         <button className={`quiet-button${state === "" ? " active" : ""}`} type="button" onClick={() => setState("")}>全部</button>
-        <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>Open</button>
-        <button className={`quiet-button${state === "dismissed" ? " active" : ""}`} type="button" onClick={() => setState("dismissed")}>Dismissed</button>
+        <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>待处理</button>
+        <button className={`quiet-button${state === "dismissed" ? " active" : ""}`} type="button" onClick={() => setState("dismissed")}>已忽略</button>
         <span className="filter-bar__sep" />
         <button className={`quiet-button${alertKind === "" ? " active" : ""}`} type="button" onClick={() => setAlertKind("")}>全部类型</button>
-        <button className={`quiet-button${alertKind === "dependabot" ? " active" : ""}`} type="button" onClick={() => setAlertKind("dependabot")}>Dependabot</button>
-        <button className={`quiet-button${alertKind === "code_scanning" ? " active" : ""}`} type="button" onClick={() => setAlertKind("code_scanning")}>Code Scanning</button>
-        <button className={`quiet-button${alertKind === "secret_scanning" ? " active" : ""}`} type="button" onClick={() => setAlertKind("secret_scanning")}>Secret Scanning</button>
+        <button className={`quiet-button${alertKind === "dependabot" ? " active" : ""}`} type="button" onClick={() => setAlertKind("dependabot")}>依赖漏洞</button>
+        <button className={`quiet-button${alertKind === "code_scanning" ? " active" : ""}`} type="button" onClick={() => setAlertKind("code_scanning")}>代码扫描</button>
+        <button className={`quiet-button${alertKind === "secret_scanning" ? " active" : ""}`} type="button" onClick={() => setAlertKind("secret_scanning")}>密钥泄露</button>
       </div>
       {q.isLoading ? <LoadingIndicator /> : q.data?.items.length ? (
         <ul className="event-list">
@@ -446,7 +446,7 @@ export function SecurityPage() {
                 {a.repository_full_name ? <span className="event-repo">{a.repository_full_name}</span> : null}
                 <strong>#{num} {label}</strong>
                 <span className="muted">{a.state || "—"}{a.severity ? ` · ${a.severity}` : ""}</span>
-                {a.html_url ? <a className="quiet-button" href={a.html_url} target="_blank" rel="noreferrer">打开</a> : null}
+                {a.html_url ? <a className="quiet-button" href={a.html_url} target="_blank" rel="noreferrer">在 GitHub 查看</a> : null}
               </li>
             );
           })}
@@ -454,8 +454,8 @@ export function SecurityPage() {
       ) : (
         <EmptyState
           title={state === "dismissed" ? "没有已忽略的告警" : "暂无安全告警"}
-          description={state === "dismissed" ? "已忽略的告警会显示在这里。" : "在 GitHub 开启仓库安全功能后，Webhook 或对账会写入此处。"}
-          action={<Link to="/github">查看权限清单</Link>}
+          description={state === "dismissed" ? "已忽略的告警会显示在这里。" : "开启 GitHub 仓库的安全功能后，告警会自动同步到这里。"}
+          action={<Link to="/github">查看权限配置</Link>}
         />
       )}
     </ListShell>
