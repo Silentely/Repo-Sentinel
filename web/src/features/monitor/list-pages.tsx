@@ -92,7 +92,7 @@ function LoadingIndicator() {
 function useActiveRepos() {
   const repos = useQuery(repositoriesQueryOptions);
   const active = useMemo(
-    () => (repos.data?.items ?? []).filter((r) => !r.is_archived),
+    () => (repos.data?.items ?? []).filter((r) => !r.is_archived && r.sync_status !== "archived"),
     [repos.data?.items],
   );
   return { active, isLoading: repos.isLoading };
@@ -232,43 +232,24 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
         {kind === "pull_request" && (
           <>
             <span className="filter-bar__sep" />
-            <button className={`quiet-button${reviewFilter === "" ? " active" : ""}`} type="button" onClick={() => setReviewFilter("")}>
-              全部审核
-            </button>
-            <button
-              className={`quiet-button${reviewFilter === "approved" ? " active" : ""}`}
-              type="button"
-              onClick={() => setReviewFilter("approved")}
-            >
-              已通过
-            </button>
-            <button
-              className={`quiet-button${reviewFilter === "changes_requested" ? " active" : ""}`}
-              type="button"
-              onClick={() => setReviewFilter("changes_requested")}
-            >
-              需修改
-            </button>
-            <button
-              className={`quiet-button${reviewFilter === "pending" ? " active" : ""}`}
-              type="button"
-              onClick={() => setReviewFilter("pending")}
-            >
-              待审核
-            </button>
-            <span className="filter-bar__sep" />
-            <button className={`quiet-button${checkFilter === "" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("")}>
-              全部检查
-            </button>
-            <button className={`quiet-button${checkFilter === "passed" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("passed")}>
-              已通过
-            </button>
-            <button className={`quiet-button${checkFilter === "failed" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("failed")}>
-              未通过
-            </button>
-            <button className={`quiet-button${checkFilter === "pending" ? " active" : ""}`} type="button" onClick={() => setCheckFilter("pending")}>
-              进行中
-            </button>
+            <label className="repo-filter">
+              <span className="sr-only">审核状态</span>
+              <select value={reviewFilter} onChange={(e) => setReviewFilter(e.target.value)} aria-label="审核状态">
+                <option value="">全部审核</option>
+                <option value="approved">已通过</option>
+                <option value="changes_requested">需修改</option>
+                <option value="pending">待审核</option>
+              </select>
+            </label>
+            <label className="repo-filter">
+              <span className="sr-only">检查状态</span>
+              <select value={checkFilter} onChange={(e) => setCheckFilter(e.target.value)} aria-label="检查状态">
+                <option value="">全部检查</option>
+                <option value="passed">已通过</option>
+                <option value="failed">未通过</option>
+                <option value="pending">进行中</option>
+              </select>
+            </label>
           </>
         )}
       </div>
