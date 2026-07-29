@@ -46,6 +46,10 @@ export function DashboardPage() {
 
   const stats = dashboard.data;
   const baselineRepos = repos.data?.items.filter((r) => r.sync_status === "baseline_sync") ?? [];
+  // 仓库 ID → 名称映射
+  const repoNameMap = Object.fromEntries(
+    (repos.data?.items ?? []).map((r) => [r.id, r.full_name || `${r.owner}/${r.name}`])
+  );
 
   return (
     <>
@@ -163,6 +167,9 @@ export function DashboardPage() {
             {(events.data?.items ?? []).map((ev) => (
               <li key={ev.id}>
                 <span className={`event-kind kind-${ev.kind}`}>{formatEventKind(ev.kind)}</span>
+                {ev.repository_id && repoNameMap[ev.repository_id] && (
+                  <span className="event-repo">{repoNameMap[ev.repository_id]}</span>
+                )}
                 <span className="event-action">{formatEventAction(ev.action)}</span>
                 <strong>{ev.title || "（无标题）"}</strong>
                 {ev.actor && <span className="muted">· {ev.actor}</span>}
