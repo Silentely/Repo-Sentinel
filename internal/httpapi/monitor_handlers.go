@@ -625,6 +625,10 @@ func (s *server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"notify.aggregate_window_sec": 60,
 		"notify.burst_threshold":      15,
 		"display.closed_limit":        20,
+		"feature.issues":              true,
+		"feature.pull_requests":       true,
+		"feature.actions":             true,
+		"feature.security_alerts":     true,
 	}
 	for key := range out {
 		if s, err := s.dependencies.Store.Settings().Get(r.Context(), key); err == nil {
@@ -646,6 +650,7 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		"admin.timezone": true, "digest.local_time": true, "digest.send_empty": true,
 		"notify.aggregate_window_sec": true, "notify.burst_threshold": true, "notify.burst_window_sec": true,
 		"display.closed_limit": true,
+		"feature.issues": true, "feature.pull_requests": true, "feature.actions": true, "feature.security_alerts": true,
 	}
 	for k, v := range body {
 		if !allowed[k] {

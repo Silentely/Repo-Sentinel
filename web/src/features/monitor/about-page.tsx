@@ -40,6 +40,10 @@ export function AboutPage() {
   const [aggregateSec, setAggregateSec] = useState(60);
   const [burstThreshold, setBurstThreshold] = useState(15);
   const [closedDisplayLimit, setClosedDisplayLimit] = useState(20);
+  const [featureIssues, setFeatureIssues] = useState(true);
+  const [featurePRs, setFeaturePRs] = useState(true);
+  const [featureActions, setFeatureActions] = useState(true);
+  const [featureAlerts, setFeatureAlerts] = useState(true);
 
   useEffect(() => {
     if (!settings.data) return;
@@ -49,6 +53,10 @@ export function AboutPage() {
     setAggregateSec(Number(settings.data["notify.aggregate_window_sec"] ?? 60));
     setBurstThreshold(Number(settings.data["notify.burst_threshold"] ?? 15));
     setClosedDisplayLimit(Number(settings.data["display.closed_limit"] ?? 20));
+    setFeatureIssues(settings.data["feature.issues"] !== false);
+    setFeaturePRs(settings.data["feature.pull_requests"] !== false);
+    setFeatureActions(settings.data["feature.actions"] !== false);
+    setFeatureAlerts(settings.data["feature.security_alerts"] !== false);
   }, [settings.data]);
 
   const v = version.data || {};
@@ -169,6 +177,14 @@ export function AboutPage() {
         </div>
         <p className="field-hint">Issues、PR、安全告警的 Closed/Dismissed 列表默认只显示最近指定数量的条目。</p>
         <label className="check-row"><input type="checkbox" checked={digestEmpty} onChange={(e) => setDigestEmpty(e.target.checked)} /><span>无事件时仍发送空摘要</span></label>
+        <div className="form-grid" style={{ marginTop: 16 }}>
+          <h3 style={{ gridColumn: "1 / -1", fontSize: "0.95rem", marginBottom: 0 }}>功能模块开关</h3>
+          <p className="field-hint" style={{ gridColumn: "1 / -1" }}>关闭后对应模块在侧边栏和列表中将显示为禁用状态。不影响已有的 Webhook 数据入库。</p>
+          <label className="check-row"><input type="checkbox" checked={featureIssues} onChange={(e) => setFeatureIssues(e.target.checked)} /><span>Issues</span></label>
+          <label className="check-row"><input type="checkbox" checked={featurePRs} onChange={(e) => setFeaturePRs(e.target.checked)} /><span>Pull Requests</span></label>
+          <label className="check-row"><input type="checkbox" checked={featureActions} onChange={(e) => setFeatureActions(e.target.checked)} /><span>Actions</span></label>
+          <label className="check-row"><input type="checkbox" checked={featureAlerts} onChange={(e) => setFeatureAlerts(e.target.checked)} /><span>安全告警</span></label>
+        </div>
         <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending} onClick={() => {
           setSettingsMsg("");
           saveSettings.mutate({
@@ -178,6 +194,10 @@ export function AboutPage() {
             "notify.aggregate_window_sec": aggregateSec,
             "notify.burst_threshold": burstThreshold,
             "display.closed_limit": closedDisplayLimit,
+            "feature.issues": featureIssues,
+            "feature.pull_requests": featurePRs,
+            "feature.actions": featureActions,
+            "feature.security_alerts": featureAlerts,
           });
         }}>
           {saveSettings.isPending ? "保存中…" : "保存偏好"}

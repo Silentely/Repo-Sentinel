@@ -286,6 +286,10 @@ export interface SystemSettings {
   "notify.burst_threshold"?: number;
   "display.closed_limit"?: number;
   "notify.burst_window_sec"?: number;
+  "feature.issues"?: boolean;
+  "feature.pull_requests"?: boolean;
+  "feature.actions"?: boolean;
+  "feature.security_alerts"?: boolean;
 }
 
 export interface Installation {
