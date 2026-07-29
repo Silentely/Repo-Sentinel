@@ -1490,6 +1490,20 @@ a.primary-button {
   gap: 12px 14px;
 }
 
+.form-grid--section {
+  margin-top: 16px;
+}
+
+.form-grid--section > .section-title {
+  grid-column: 1 / -1;
+  font-size: 0.95rem;
+  margin-bottom: 0;
+}
+
+.form-grid--section > .section-hint {
+  grid-column: 1 / -1;
+}
+
 .form-grid .field--plain {
   margin-bottom: 0;
 }

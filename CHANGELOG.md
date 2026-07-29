@@ -12,6 +12,10 @@
 - 列表查询参数 `ignored=true|all`；默认排除已忽略项
 - 数据库迁移 `20260729000300_item_ignored`（PostgreSQL + SQLite）
 - 仪表盘区块（通知投递 / 最近事件 / 仓库与基线）支持折叠，状态写入 localStorage
+- 系统设置增加 Issues / PR / Actions / 安全告警全局功能模块开关
+- CI 构建工作流完成后自动清理 3 天前的历史运行记录（保留最近 3 条）
+- 投递记录页面（`/notifications/outbox`）
+- 开发规范文件 `CLAUDE.md`
 
 ### Fixed
 
