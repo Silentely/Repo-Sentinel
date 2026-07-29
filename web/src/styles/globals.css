@@ -1364,3 +1364,249 @@ a.primary-button {
 .collapse-body {
   padding: 1rem;
 }
+
+/* ── PR 列表增强样式 ── */
+
+.pr-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  flex: 1 1 100%;
+}
+
+.pr-title {
+  flex: 1 1 100%;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  flex: 1 1 100%;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.draft-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: color-mix(in oklch, var(--text-muted) 14%, transparent);
+}
+
+.merged-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  color: #6d28d9;
+  background: color-mix(in oklch, #7c3aed 14%, transparent);
+}
+
+.labels {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.label {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
+}
+
+.label-more {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.assignees {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.milestone {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.updated-at {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* ── Actions 列表增强样式 ── */
+
+.run-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  flex: 1 1 100%;
+}
+
+.run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  flex: 1 1 100%;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.event-type {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: color-mix(in oklch, var(--text-muted) 14%, transparent);
+}
+
+.attempt-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  color: var(--warning);
+  background: color-mix(in oklch, var(--warning) 14%, transparent);
+}
+
+.actor {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.started-at {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* ── 仓库卡片增强样式 ── */
+
+.repo-card__title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.repo-card__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  font-size: 0.82rem;
+}
+
+.private-badge {
+  font-size: 0.85rem;
+}
+
+.branch-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: color-mix(in oklch, var(--text-muted) 14%, transparent);
+}
+
+.last-synced {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.sync-error {
+  font-size: 0.78rem;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* ── PR Review 和 Check 状态样式 ── */
+
+.pr-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  flex: 1 1 100%;
+  font-size: 0.82rem;
+}
+
+.review-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.review-approved {
+  color: var(--success);
+  background: color-mix(in oklch, var(--success) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--success) 30%, transparent);
+}
+
+.review-changes_requested {
+  color: var(--danger);
+  background: color-mix(in oklch, var(--danger) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--danger) 30%, transparent);
+}
+
+.review-pending {
+  color: var(--warning);
+  background: color-mix(in oklch, var(--warning) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--warning) 30%, transparent);
+}
+
+.reviewers {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.check-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.check-success {
+  color: var(--success);
+  background: color-mix(in oklch, var(--success) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--success) 30%, transparent);
+}
+
+.check-failure {
+  color: var(--danger);
+  background: color-mix(in oklch, var(--danger) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--danger) 30%, transparent);
+}
+
+.check-pending {
+  color: var(--warning);
+  background: color-mix(in oklch, var(--warning) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--warning) 30%, transparent);
+}

@@ -30,6 +30,12 @@ export interface Repository {
   alerts_enabled: boolean;
   html_url: string;
   updated_at: string;
+  // 新增字段：展示后端已有但前端未展示的数据
+  default_branch?: string;
+  last_synced_at?: string;
+  last_sync_error_code?: string;
+  baseline_started_at?: string;
+  baseline_finished_at?: string;
 }
 
 export interface MonitorEvent {

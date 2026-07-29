@@ -252,6 +252,30 @@ func init() {
 	workitemDescHTMLURL := workitemFields[12].Descriptor()
 	// workitem.DefaultHTMLURL holds the default value on creation for the html_url field.
 	workitem.DefaultHTMLURL = workitemDescHTMLURL.Default.(string)
+	// workitemDescReviewState is the schema descriptor for review_state field.
+	workitemDescReviewState := workitemFields[15].Descriptor()
+	// workitem.DefaultReviewState holds the default value on creation for the review_state field.
+	workitem.DefaultReviewState = workitemDescReviewState.Default.(string)
+	// workitemDescReviewDecision is the schema descriptor for review_decision field.
+	workitemDescReviewDecision := workitemFields[16].Descriptor()
+	// workitem.DefaultReviewDecision holds the default value on creation for the review_decision field.
+	workitem.DefaultReviewDecision = workitemDescReviewDecision.Default.(string)
+	// workitemDescCheckStatus is the schema descriptor for check_status field.
+	workitemDescCheckStatus := workitemFields[18].Descriptor()
+	// workitem.DefaultCheckStatus holds the default value on creation for the check_status field.
+	workitem.DefaultCheckStatus = workitemDescCheckStatus.Default.(string)
+	// workitemDescCheckConclusion is the schema descriptor for check_conclusion field.
+	workitemDescCheckConclusion := workitemFields[19].Descriptor()
+	// workitem.DefaultCheckConclusion holds the default value on creation for the check_conclusion field.
+	workitem.DefaultCheckConclusion = workitemDescCheckConclusion.Default.(string)
+	// workitemDescChecksTotal is the schema descriptor for checks_total field.
+	workitemDescChecksTotal := workitemFields[20].Descriptor()
+	// workitem.DefaultChecksTotal holds the default value on creation for the checks_total field.
+	workitem.DefaultChecksTotal = workitemDescChecksTotal.Default.(int)
+	// workitemDescChecksPassed is the schema descriptor for checks_passed field.
+	workitemDescChecksPassed := workitemFields[21].Descriptor()
+	// workitem.DefaultChecksPassed holds the default value on creation for the checks_passed field.
+	workitem.DefaultChecksPassed = workitemDescChecksPassed.Default.(int)
 	workflowrunFields := schema.WorkflowRun{}.Fields()
 	_ = workflowrunFields
 	// workflowrunDescWorkflowName is the schema descriptor for workflow_name field.

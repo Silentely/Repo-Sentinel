@@ -30,6 +30,15 @@ func (WorkItem) Fields() []ent.Field {
 		field.String("html_url").Default(""),
 		field.Time("source_updated_at"),
 		field.String("state_hash"),
+		// 新增 Review 相关字段
+		field.String("review_state").Default(""),    // APPROVED, CHANGES_REQUESTED, COMMENTED, PENDING
+		field.String("review_decision").Default(""), // approved, changes_requested
+		field.JSON("reviewers", []string{}).Optional(),
+		// 新增 Check Runs 相关字段
+		field.String("check_status").Default(""),     // success, failure, pending
+		field.String("check_conclusion").Default(""), // success, failure, timed_out, cancelled, neutral, skipped
+		field.Int("checks_total").Default(0),
+		field.Int("checks_passed").Default(0),
 		field.Time("created_at").Immutable(),
 		field.Time("updated_at"),
 	}

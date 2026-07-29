@@ -11886,6 +11886,16 @@ type WorkItemMutation struct {
 	html_url             *string
 	source_updated_at    *time.Time
 	state_hash           *string
+	review_state         *string
+	review_decision      *string
+	reviewers            *[]string
+	appendreviewers      []string
+	check_status         *string
+	check_conclusion     *string
+	checks_total         *int
+	addchecks_total      *int
+	checks_passed        *int
+	addchecks_passed     *int
 	created_at           *time.Time
 	updated_at           *time.Time
 	clearedFields        map[string]struct{}
@@ -12580,6 +12590,327 @@ func (m *WorkItemMutation) ResetStateHash() {
 	m.state_hash = nil
 }
 
+// SetReviewState sets the "review_state" field.
+func (m *WorkItemMutation) SetReviewState(s string) {
+	m.review_state = &s
+}
+
+// ReviewState returns the value of the "review_state" field in the mutation.
+func (m *WorkItemMutation) ReviewState() (r string, exists bool) {
+	v := m.review_state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReviewState returns the old "review_state" field's value of the WorkItem entity.
+// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkItemMutation) OldReviewState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReviewState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReviewState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReviewState: %w", err)
+	}
+	return oldValue.ReviewState, nil
+}
+
+// ResetReviewState resets all changes to the "review_state" field.
+func (m *WorkItemMutation) ResetReviewState() {
+	m.review_state = nil
+}
+
+// SetReviewDecision sets the "review_decision" field.
+func (m *WorkItemMutation) SetReviewDecision(s string) {
+	m.review_decision = &s
+}
+
+// ReviewDecision returns the value of the "review_decision" field in the mutation.
+func (m *WorkItemMutation) ReviewDecision() (r string, exists bool) {
+	v := m.review_decision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReviewDecision returns the old "review_decision" field's value of the WorkItem entity.
+// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkItemMutation) OldReviewDecision(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReviewDecision is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReviewDecision requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReviewDecision: %w", err)
+	}
+	return oldValue.ReviewDecision, nil
+}
+
+// ResetReviewDecision resets all changes to the "review_decision" field.
+func (m *WorkItemMutation) ResetReviewDecision() {
+	m.review_decision = nil
+}
+
+// SetReviewers sets the "reviewers" field.
+func (m *WorkItemMutation) SetReviewers(s []string) {
+	m.reviewers = &s
+	m.appendreviewers = nil
+}
+
+// Reviewers returns the value of the "reviewers" field in the mutation.
+func (m *WorkItemMutation) Reviewers() (r []string, exists bool) {
+	v := m.reviewers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReviewers returns the old "reviewers" field's value of the WorkItem entity.
+// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkItemMutation) OldReviewers(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReviewers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReviewers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReviewers: %w", err)
+	}
+	return oldValue.Reviewers, nil
+}
+
+// AppendReviewers adds s to the "reviewers" field.
+func (m *WorkItemMutation) AppendReviewers(s []string) {
+	m.appendreviewers = append(m.appendreviewers, s...)
+}
+
+// AppendedReviewers returns the list of values that were appended to the "reviewers" field in this mutation.
+func (m *WorkItemMutation) AppendedReviewers() ([]string, bool) {
+	if len(m.appendreviewers) == 0 {
+		return nil, false
+	}
+	return m.appendreviewers, true
+}
+
+// ClearReviewers clears the value of the "reviewers" field.
+func (m *WorkItemMutation) ClearReviewers() {
+	m.reviewers = nil
+	m.appendreviewers = nil
+	m.clearedFields[workitem.FieldReviewers] = struct{}{}
+}
+
+// ReviewersCleared returns if the "reviewers" field was cleared in this mutation.
+func (m *WorkItemMutation) ReviewersCleared() bool {
+	_, ok := m.clearedFields[workitem.FieldReviewers]
+	return ok
+}
+
+// ResetReviewers resets all changes to the "reviewers" field.
+func (m *WorkItemMutation) ResetReviewers() {
+	m.reviewers = nil
+	m.appendreviewers = nil
+	delete(m.clearedFields, workitem.FieldReviewers)
+}
+
+// SetCheckStatus sets the "check_status" field.
+func (m *WorkItemMutation) SetCheckStatus(s string) {
+	m.check_status = &s
+}
+
+// CheckStatus returns the value of the "check_status" field in the mutation.
+func (m *WorkItemMutation) CheckStatus() (r string, exists bool) {
+	v := m.check_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCheckStatus returns the old "check_status" field's value of the WorkItem entity.
+// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkItemMutation) OldCheckStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCheckStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCheckStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCheckStatus: %w", err)
+	}
+	return oldValue.CheckStatus, nil
+}
+
+// ResetCheckStatus resets all changes to the "check_status" field.
+func (m *WorkItemMutation) ResetCheckStatus() {
+	m.check_status = nil
+}
+
+// SetCheckConclusion sets the "check_conclusion" field.
+func (m *WorkItemMutation) SetCheckConclusion(s string) {
+	m.check_conclusion = &s
+}
+
+// CheckConclusion returns the value of the "check_conclusion" field in the mutation.
+func (m *WorkItemMutation) CheckConclusion() (r string, exists bool) {
+	v := m.check_conclusion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCheckConclusion returns the old "check_conclusion" field's value of the WorkItem entity.
+// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkItemMutation) OldCheckConclusion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCheckConclusion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCheckConclusion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCheckConclusion: %w", err)
+	}
+	return oldValue.CheckConclusion, nil
+}
+
+// ResetCheckConclusion resets all changes to the "check_conclusion" field.
+func (m *WorkItemMutation) ResetCheckConclusion() {
+	m.check_conclusion = nil
+}
+
+// SetChecksTotal sets the "checks_total" field.
+func (m *WorkItemMutation) SetChecksTotal(i int) {
+	m.checks_total = &i
+	m.addchecks_total = nil
+}
+
+// ChecksTotal returns the value of the "checks_total" field in the mutation.
+func (m *WorkItemMutation) ChecksTotal() (r int, exists bool) {
+	v := m.checks_total
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChecksTotal returns the old "checks_total" field's value of the WorkItem entity.
+// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkItemMutation) OldChecksTotal(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChecksTotal is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChecksTotal requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChecksTotal: %w", err)
+	}
+	return oldValue.ChecksTotal, nil
+}
+
+// AddChecksTotal adds i to the "checks_total" field.
+func (m *WorkItemMutation) AddChecksTotal(i int) {
+	if m.addchecks_total != nil {
+		*m.addchecks_total += i
+	} else {
+		m.addchecks_total = &i
+	}
+}
+
+// AddedChecksTotal returns the value that was added to the "checks_total" field in this mutation.
+func (m *WorkItemMutation) AddedChecksTotal() (r int, exists bool) {
+	v := m.addchecks_total
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetChecksTotal resets all changes to the "checks_total" field.
+func (m *WorkItemMutation) ResetChecksTotal() {
+	m.checks_total = nil
+	m.addchecks_total = nil
+}
+
+// SetChecksPassed sets the "checks_passed" field.
+func (m *WorkItemMutation) SetChecksPassed(i int) {
+	m.checks_passed = &i
+	m.addchecks_passed = nil
+}
+
+// ChecksPassed returns the value of the "checks_passed" field in the mutation.
+func (m *WorkItemMutation) ChecksPassed() (r int, exists bool) {
+	v := m.checks_passed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChecksPassed returns the old "checks_passed" field's value of the WorkItem entity.
+// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkItemMutation) OldChecksPassed(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChecksPassed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChecksPassed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChecksPassed: %w", err)
+	}
+	return oldValue.ChecksPassed, nil
+}
+
+// AddChecksPassed adds i to the "checks_passed" field.
+func (m *WorkItemMutation) AddChecksPassed(i int) {
+	if m.addchecks_passed != nil {
+		*m.addchecks_passed += i
+	} else {
+		m.addchecks_passed = &i
+	}
+}
+
+// AddedChecksPassed returns the value that was added to the "checks_passed" field in this mutation.
+func (m *WorkItemMutation) AddedChecksPassed() (r int, exists bool) {
+	v := m.addchecks_passed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetChecksPassed resets all changes to the "checks_passed" field.
+func (m *WorkItemMutation) ResetChecksPassed() {
+	m.checks_passed = nil
+	m.addchecks_passed = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *WorkItemMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -12686,7 +13017,7 @@ func (m *WorkItemMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkItemMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 23)
 	if m.repository_id != nil {
 		fields = append(fields, workitem.FieldRepositoryID)
 	}
@@ -12728,6 +13059,27 @@ func (m *WorkItemMutation) Fields() []string {
 	}
 	if m.state_hash != nil {
 		fields = append(fields, workitem.FieldStateHash)
+	}
+	if m.review_state != nil {
+		fields = append(fields, workitem.FieldReviewState)
+	}
+	if m.review_decision != nil {
+		fields = append(fields, workitem.FieldReviewDecision)
+	}
+	if m.reviewers != nil {
+		fields = append(fields, workitem.FieldReviewers)
+	}
+	if m.check_status != nil {
+		fields = append(fields, workitem.FieldCheckStatus)
+	}
+	if m.check_conclusion != nil {
+		fields = append(fields, workitem.FieldCheckConclusion)
+	}
+	if m.checks_total != nil {
+		fields = append(fields, workitem.FieldChecksTotal)
+	}
+	if m.checks_passed != nil {
+		fields = append(fields, workitem.FieldChecksPassed)
 	}
 	if m.created_at != nil {
 		fields = append(fields, workitem.FieldCreatedAt)
@@ -12771,6 +13123,20 @@ func (m *WorkItemMutation) Field(name string) (ent.Value, bool) {
 		return m.SourceUpdatedAt()
 	case workitem.FieldStateHash:
 		return m.StateHash()
+	case workitem.FieldReviewState:
+		return m.ReviewState()
+	case workitem.FieldReviewDecision:
+		return m.ReviewDecision()
+	case workitem.FieldReviewers:
+		return m.Reviewers()
+	case workitem.FieldCheckStatus:
+		return m.CheckStatus()
+	case workitem.FieldCheckConclusion:
+		return m.CheckConclusion()
+	case workitem.FieldChecksTotal:
+		return m.ChecksTotal()
+	case workitem.FieldChecksPassed:
+		return m.ChecksPassed()
 	case workitem.FieldCreatedAt:
 		return m.CreatedAt()
 	case workitem.FieldUpdatedAt:
@@ -12812,6 +13178,20 @@ func (m *WorkItemMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldSourceUpdatedAt(ctx)
 	case workitem.FieldStateHash:
 		return m.OldStateHash(ctx)
+	case workitem.FieldReviewState:
+		return m.OldReviewState(ctx)
+	case workitem.FieldReviewDecision:
+		return m.OldReviewDecision(ctx)
+	case workitem.FieldReviewers:
+		return m.OldReviewers(ctx)
+	case workitem.FieldCheckStatus:
+		return m.OldCheckStatus(ctx)
+	case workitem.FieldCheckConclusion:
+		return m.OldCheckConclusion(ctx)
+	case workitem.FieldChecksTotal:
+		return m.OldChecksTotal(ctx)
+	case workitem.FieldChecksPassed:
+		return m.OldChecksPassed(ctx)
 	case workitem.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case workitem.FieldUpdatedAt:
@@ -12923,6 +13303,55 @@ func (m *WorkItemMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetStateHash(v)
 		return nil
+	case workitem.FieldReviewState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReviewState(v)
+		return nil
+	case workitem.FieldReviewDecision:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReviewDecision(v)
+		return nil
+	case workitem.FieldReviewers:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReviewers(v)
+		return nil
+	case workitem.FieldCheckStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCheckStatus(v)
+		return nil
+	case workitem.FieldCheckConclusion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCheckConclusion(v)
+		return nil
+	case workitem.FieldChecksTotal:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChecksTotal(v)
+		return nil
+	case workitem.FieldChecksPassed:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChecksPassed(v)
+		return nil
 	case workitem.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -12948,6 +13377,12 @@ func (m *WorkItemMutation) AddedFields() []string {
 	if m.addnumber != nil {
 		fields = append(fields, workitem.FieldNumber)
 	}
+	if m.addchecks_total != nil {
+		fields = append(fields, workitem.FieldChecksTotal)
+	}
+	if m.addchecks_passed != nil {
+		fields = append(fields, workitem.FieldChecksPassed)
+	}
 	return fields
 }
 
@@ -12958,6 +13393,10 @@ func (m *WorkItemMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case workitem.FieldNumber:
 		return m.AddedNumber()
+	case workitem.FieldChecksTotal:
+		return m.AddedChecksTotal()
+	case workitem.FieldChecksPassed:
+		return m.AddedChecksPassed()
 	}
 	return nil, false
 }
@@ -12974,6 +13413,20 @@ func (m *WorkItemMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddNumber(v)
 		return nil
+	case workitem.FieldChecksTotal:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChecksTotal(v)
+		return nil
+	case workitem.FieldChecksPassed:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChecksPassed(v)
+		return nil
 	}
 	return fmt.Errorf("unknown WorkItem numeric field %s", name)
 }
@@ -12987,6 +13440,9 @@ func (m *WorkItemMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(workitem.FieldAssigneesJSON) {
 		fields = append(fields, workitem.FieldAssigneesJSON)
+	}
+	if m.FieldCleared(workitem.FieldReviewers) {
+		fields = append(fields, workitem.FieldReviewers)
 	}
 	return fields
 }
@@ -13007,6 +13463,9 @@ func (m *WorkItemMutation) ClearField(name string) error {
 		return nil
 	case workitem.FieldAssigneesJSON:
 		m.ClearAssigneesJSON()
+		return nil
+	case workitem.FieldReviewers:
+		m.ClearReviewers()
 		return nil
 	}
 	return fmt.Errorf("unknown WorkItem nullable field %s", name)
@@ -13057,6 +13516,27 @@ func (m *WorkItemMutation) ResetField(name string) error {
 		return nil
 	case workitem.FieldStateHash:
 		m.ResetStateHash()
+		return nil
+	case workitem.FieldReviewState:
+		m.ResetReviewState()
+		return nil
+	case workitem.FieldReviewDecision:
+		m.ResetReviewDecision()
+		return nil
+	case workitem.FieldReviewers:
+		m.ResetReviewers()
+		return nil
+	case workitem.FieldCheckStatus:
+		m.ResetCheckStatus()
+		return nil
+	case workitem.FieldCheckConclusion:
+		m.ResetCheckConclusion()
+		return nil
+	case workitem.FieldChecksTotal:
+		m.ResetChecksTotal()
+		return nil
+	case workitem.FieldChecksPassed:
+		m.ResetChecksPassed()
 		return nil
 	case workitem.FieldCreatedAt:
 		m.ResetCreatedAt()

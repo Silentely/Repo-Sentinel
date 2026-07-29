@@ -410,6 +410,13 @@ func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem) (WorkIte
 			SetHTMLURL(in.HTMLURL).
 			SetSourceUpdatedAt(in.SourceUpdatedAt.UTC()).
 			SetStateHash(in.StateHash).
+			SetReviewState(in.ReviewState).
+			SetReviewDecision(in.ReviewDecision).
+			SetReviewers(in.Reviewers).
+			SetCheckStatus(in.CheckStatus).
+			SetCheckConclusion(in.CheckConclusion).
+			SetChecksTotal(in.ChecksTotal).
+			SetChecksPassed(in.ChecksPassed).
 			SetUpdatedAt(now).
 			Save(ctx)
 		if err != nil {
@@ -439,6 +446,13 @@ func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem) (WorkIte
 		SetHTMLURL(in.HTMLURL).
 		SetSourceUpdatedAt(in.SourceUpdatedAt.UTC()).
 		SetStateHash(in.StateHash).
+		SetReviewState(in.ReviewState).
+		SetReviewDecision(in.ReviewDecision).
+		SetReviewers(in.Reviewers).
+		SetCheckStatus(in.CheckStatus).
+		SetCheckConclusion(in.CheckConclusion).
+		SetChecksTotal(in.ChecksTotal).
+		SetChecksPassed(in.ChecksPassed).
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
@@ -518,7 +532,11 @@ func workItemFromEntity(e *entclient.WorkItem) WorkItem {
 		ID: e.ID, RepositoryID: e.RepositoryID, Number: e.Number, Kind: e.Kind, State: e.State,
 		Title: e.Title, Author: e.Author, LabelsJSON: e.LabelsJSON, AssigneesJSON: e.AssigneesJSON,
 		Milestone: e.Milestone, Draft: e.Draft, Merged: e.Merged, HTMLURL: e.HTMLURL,
-		SourceUpdatedAt: e.SourceUpdatedAt, StateHash: e.StateHash, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+		SourceUpdatedAt: e.SourceUpdatedAt, StateHash: e.StateHash,
+		ReviewState: e.ReviewState, ReviewDecision: e.ReviewDecision, Reviewers: e.Reviewers,
+		CheckStatus: e.CheckStatus, CheckConclusion: e.CheckConclusion,
+		ChecksTotal: e.ChecksTotal, ChecksPassed: e.ChecksPassed,
+		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 }
 

@@ -240,6 +240,122 @@ func (_u *WorkItemUpdate) SetNillableStateHash(v *string) *WorkItemUpdate {
 	return _u
 }
 
+// SetReviewState sets the "review_state" field.
+func (_u *WorkItemUpdate) SetReviewState(v string) *WorkItemUpdate {
+	_u.mutation.SetReviewState(v)
+	return _u
+}
+
+// SetNillableReviewState sets the "review_state" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableReviewState(v *string) *WorkItemUpdate {
+	if v != nil {
+		_u.SetReviewState(*v)
+	}
+	return _u
+}
+
+// SetReviewDecision sets the "review_decision" field.
+func (_u *WorkItemUpdate) SetReviewDecision(v string) *WorkItemUpdate {
+	_u.mutation.SetReviewDecision(v)
+	return _u
+}
+
+// SetNillableReviewDecision sets the "review_decision" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableReviewDecision(v *string) *WorkItemUpdate {
+	if v != nil {
+		_u.SetReviewDecision(*v)
+	}
+	return _u
+}
+
+// SetReviewers sets the "reviewers" field.
+func (_u *WorkItemUpdate) SetReviewers(v []string) *WorkItemUpdate {
+	_u.mutation.SetReviewers(v)
+	return _u
+}
+
+// AppendReviewers appends value to the "reviewers" field.
+func (_u *WorkItemUpdate) AppendReviewers(v []string) *WorkItemUpdate {
+	_u.mutation.AppendReviewers(v)
+	return _u
+}
+
+// ClearReviewers clears the value of the "reviewers" field.
+func (_u *WorkItemUpdate) ClearReviewers() *WorkItemUpdate {
+	_u.mutation.ClearReviewers()
+	return _u
+}
+
+// SetCheckStatus sets the "check_status" field.
+func (_u *WorkItemUpdate) SetCheckStatus(v string) *WorkItemUpdate {
+	_u.mutation.SetCheckStatus(v)
+	return _u
+}
+
+// SetNillableCheckStatus sets the "check_status" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableCheckStatus(v *string) *WorkItemUpdate {
+	if v != nil {
+		_u.SetCheckStatus(*v)
+	}
+	return _u
+}
+
+// SetCheckConclusion sets the "check_conclusion" field.
+func (_u *WorkItemUpdate) SetCheckConclusion(v string) *WorkItemUpdate {
+	_u.mutation.SetCheckConclusion(v)
+	return _u
+}
+
+// SetNillableCheckConclusion sets the "check_conclusion" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableCheckConclusion(v *string) *WorkItemUpdate {
+	if v != nil {
+		_u.SetCheckConclusion(*v)
+	}
+	return _u
+}
+
+// SetChecksTotal sets the "checks_total" field.
+func (_u *WorkItemUpdate) SetChecksTotal(v int) *WorkItemUpdate {
+	_u.mutation.ResetChecksTotal()
+	_u.mutation.SetChecksTotal(v)
+	return _u
+}
+
+// SetNillableChecksTotal sets the "checks_total" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableChecksTotal(v *int) *WorkItemUpdate {
+	if v != nil {
+		_u.SetChecksTotal(*v)
+	}
+	return _u
+}
+
+// AddChecksTotal adds value to the "checks_total" field.
+func (_u *WorkItemUpdate) AddChecksTotal(v int) *WorkItemUpdate {
+	_u.mutation.AddChecksTotal(v)
+	return _u
+}
+
+// SetChecksPassed sets the "checks_passed" field.
+func (_u *WorkItemUpdate) SetChecksPassed(v int) *WorkItemUpdate {
+	_u.mutation.ResetChecksPassed()
+	_u.mutation.SetChecksPassed(v)
+	return _u
+}
+
+// SetNillableChecksPassed sets the "checks_passed" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableChecksPassed(v *int) *WorkItemUpdate {
+	if v != nil {
+		_u.SetChecksPassed(*v)
+	}
+	return _u
+}
+
+// AddChecksPassed adds value to the "checks_passed" field.
+func (_u *WorkItemUpdate) AddChecksPassed(v int) *WorkItemUpdate {
+	_u.mutation.AddChecksPassed(v)
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *WorkItemUpdate) SetUpdatedAt(v time.Time) *WorkItemUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -355,6 +471,41 @@ func (_u *WorkItemUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.StateHash(); ok {
 		_spec.SetField(workitem.FieldStateHash, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ReviewState(); ok {
+		_spec.SetField(workitem.FieldReviewState, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ReviewDecision(); ok {
+		_spec.SetField(workitem.FieldReviewDecision, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Reviewers(); ok {
+		_spec.SetField(workitem.FieldReviewers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedReviewers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, workitem.FieldReviewers, value)
+		})
+	}
+	if _u.mutation.ReviewersCleared() {
+		_spec.ClearField(workitem.FieldReviewers, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.CheckStatus(); ok {
+		_spec.SetField(workitem.FieldCheckStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CheckConclusion(); ok {
+		_spec.SetField(workitem.FieldCheckConclusion, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ChecksTotal(); ok {
+		_spec.SetField(workitem.FieldChecksTotal, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedChecksTotal(); ok {
+		_spec.AddField(workitem.FieldChecksTotal, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ChecksPassed(); ok {
+		_spec.SetField(workitem.FieldChecksPassed, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedChecksPassed(); ok {
+		_spec.AddField(workitem.FieldChecksPassed, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(workitem.FieldUpdatedAt, field.TypeTime, value)
@@ -590,6 +741,122 @@ func (_u *WorkItemUpdateOne) SetNillableStateHash(v *string) *WorkItemUpdateOne 
 	return _u
 }
 
+// SetReviewState sets the "review_state" field.
+func (_u *WorkItemUpdateOne) SetReviewState(v string) *WorkItemUpdateOne {
+	_u.mutation.SetReviewState(v)
+	return _u
+}
+
+// SetNillableReviewState sets the "review_state" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableReviewState(v *string) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetReviewState(*v)
+	}
+	return _u
+}
+
+// SetReviewDecision sets the "review_decision" field.
+func (_u *WorkItemUpdateOne) SetReviewDecision(v string) *WorkItemUpdateOne {
+	_u.mutation.SetReviewDecision(v)
+	return _u
+}
+
+// SetNillableReviewDecision sets the "review_decision" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableReviewDecision(v *string) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetReviewDecision(*v)
+	}
+	return _u
+}
+
+// SetReviewers sets the "reviewers" field.
+func (_u *WorkItemUpdateOne) SetReviewers(v []string) *WorkItemUpdateOne {
+	_u.mutation.SetReviewers(v)
+	return _u
+}
+
+// AppendReviewers appends value to the "reviewers" field.
+func (_u *WorkItemUpdateOne) AppendReviewers(v []string) *WorkItemUpdateOne {
+	_u.mutation.AppendReviewers(v)
+	return _u
+}
+
+// ClearReviewers clears the value of the "reviewers" field.
+func (_u *WorkItemUpdateOne) ClearReviewers() *WorkItemUpdateOne {
+	_u.mutation.ClearReviewers()
+	return _u
+}
+
+// SetCheckStatus sets the "check_status" field.
+func (_u *WorkItemUpdateOne) SetCheckStatus(v string) *WorkItemUpdateOne {
+	_u.mutation.SetCheckStatus(v)
+	return _u
+}
+
+// SetNillableCheckStatus sets the "check_status" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableCheckStatus(v *string) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetCheckStatus(*v)
+	}
+	return _u
+}
+
+// SetCheckConclusion sets the "check_conclusion" field.
+func (_u *WorkItemUpdateOne) SetCheckConclusion(v string) *WorkItemUpdateOne {
+	_u.mutation.SetCheckConclusion(v)
+	return _u
+}
+
+// SetNillableCheckConclusion sets the "check_conclusion" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableCheckConclusion(v *string) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetCheckConclusion(*v)
+	}
+	return _u
+}
+
+// SetChecksTotal sets the "checks_total" field.
+func (_u *WorkItemUpdateOne) SetChecksTotal(v int) *WorkItemUpdateOne {
+	_u.mutation.ResetChecksTotal()
+	_u.mutation.SetChecksTotal(v)
+	return _u
+}
+
+// SetNillableChecksTotal sets the "checks_total" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableChecksTotal(v *int) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetChecksTotal(*v)
+	}
+	return _u
+}
+
+// AddChecksTotal adds value to the "checks_total" field.
+func (_u *WorkItemUpdateOne) AddChecksTotal(v int) *WorkItemUpdateOne {
+	_u.mutation.AddChecksTotal(v)
+	return _u
+}
+
+// SetChecksPassed sets the "checks_passed" field.
+func (_u *WorkItemUpdateOne) SetChecksPassed(v int) *WorkItemUpdateOne {
+	_u.mutation.ResetChecksPassed()
+	_u.mutation.SetChecksPassed(v)
+	return _u
+}
+
+// SetNillableChecksPassed sets the "checks_passed" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableChecksPassed(v *int) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetChecksPassed(*v)
+	}
+	return _u
+}
+
+// AddChecksPassed adds value to the "checks_passed" field.
+func (_u *WorkItemUpdateOne) AddChecksPassed(v int) *WorkItemUpdateOne {
+	_u.mutation.AddChecksPassed(v)
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *WorkItemUpdateOne) SetUpdatedAt(v time.Time) *WorkItemUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -735,6 +1002,41 @@ func (_u *WorkItemUpdateOne) sqlSave(ctx context.Context) (_node *WorkItem, err 
 	}
 	if value, ok := _u.mutation.StateHash(); ok {
 		_spec.SetField(workitem.FieldStateHash, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ReviewState(); ok {
+		_spec.SetField(workitem.FieldReviewState, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ReviewDecision(); ok {
+		_spec.SetField(workitem.FieldReviewDecision, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Reviewers(); ok {
+		_spec.SetField(workitem.FieldReviewers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedReviewers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, workitem.FieldReviewers, value)
+		})
+	}
+	if _u.mutation.ReviewersCleared() {
+		_spec.ClearField(workitem.FieldReviewers, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.CheckStatus(); ok {
+		_spec.SetField(workitem.FieldCheckStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CheckConclusion(); ok {
+		_spec.SetField(workitem.FieldCheckConclusion, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ChecksTotal(); ok {
+		_spec.SetField(workitem.FieldChecksTotal, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedChecksTotal(); ok {
+		_spec.AddField(workitem.FieldChecksTotal, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ChecksPassed(); ok {
+		_spec.SetField(workitem.FieldChecksPassed, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedChecksPassed(); ok {
+		_spec.AddField(workitem.FieldChecksPassed, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(workitem.FieldUpdatedAt, field.TypeTime, value)

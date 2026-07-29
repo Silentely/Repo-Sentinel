@@ -124,6 +124,36 @@ func StateHash(v string) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldStateHash, v))
 }
 
+// ReviewState applies equality check predicate on the "review_state" field. It's identical to ReviewStateEQ.
+func ReviewState(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldReviewState, v))
+}
+
+// ReviewDecision applies equality check predicate on the "review_decision" field. It's identical to ReviewDecisionEQ.
+func ReviewDecision(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldReviewDecision, v))
+}
+
+// CheckStatus applies equality check predicate on the "check_status" field. It's identical to CheckStatusEQ.
+func CheckStatus(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldCheckStatus, v))
+}
+
+// CheckConclusion applies equality check predicate on the "check_conclusion" field. It's identical to CheckConclusionEQ.
+func CheckConclusion(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldCheckConclusion, v))
+}
+
+// ChecksTotal applies equality check predicate on the "checks_total" field. It's identical to ChecksTotalEQ.
+func ChecksTotal(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldChecksTotal, v))
+}
+
+// ChecksPassed applies equality check predicate on the "checks_passed" field. It's identical to ChecksPassedEQ.
+func ChecksPassed(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldChecksPassed, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldCreatedAt, v))
@@ -772,6 +802,356 @@ func StateHashEqualFold(v string) predicate.WorkItem {
 // StateHashContainsFold applies the ContainsFold predicate on the "state_hash" field.
 func StateHashContainsFold(v string) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldContainsFold(FieldStateHash, v))
+}
+
+// ReviewStateEQ applies the EQ predicate on the "review_state" field.
+func ReviewStateEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldReviewState, v))
+}
+
+// ReviewStateNEQ applies the NEQ predicate on the "review_state" field.
+func ReviewStateNEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldReviewState, v))
+}
+
+// ReviewStateIn applies the In predicate on the "review_state" field.
+func ReviewStateIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldReviewState, vs...))
+}
+
+// ReviewStateNotIn applies the NotIn predicate on the "review_state" field.
+func ReviewStateNotIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldReviewState, vs...))
+}
+
+// ReviewStateGT applies the GT predicate on the "review_state" field.
+func ReviewStateGT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldReviewState, v))
+}
+
+// ReviewStateGTE applies the GTE predicate on the "review_state" field.
+func ReviewStateGTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldReviewState, v))
+}
+
+// ReviewStateLT applies the LT predicate on the "review_state" field.
+func ReviewStateLT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldReviewState, v))
+}
+
+// ReviewStateLTE applies the LTE predicate on the "review_state" field.
+func ReviewStateLTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldReviewState, v))
+}
+
+// ReviewStateContains applies the Contains predicate on the "review_state" field.
+func ReviewStateContains(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContains(FieldReviewState, v))
+}
+
+// ReviewStateHasPrefix applies the HasPrefix predicate on the "review_state" field.
+func ReviewStateHasPrefix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasPrefix(FieldReviewState, v))
+}
+
+// ReviewStateHasSuffix applies the HasSuffix predicate on the "review_state" field.
+func ReviewStateHasSuffix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasSuffix(FieldReviewState, v))
+}
+
+// ReviewStateEqualFold applies the EqualFold predicate on the "review_state" field.
+func ReviewStateEqualFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEqualFold(FieldReviewState, v))
+}
+
+// ReviewStateContainsFold applies the ContainsFold predicate on the "review_state" field.
+func ReviewStateContainsFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContainsFold(FieldReviewState, v))
+}
+
+// ReviewDecisionEQ applies the EQ predicate on the "review_decision" field.
+func ReviewDecisionEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldReviewDecision, v))
+}
+
+// ReviewDecisionNEQ applies the NEQ predicate on the "review_decision" field.
+func ReviewDecisionNEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldReviewDecision, v))
+}
+
+// ReviewDecisionIn applies the In predicate on the "review_decision" field.
+func ReviewDecisionIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldReviewDecision, vs...))
+}
+
+// ReviewDecisionNotIn applies the NotIn predicate on the "review_decision" field.
+func ReviewDecisionNotIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldReviewDecision, vs...))
+}
+
+// ReviewDecisionGT applies the GT predicate on the "review_decision" field.
+func ReviewDecisionGT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldReviewDecision, v))
+}
+
+// ReviewDecisionGTE applies the GTE predicate on the "review_decision" field.
+func ReviewDecisionGTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldReviewDecision, v))
+}
+
+// ReviewDecisionLT applies the LT predicate on the "review_decision" field.
+func ReviewDecisionLT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldReviewDecision, v))
+}
+
+// ReviewDecisionLTE applies the LTE predicate on the "review_decision" field.
+func ReviewDecisionLTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldReviewDecision, v))
+}
+
+// ReviewDecisionContains applies the Contains predicate on the "review_decision" field.
+func ReviewDecisionContains(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContains(FieldReviewDecision, v))
+}
+
+// ReviewDecisionHasPrefix applies the HasPrefix predicate on the "review_decision" field.
+func ReviewDecisionHasPrefix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasPrefix(FieldReviewDecision, v))
+}
+
+// ReviewDecisionHasSuffix applies the HasSuffix predicate on the "review_decision" field.
+func ReviewDecisionHasSuffix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasSuffix(FieldReviewDecision, v))
+}
+
+// ReviewDecisionEqualFold applies the EqualFold predicate on the "review_decision" field.
+func ReviewDecisionEqualFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEqualFold(FieldReviewDecision, v))
+}
+
+// ReviewDecisionContainsFold applies the ContainsFold predicate on the "review_decision" field.
+func ReviewDecisionContainsFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContainsFold(FieldReviewDecision, v))
+}
+
+// ReviewersIsNil applies the IsNil predicate on the "reviewers" field.
+func ReviewersIsNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIsNull(FieldReviewers))
+}
+
+// ReviewersNotNil applies the NotNil predicate on the "reviewers" field.
+func ReviewersNotNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotNull(FieldReviewers))
+}
+
+// CheckStatusEQ applies the EQ predicate on the "check_status" field.
+func CheckStatusEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldCheckStatus, v))
+}
+
+// CheckStatusNEQ applies the NEQ predicate on the "check_status" field.
+func CheckStatusNEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldCheckStatus, v))
+}
+
+// CheckStatusIn applies the In predicate on the "check_status" field.
+func CheckStatusIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldCheckStatus, vs...))
+}
+
+// CheckStatusNotIn applies the NotIn predicate on the "check_status" field.
+func CheckStatusNotIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldCheckStatus, vs...))
+}
+
+// CheckStatusGT applies the GT predicate on the "check_status" field.
+func CheckStatusGT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldCheckStatus, v))
+}
+
+// CheckStatusGTE applies the GTE predicate on the "check_status" field.
+func CheckStatusGTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldCheckStatus, v))
+}
+
+// CheckStatusLT applies the LT predicate on the "check_status" field.
+func CheckStatusLT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldCheckStatus, v))
+}
+
+// CheckStatusLTE applies the LTE predicate on the "check_status" field.
+func CheckStatusLTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldCheckStatus, v))
+}
+
+// CheckStatusContains applies the Contains predicate on the "check_status" field.
+func CheckStatusContains(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContains(FieldCheckStatus, v))
+}
+
+// CheckStatusHasPrefix applies the HasPrefix predicate on the "check_status" field.
+func CheckStatusHasPrefix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasPrefix(FieldCheckStatus, v))
+}
+
+// CheckStatusHasSuffix applies the HasSuffix predicate on the "check_status" field.
+func CheckStatusHasSuffix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasSuffix(FieldCheckStatus, v))
+}
+
+// CheckStatusEqualFold applies the EqualFold predicate on the "check_status" field.
+func CheckStatusEqualFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEqualFold(FieldCheckStatus, v))
+}
+
+// CheckStatusContainsFold applies the ContainsFold predicate on the "check_status" field.
+func CheckStatusContainsFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContainsFold(FieldCheckStatus, v))
+}
+
+// CheckConclusionEQ applies the EQ predicate on the "check_conclusion" field.
+func CheckConclusionEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldCheckConclusion, v))
+}
+
+// CheckConclusionNEQ applies the NEQ predicate on the "check_conclusion" field.
+func CheckConclusionNEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldCheckConclusion, v))
+}
+
+// CheckConclusionIn applies the In predicate on the "check_conclusion" field.
+func CheckConclusionIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldCheckConclusion, vs...))
+}
+
+// CheckConclusionNotIn applies the NotIn predicate on the "check_conclusion" field.
+func CheckConclusionNotIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldCheckConclusion, vs...))
+}
+
+// CheckConclusionGT applies the GT predicate on the "check_conclusion" field.
+func CheckConclusionGT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldCheckConclusion, v))
+}
+
+// CheckConclusionGTE applies the GTE predicate on the "check_conclusion" field.
+func CheckConclusionGTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldCheckConclusion, v))
+}
+
+// CheckConclusionLT applies the LT predicate on the "check_conclusion" field.
+func CheckConclusionLT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldCheckConclusion, v))
+}
+
+// CheckConclusionLTE applies the LTE predicate on the "check_conclusion" field.
+func CheckConclusionLTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldCheckConclusion, v))
+}
+
+// CheckConclusionContains applies the Contains predicate on the "check_conclusion" field.
+func CheckConclusionContains(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContains(FieldCheckConclusion, v))
+}
+
+// CheckConclusionHasPrefix applies the HasPrefix predicate on the "check_conclusion" field.
+func CheckConclusionHasPrefix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasPrefix(FieldCheckConclusion, v))
+}
+
+// CheckConclusionHasSuffix applies the HasSuffix predicate on the "check_conclusion" field.
+func CheckConclusionHasSuffix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasSuffix(FieldCheckConclusion, v))
+}
+
+// CheckConclusionEqualFold applies the EqualFold predicate on the "check_conclusion" field.
+func CheckConclusionEqualFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEqualFold(FieldCheckConclusion, v))
+}
+
+// CheckConclusionContainsFold applies the ContainsFold predicate on the "check_conclusion" field.
+func CheckConclusionContainsFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContainsFold(FieldCheckConclusion, v))
+}
+
+// ChecksTotalEQ applies the EQ predicate on the "checks_total" field.
+func ChecksTotalEQ(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldChecksTotal, v))
+}
+
+// ChecksTotalNEQ applies the NEQ predicate on the "checks_total" field.
+func ChecksTotalNEQ(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldChecksTotal, v))
+}
+
+// ChecksTotalIn applies the In predicate on the "checks_total" field.
+func ChecksTotalIn(vs ...int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldChecksTotal, vs...))
+}
+
+// ChecksTotalNotIn applies the NotIn predicate on the "checks_total" field.
+func ChecksTotalNotIn(vs ...int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldChecksTotal, vs...))
+}
+
+// ChecksTotalGT applies the GT predicate on the "checks_total" field.
+func ChecksTotalGT(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldChecksTotal, v))
+}
+
+// ChecksTotalGTE applies the GTE predicate on the "checks_total" field.
+func ChecksTotalGTE(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldChecksTotal, v))
+}
+
+// ChecksTotalLT applies the LT predicate on the "checks_total" field.
+func ChecksTotalLT(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldChecksTotal, v))
+}
+
+// ChecksTotalLTE applies the LTE predicate on the "checks_total" field.
+func ChecksTotalLTE(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldChecksTotal, v))
+}
+
+// ChecksPassedEQ applies the EQ predicate on the "checks_passed" field.
+func ChecksPassedEQ(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldChecksPassed, v))
+}
+
+// ChecksPassedNEQ applies the NEQ predicate on the "checks_passed" field.
+func ChecksPassedNEQ(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldChecksPassed, v))
+}
+
+// ChecksPassedIn applies the In predicate on the "checks_passed" field.
+func ChecksPassedIn(vs ...int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldChecksPassed, vs...))
+}
+
+// ChecksPassedNotIn applies the NotIn predicate on the "checks_passed" field.
+func ChecksPassedNotIn(vs ...int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldChecksPassed, vs...))
+}
+
+// ChecksPassedGT applies the GT predicate on the "checks_passed" field.
+func ChecksPassedGT(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldChecksPassed, v))
+}
+
+// ChecksPassedGTE applies the GTE predicate on the "checks_passed" field.
+func ChecksPassedGTE(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldChecksPassed, v))
+}
+
+// ChecksPassedLT applies the LT predicate on the "checks_passed" field.
+func ChecksPassedLT(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldChecksPassed, v))
+}
+
+// ChecksPassedLTE applies the LTE predicate on the "checks_passed" field.
+func ChecksPassedLTE(v int) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldChecksPassed, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

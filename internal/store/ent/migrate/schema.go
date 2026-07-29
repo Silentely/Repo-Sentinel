@@ -486,6 +486,13 @@ var (
 		{Name: "html_url", Type: field.TypeString, Default: ""},
 		{Name: "source_updated_at", Type: field.TypeTime},
 		{Name: "state_hash", Type: field.TypeString},
+		{Name: "review_state", Type: field.TypeString, Default: ""},
+		{Name: "review_decision", Type: field.TypeString, Default: ""},
+		{Name: "reviewers", Type: field.TypeJSON, Nullable: true},
+		{Name: "check_status", Type: field.TypeString, Default: ""},
+		{Name: "check_conclusion", Type: field.TypeString, Default: ""},
+		{Name: "checks_total", Type: field.TypeInt, Default: 0},
+		{Name: "checks_passed", Type: field.TypeInt, Default: 0},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -508,7 +515,7 @@ var (
 			{
 				Name:    "workitem_updated_at",
 				Unique:  false,
-				Columns: []*schema.Column{WorkItemsColumns[16]},
+				Columns: []*schema.Column{WorkItemsColumns[23]},
 			},
 		},
 	}

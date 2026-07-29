@@ -46,6 +46,20 @@ type WorkItem struct {
 	SourceUpdatedAt time.Time `json:"source_updated_at,omitempty"`
 	// StateHash holds the value of the "state_hash" field.
 	StateHash string `json:"state_hash,omitempty"`
+	// ReviewState holds the value of the "review_state" field.
+	ReviewState string `json:"review_state,omitempty"`
+	// ReviewDecision holds the value of the "review_decision" field.
+	ReviewDecision string `json:"review_decision,omitempty"`
+	// Reviewers holds the value of the "reviewers" field.
+	Reviewers []string `json:"reviewers,omitempty"`
+	// CheckStatus holds the value of the "check_status" field.
+	CheckStatus string `json:"check_status,omitempty"`
+	// CheckConclusion holds the value of the "check_conclusion" field.
+	CheckConclusion string `json:"check_conclusion,omitempty"`
+	// ChecksTotal holds the value of the "checks_total" field.
+	ChecksTotal int `json:"checks_total,omitempty"`
+	// ChecksPassed holds the value of the "checks_passed" field.
+	ChecksPassed int `json:"checks_passed,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -58,13 +72,13 @@ func (*WorkItem) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case workitem.FieldLabelsJSON, workitem.FieldAssigneesJSON:
+		case workitem.FieldLabelsJSON, workitem.FieldAssigneesJSON, workitem.FieldReviewers:
 			values[i] = new([]byte)
 		case workitem.FieldDraft, workitem.FieldMerged:
 			values[i] = new(sql.NullBool)
-		case workitem.FieldNumber:
+		case workitem.FieldNumber, workitem.FieldChecksTotal, workitem.FieldChecksPassed:
 			values[i] = new(sql.NullInt64)
-		case workitem.FieldID, workitem.FieldRepositoryID, workitem.FieldKind, workitem.FieldState, workitem.FieldTitle, workitem.FieldAuthor, workitem.FieldMilestone, workitem.FieldHTMLURL, workitem.FieldStateHash:
+		case workitem.FieldID, workitem.FieldRepositoryID, workitem.FieldKind, workitem.FieldState, workitem.FieldTitle, workitem.FieldAuthor, workitem.FieldMilestone, workitem.FieldHTMLURL, workitem.FieldStateHash, workitem.FieldReviewState, workitem.FieldReviewDecision, workitem.FieldCheckStatus, workitem.FieldCheckConclusion:
 			values[i] = new(sql.NullString)
 		case workitem.FieldSourceUpdatedAt, workitem.FieldCreatedAt, workitem.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -177,6 +191,50 @@ func (_m *WorkItem) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.StateHash = value.String
 			}
+		case workitem.FieldReviewState:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field review_state", values[i])
+			} else if value.Valid {
+				_m.ReviewState = value.String
+			}
+		case workitem.FieldReviewDecision:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field review_decision", values[i])
+			} else if value.Valid {
+				_m.ReviewDecision = value.String
+			}
+		case workitem.FieldReviewers:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field reviewers", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Reviewers); err != nil {
+					return fmt.Errorf("unmarshal field reviewers: %w", err)
+				}
+			}
+		case workitem.FieldCheckStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field check_status", values[i])
+			} else if value.Valid {
+				_m.CheckStatus = value.String
+			}
+		case workitem.FieldCheckConclusion:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field check_conclusion", values[i])
+			} else if value.Valid {
+				_m.CheckConclusion = value.String
+			}
+		case workitem.FieldChecksTotal:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field checks_total", values[i])
+			} else if value.Valid {
+				_m.ChecksTotal = int(value.Int64)
+			}
+		case workitem.FieldChecksPassed:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field checks_passed", values[i])
+			} else if value.Valid {
+				_m.ChecksPassed = int(value.Int64)
+			}
 		case workitem.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -266,6 +324,27 @@ func (_m *WorkItem) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("state_hash=")
 	builder.WriteString(_m.StateHash)
+	builder.WriteString(", ")
+	builder.WriteString("review_state=")
+	builder.WriteString(_m.ReviewState)
+	builder.WriteString(", ")
+	builder.WriteString("review_decision=")
+	builder.WriteString(_m.ReviewDecision)
+	builder.WriteString(", ")
+	builder.WriteString("reviewers=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Reviewers))
+	builder.WriteString(", ")
+	builder.WriteString("check_status=")
+	builder.WriteString(_m.CheckStatus)
+	builder.WriteString(", ")
+	builder.WriteString("check_conclusion=")
+	builder.WriteString(_m.CheckConclusion)
+	builder.WriteString(", ")
+	builder.WriteString("checks_total=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ChecksTotal))
+	builder.WriteString(", ")
+	builder.WriteString("checks_passed=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ChecksPassed))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

@@ -144,6 +144,96 @@ func (_c *WorkItemCreate) SetStateHash(v string) *WorkItemCreate {
 	return _c
 }
 
+// SetReviewState sets the "review_state" field.
+func (_c *WorkItemCreate) SetReviewState(v string) *WorkItemCreate {
+	_c.mutation.SetReviewState(v)
+	return _c
+}
+
+// SetNillableReviewState sets the "review_state" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableReviewState(v *string) *WorkItemCreate {
+	if v != nil {
+		_c.SetReviewState(*v)
+	}
+	return _c
+}
+
+// SetReviewDecision sets the "review_decision" field.
+func (_c *WorkItemCreate) SetReviewDecision(v string) *WorkItemCreate {
+	_c.mutation.SetReviewDecision(v)
+	return _c
+}
+
+// SetNillableReviewDecision sets the "review_decision" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableReviewDecision(v *string) *WorkItemCreate {
+	if v != nil {
+		_c.SetReviewDecision(*v)
+	}
+	return _c
+}
+
+// SetReviewers sets the "reviewers" field.
+func (_c *WorkItemCreate) SetReviewers(v []string) *WorkItemCreate {
+	_c.mutation.SetReviewers(v)
+	return _c
+}
+
+// SetCheckStatus sets the "check_status" field.
+func (_c *WorkItemCreate) SetCheckStatus(v string) *WorkItemCreate {
+	_c.mutation.SetCheckStatus(v)
+	return _c
+}
+
+// SetNillableCheckStatus sets the "check_status" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableCheckStatus(v *string) *WorkItemCreate {
+	if v != nil {
+		_c.SetCheckStatus(*v)
+	}
+	return _c
+}
+
+// SetCheckConclusion sets the "check_conclusion" field.
+func (_c *WorkItemCreate) SetCheckConclusion(v string) *WorkItemCreate {
+	_c.mutation.SetCheckConclusion(v)
+	return _c
+}
+
+// SetNillableCheckConclusion sets the "check_conclusion" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableCheckConclusion(v *string) *WorkItemCreate {
+	if v != nil {
+		_c.SetCheckConclusion(*v)
+	}
+	return _c
+}
+
+// SetChecksTotal sets the "checks_total" field.
+func (_c *WorkItemCreate) SetChecksTotal(v int) *WorkItemCreate {
+	_c.mutation.SetChecksTotal(v)
+	return _c
+}
+
+// SetNillableChecksTotal sets the "checks_total" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableChecksTotal(v *int) *WorkItemCreate {
+	if v != nil {
+		_c.SetChecksTotal(*v)
+	}
+	return _c
+}
+
+// SetChecksPassed sets the "checks_passed" field.
+func (_c *WorkItemCreate) SetChecksPassed(v int) *WorkItemCreate {
+	_c.mutation.SetChecksPassed(v)
+	return _c
+}
+
+// SetNillableChecksPassed sets the "checks_passed" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableChecksPassed(v *int) *WorkItemCreate {
+	if v != nil {
+		_c.SetChecksPassed(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *WorkItemCreate) SetCreatedAt(v time.Time) *WorkItemCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -217,6 +307,30 @@ func (_c *WorkItemCreate) defaults() {
 		v := workitem.DefaultHTMLURL
 		_c.mutation.SetHTMLURL(v)
 	}
+	if _, ok := _c.mutation.ReviewState(); !ok {
+		v := workitem.DefaultReviewState
+		_c.mutation.SetReviewState(v)
+	}
+	if _, ok := _c.mutation.ReviewDecision(); !ok {
+		v := workitem.DefaultReviewDecision
+		_c.mutation.SetReviewDecision(v)
+	}
+	if _, ok := _c.mutation.CheckStatus(); !ok {
+		v := workitem.DefaultCheckStatus
+		_c.mutation.SetCheckStatus(v)
+	}
+	if _, ok := _c.mutation.CheckConclusion(); !ok {
+		v := workitem.DefaultCheckConclusion
+		_c.mutation.SetCheckConclusion(v)
+	}
+	if _, ok := _c.mutation.ChecksTotal(); !ok {
+		v := workitem.DefaultChecksTotal
+		_c.mutation.SetChecksTotal(v)
+	}
+	if _, ok := _c.mutation.ChecksPassed(); !ok {
+		v := workitem.DefaultChecksPassed
+		_c.mutation.SetChecksPassed(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -256,6 +370,24 @@ func (_c *WorkItemCreate) check() error {
 	}
 	if _, ok := _c.mutation.StateHash(); !ok {
 		return &ValidationError{Name: "state_hash", err: errors.New(`ent: missing required field "WorkItem.state_hash"`)}
+	}
+	if _, ok := _c.mutation.ReviewState(); !ok {
+		return &ValidationError{Name: "review_state", err: errors.New(`ent: missing required field "WorkItem.review_state"`)}
+	}
+	if _, ok := _c.mutation.ReviewDecision(); !ok {
+		return &ValidationError{Name: "review_decision", err: errors.New(`ent: missing required field "WorkItem.review_decision"`)}
+	}
+	if _, ok := _c.mutation.CheckStatus(); !ok {
+		return &ValidationError{Name: "check_status", err: errors.New(`ent: missing required field "WorkItem.check_status"`)}
+	}
+	if _, ok := _c.mutation.CheckConclusion(); !ok {
+		return &ValidationError{Name: "check_conclusion", err: errors.New(`ent: missing required field "WorkItem.check_conclusion"`)}
+	}
+	if _, ok := _c.mutation.ChecksTotal(); !ok {
+		return &ValidationError{Name: "checks_total", err: errors.New(`ent: missing required field "WorkItem.checks_total"`)}
+	}
+	if _, ok := _c.mutation.ChecksPassed(); !ok {
+		return &ValidationError{Name: "checks_passed", err: errors.New(`ent: missing required field "WorkItem.checks_passed"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "WorkItem.created_at"`)}
@@ -353,6 +485,34 @@ func (_c *WorkItemCreate) createSpec() (*WorkItem, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.StateHash(); ok {
 		_spec.SetField(workitem.FieldStateHash, field.TypeString, value)
 		_node.StateHash = value
+	}
+	if value, ok := _c.mutation.ReviewState(); ok {
+		_spec.SetField(workitem.FieldReviewState, field.TypeString, value)
+		_node.ReviewState = value
+	}
+	if value, ok := _c.mutation.ReviewDecision(); ok {
+		_spec.SetField(workitem.FieldReviewDecision, field.TypeString, value)
+		_node.ReviewDecision = value
+	}
+	if value, ok := _c.mutation.Reviewers(); ok {
+		_spec.SetField(workitem.FieldReviewers, field.TypeJSON, value)
+		_node.Reviewers = value
+	}
+	if value, ok := _c.mutation.CheckStatus(); ok {
+		_spec.SetField(workitem.FieldCheckStatus, field.TypeString, value)
+		_node.CheckStatus = value
+	}
+	if value, ok := _c.mutation.CheckConclusion(); ok {
+		_spec.SetField(workitem.FieldCheckConclusion, field.TypeString, value)
+		_node.CheckConclusion = value
+	}
+	if value, ok := _c.mutation.ChecksTotal(); ok {
+		_spec.SetField(workitem.FieldChecksTotal, field.TypeInt, value)
+		_node.ChecksTotal = value
+	}
+	if value, ok := _c.mutation.ChecksPassed(); ok {
+		_spec.SetField(workitem.FieldChecksPassed, field.TypeInt, value)
+		_node.ChecksPassed = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(workitem.FieldCreatedAt, field.TypeTime, value)
