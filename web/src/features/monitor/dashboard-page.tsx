@@ -23,7 +23,7 @@ export function DashboardPage() {
   const events = useQuery(eventsQueryOptions);
   const outbox = useQuery(outboxQueryOptions);
 
-	const activate = useMutation({
+  const activate = useMutation({
     mutationFn: activateRepository,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["repositories"] });
@@ -162,13 +162,14 @@ export function DashboardPage() {
           <ul className="event-list">
             {(events.data?.items ?? []).map((ev) => (
               <li key={ev.id}>
-                <span className="event-kind">{ev.kind}</span>
-                <span>{ev.action}</span>
+                <span className={`event-kind kind-${ev.kind}`}>{formatEventKind(ev.kind)}</span>
+                <span className="event-action">{formatEventAction(ev.action)}</span>
                 <strong>{ev.title || "（无标题）"}</strong>
+                {ev.actor && <span className="muted">· {ev.actor}</span>}
+                {ev.severity && <span className={`severity severity-${ev.severity}`}>{ev.severity}</span>}
+                {ev.occurred_at && <span className="event-time">{formatRelativeTime(ev.occurred_at)}</span>}
                 {ev.html_url ? (
-                  <a href={ev.html_url} target="_blank" rel="noreferrer">
-                    打开
-                  </a>
+                  <a className="quiet-button" href={ev.html_url} target="_blank" rel="noreferrer">打开</a>
                 ) : null}
               </li>
             ))}
@@ -184,9 +185,11 @@ export function DashboardPage() {
           <ul className="event-list">
             {(outbox.data?.items ?? []).map((item) => (
               <li key={item.id}>
-                <span className="event-kind">{item.status}</span>
+                <span className={`event-kind status-${item.status}`}>{item.status}</span>
                 <strong>{item.title || item.id}</strong>
-                <span className="muted">尝试 {item.attempt_count}</span>
+                <span className="muted">尝试 {item.attempt_count} 次</span>
+                {item.last_error_code && <span className="error-code">{item.last_error_code}</span>}
+                {item.created_at && <span className="event-time">{formatRelativeTime(item.created_at)}</span>}
                 {item.status === "dead" ? (
                   <button className="quiet-button" type="button" onClick={() => retry.mutate(item.id)} disabled={retry.isPending}>
                     重试
@@ -223,4 +226,53 @@ function syncLabel(status: string): string {
     default:
       return status;
   }
+}
+
+// 格式化事件类型
+function formatEventKind(kind: string): string {
+  switch (kind) {
+    case "issue": return "Issue";
+    case "pull_request": return "PR";
+    case "workflow_run": return "Actions";
+    case "dependabot": return "Dependabot";
+    case "code_scanning": return "Code Scan";
+    case "secret_scanning": return "Secret";
+    default: return kind;
+  }
+}
+
+// 格式化事件动作
+function formatEventAction(action: string): string {
+  switch (action) {
+    case "opened": return "打开";
+    case "closed": return "关闭";
+    case "reopened": return "重新打开";
+    case "completed": return "完成";
+    case "recovered": return "恢复";
+    case "updated": return "更新";
+    case "created": return "创建";
+    case "dismissed": return "忽略";
+    case "fixed": return "修复";
+    default: return action;
+  }
+}
+
+// 格式化相对时间
+function formatRelativeTime(dateString: string): string {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '';
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  if (diffMs < 0) return '';
+  const diffSeconds = Math.floor(diffMs / 1000);
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSeconds < 60) return '刚刚';
+  if (diffMinutes < 60) return `${diffMinutes}分钟前`;
+  if (diffHours < 24) return `${diffHours}小时前`;
+  if (diffDays < 30) return `${diffDays}天前`;
+  return date.toLocaleDateString('zh-CN');
 }

@@ -48,6 +48,10 @@ export interface MonitorEvent {
   html_url: string;
   occurred_at: string;
   suppress_notification: boolean;
+  // 新增字段
+  repository_id?: string;
+  subject_number?: number;
+  workflow_conclusion?: string;
 }
 
 export interface OutboxItem {
