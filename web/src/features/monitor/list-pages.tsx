@@ -75,7 +75,7 @@ const GITHUB_APPS_SETTINGS = "https://github.com/settings/apps";
 const GITHUB_INSTALLATIONS = "https://github.com/settings/installations";
 
 function WorkItemsList({ kind, title, description }: { kind: string; title: string; description: string }) {
-  const [state, setState] = useState<string>("");
+  const [state, setState] = useState<string>("open");
   const q = useQuery({
     queryKey: ["work-items", kind, state],
     queryFn: () => {
@@ -144,6 +144,7 @@ export function ReposPage() {
   const repos = useQuery(repositoriesQueryOptions);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const updateSettings = useMutation({
     mutationFn: ({ id, settings }: { id: string; settings: RepositorySettings }) => {
@@ -151,23 +152,73 @@ export function ReposPage() {
       setSavingId(id);
       return updateRepositorySettings(id, settings);
     },
-    onSuccess: async () => {
-      setSavingId(null);
-      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    onMutate: async ({ id, settings }) => {
+      // 乐观更新：立即修改本地缓存，避免 refetch 导致列表跳动。
+      await queryClient.cancelQueries({ queryKey: ["repositories"] });
+      const prev = queryClient.getQueryData<{ items: Repository[] }>(["repositories"]);
+      queryClient.setQueryData<{ items: Repository[] }>(["repositories"], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          items: old.items.map((r) => {
+            if (r.id !== id) return r;
+            const updated = { ...r, ...settings };
+            // 归档时联动取消所有开关
+            if (settings.is_archived === true) {
+              updated.monitor_enabled = false;
+              updated.issues_enabled = false;
+              updated.pr_enabled = false;
+              updated.actions_enabled = false;
+              updated.alerts_enabled = false;
+            }
+            // 取消归档时恢复所有开关
+            if (settings.is_archived === false) {
+              updated.monitor_enabled = true;
+              updated.issues_enabled = true;
+              updated.pr_enabled = true;
+              updated.actions_enabled = true;
+              updated.alerts_enabled = true;
+            }
+            return updated;
+          }),
+        };
+      });
+      return { prev };
     },
-    onError: (error) => {
+    onError: (error, _vars, context) => {
       setSavingId(null);
       setErrorMsg(toApiError(error).message || "保存失败");
+      // 回滚乐观更新
+      if (context?.prev) {
+        queryClient.setQueryData(["repositories"], context.prev);
+      }
+    },
+    onSuccess: async () => {
+      setSavingId(null);
+      // 仅刷新 dashboard 统计（不 refetch 列表，避免跳动）
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
+
+  const allRepos = repos.data?.items ?? [];
+  const activeRepos = allRepos.filter((r) => !r.is_archived);
+  const archivedRepos = allRepos.filter((r) => r.is_archived);
+  const displayed = showArchived ? archivedRepos : activeRepos;
 
   return (
     <ListShell eyebrow="仓库" title="仓库管理" description="管理仓库监控开关、能力开关和归档状态。关闭某项能力后，该仓库对应类型的 Webhook 事件将被忽略。">
       {errorMsg ? <ErrorAlert title="更新失败" message={errorMsg} /> : null}
-      {repos.data?.items.length ? (
+      <div className="filter-bar">
+        <button className={`quiet-button${!showArchived ? " active" : ""}`} type="button" onClick={() => setShowArchived(false)}>
+          关注中 ({activeRepos.length})
+        </button>
+        <button className={`quiet-button${showArchived ? " active" : ""}`} type="button" onClick={() => setShowArchived(true)}>
+          已归档 ({archivedRepos.length})
+        </button>
+      </div>
+      {displayed.length ? (
         <ul className="repo-settings-list">
-          {repos.data.items.map((repo) => (
+          {displayed.map((repo) => (
             <RepoCard
               key={repo.id}
               repo={repo}
@@ -178,9 +229,9 @@ export function ReposPage() {
         </ul>
       ) : (
         <EmptyState
-          title="暂无仓库"
-          description="安装 GitHub App 后仓库会自动出现。"
-          action={<Link to="/github">打开 GitHub App 页</Link>}
+          title={showArchived ? "没有已归档的仓库" : "暂无关注的仓库"}
+          description={showArchived ? "归档的仓库会显示在这里。" : "安装 GitHub App 后仓库会自动出现。"}
+          action={showArchived ? undefined : <Link to="/github">打开 GitHub App 页</Link>}
         />
       )}
     </ListShell>
@@ -273,9 +324,16 @@ export function ActionsPage() {
 }
 
 export function SecurityPage() {
+  const [state, setState] = useState<string>("open");
+  const [alertKind, setAlertKind] = useState<string>("");
   const q = useQuery({
-    queryKey: ["security-alerts"],
-    queryFn: () => apiRequest<Page<SecurityAlert>>("/api/v1/security-alerts?per_page=50"),
+    queryKey: ["security-alerts", state, alertKind],
+    queryFn: () => {
+      const params = new URLSearchParams({ per_page: "50" });
+      if (state) params.set("state", state);
+      if (alertKind) params.set("alert_kind", alertKind);
+      return apiRequest<Page<SecurityAlert>>(`/api/v1/security-alerts?${params.toString()}`);
+    },
   });
   return (
     <ListShell
@@ -283,6 +341,16 @@ export function SecurityPage() {
       title="安全告警"
       description="Dependabot / Code Scanning / Secret Scanning。外部公开仓不读取安全告警。"
     >
+      <div className="filter-bar">
+        <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>Open</button>
+        <button className={`quiet-button${state === "dismissed" ? " active" : ""}`} type="button" onClick={() => setState("dismissed")}>Dismissed</button>
+        <button className={`quiet-button${state === "" ? " active" : ""}`} type="button" onClick={() => setState("")}>全部</button>
+        <span className="filter-bar__sep" />
+        <button className={`quiet-button${alertKind === "" ? " active" : ""}`} type="button" onClick={() => setAlertKind("")}>全部类型</button>
+        <button className={`quiet-button${alertKind === "dependabot" ? " active" : ""}`} type="button" onClick={() => setAlertKind("dependabot")}>Dependabot</button>
+        <button className={`quiet-button${alertKind === "code_scanning" ? " active" : ""}`} type="button" onClick={() => setAlertKind("code_scanning")}>Code Scanning</button>
+        <button className={`quiet-button${alertKind === "secret_scanning" ? " active" : ""}`} type="button" onClick={() => setAlertKind("secret_scanning")}>Secret Scanning</button>
+      </div>
       {q.data?.items.length ? (
         <ul className="event-list">
           {q.data.items.map((a) => {
@@ -309,8 +377,8 @@ export function SecurityPage() {
         </ul>
       ) : (
         <EmptyState
-          title="暂无安全告警"
-          description="在 GitHub 开启仓库安全功能，并授予 Dependabot / Code scanning / Secret scanning 只读权限后，Webhook 或对账会写入此处。"
+          title={state === "dismissed" ? "没有已忽略的告警" : "暂无安全告警"}
+          description={state === "dismissed" ? "已忽略的告警会显示在这里。" : "在 GitHub 开启仓库安全功能，并授予 Dependabot / Code scanning / Secret scanning 只读权限后，Webhook 或对账会写入此处。"}
           action={<Link to="/github">查看权限清单</Link>}
         />
       )}
@@ -979,6 +1047,7 @@ export function AboutPage() {
   const [digestEmpty, setDigestEmpty] = useState(false);
   const [aggregateSec, setAggregateSec] = useState(60);
   const [burstThreshold, setBurstThreshold] = useState(15);
+  const [closedDisplayLimit, setClosedDisplayLimit] = useState(20);
 
   useEffect(() => {
     if (!settings.data) return;
@@ -987,6 +1056,7 @@ export function AboutPage() {
     setDigestEmpty(Boolean(settings.data["digest.send_empty"]));
     setAggregateSec(Number(settings.data["notify.aggregate_window_sec"] ?? 60));
     setBurstThreshold(Number(settings.data["notify.burst_threshold"] ?? 15));
+    setClosedDisplayLimit(Number(settings.data["display.closed_limit"] ?? 20));
   }, [settings.data]);
 
   const v = version.data || {};
@@ -1245,7 +1315,20 @@ export function AboutPage() {
               onChange={(e) => setBurstThreshold(Number(e.target.value) || 1)}
             />
           </label>
+          <label className="field--plain">
+            <span>已关闭/已忽略显示数量</span>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={closedDisplayLimit}
+              onChange={(e) => setClosedDisplayLimit(Math.min(200, Math.max(1, Number(e.target.value) || 1)))}
+            />
+          </label>
         </div>
+        <p className="field-hint">
+          Issues、PR、安全告警的 Closed/Dismissed 列表默认只显示最近指定数量的条目，避免历史数据无限增长。
+        </p>
         <label className="check-row">
           <input type="checkbox" checked={digestEmpty} onChange={(e) => setDigestEmpty(e.target.checked)} />
           <span>无事件时仍发送空摘要</span>
@@ -1262,6 +1345,7 @@ export function AboutPage() {
               "digest.send_empty": digestEmpty,
               "notify.aggregate_window_sec": aggregateSec,
               "notify.burst_threshold": burstThreshold,
+              "display.closed_limit": closedDisplayLimit,
             });
           }}
         >

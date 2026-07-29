@@ -276,9 +276,21 @@ func (s *repositoryStore) UpdateSettings(ctx context.Context, id string, setting
 	if settings.IsArchived != nil {
 		upd.SetIsArchived(*settings.IsArchived)
 		if *settings.IsArchived {
+			// 归档时联动关闭所有能力开关，避免界面显示矛盾。
 			upd.SetSyncStatus(SyncStatusArchived)
+			upd.SetMonitorEnabled(false)
+			upd.SetIssuesEnabled(false)
+			upd.SetPrEnabled(false)
+			upd.SetActionsEnabled(false)
+			upd.SetAlertsEnabled(false)
 		} else {
+			// 取消归档时恢复所有能力开关。
 			upd.SetSyncStatus(SyncStatusActive)
+			upd.SetMonitorEnabled(true)
+			upd.SetIssuesEnabled(true)
+			upd.SetPrEnabled(true)
+			upd.SetActionsEnabled(true)
+			upd.SetAlertsEnabled(true)
 		}
 	}
 	return mapStoreError(upd.Exec(ctx))
