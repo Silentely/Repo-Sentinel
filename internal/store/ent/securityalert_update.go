@@ -175,6 +175,20 @@ func (_u *SecurityAlertUpdate) SetNillableStateHash(v *string) *SecurityAlertUpd
 	return _u
 }
 
+// SetIgnored sets the "ignored" field.
+func (_u *SecurityAlertUpdate) SetIgnored(v bool) *SecurityAlertUpdate {
+	_u.mutation.SetIgnored(v)
+	return _u
+}
+
+// SetNillableIgnored sets the "ignored" field if the given value is not nil.
+func (_u *SecurityAlertUpdate) SetNillableIgnored(v *bool) *SecurityAlertUpdate {
+	if v != nil {
+		_u.SetIgnored(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *SecurityAlertUpdate) SetUpdatedAt(v time.Time) *SecurityAlertUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -262,6 +276,9 @@ func (_u *SecurityAlertUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.StateHash(); ok {
 		_spec.SetField(securityalert.FieldStateHash, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Ignored(); ok {
+		_spec.SetField(securityalert.FieldIgnored, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(securityalert.FieldUpdatedAt, field.TypeTime, value)
@@ -433,6 +450,20 @@ func (_u *SecurityAlertUpdateOne) SetNillableStateHash(v *string) *SecurityAlert
 	return _u
 }
 
+// SetIgnored sets the "ignored" field.
+func (_u *SecurityAlertUpdateOne) SetIgnored(v bool) *SecurityAlertUpdateOne {
+	_u.mutation.SetIgnored(v)
+	return _u
+}
+
+// SetNillableIgnored sets the "ignored" field if the given value is not nil.
+func (_u *SecurityAlertUpdateOne) SetNillableIgnored(v *bool) *SecurityAlertUpdateOne {
+	if v != nil {
+		_u.SetIgnored(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *SecurityAlertUpdateOne) SetUpdatedAt(v time.Time) *SecurityAlertUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -550,6 +581,9 @@ func (_u *SecurityAlertUpdateOne) sqlSave(ctx context.Context) (_node *SecurityA
 	}
 	if value, ok := _u.mutation.StateHash(); ok {
 		_spec.SetField(securityalert.FieldStateHash, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Ignored(); ok {
+		_spec.SetField(securityalert.FieldIgnored, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(securityalert.FieldUpdatedAt, field.TypeTime, value)

@@ -34,6 +34,8 @@ func (WorkflowRun) Fields() []ent.Field {
 		field.Time("run_updated_at"),
 		field.Time("run_completed_at").Optional().Nillable(),
 		field.String("state_hash"),
+		// ignored：用户手动忽略的运行记录，列表默认隐藏。
+		field.Bool("ignored").Default(false),
 		field.Time("created_at").Immutable(),
 		field.Time("updated_at"),
 	}
@@ -44,6 +46,7 @@ func (WorkflowRun) Indexes() []ent.Index {
 		index.Fields("repository_id", "github_run_id").Unique(),
 		index.Fields("repository_id", "github_workflow_id", "head_branch"),
 		index.Fields("conclusion"),
+		index.Fields("ignored"),
 		index.Fields("run_updated_at"),
 	}
 }

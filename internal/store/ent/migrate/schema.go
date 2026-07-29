@@ -357,6 +357,7 @@ var (
 		{Name: "html_url", Type: field.TypeString, Default: ""},
 		{Name: "source_updated_at", Type: field.TypeTime},
 		{Name: "state_hash", Type: field.TypeString},
+		{Name: "ignored", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -380,6 +381,11 @@ var (
 				Name:    "securityalert_severity",
 				Unique:  false,
 				Columns: []*schema.Column{SecurityAlertsColumns[5]},
+			},
+			{
+				Name:    "securityalert_ignored",
+				Unique:  false,
+				Columns: []*schema.Column{SecurityAlertsColumns[11]},
 			},
 			{
 				Name:    "securityalert_source_updated_at",
@@ -493,6 +499,7 @@ var (
 		{Name: "check_conclusion", Type: field.TypeString, Default: ""},
 		{Name: "checks_total", Type: field.TypeInt, Default: 0},
 		{Name: "checks_passed", Type: field.TypeInt, Default: 0},
+		{Name: "ignored", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -513,9 +520,14 @@ var (
 				Columns: []*schema.Column{WorkItemsColumns[1], WorkItemsColumns[3], WorkItemsColumns[4]},
 			},
 			{
+				Name:    "workitem_ignored_kind_state",
+				Unique:  false,
+				Columns: []*schema.Column{WorkItemsColumns[22], WorkItemsColumns[3], WorkItemsColumns[4]},
+			},
+			{
 				Name:    "workitem_updated_at",
 				Unique:  false,
-				Columns: []*schema.Column{WorkItemsColumns[23]},
+				Columns: []*schema.Column{WorkItemsColumns[24]},
 			},
 		},
 	}
@@ -540,6 +552,7 @@ var (
 		{Name: "run_updated_at", Type: field.TypeTime},
 		{Name: "run_completed_at", Type: field.TypeTime, Nullable: true},
 		{Name: "state_hash", Type: field.TypeString},
+		{Name: "ignored", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -563,6 +576,11 @@ var (
 				Name:    "workflowrun_conclusion",
 				Unique:  false,
 				Columns: []*schema.Column{WorkflowRunsColumns[10]},
+			},
+			{
+				Name:    "workflowrun_ignored",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowRunsColumns[19]},
 			},
 			{
 				Name:    "workflowrun_run_updated_at",

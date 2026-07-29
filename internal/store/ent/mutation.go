@@ -8925,6 +8925,7 @@ type SecurityAlertMutation struct {
 	html_url           *string
 	source_updated_at  *time.Time
 	state_hash         *string
+	ignored            *bool
 	created_at         *time.Time
 	updated_at         *time.Time
 	clearedFields      map[string]struct{}
@@ -9417,6 +9418,42 @@ func (m *SecurityAlertMutation) ResetStateHash() {
 	m.state_hash = nil
 }
 
+// SetIgnored sets the "ignored" field.
+func (m *SecurityAlertMutation) SetIgnored(b bool) {
+	m.ignored = &b
+}
+
+// Ignored returns the value of the "ignored" field in the mutation.
+func (m *SecurityAlertMutation) Ignored() (r bool, exists bool) {
+	v := m.ignored
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIgnored returns the old "ignored" field's value of the SecurityAlert entity.
+// If the SecurityAlert object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SecurityAlertMutation) OldIgnored(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIgnored is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIgnored requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIgnored: %w", err)
+	}
+	return oldValue.Ignored, nil
+}
+
+// ResetIgnored resets all changes to the "ignored" field.
+func (m *SecurityAlertMutation) ResetIgnored() {
+	m.ignored = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *SecurityAlertMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -9523,7 +9560,7 @@ func (m *SecurityAlertMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SecurityAlertMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.repository_id != nil {
 		fields = append(fields, securityalert.FieldRepositoryID)
 	}
@@ -9553,6 +9590,9 @@ func (m *SecurityAlertMutation) Fields() []string {
 	}
 	if m.state_hash != nil {
 		fields = append(fields, securityalert.FieldStateHash)
+	}
+	if m.ignored != nil {
+		fields = append(fields, securityalert.FieldIgnored)
 	}
 	if m.created_at != nil {
 		fields = append(fields, securityalert.FieldCreatedAt)
@@ -9588,6 +9628,8 @@ func (m *SecurityAlertMutation) Field(name string) (ent.Value, bool) {
 		return m.SourceUpdatedAt()
 	case securityalert.FieldStateHash:
 		return m.StateHash()
+	case securityalert.FieldIgnored:
+		return m.Ignored()
 	case securityalert.FieldCreatedAt:
 		return m.CreatedAt()
 	case securityalert.FieldUpdatedAt:
@@ -9621,6 +9663,8 @@ func (m *SecurityAlertMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldSourceUpdatedAt(ctx)
 	case securityalert.FieldStateHash:
 		return m.OldStateHash(ctx)
+	case securityalert.FieldIgnored:
+		return m.OldIgnored(ctx)
 	case securityalert.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case securityalert.FieldUpdatedAt:
@@ -9703,6 +9747,13 @@ func (m *SecurityAlertMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStateHash(v)
+		return nil
+	case securityalert.FieldIgnored:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIgnored(v)
 		return nil
 	case securityalert.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -9811,6 +9862,9 @@ func (m *SecurityAlertMutation) ResetField(name string) error {
 		return nil
 	case securityalert.FieldStateHash:
 		m.ResetStateHash()
+		return nil
+	case securityalert.FieldIgnored:
+		m.ResetIgnored()
 		return nil
 	case securityalert.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -11896,6 +11950,7 @@ type WorkItemMutation struct {
 	addchecks_total      *int
 	checks_passed        *int
 	addchecks_passed     *int
+	ignored              *bool
 	created_at           *time.Time
 	updated_at           *time.Time
 	clearedFields        map[string]struct{}
@@ -12911,6 +12966,42 @@ func (m *WorkItemMutation) ResetChecksPassed() {
 	m.addchecks_passed = nil
 }
 
+// SetIgnored sets the "ignored" field.
+func (m *WorkItemMutation) SetIgnored(b bool) {
+	m.ignored = &b
+}
+
+// Ignored returns the value of the "ignored" field in the mutation.
+func (m *WorkItemMutation) Ignored() (r bool, exists bool) {
+	v := m.ignored
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIgnored returns the old "ignored" field's value of the WorkItem entity.
+// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkItemMutation) OldIgnored(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIgnored is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIgnored requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIgnored: %w", err)
+	}
+	return oldValue.Ignored, nil
+}
+
+// ResetIgnored resets all changes to the "ignored" field.
+func (m *WorkItemMutation) ResetIgnored() {
+	m.ignored = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *WorkItemMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -13017,7 +13108,7 @@ func (m *WorkItemMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkItemMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.repository_id != nil {
 		fields = append(fields, workitem.FieldRepositoryID)
 	}
@@ -13081,6 +13172,9 @@ func (m *WorkItemMutation) Fields() []string {
 	if m.checks_passed != nil {
 		fields = append(fields, workitem.FieldChecksPassed)
 	}
+	if m.ignored != nil {
+		fields = append(fields, workitem.FieldIgnored)
+	}
 	if m.created_at != nil {
 		fields = append(fields, workitem.FieldCreatedAt)
 	}
@@ -13137,6 +13231,8 @@ func (m *WorkItemMutation) Field(name string) (ent.Value, bool) {
 		return m.ChecksTotal()
 	case workitem.FieldChecksPassed:
 		return m.ChecksPassed()
+	case workitem.FieldIgnored:
+		return m.Ignored()
 	case workitem.FieldCreatedAt:
 		return m.CreatedAt()
 	case workitem.FieldUpdatedAt:
@@ -13192,6 +13288,8 @@ func (m *WorkItemMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldChecksTotal(ctx)
 	case workitem.FieldChecksPassed:
 		return m.OldChecksPassed(ctx)
+	case workitem.FieldIgnored:
+		return m.OldIgnored(ctx)
 	case workitem.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case workitem.FieldUpdatedAt:
@@ -13351,6 +13449,13 @@ func (m *WorkItemMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetChecksPassed(v)
+		return nil
+	case workitem.FieldIgnored:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIgnored(v)
 		return nil
 	case workitem.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -13538,6 +13643,9 @@ func (m *WorkItemMutation) ResetField(name string) error {
 	case workitem.FieldChecksPassed:
 		m.ResetChecksPassed()
 		return nil
+	case workitem.FieldIgnored:
+		m.ResetIgnored()
+		return nil
 	case workitem.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
@@ -13624,6 +13732,7 @@ type WorkflowRunMutation struct {
 	run_updated_at        *time.Time
 	run_completed_at      *time.Time
 	state_hash            *string
+	ignored               *bool
 	created_at            *time.Time
 	updated_at            *time.Time
 	clearedFields         map[string]struct{}
@@ -14516,6 +14625,42 @@ func (m *WorkflowRunMutation) ResetStateHash() {
 	m.state_hash = nil
 }
 
+// SetIgnored sets the "ignored" field.
+func (m *WorkflowRunMutation) SetIgnored(b bool) {
+	m.ignored = &b
+}
+
+// Ignored returns the value of the "ignored" field in the mutation.
+func (m *WorkflowRunMutation) Ignored() (r bool, exists bool) {
+	v := m.ignored
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIgnored returns the old "ignored" field's value of the WorkflowRun entity.
+// If the WorkflowRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkflowRunMutation) OldIgnored(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIgnored is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIgnored requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIgnored: %w", err)
+	}
+	return oldValue.Ignored, nil
+}
+
+// ResetIgnored resets all changes to the "ignored" field.
+func (m *WorkflowRunMutation) ResetIgnored() {
+	m.ignored = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *WorkflowRunMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -14622,7 +14767,7 @@ func (m *WorkflowRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkflowRunMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.repository_id != nil {
 		fields = append(fields, workflowrun.FieldRepositoryID)
 	}
@@ -14677,6 +14822,9 @@ func (m *WorkflowRunMutation) Fields() []string {
 	if m.state_hash != nil {
 		fields = append(fields, workflowrun.FieldStateHash)
 	}
+	if m.ignored != nil {
+		fields = append(fields, workflowrun.FieldIgnored)
+	}
 	if m.created_at != nil {
 		fields = append(fields, workflowrun.FieldCreatedAt)
 	}
@@ -14727,6 +14875,8 @@ func (m *WorkflowRunMutation) Field(name string) (ent.Value, bool) {
 		return m.RunCompletedAt()
 	case workflowrun.FieldStateHash:
 		return m.StateHash()
+	case workflowrun.FieldIgnored:
+		return m.Ignored()
 	case workflowrun.FieldCreatedAt:
 		return m.CreatedAt()
 	case workflowrun.FieldUpdatedAt:
@@ -14776,6 +14926,8 @@ func (m *WorkflowRunMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldRunCompletedAt(ctx)
 	case workflowrun.FieldStateHash:
 		return m.OldStateHash(ctx)
+	case workflowrun.FieldIgnored:
+		return m.OldIgnored(ctx)
 	case workflowrun.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case workflowrun.FieldUpdatedAt:
@@ -14914,6 +15066,13 @@ func (m *WorkflowRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStateHash(v)
+		return nil
+	case workflowrun.FieldIgnored:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIgnored(v)
 		return nil
 	case workflowrun.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -15109,6 +15268,9 @@ func (m *WorkflowRunMutation) ResetField(name string) error {
 		return nil
 	case workflowrun.FieldStateHash:
 		m.ResetStateHash()
+		return nil
+	case workflowrun.FieldIgnored:
+		m.ResetIgnored()
 		return nil
 	case workflowrun.FieldCreatedAt:
 		m.ResetCreatedAt()

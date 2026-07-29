@@ -486,17 +486,59 @@ func repoFullNameByID(ctx context.Context, client *entclient.Client, ids []strin
 	return out
 }
 
+// activeRepositoryIDs 返回未归档仓库的 ID 列表。
+func activeRepositoryIDs(ctx context.Context, client *entclient.Client) ([]string, error) {
+	rows, err := client.Repository.Query().
+		Where(repository.IsArchivedEQ(false)).
+		Select(repository.FieldID).
+		Strings(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	return rows, nil
+}
+
+func (s *workItemStore) Get(ctx context.Context, id string) (WorkItem, error) {
+	entity, err := s.client.WorkItem.Get(ctx, id)
+	if err != nil {
+		return WorkItem{}, mapStoreError(err)
+	}
+	return workItemFromEntity(entity), nil
+}
+
+func (s *workItemStore) SetIgnored(ctx context.Context, id string, ignored bool) error {
+	err := s.client.WorkItem.UpdateOneID(id).
+		SetIgnored(ignored).
+		SetUpdatedAt(time.Now().UTC()).
+		Exec(ctx)
+	return mapStoreError(err)
+}
+
 func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, PageResult, error) {
 	f = normalizePage(f)
 	q := s.client.WorkItem.Query()
 	if f.RepositoryID != "" {
 		q = q.Where(workitem.RepositoryIDEQ(f.RepositoryID))
+	} else if !f.IncludeArchivedRepos {
+		ids, err := activeRepositoryIDs(ctx, s.client)
+		if err != nil {
+			return nil, PageResult{}, err
+		}
+		if len(ids) == 0 {
+			return []WorkItem{}, PageResult{Page: f.Page, PerPage: f.PerPage, Total: 0}, nil
+		}
+		q = q.Where(workitem.RepositoryIDIn(ids...))
 	}
 	if f.Kind != "" {
 		q = q.Where(workitem.KindEQ(f.Kind))
 	}
 	if f.State != "" {
 		q = q.Where(workitem.StateEQ(f.State))
+	}
+	if f.OnlyIgnored {
+		q = q.Where(workitem.IgnoredEQ(true))
+	} else if !f.IncludeIgnored {
+		q = q.Where(workitem.IgnoredEQ(false))
 	}
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
@@ -523,7 +565,20 @@ func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, Pag
 }
 
 func (s *workItemStore) CountOpen(ctx context.Context) (int, error) {
-	n, err := s.client.WorkItem.Query().Where(workitem.StateEQ("open")).Count(ctx)
+	ids, err := activeRepositoryIDs(ctx, s.client)
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	n, err := s.client.WorkItem.Query().
+		Where(
+			workitem.KindEQ(WorkItemKindIssue),
+			workitem.StateEQ("open"),
+			workitem.IgnoredEQ(false),
+			workitem.RepositoryIDIn(ids...),
+		).Count(ctx)
 	return n, mapStoreError(err)
 }
 
@@ -536,7 +591,7 @@ func workItemFromEntity(e *entclient.WorkItem) WorkItem {
 		ReviewState: e.ReviewState, ReviewDecision: e.ReviewDecision, Reviewers: e.Reviewers,
 		CheckStatus: e.CheckStatus, CheckConclusion: e.CheckConclusion,
 		ChecksTotal: e.ChecksTotal, ChecksPassed: e.ChecksPassed,
-		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+		Ignored: e.Ignored, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 }
 
@@ -656,14 +711,44 @@ func (s *workflowRunStore) LatestCompleted(ctx context.Context, repoID string, w
 	return workflowRunFromEntity(entity), nil
 }
 
+func (s *workflowRunStore) Get(ctx context.Context, id string) (WorkflowRun, error) {
+	entity, err := s.client.WorkflowRun.Get(ctx, id)
+	if err != nil {
+		return WorkflowRun{}, mapStoreError(err)
+	}
+	return workflowRunFromEntity(entity), nil
+}
+
+func (s *workflowRunStore) SetIgnored(ctx context.Context, id string, ignored bool) error {
+	err := s.client.WorkflowRun.UpdateOneID(id).
+		SetIgnored(ignored).
+		SetUpdatedAt(time.Now().UTC()).
+		Exec(ctx)
+	return mapStoreError(err)
+}
+
 func (s *workflowRunStore) List(ctx context.Context, f ListFilter) ([]WorkflowRun, PageResult, error) {
 	f = normalizePage(f)
 	q := s.client.WorkflowRun.Query()
 	if f.RepositoryID != "" {
 		q = q.Where(workflowrun.RepositoryIDEQ(f.RepositoryID))
+	} else if !f.IncludeArchivedRepos {
+		ids, err := activeRepositoryIDs(ctx, s.client)
+		if err != nil {
+			return nil, PageResult{}, err
+		}
+		if len(ids) == 0 {
+			return []WorkflowRun{}, PageResult{Page: f.Page, PerPage: f.PerPage, Total: 0}, nil
+		}
+		q = q.Where(workflowrun.RepositoryIDIn(ids...))
 	}
 	if f.Status != "" {
 		q = q.Where(workflowrun.ConclusionEQ(f.Status))
+	}
+	if f.OnlyIgnored {
+		q = q.Where(workflowrun.IgnoredEQ(true))
+	} else if !f.IncludeIgnored {
+		q = q.Where(workflowrun.IgnoredEQ(false))
 	}
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
@@ -690,8 +775,17 @@ func (s *workflowRunStore) List(ctx context.Context, f ListFilter) ([]WorkflowRu
 }
 
 func (s *workflowRunStore) CountFailed(ctx context.Context) (int, error) {
+	ids, err := activeRepositoryIDs(ctx, s.client)
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
 	n, err := s.client.WorkflowRun.Query().Where(
 		workflowrun.ConclusionIn("failure", "timed_out", "cancelled", "action_required", "startup_failure"),
+		workflowrun.IgnoredEQ(false),
+		workflowrun.RepositoryIDIn(ids...),
 	).Count(ctx)
 	return n, mapStoreError(err)
 }
@@ -703,7 +797,7 @@ func workflowRunFromEntity(e *entclient.WorkflowRun) WorkflowRun {
 		HeadSHA: e.HeadSha, Status: e.Status, Conclusion: e.Conclusion, PreviousConclusion: e.PreviousConclusion,
 		Actor: e.Actor, RunAttempt: e.RunAttempt, HTMLURL: e.HTMLURL, RunStartedAt: e.RunStartedAt,
 		RunUpdatedAt: e.RunUpdatedAt, RunCompletedAt: e.RunCompletedAt, StateHash: e.StateHash,
-		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+		Ignored: e.Ignored, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 }
 
@@ -776,17 +870,47 @@ func (s *securityAlertStore) UpsertIfNewer(ctx context.Context, in SecurityAlert
 	return securityAlertFromEntity(entity), true, nil
 }
 
+func (s *securityAlertStore) Get(ctx context.Context, id string) (SecurityAlert, error) {
+	entity, err := s.client.SecurityAlert.Get(ctx, id)
+	if err != nil {
+		return SecurityAlert{}, mapStoreError(err)
+	}
+	return securityAlertFromEntity(entity), nil
+}
+
+func (s *securityAlertStore) SetIgnored(ctx context.Context, id string, ignored bool) error {
+	err := s.client.SecurityAlert.UpdateOneID(id).
+		SetIgnored(ignored).
+		SetUpdatedAt(time.Now().UTC()).
+		Exec(ctx)
+	return mapStoreError(err)
+}
+
 func (s *securityAlertStore) List(ctx context.Context, f ListFilter) ([]SecurityAlert, PageResult, error) {
 	f = normalizePage(f)
 	q := s.client.SecurityAlert.Query()
 	if f.RepositoryID != "" {
 		q = q.Where(securityalert.RepositoryIDEQ(f.RepositoryID))
+	} else if !f.IncludeArchivedRepos {
+		ids, err := activeRepositoryIDs(ctx, s.client)
+		if err != nil {
+			return nil, PageResult{}, err
+		}
+		if len(ids) == 0 {
+			return []SecurityAlert{}, PageResult{Page: f.Page, PerPage: f.PerPage, Total: 0}, nil
+		}
+		q = q.Where(securityalert.RepositoryIDIn(ids...))
 	}
 	if f.Kind != "" {
 		q = q.Where(securityalert.AlertKindEQ(f.Kind))
 	}
 	if f.State != "" {
 		q = q.Where(securityalert.StateEQ(f.State))
+	}
+	if f.OnlyIgnored {
+		q = q.Where(securityalert.IgnoredEQ(true))
+	} else if !f.IncludeIgnored {
+		q = q.Where(securityalert.IgnoredEQ(false))
 	}
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
@@ -813,7 +937,18 @@ func (s *securityAlertStore) List(ctx context.Context, f ListFilter) ([]Security
 }
 
 func (s *securityAlertStore) CountOpen(ctx context.Context) (int, error) {
-	n, err := s.client.SecurityAlert.Query().Where(securityalert.StateIn("open", "reopened")).Count(ctx)
+	ids, err := activeRepositoryIDs(ctx, s.client)
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	n, err := s.client.SecurityAlert.Query().Where(
+		securityalert.StateIn("open", "reopened"),
+		securityalert.IgnoredEQ(false),
+		securityalert.RepositoryIDIn(ids...),
+	).Count(ctx)
 	return n, mapStoreError(err)
 }
 
@@ -822,7 +957,7 @@ func securityAlertFromEntity(e *entclient.SecurityAlert) SecurityAlert {
 		ID: e.ID, RepositoryID: e.RepositoryID, AlertKind: e.AlertKind, AlertNumber: e.AlertNumber,
 		State: e.State, Severity: e.Severity, RuleOrDependency: e.RuleOrDependency,
 		DismissedReason: e.DismissedReason, HTMLURL: e.HTMLURL, SourceUpdatedAt: e.SourceUpdatedAt,
-		StateHash: e.StateHash, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+		StateHash: e.StateHash, Ignored: e.Ignored, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 }
 
@@ -1265,21 +1400,47 @@ func cursorFromEntity(e *entclient.SyncCursor) SyncCursor {
 func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
 	var stats DashboardStats
 	var err error
-	if stats.OpenIssues, err = s.WorkItems().CountOpen(ctx); err != nil {
-		return stats, err
-	}
-	// open pulls counted via kind filter
-	openPR, err := s.client.WorkItem.Query().
-		Where(workitem.KindEQ(WorkItemKindPR), workitem.StateEQ("open")).Count(ctx)
+	// 一次取出活跃仓 ID，避免 CountOpen/PR/Actions/Security 各自重复查询。
+	activeIDs, err := activeRepositoryIDs(ctx, s.client)
 	if err != nil {
-		return stats, mapStoreError(err)
-	}
-	stats.OpenPulls = openPR
-	if stats.FailedActions, err = s.WorkflowRuns().CountFailed(ctx); err != nil {
 		return stats, err
 	}
-	if stats.OpenSecurity, err = s.SecurityAlerts().CountOpen(ctx); err != nil {
-		return stats, err
+	if len(activeIDs) == 0 {
+		stats.OpenIssues = 0
+		stats.OpenPulls = 0
+		stats.FailedActions = 0
+		stats.OpenSecurity = 0
+	} else {
+		if stats.OpenIssues, err = s.client.WorkItem.Query().Where(
+			workitem.KindEQ(WorkItemKindIssue),
+			workitem.StateEQ("open"),
+			workitem.IgnoredEQ(false),
+			workitem.RepositoryIDIn(activeIDs...),
+		).Count(ctx); err != nil {
+			return stats, mapStoreError(err)
+		}
+		if stats.OpenPulls, err = s.client.WorkItem.Query().Where(
+			workitem.KindEQ(WorkItemKindPR),
+			workitem.StateEQ("open"),
+			workitem.IgnoredEQ(false),
+			workitem.RepositoryIDIn(activeIDs...),
+		).Count(ctx); err != nil {
+			return stats, mapStoreError(err)
+		}
+		if stats.FailedActions, err = s.client.WorkflowRun.Query().Where(
+			workflowrun.ConclusionIn("failure", "timed_out", "cancelled", "action_required", "startup_failure"),
+			workflowrun.IgnoredEQ(false),
+			workflowrun.RepositoryIDIn(activeIDs...),
+		).Count(ctx); err != nil {
+			return stats, mapStoreError(err)
+		}
+		if stats.OpenSecurity, err = s.client.SecurityAlert.Query().Where(
+			securityalert.StateIn("open", "reopened"),
+			securityalert.IgnoredEQ(false),
+			securityalert.RepositoryIDIn(activeIDs...),
+		).Count(ctx); err != nil {
+			return stats, mapStoreError(err)
+		}
 	}
 	if stats.Events24h, err = s.Events().CountSince(ctx, time.Now().UTC().Add(-24*time.Hour)); err != nil {
 		return stats, err

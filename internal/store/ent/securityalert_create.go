@@ -112,6 +112,20 @@ func (_c *SecurityAlertCreate) SetStateHash(v string) *SecurityAlertCreate {
 	return _c
 }
 
+// SetIgnored sets the "ignored" field.
+func (_c *SecurityAlertCreate) SetIgnored(v bool) *SecurityAlertCreate {
+	_c.mutation.SetIgnored(v)
+	return _c
+}
+
+// SetNillableIgnored sets the "ignored" field if the given value is not nil.
+func (_c *SecurityAlertCreate) SetNillableIgnored(v *bool) *SecurityAlertCreate {
+	if v != nil {
+		_c.SetIgnored(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *SecurityAlertCreate) SetCreatedAt(v time.Time) *SecurityAlertCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -181,6 +195,10 @@ func (_c *SecurityAlertCreate) defaults() {
 		v := securityalert.DefaultHTMLURL
 		_c.mutation.SetHTMLURL(v)
 	}
+	if _, ok := _c.mutation.Ignored(); !ok {
+		v := securityalert.DefaultIgnored
+		_c.mutation.SetIgnored(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -214,6 +232,9 @@ func (_c *SecurityAlertCreate) check() error {
 	}
 	if _, ok := _c.mutation.StateHash(); !ok {
 		return &ValidationError{Name: "state_hash", err: errors.New(`ent: missing required field "SecurityAlert.state_hash"`)}
+	}
+	if _, ok := _c.mutation.Ignored(); !ok {
+		return &ValidationError{Name: "ignored", err: errors.New(`ent: missing required field "SecurityAlert.ignored"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "SecurityAlert.created_at"`)}
@@ -295,6 +316,10 @@ func (_c *SecurityAlertCreate) createSpec() (*SecurityAlert, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.StateHash(); ok {
 		_spec.SetField(securityalert.FieldStateHash, field.TypeString, value)
 		_node.StateHash = value
+	}
+	if value, ok := _c.mutation.Ignored(); ok {
+		_spec.SetField(securityalert.FieldIgnored, field.TypeBool, value)
+		_node.Ignored = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(securityalert.FieldCreatedAt, field.TypeTime, value)

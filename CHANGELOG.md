@@ -2,6 +2,31 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 SemVer。
 
+## [0.3.6] - 2026-07-29
+
+### Added
+
+- 列表本地忽略：Issue / PR / Actions / 安全告警可标记忽略（不回写 GitHub），支持「关注中 / 已忽略」切换
+- Issues / PR / Actions / 安全告警页增加按仓库筛选
+- 忽略 API：`PATCH /api/v1/work-items/{id}/ignored`、`PATCH /api/v1/workflow-runs/{id}/ignored`、`PATCH /api/v1/security-alerts/{id}/ignored`
+- 列表查询参数 `ignored=true|all`；默认排除已忽略项
+- 数据库迁移 `20260729000300_item_ignored`（PostgreSQL + SQLite）
+- 仪表盘区块（通知投递 / 最近事件 / 仓库与基线）支持折叠，状态写入 localStorage
+
+### Fixed
+
+- 侧边栏导航徽章数字被半透明规则污染导致看不清
+- 已归档仓库的历史 Issue / PR / Actions / 告警仍出现在列表与侧栏计数中
+- 仪表盘「仓库与基线」仍展示已归档仓库；动作按钮列不对齐
+- Actions 空状态未说明权限/事件/对账排查路径；请求失败时静默空白
+- 仪表盘 `open_issues` 计数误含 open PR
+
+### Changed
+
+- 列表与仪表盘统计默认排除已归档仓库与已忽略项
+- 仪表盘区块顺序调整为：通知投递 → 最近事件 → 仓库与基线
+- 长标题单行截断、事件/投递行改为主内容 + 右侧动作布局
+
 ## [0.3.5] - 2026-07-29
 
 ### Added

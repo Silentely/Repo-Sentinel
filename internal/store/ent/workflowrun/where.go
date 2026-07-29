@@ -154,6 +154,11 @@ func StateHash(v string) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldEQ(FieldStateHash, v))
 }
 
+// Ignored applies equality check predicate on the "ignored" field. It's identical to IgnoredEQ.
+func Ignored(v bool) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEQ(FieldIgnored, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldEQ(FieldCreatedAt, v))
@@ -1197,6 +1202,16 @@ func StateHashEqualFold(v string) predicate.WorkflowRun {
 // StateHashContainsFold applies the ContainsFold predicate on the "state_hash" field.
 func StateHashContainsFold(v string) predicate.WorkflowRun {
 	return predicate.WorkflowRun(sql.FieldContainsFold(FieldStateHash, v))
+}
+
+// IgnoredEQ applies the EQ predicate on the "ignored" field.
+func IgnoredEQ(v bool) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldEQ(FieldIgnored, v))
+}
+
+// IgnoredNEQ applies the NEQ predicate on the "ignored" field.
+func IgnoredNEQ(v bool) predicate.WorkflowRun {
+	return predicate.WorkflowRun(sql.FieldNEQ(FieldIgnored, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

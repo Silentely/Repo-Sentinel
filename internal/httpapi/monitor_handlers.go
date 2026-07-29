@@ -118,6 +118,7 @@ func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
 	f.Kind = r.URL.Query().Get("kind")
 	f.State = r.URL.Query().Get("state")
 	f.RepositoryID = r.URL.Query().Get("repository_id")
+	applyIgnoredFilter(&f, r)
 	// closed 状态应用系统设置的显示限制，避免历史数据无限增长。
 	if f.State == "closed" && f.PerPage == 0 {
 		if limit := s.getIntSetting(r.Context(), "display.closed_limit", 20); limit > 0 {
@@ -136,6 +137,7 @@ func (s *server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) 
 	f := listFilterFromRequest(r)
 	f.Status = r.URL.Query().Get("conclusion")
 	f.RepositoryID = r.URL.Query().Get("repository_id")
+	applyIgnoredFilter(&f, r)
 	items, page, err := s.dependencies.Store.WorkflowRuns().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
@@ -149,6 +151,7 @@ func (s *server) handleListSecurityAlerts(w http.ResponseWriter, r *http.Request
 	f.Kind = r.URL.Query().Get("alert_kind")
 	f.State = r.URL.Query().Get("state")
 	f.RepositoryID = r.URL.Query().Get("repository_id")
+	applyIgnoredFilter(&f, r)
 	// dismissed/resolved 状态应用显示限制。
 	if f.State != "" && f.State != "open" && f.PerPage == 0 {
 		if limit := s.getIntSetting(r.Context(), "display.closed_limit", 20); limit > 0 {
@@ -161,6 +164,60 @@ func (s *server) handleListSecurityAlerts(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+}
+
+// applyIgnoredFilter 解析 ignored 查询参数：
+// - 缺省 / ignored=false：只返回未忽略
+// - ignored=true：只返回已忽略
+// - ignored=all：返回全部
+func applyIgnoredFilter(f *store.ListFilter, r *http.Request) {
+	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("ignored"))) {
+	case "true", "1", "yes":
+		f.OnlyIgnored = true
+	case "all":
+		f.IncludeIgnored = true
+	}
+}
+
+type ignoredBody struct {
+	Ignored bool `json:"ignored"`
+}
+
+// setResourceIgnored 统一处理本地忽略标记：解析 body → SetIgnored → 回读实体。
+func setResourceIgnored[T any](
+	s *server,
+	w http.ResponseWriter,
+	r *http.Request,
+	setFn func(ctx context.Context, id string, ignored bool) error,
+	getFn func(ctx context.Context, id string) (T, error),
+) {
+	id := chi.URLParam(r, "id")
+	var body ignoredBody
+	if !s.decodeRequestJSON(w, r, &body) {
+		return
+	}
+	if err := setFn(r.Context(), id, body.Ignored); err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	item, err := getFn(r.Context(), id)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *server) handleSetWorkItemIgnored(w http.ResponseWriter, r *http.Request) {
+	setResourceIgnored(s, w, r, s.dependencies.Store.WorkItems().SetIgnored, s.dependencies.Store.WorkItems().Get)
+}
+
+func (s *server) handleSetWorkflowRunIgnored(w http.ResponseWriter, r *http.Request) {
+	setResourceIgnored(s, w, r, s.dependencies.Store.WorkflowRuns().SetIgnored, s.dependencies.Store.WorkflowRuns().Get)
+}
+
+func (s *server) handleSetSecurityAlertIgnored(w http.ResponseWriter, r *http.Request) {
+	setResourceIgnored(s, w, r, s.dependencies.Store.SecurityAlerts().SetIgnored, s.dependencies.Store.SecurityAlerts().Get)
 }
 
 // getIntSetting 从数据库读取整数设置，失败时返回默认值。

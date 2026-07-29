@@ -114,6 +114,11 @@ func StateHash(v string) predicate.SecurityAlert {
 	return predicate.SecurityAlert(sql.FieldEQ(FieldStateHash, v))
 }
 
+// Ignored applies equality check predicate on the "ignored" field. It's identical to IgnoredEQ.
+func Ignored(v bool) predicate.SecurityAlert {
+	return predicate.SecurityAlert(sql.FieldEQ(FieldIgnored, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.SecurityAlert {
 	return predicate.SecurityAlert(sql.FieldEQ(FieldCreatedAt, v))
@@ -722,6 +727,16 @@ func StateHashEqualFold(v string) predicate.SecurityAlert {
 // StateHashContainsFold applies the ContainsFold predicate on the "state_hash" field.
 func StateHashContainsFold(v string) predicate.SecurityAlert {
 	return predicate.SecurityAlert(sql.FieldContainsFold(FieldStateHash, v))
+}
+
+// IgnoredEQ applies the EQ predicate on the "ignored" field.
+func IgnoredEQ(v bool) predicate.SecurityAlert {
+	return predicate.SecurityAlert(sql.FieldEQ(FieldIgnored, v))
+}
+
+// IgnoredNEQ applies the NEQ predicate on the "ignored" field.
+func IgnoredNEQ(v bool) predicate.SecurityAlert {
+	return predicate.SecurityAlert(sql.FieldNEQ(FieldIgnored, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

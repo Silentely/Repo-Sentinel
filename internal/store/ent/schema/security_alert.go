@@ -26,6 +26,8 @@ func (SecurityAlert) Fields() []ent.Field {
 		field.String("html_url").Default(""),
 		field.Time("source_updated_at"),
 		field.String("state_hash"),
+		// ignored：用户在本系统手动忽略，与 GitHub dismissed 状态独立。
+		field.Bool("ignored").Default(false),
 		field.Time("created_at").Immutable(),
 		field.Time("updated_at"),
 	}
@@ -36,6 +38,7 @@ func (SecurityAlert) Indexes() []ent.Index {
 		index.Fields("repository_id", "alert_kind", "alert_number").Unique(),
 		index.Fields("state"),
 		index.Fields("severity"),
+		index.Fields("ignored"),
 		index.Fields("source_updated_at"),
 	}
 }

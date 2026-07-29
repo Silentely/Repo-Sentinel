@@ -118,8 +118,10 @@ type WorkItem struct {
 	CheckConclusion string `json:"check_conclusion,omitempty"` // 检查结论
 	ChecksTotal     int    `json:"checks_total,omitempty"`     // 总检查数
 	ChecksPassed    int    `json:"checks_passed,omitempty"`    // 通过检查数
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	// Ignored 为本地忽略标记，不回写 GitHub。
+	Ignored   bool      `json:"ignored"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // WorkflowRun 领域模型。
@@ -144,6 +146,7 @@ type WorkflowRun struct {
 	RunUpdatedAt       time.Time  `json:"run_updated_at"`
 	RunCompletedAt     *time.Time `json:"run_completed_at,omitempty"`
 	StateHash          string     `json:"state_hash,omitempty"`
+	Ignored            bool       `json:"ignored"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 }
@@ -162,6 +165,7 @@ type SecurityAlert struct {
 	HTMLURL          string    `json:"html_url"`
 	SourceUpdatedAt  time.Time `json:"source_updated_at"`
 	StateHash        string    `json:"state_hash,omitempty"`
+	Ignored          bool      `json:"ignored"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -245,6 +249,12 @@ type ListFilter struct {
 	State        string
 	Status       string
 	Query        string
+	// IncludeIgnored=true 时包含已忽略项；默认 false 只返回未忽略。
+	IncludeIgnored bool
+	// OnlyIgnored=true 时仅返回已忽略项（优先于 IncludeIgnored）。
+	OnlyIgnored bool
+	// IncludeArchivedRepos=true 时包含已归档仓库的数据；默认 false 排除。
+	IncludeArchivedRepos bool
 }
 
 // PageResult 分页结果元数据。
@@ -294,26 +304,32 @@ type WebhookDeliveryStore interface {
 // WorkItemStore Issue/PR。
 type WorkItemStore interface {
 	GetByRepoNumber(context.Context, string, int) (WorkItem, error)
+	Get(context.Context, string) (WorkItem, error)
 	UpsertIfNewer(context.Context, WorkItem) (WorkItem, bool, error) // bool=updated
 	List(context.Context, ListFilter) ([]WorkItem, PageResult, error)
 	CountOpen(context.Context) (int, error)
+	SetIgnored(context.Context, string, bool) error
 }
 
 // WorkflowRunStore Actions。
 type WorkflowRunStore interface {
 	GetByRepoRunID(context.Context, string, int64) (WorkflowRun, error)
+	Get(context.Context, string) (WorkflowRun, error)
 	UpsertIfNewer(context.Context, WorkflowRun) (WorkflowRun, bool, error)
 	LatestCompleted(context.Context, string, int64, string) (WorkflowRun, error)
 	List(context.Context, ListFilter) ([]WorkflowRun, PageResult, error)
 	CountFailed(context.Context) (int, error)
+	SetIgnored(context.Context, string, bool) error
 }
 
 // SecurityAlertStore 安全告警。
 type SecurityAlertStore interface {
 	GetByIdentity(context.Context, string, string, int) (SecurityAlert, error)
+	Get(context.Context, string) (SecurityAlert, error)
 	UpsertIfNewer(context.Context, SecurityAlert) (SecurityAlert, bool, error)
 	List(context.Context, ListFilter) ([]SecurityAlert, PageResult, error)
 	CountOpen(context.Context) (int, error)
+	SetIgnored(context.Context, string, bool) error
 }
 
 // EventStore 业务事件。
