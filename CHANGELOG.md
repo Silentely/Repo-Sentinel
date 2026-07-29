@@ -7,8 +7,11 @@
 ### Added
 
 - 仓库能力开关：单仓独立控制监控、Issues、PR、Actions、安全告警的开关
-- 仓库归档功能：管理台一键归档/取消归档，联动同步状态
-- 侧边栏 Issues / Pull Requests 拆分为独立页面，支持 Open/Closed 状态筛选
+- 仓库归档功能：管理台一键归档/取消归档，联动同步状态；归档自动关闭所有开关
+- 仓库管理页分开展示关注中/已归档仓库，默认显示关注中
+- 侧边栏 Issues / Pull Requests 拆分为独立页面，支持 Open/Closed 状态筛选，默认显示 Open
+- 安全告警页增加 Dependabot / Code Scanning / Secret Scanning 分类筛选，默认显示 Open
+- 已关闭/已忽略项目显示数量限制：系统设置可配置（默认 20 条），避免历史数据无限增长
 - 仓库管理页面：集中管理所有仓库的能力开关与归档状态
 - `PATCH /api/v1/repositories/{id}/settings` API 端点
 - 数据库迁移 `20260729000100_repo_capability_toggles`（PostgreSQL + SQLite）

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -117,6 +118,12 @@ func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
 	f.Kind = r.URL.Query().Get("kind")
 	f.State = r.URL.Query().Get("state")
 	f.RepositoryID = r.URL.Query().Get("repository_id")
+	// closed 状态应用系统设置的显示限制，避免历史数据无限增长。
+	if f.State == "closed" && f.PerPage == 0 {
+		if limit := s.getIntSetting(r.Context(), "display.closed_limit", 20); limit > 0 {
+			f.PerPage = limit
+		}
+	}
 	items, page, err := s.dependencies.Store.WorkItems().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
@@ -142,12 +149,31 @@ func (s *server) handleListSecurityAlerts(w http.ResponseWriter, r *http.Request
 	f.Kind = r.URL.Query().Get("alert_kind")
 	f.State = r.URL.Query().Get("state")
 	f.RepositoryID = r.URL.Query().Get("repository_id")
+	// dismissed/resolved 状态应用显示限制。
+	if f.State != "" && f.State != "open" && f.PerPage == 0 {
+		if limit := s.getIntSetting(r.Context(), "display.closed_limit", 20); limit > 0 {
+			f.PerPage = limit
+		}
+	}
 	items, page, err := s.dependencies.Store.SecurityAlerts().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+}
+
+// getIntSetting 从数据库读取整数设置，失败时返回默认值。
+func (s *server) getIntSetting(ctx context.Context, key string, defaultVal int) int {
+	raw, err := s.dependencies.Store.Settings().Get(ctx, key)
+	if err != nil {
+		return defaultVal
+	}
+	var v int
+	if json.Unmarshal(raw.ValueJSON, &v) == nil && v > 0 {
+		return v
+	}
+	return defaultVal
 }
 
 func (s *server) handleListEvents(w http.ResponseWriter, r *http.Request) {
@@ -454,6 +480,7 @@ func (s *server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"digest.send_empty":           false,
 		"notify.aggregate_window_sec": 60,
 		"notify.burst_threshold":      15,
+		"display.closed_limit":        20,
 	}
 	for key := range out {
 		if s, err := s.dependencies.Store.Settings().Get(r.Context(), key); err == nil {
@@ -474,6 +501,7 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	allowed := map[string]bool{
 		"admin.timezone": true, "digest.local_time": true, "digest.send_empty": true,
 		"notify.aggregate_window_sec": true, "notify.burst_threshold": true, "notify.burst_window_sec": true,
+		"display.closed_limit": true,
 	}
 	for k, v := range body {
 		if !allowed[k] {

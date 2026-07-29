@@ -355,6 +355,10 @@ func TestUpdateSettingsAndArchive(t *testing.T) {
 	if saved.SyncStatus != store.SyncStatusArchived {
 		t.Fatalf("归档应联动 sync_status=archived，实际 %q", saved.SyncStatus)
 	}
+	// 归档时应联动关闭所有能力开关。
+	if saved.MonitorEnabled || saved.IssuesEnabled || saved.PrEnabled || saved.ActionsEnabled || saved.AlertsEnabled {
+		t.Fatal("归档应联动关闭所有能力开关")
+	}
 
 	// 取消归档。
 	unarchiveVal := false
@@ -372,5 +376,9 @@ func TestUpdateSettingsAndArchive(t *testing.T) {
 	}
 	if saved.SyncStatus != store.SyncStatusActive {
 		t.Fatalf("取消归档应联动 sync_status=active，实际 %q", saved.SyncStatus)
+	}
+	// 取消归档时应恢复所有能力开关。
+	if !saved.MonitorEnabled || !saved.IssuesEnabled || !saved.PrEnabled || !saved.ActionsEnabled || !saved.AlertsEnabled {
+		t.Fatal("取消归档应恢复所有能力开关为 true")
 	}
 }

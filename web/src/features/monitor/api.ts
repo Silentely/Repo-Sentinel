@@ -229,6 +229,7 @@ export interface SystemSettings {
   "digest.send_empty"?: boolean;
   "notify.aggregate_window_sec"?: number;
   "notify.burst_threshold"?: number;
+  "display.closed_limit"?: number;
   "notify.burst_window_sec"?: number;
 }
 
