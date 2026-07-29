@@ -22,7 +22,7 @@ import {
   readyStatusQueryOptions,
   type AuthenticationResponse,
 } from "../features/auth/api";
-import { dashboardQueryOptions } from "../features/monitor/api";
+import { dashboardQueryOptions, settingsQueryOptions } from "../features/monitor/api";
 
 export interface RootLayoutProps {
   session: AuthenticationResponse;
@@ -34,6 +34,7 @@ export function RootLayout({ session }: RootLayoutProps) {
   const [loggingOut, setLoggingOut] = useState(false);
   const ready = useQuery(readyStatusQueryOptions);
   const dashboard = useQuery(dashboardQueryOptions);
+  const settings = useQuery(settingsQueryOptions);
 
   const healthState = ready.isPending
     ? "warning"
@@ -42,12 +43,18 @@ export function RootLayout({ session }: RootLayoutProps) {
       : "ready";
   const healthLabel = healthState === "ready" ? "服务正常" : healthState === "warning" ? "检查中" : "需要关注";
 
+  // 功能模块开关
+  const featureIssues = settings.data?.["feature.issues"] !== false;
+  const featurePRs = settings.data?.["feature.pull_requests"] !== false;
+  const featureActions = settings.data?.["feature.actions"] !== false;
+  const featureAlerts = settings.data?.["feature.security_alerts"] !== false;
+
   // 侧边栏徽章数据
   const stats = dashboard.data;
-  const openIssues = stats?.open_issues ?? 0;
-  const openPRs = stats?.open_pulls ?? 0;
-  const failedActions = stats?.failed_actions ?? 0;
-  const openSecurity = stats?.open_security ?? 0;
+  const openIssues = featureIssues ? (stats?.open_issues ?? 0) : 0;
+  const openPRs = featurePRs ? (stats?.open_pulls ?? 0) : 0;
+  const failedActions = featureActions ? (stats?.failed_actions ?? 0) : 0;
+  const openSecurity = featureAlerts ? (stats?.open_security ?? 0) : 0;
   const outboxDead = stats?.outbox_dead ?? 0;
 
   async function handleLogout() {
