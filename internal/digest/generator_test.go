@@ -29,7 +29,7 @@ func seedTelegram(t *testing.T, data store.Store) {
 	t.Helper()
 	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
 		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg",
-		Enabled: true, Target: "1",
+		Enabled: true, Target: "1", DigestEnabled: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -242,5 +242,48 @@ func TestKindDisplayName(t *testing.T) {
 		if got := kindDisplayName(tc.kind); got != tc.want {
 			t.Errorf("kind=%q: 期望 %s，实际 %s", tc.kind, tc.want, got)
 		}
+	}
+}
+
+func TestRunOnce渠道关闭汇总时不投递(t *testing.T) {
+	data := openDigestStore(t)
+	// 渠道关闭每日汇总。
+	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg",
+		Enabled: true, Target: "1", DigestEnabled: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawTZ, _ := json.Marshal("UTC")
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingTimezone, ValueJSON: rawTZ, UpdatedBy: "test",
+	})
+	rawTime, _ := json.Marshal("09:00")
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingLocalTime, ValueJSON: rawTime, UpdatedBy: "test",
+	})
+	_, err = data.Events().Create(t.Context(), store.Event{
+		ID: ulid.Make().String(), Source: "test", Kind: store.WorkItemKindIssue, Action: "opened",
+		Title: "hello", OccurredAt: time.Now().UTC(), DedupeFingerprint: ulid.Make().String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := &Generator{Store: data}
+	now := time.Date(2026, 7, 28, 9, 15, 0, 0, time.UTC)
+	if err := g.RunOnce(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("digest_enabled=false 的渠道不应收到汇总，got %d", len(items))
+	}
+	// 发送日期仍应落账，避免之后开启订阅时当日补发。
+	if _, err := data.Settings().Get(t.Context(), settingLastDigest); err != nil {
+		t.Fatalf("last_sent_date 应已落账: %v", err)
 	}
 }
