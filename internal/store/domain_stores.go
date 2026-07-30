@@ -1045,6 +1045,25 @@ func (s *eventStore) CountSince(ctx context.Context, since time.Time) (int, erro
 	return n, mapStoreError(err)
 }
 
+func (s *eventStore) ListSince(ctx context.Context, since time.Time, limit int) ([]Event, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+	entList, err := s.client.Event.Query().
+		Where(event.OccurredAtGTE(since.UTC())).
+		Order(entclient.Desc(event.FieldOccurredAt)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	out := make([]Event, len(entList))
+	for i, e := range entList {
+		out[i] = eventFromEntity(e)
+	}
+	return out, nil
+}
+
 func eventFromEntity(e *entclient.Event) Event {
 	return Event{
 		ID: e.ID, Source: e.Source, Kind: e.Kind, Action: e.Action, RepositoryID: e.RepositoryID,

@@ -109,6 +109,9 @@ data_test/
 *.sqlite3
 *.db
 
+# Go build output
+reposentinel
+
 # macOS
 .DS_Store
 

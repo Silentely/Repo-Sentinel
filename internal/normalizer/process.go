@@ -381,7 +381,7 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(env.Action),
 		RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
 		OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: saved.HTMLURL,
-		PayloadSummary:       map[string]any{"state": saved.State, "draft": saved.Draft},
+		PayloadSummary:       map[string]any{"state": saved.State, "draft": saved.Draft, "labels": labels, "assignees": assignees, "milestone": milestone},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}
 	created, err := p.Store.Events().Create(ctx, ev)
@@ -518,8 +518,8 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		WorkflowConclusion: *run.Conclusion, OccurredAt: run.UpdatedAt, SourceUpdatedAt: &srcUpdated,
 		HTMLURL: run.HTMLURL,
 		PayloadSummary: map[string]any{
-			"run_number": run.RunNumber, "head_branch": run.HeadBranch, "head_sha": shortSHA(run.HeadSHA),
-			"status": run.Status, "conclusion": *run.Conclusion, "attempt": run.RunAttempt,
+			"workflow_name": run.Name, "run_number": run.RunNumber, "head_branch": run.HeadBranch,
+			"head_sha": shortSHA(run.HeadSHA), "status": run.Status, "conclusion": *run.Conclusion, "attempt": run.RunAttempt,
 		},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}
@@ -606,7 +606,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(env.Action),
 		RepositoryID: &repo.ID, SubjectNumber: &num, Title: rule, Severity: severity,
 		OccurredAt: updatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: a.HTMLURL,
-		PayloadSummary:       map[string]any{"state": a.State, "severity": severity},
+		PayloadSummary:       map[string]any{"state": a.State, "severity": severity, "rule_or_dependency": rule},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}
 	created, err := p.Store.Events().Create(ctx, ev)
