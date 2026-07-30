@@ -231,3 +231,73 @@ func TestDashboard统计排除归档仓与已忽略项(t *testing.T) {
 		t.Fatalf("open_pulls want 1 got %d", stats.OpenPulls)
 	}
 }
+
+func Test渠道订阅配置API(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	csrfHeader := map[string]string{CSRFHeaderName: csrf.Value}
+
+	// 创建时携带订阅配置。
+	created := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"Telegram","enabled":true,"target":"-1001","event_kinds":["issue","workflow_run"],"digest_enabled":false}`,
+		"127.0.0.1:46001", cookies, csrfHeader)
+	if created.Code != http.StatusOK {
+		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
+	}
+
+	// 列表应回读新字段。
+	list := fixture.request(t, http.MethodGet, "/api/v1/notifications/channels",
+		"", "127.0.0.1:46002", cookies, nil)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list status=%d", list.Code)
+	}
+	var page struct {
+		Items []struct {
+			ID            string   `json:"id"`
+			EventKinds    []string `json:"event_kinds"`
+			DigestEnabled bool     `json:"digest_enabled"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("期望 1 条渠道，got %d", len(page.Items))
+	}
+	if len(page.Items[0].EventKinds) != 2 || page.Items[0].EventKinds[0] != "issue" {
+		t.Fatalf("event_kinds 回读失败: %+v", page.Items[0].EventKinds)
+	}
+	if page.Items[0].DigestEnabled {
+		t.Fatal("digest_enabled 应为 false")
+	}
+
+	// 省略新字段时应保留现值。
+	updated := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"Telegram","enabled":true,"target":"-1001"}`,
+		"127.0.0.1:46003", cookies, csrfHeader)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("update status=%d body=%s", updated.Code, updated.Body.String())
+	}
+	relists := fixture.request(t, http.MethodGet, "/api/v1/notifications/channels",
+		"", "127.0.0.1:46004", cookies, nil)
+	var page2 struct {
+		Items []struct {
+			EventKinds    []string `json:"event_kinds"`
+			DigestEnabled bool     `json:"digest_enabled"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(relists.Body.Bytes(), &page2); err != nil {
+		t.Fatal(err)
+	}
+	if len(page2.Items) != 1 || len(page2.Items[0].EventKinds) != 2 || page2.Items[0].DigestEnabled {
+		t.Fatalf("省略字段应保留现值，got kinds=%v digest=%v", page2.Items[0].EventKinds, page2.Items[0].DigestEnabled)
+	}
+
+	// 非法 kind 应 400。
+	bad := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"Telegram","enabled":true,"target":"-1001","event_kinds":["issue","nope"]}`,
+		"127.0.0.1:46005", cookies, csrfHeader)
+	assertAPIError(t, bad, http.StatusBadRequest, errorCodeValidationFailed)
+}

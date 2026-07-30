@@ -306,7 +306,9 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 			"id": ch.ID, "channel_type": ch.ChannelType, "name": ch.Name,
 			"enabled": ch.Enabled, "target": ch.Target, "allow_private": ch.AllowPrivate,
 			"secret_configured": ch.SecretEnvelope != "",
-			"updated_at":        ch.UpdatedAt,
+			// 订阅配置：event_kinds 为 nil 表示订阅全部实时类型。
+			"event_kinds": ch.EventKinds, "digest_enabled": ch.DigestEnabled,
+			"updated_at": ch.UpdatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": masked})
@@ -319,23 +321,44 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name         string `json:"name"`
-		Enabled      bool   `json:"enabled"`
-		Target       string `json:"target"`
-		Secret       string `json:"secret"`
-		AllowPrivate bool   `json:"allow_private"`
+		Name          string    `json:"name"`
+		Enabled       bool      `json:"enabled"`
+		Target        string    `json:"target"`
+		Secret        string    `json:"secret"`
+		AllowPrivate  bool      `json:"allow_private"`
+		EventKinds    *[]string `json:"event_kinds"`
+		DigestEnabled *bool     `json:"digest_enabled"`
 	}
 	if !s.decodeRequestJSON(w, r, &body) {
 		return
+	}
+	// 订阅类型白名单校验。
+	if body.EventKinds != nil {
+		for _, k := range *body.EventKinds {
+			if !store.IsSubscribableKind(k) {
+				s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+				return
+			}
+		}
 	}
 	existing, err := s.dependencies.Store.Channels().GetEnabledByType(r.Context(), channelType)
 	ch := store.NotificationChannel{
 		ChannelType: channelType, Name: body.Name, Enabled: body.Enabled,
 		Target: body.Target, AllowPrivate: body.AllowPrivate,
+		DigestEnabled: true, // 新渠道默认接收每日汇总
 	}
 	if err == nil {
 		ch.ID = existing.ID
 		ch.SecretEnvelope = existing.SecretEnvelope
+		// 请求未携带订阅配置时保留现值。
+		ch.EventKinds = existing.EventKinds
+		ch.DigestEnabled = existing.DigestEnabled
+	}
+	if body.EventKinds != nil {
+		ch.EventKinds = *body.EventKinds
+	}
+	if body.DigestEnabled != nil {
+		ch.DigestEnabled = *body.DigestEnabled
 	}
 	if body.Secret != "" {
 		if s.dependencies.KeyRing == nil {
