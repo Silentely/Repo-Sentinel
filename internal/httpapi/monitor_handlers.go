@@ -656,17 +656,21 @@ func (s *server) handleReconcileAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	defaults := store.DefaultRetentionPolicy()
 	out := map[string]any{
-		"admin.timezone":              "UTC",
-		"digest.local_time":           "09:00",
-		"digest.send_empty":           false,
-		"notify.aggregate_window_sec": 60,
-		"notify.burst_threshold":      15,
-		"display.closed_limit":        20,
-		"feature.issues":              true,
-		"feature.pull_requests":       true,
-		"feature.actions":             true,
-		"feature.security_alerts":     true,
+		"admin.timezone":                    "UTC",
+		"digest.local_time":                 "09:00",
+		"digest.send_empty":                 false,
+		"notify.aggregate_window_sec":       60,
+		"notify.burst_threshold":            15,
+		"display.closed_limit":              20,
+		"retention.events_days":             defaults.EventsDays,
+		"retention.outbox_days":             defaults.OutboxDays,
+		"retention.webhook_deliveries_days": defaults.WebhookDeliveriesDays,
+		"feature.issues":                    true,
+		"feature.pull_requests":             true,
+		"feature.actions":                   true,
+		"feature.security_alerts":           true,
 	}
 	for key := range out {
 		if s, err := s.dependencies.Store.Settings().Get(r.Context(), key); err == nil {
@@ -687,12 +691,24 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	allowed := map[string]bool{
 		"admin.timezone": true, "digest.local_time": true, "digest.send_empty": true,
 		"notify.aggregate_window_sec": true, "notify.burst_threshold": true, "notify.burst_window_sec": true,
-		"display.closed_limit": true,
-		"feature.issues":       true, "feature.pull_requests": true, "feature.actions": true, "feature.security_alerts": true,
+		"display.closed_limit":  true,
+		"retention.events_days": true, "retention.outbox_days": true, "retention.webhook_deliveries_days": true,
+		"feature.issues": true, "feature.pull_requests": true, "feature.actions": true, "feature.security_alerts": true,
 	}
 	for k, v := range body {
 		if !allowed[k] {
 			continue
+		}
+		if isRetentionSetting(k) {
+			days, ok := coerceRetentionDays(v)
+			if !ok {
+				s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{
+					"field":   k,
+					"message": "保留天数须为 0–3650 的整数（0 表示禁用该类清理）。",
+				})
+				return
+			}
+			v = days
 		}
 		raw, _ := json.Marshal(v)
 		_, err := s.dependencies.Store.Settings().Upsert(r.Context(), store.SystemSetting{
@@ -704,4 +720,40 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.handleGetSettings(w, r)
+}
+
+func isRetentionSetting(key string) bool {
+	switch key {
+	case "retention.events_days", "retention.outbox_days", "retention.webhook_deliveries_days":
+		return true
+	default:
+		return false
+	}
+}
+
+func coerceRetentionDays(v any) (int, bool) {
+	var days int
+	switch n := v.(type) {
+	case float64:
+		if n != float64(int(n)) {
+			return 0, false
+		}
+		days = int(n)
+	case int:
+		days = n
+	case int64:
+		days = int(n)
+	case json.Number:
+		i, err := n.Int64()
+		if err != nil {
+			return 0, false
+		}
+		days = int(i)
+	default:
+		return 0, false
+	}
+	if days < 0 || days > 3650 {
+		return 0, false
+	}
+	return days, true
 }

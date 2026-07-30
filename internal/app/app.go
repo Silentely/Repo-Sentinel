@@ -20,6 +20,15 @@ const (
 	SupportedSchemaVersion  = "20260728000100"
 	gracefulShutdownTimeout = 30 * time.Second
 	defaultCleanupInterval  = 15 * time.Minute
+	// defaultRetentionCleanupInterval 历史数据清理周期，默认每日一次。
+	defaultRetentionCleanupInterval = 24 * time.Hour
+)
+
+// 系统设置中的保留天数键。
+const (
+	settingRetentionEventsDays     = "retention.events_days"
+	settingRetentionOutboxDays     = "retention.outbox_days"
+	settingRetentionDeliveriesDays = "retention.webhook_deliveries_days"
 )
 
 type httpRuntime interface {

@@ -28,6 +28,7 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | 管理后台 | 仪表盘（可折叠区块）、仓库管理、Issues/PR/Actions/安全告警列表、投递、渠道配置、主题 |
 | 运维 CLI | `doctor` / `backup` / `restore`、配置校验、密码重置 |
 | 容器部署 | GHCR 镜像（`latest` 随正式 tag）、Compose 拉取部署、健康检查与 `/metrics` |
+| 历史数据保留 | 事件 / 终态投递 / Webhook Delivery 可配置保留天数，后台定期清理（0 禁用） |
 
 ## 可持续增强
 

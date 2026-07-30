@@ -299,6 +299,8 @@ type WebhookDeliveryStore interface {
 	Create(context.Context, WebhookDelivery) (WebhookDelivery, error)
 	GetByDeliveryID(context.Context, string) (WebhookDelivery, error)
 	MarkProcessed(context.Context, string, string, string) error
+	// DeleteOlderThan 删除 received_at 早于 cutoff 的 delivery 记录，返回删除行数。
+	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error)
 }
 
 // WorkItemStore Issue/PR。
@@ -340,6 +342,8 @@ type EventStore interface {
 	CountSince(context.Context, time.Time) (int, error)
 	// ListSince 查询指定时间之后的事件，按时间倒序，limit 控制最大返回数。
 	ListSince(ctx context.Context, since time.Time, limit int) ([]Event, error)
+	// DeleteOlderThan 删除 created_at 早于 cutoff 的事件，返回删除行数。
+	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error)
 }
 
 // ChannelStore 通知渠道。
@@ -363,6 +367,31 @@ type OutboxStore interface {
 	List(context.Context, ListFilter) ([]NotificationOutbox, PageResult, error)
 	CountByStatus(context.Context, string) (int, error)
 	RetryDead(context.Context, string, time.Time) error
+	// DeleteTerminalOlderThan 删除已终态（sent/dead）且 created_at 早于 cutoff 的投递记录。
+	DeleteTerminalOlderThan(ctx context.Context, cutoff time.Time) (int, error)
+}
+
+// RetentionPolicy 历史数据保留策略（天）。某字段为 0 表示跳过该类清理。
+type RetentionPolicy struct {
+	EventsDays            int
+	OutboxDays            int
+	WebhookDeliveriesDays int
+}
+
+// CleanupResult 一次保留清理删除的行数。
+type CleanupResult struct {
+	EventsDeleted            int `json:"events_deleted"`
+	OutboxDeleted            int `json:"outbox_deleted"`
+	WebhookDeliveriesDeleted int `json:"webhook_deliveries_deleted"`
+}
+
+// DefaultRetentionPolicy 返回管理台默认保留天数。
+func DefaultRetentionPolicy() RetentionPolicy {
+	return RetentionPolicy{
+		EventsDays:            90,
+		OutboxDays:            30,
+		WebhookDeliveriesDays: 30,
+	}
 }
 
 // CursorStore 同步游标。
