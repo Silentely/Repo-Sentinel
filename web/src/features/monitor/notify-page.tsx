@@ -156,7 +156,7 @@ export function NotifyPage() {
         <div>
           <p className="eyebrow">通知</p>
           <h1>配置投递渠道</h1>
-          <p>每种渠道最多启用 1 个实例，全量事件发往已启用渠道。</p>
+          <p>每种渠道最多启用 1 个实例，通知按各渠道订阅的类型投递，可单独开关每日汇总。</p>
         </div>
       </section>
 
