@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiRequest } from "../../lib/api/client";
 import { ErrorAlert } from "../../components/error-alert";
 import { toApiError } from "../../lib/api/errors";
 import { upsertChannel, testChannel, deleteChannel, toggleChannel } from "./api";
+import { SUBSCRIBABLE_KINDS, subscriptionSummary, uiCheckedKinds } from "./notify-subscription";
 
 interface ChannelRow {
   id: string;
@@ -13,6 +14,9 @@ interface ChannelRow {
   enabled: boolean;
   target: string;
   secret_configured: boolean;
+  // 订阅的实时通知类型；null 表示全部订阅。
+  event_kinds: string[] | null;
+  digest_enabled: boolean;
   updated_at?: string;
 }
 
@@ -30,6 +34,33 @@ export function NotifyPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  // 订阅配置：默认全订阅 + 收每日汇总；渠道加载后按服务端数据回填一次。
+  const allKinds = () => SUBSCRIBABLE_KINDS.map((k) => k.value);
+  const [telegramKinds, setTelegramKinds] = useState<string[]>(allKinds);
+  const [telegramDigest, setTelegramDigest] = useState(true);
+  const [httpKinds, setHttpKinds] = useState<string[]>(allKinds);
+  const [httpDigest, setHttpDigest] = useState(true);
+
+  const telegramCh = channels.data?.items.find((ch) => ch.channel_type === "telegram");
+  const httpCh = channels.data?.items.find((ch) => ch.channel_type === "http_webhook");
+  const telegramChId = telegramCh?.id;
+  const httpChId = httpCh?.id;
+  useEffect(() => {
+    if (telegramCh) {
+      setTelegramKinds(uiCheckedKinds(telegramCh.event_kinds));
+      setTelegramDigest(telegramCh.digest_enabled);
+    }
+    // 仅在渠道记录就绪时回填一次，避免覆盖用户正在编辑的勾选。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [telegramChId]);
+  useEffect(() => {
+    if (httpCh) {
+      setHttpKinds(uiCheckedKinds(httpCh.event_kinds));
+      setHttpDigest(httpCh.digest_enabled);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [httpChId]);
+
   const invalidateAll = async () => {
     await queryClient.invalidateQueries({ queryKey: ["channels"] });
     await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -42,6 +73,8 @@ export function NotifyPage() {
         enabled: true,
         target: telegramTarget,
         secret: telegramSecret || undefined,
+        event_kinds: telegramKinds,
+        digest_enabled: telegramDigest,
       }),
     onSuccess: async () => {
       setMessage("Telegram 渠道已保存。");
@@ -61,6 +94,8 @@ export function NotifyPage() {
         enabled: true,
         target: httpTarget,
         secret: httpSecret || undefined,
+        event_kinds: httpKinds,
+        digest_enabled: httpDigest,
       }),
     onSuccess: async () => {
       setMessage("HTTP Webhook 渠道已保存。");
@@ -109,9 +144,6 @@ export function NotifyPage() {
     },
   });
 
-  const telegramCh = channels.data?.items.find((ch) => ch.channel_type === "telegram");
-  const httpCh = channels.data?.items.find((ch) => ch.channel_type === "http_webhook");
-
   const handleDelete = (type: "telegram" | "http_webhook") => {
     if (window.confirm(`确定要删除 ${type === "telegram" ? "Telegram" : "HTTP Webhook"} 渠道吗？`)) {
       deleteMut.mutate(type);
@@ -150,6 +182,7 @@ export function NotifyPage() {
               <strong>{ch.enabled ? "已启用" : "已禁用"}</strong>
               <span className="channel-target">{ch.target || "（无目标）"}</span>
               <span className="muted">{ch.secret_configured ? "密钥已配置" : "无密钥"}</span>
+              <span className="muted">{subscriptionSummary(ch.event_kinds, ch.digest_enabled)}</span>
               <div className="channel-actions">
                 <button
                   className="quiet-button"
@@ -212,6 +245,29 @@ export function NotifyPage() {
             autoComplete="off"
           />
         </label>
+        <fieldset className="field--plain">
+          <span>订阅通知类型</span>
+          <div className="channel-kinds">
+            {SUBSCRIBABLE_KINDS.map((k) => (
+              <label key={k.value} className="channel-kinds__item">
+                <input
+                  type="checkbox"
+                  checked={telegramKinds.includes(k.value)}
+                  onChange={(e) =>
+                    setTelegramKinds(
+                      e.target.checked ? [...telegramKinds, k.value] : telegramKinds.filter((v) => v !== k.value),
+                    )
+                  }
+                />
+                {k.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <label className="field--plain channel-kinds__digest">
+          <input type="checkbox" checked={telegramDigest} onChange={(e) => setTelegramDigest(e.target.checked)} />
+          <span>接收每日汇总</span>
+        </label>
         <div className="channel-form__buttons">
           <button className="primary-button primary-button--inline" type="button" disabled={saveTelegram.isPending} onClick={() => saveTelegram.mutate()}>
             {saveTelegram.isPending ? "保存中…" : "保存 Telegram"}
@@ -254,6 +310,27 @@ export function NotifyPage() {
             placeholder="留空则不签名；已配置时留空保留原值"
             autoComplete="off"
           />
+        </label>
+        <fieldset className="field--plain">
+          <span>订阅通知类型</span>
+          <div className="channel-kinds">
+            {SUBSCRIBABLE_KINDS.map((k) => (
+              <label key={k.value} className="channel-kinds__item">
+                <input
+                  type="checkbox"
+                  checked={httpKinds.includes(k.value)}
+                  onChange={(e) =>
+                    setHttpKinds(e.target.checked ? [...httpKinds, k.value] : httpKinds.filter((v) => v !== k.value))
+                  }
+                />
+                {k.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <label className="field--plain channel-kinds__digest">
+          <input type="checkbox" checked={httpDigest} onChange={(e) => setHttpDigest(e.target.checked)} />
+          <span>接收每日汇总</span>
         </label>
         <div className="channel-form__buttons">
           <button className="primary-button primary-button--inline" type="button" disabled={saveHTTP.isPending} onClick={() => saveHTTP.mutate()}>

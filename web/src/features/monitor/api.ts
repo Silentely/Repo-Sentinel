@@ -117,7 +117,15 @@ export async function retryOutbox(id: string): Promise<void> {
 
 export async function upsertChannel(
   type: "telegram" | "http_webhook",
-  body: { name?: string; enabled: boolean; target: string; secret?: string },
+  body: {
+    name?: string;
+    enabled: boolean;
+    target: string;
+    secret?: string;
+    // 订阅的实时通知类型；不传则保留后端现值。
+    event_kinds?: string[];
+    digest_enabled?: boolean;
+  },
 ): Promise<void> {
   await apiRequest(`/api/v1/notifications/channels/${type}`, {
     method: "PUT",
