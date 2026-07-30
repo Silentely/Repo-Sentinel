@@ -78,6 +78,15 @@ func Test领域模型JSON使用蛇形命名(t *testing.T) {
 			want: []string{`"status":"dead"`, `"attempt_count":3`, `"title":"alert"`, `"last_error_code":"delivery_failed"`},
 			deny: []string{`"AttemptCount"`, `"LastErrorCode"`},
 		},
+		{
+			name: "NotificationChannel",
+			v: NotificationChannel{
+				ID: "c1", ChannelType: ChannelTelegram, Name: "tg", Enabled: true,
+				Target: "-1001", SecretEnvelope: "enc", EventKinds: []string{WorkItemKindIssue}, DigestEnabled: true,
+			},
+			want: []string{`"channel_type":"telegram"`, `"event_kinds":["issue"]`, `"digest_enabled":true`, `"allow_private"`},
+			deny: []string{`"ChannelType"`, `"EventKinds"`, `"DigestEnabled"`, `"secret_envelope"`, `"SecretEnvelope"`},
+		},
 	}
 
 	for _, tc := range cases {
