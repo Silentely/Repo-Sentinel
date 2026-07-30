@@ -97,18 +97,18 @@ type WorkItem struct {
 	RepositoryID       string    `json:"repository_id"`
 	RepositoryFullName string    `json:"repository_full_name,omitempty"`
 	Number             int       `json:"number"`
-	Kind            string    `json:"kind"`
-	State           string    `json:"state"`
-	Title           string    `json:"title"`
-	Author          string    `json:"author"`
-	LabelsJSON      []any     `json:"labels,omitempty"`
-	AssigneesJSON   []any     `json:"assignees,omitempty"`
-	Milestone       string    `json:"milestone,omitempty"`
-	Draft           bool      `json:"draft"`
-	Merged          bool      `json:"merged"`
-	HTMLURL         string    `json:"html_url"`
-	SourceUpdatedAt time.Time `json:"source_updated_at"`
-	StateHash       string    `json:"state_hash,omitempty"`
+	Kind               string    `json:"kind"`
+	State              string    `json:"state"`
+	Title              string    `json:"title"`
+	Author             string    `json:"author"`
+	LabelsJSON         []any     `json:"labels,omitempty"`
+	AssigneesJSON      []any     `json:"assignees,omitempty"`
+	Milestone          string    `json:"milestone,omitempty"`
+	Draft              bool      `json:"draft"`
+	Merged             bool      `json:"merged"`
+	HTMLURL            string    `json:"html_url"`
+	SourceUpdatedAt    time.Time `json:"source_updated_at"`
+	StateHash          string    `json:"state_hash,omitempty"`
 	// 新增 Review 相关字段
 	ReviewState    string   `json:"review_state,omitempty"`    // 最新审核状态：APPROVED, CHANGES_REQUESTED, COMMENTED, PENDING
 	ReviewDecision string   `json:"review_decision,omitempty"` // 审核决策：approved, changes_requested
@@ -153,21 +153,21 @@ type WorkflowRun struct {
 
 // SecurityAlert 领域模型。
 type SecurityAlert struct {
-	ID               string    `json:"id"`
-	RepositoryID     string    `json:"repository_id"`
-	RepositoryFullName string  `json:"repository_full_name,omitempty"`
-	AlertKind        string    `json:"alert_kind"`
-	AlertNumber      int       `json:"alert_number"`
-	State            string    `json:"state"`
-	Severity         string    `json:"severity"`
-	RuleOrDependency string    `json:"rule_or_dependency"`
-	DismissedReason  string    `json:"dismissed_reason,omitempty"`
-	HTMLURL          string    `json:"html_url"`
-	SourceUpdatedAt  time.Time `json:"source_updated_at"`
-	StateHash        string    `json:"state_hash,omitempty"`
-	Ignored          bool      `json:"ignored"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	RepositoryID       string    `json:"repository_id"`
+	RepositoryFullName string    `json:"repository_full_name,omitempty"`
+	AlertKind          string    `json:"alert_kind"`
+	AlertNumber        int       `json:"alert_number"`
+	State              string    `json:"state"`
+	Severity           string    `json:"severity"`
+	RuleOrDependency   string    `json:"rule_or_dependency"`
+	DismissedReason    string    `json:"dismissed_reason,omitempty"`
+	HTMLURL            string    `json:"html_url"`
+	SourceUpdatedAt    time.Time `json:"source_updated_at"`
+	StateHash          string    `json:"state_hash,omitempty"`
+	Ignored            bool      `json:"ignored"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // Event 规范化业务事件。

@@ -10,13 +10,13 @@ import (
 func TestRenderMessageIssueOpened(t *testing.T) {
 	num := 42
 	ev := &store.Event{
-		Kind:           store.WorkItemKindIssue,
-		Action:         "opened",
-		Title:          "修复登录 Bug",
-		Actor:          "dev-user",
-		Severity:       "high",
-		SubjectNumber:  &num,
-		HTMLURL:        "https://github.com/org/repo/issues/42",
+		Kind:          store.WorkItemKindIssue,
+		Action:        "opened",
+		Title:         "修复登录 Bug",
+		Actor:         "dev-user",
+		Severity:      "high",
+		SubjectNumber: &num,
+		HTMLURL:       "https://github.com/org/repo/issues/42",
 	}
 	title, body, htmlURL := renderMessage(ev, "org/repo")
 

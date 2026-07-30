@@ -197,19 +197,19 @@ func TestProcessWorkflowRunWithMissingFields(t *testing.T) {
 	// 模拟 GitHub 偶发缺 actor、head_branch、head_sha、html_url 等字段。
 	payload, _ := json.Marshal(map[string]any{
 		"workflow_run": map[string]any{
-			"id":            999001,
-			"name":          "",
-			"workflow_id":   10,
-			"run_number":    5,
-			"event":         "push",
-			"status":        "completed",
-			"conclusion":    "success",
-			"run_attempt":   0,
-			"head_branch":   "",
-			"head_sha":      "",
-			"html_url":      "",
+			"id":             999001,
+			"name":           "",
+			"workflow_id":    10,
+			"run_number":     5,
+			"event":          "push",
+			"status":         "completed",
+			"conclusion":     "success",
+			"run_attempt":    0,
+			"head_branch":    "",
+			"head_sha":       "",
+			"html_url":       "",
 			"run_started_at": time.Now().UTC().Format(time.RFC3339),
-			"updated_at":    time.Now().UTC().Format(time.RFC3339),
+			"updated_at":     time.Now().UTC().Format(time.RFC3339),
 		},
 		"repository": map[string]any{
 			"id":             200,
@@ -291,11 +291,11 @@ func TestUpsertPreservesCapabilitySettings(t *testing.T) {
 
 	// Upsert 同步元数据不应覆盖能力开关。
 	_, err = data.Repositories().Upsert(t.Context(), store.Repository{
-		Type:     store.RepositoryTypeInstallation,
-		Owner:    "acme",
-		Name:     "demo",
-		FullName: "acme/demo",
-		HTMLURL:  "https://github.com/acme/demo",
+		Type:      store.RepositoryTypeInstallation,
+		Owner:     "acme",
+		Name:      "demo",
+		FullName:  "acme/demo",
+		HTMLURL:   "https://github.com/acme/demo",
 		IsPrivate: true,
 	})
 	if err != nil {
