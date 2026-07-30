@@ -86,7 +86,8 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 		return err
 	}
 	for _, ch := range channels {
-		if !ch.Enabled {
+		// 渠道关闭每日汇总时跳过。
+		if !ch.Enabled || !ch.DigestEnabled {
 			continue
 		}
 		idem := fmt.Sprintf("digest|%s|%s", ch.ID, dateKey)
