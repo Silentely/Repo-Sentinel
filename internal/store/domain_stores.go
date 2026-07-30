@@ -1103,6 +1103,8 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 				SetTarget(in.Target).
 				SetSecretEnvelope(in.SecretEnvelope).
 				SetAllowPrivate(in.AllowPrivate).
+				SetEventKinds(in.EventKinds).
+				SetDigestEnabled(in.DigestEnabled).
 				SetUpdatedAt(now).
 				Save(ctx)
 			if err != nil {
@@ -1122,6 +1124,8 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 		SetTarget(in.Target).
 		SetSecretEnvelope(in.SecretEnvelope).
 		SetAllowPrivate(in.AllowPrivate).
+		SetEventKinds(in.EventKinds).
+		SetDigestEnabled(in.DigestEnabled).
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
@@ -1191,6 +1195,7 @@ func channelFromEntity(e *entclient.NotificationChannel) NotificationChannel {
 	return NotificationChannel{
 		ID: e.ID, ChannelType: e.ChannelType, Name: e.Name, Enabled: e.Enabled,
 		Target: e.Target, SecretEnvelope: e.SecretEnvelope, AllowPrivate: e.AllowPrivate,
+		EventKinds: e.EventKinds, DigestEnabled: e.DigestEnabled,
 		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 }

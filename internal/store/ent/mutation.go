@@ -4521,21 +4521,24 @@ func (m *GitHubInstallationMutation) ResetEdge(name string) error {
 // NotificationChannelMutation represents an operation that mutates the NotificationChannel nodes in the graph.
 type NotificationChannelMutation struct {
 	config
-	op              Op
-	typ             string
-	id              *string
-	channel_type    *string
-	name            *string
-	enabled         *bool
-	target          *string
-	secret_envelope *string
-	allow_private   *bool
-	created_at      *time.Time
-	updated_at      *time.Time
-	clearedFields   map[string]struct{}
-	done            bool
-	oldValue        func(context.Context) (*NotificationChannel, error)
-	predicates      []predicate.NotificationChannel
+	op                Op
+	typ               string
+	id                *string
+	channel_type      *string
+	name              *string
+	enabled           *bool
+	target            *string
+	secret_envelope   *string
+	allow_private     *bool
+	event_kinds       *[]string
+	appendevent_kinds []string
+	digest_enabled    *bool
+	created_at        *time.Time
+	updated_at        *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*NotificationChannel, error)
+	predicates        []predicate.NotificationChannel
 }
 
 var _ ent.Mutation = (*NotificationChannelMutation)(nil)
@@ -4858,6 +4861,107 @@ func (m *NotificationChannelMutation) ResetAllowPrivate() {
 	m.allow_private = nil
 }
 
+// SetEventKinds sets the "event_kinds" field.
+func (m *NotificationChannelMutation) SetEventKinds(s []string) {
+	m.event_kinds = &s
+	m.appendevent_kinds = nil
+}
+
+// EventKinds returns the value of the "event_kinds" field in the mutation.
+func (m *NotificationChannelMutation) EventKinds() (r []string, exists bool) {
+	v := m.event_kinds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEventKinds returns the old "event_kinds" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldEventKinds(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEventKinds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEventKinds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEventKinds: %w", err)
+	}
+	return oldValue.EventKinds, nil
+}
+
+// AppendEventKinds adds s to the "event_kinds" field.
+func (m *NotificationChannelMutation) AppendEventKinds(s []string) {
+	m.appendevent_kinds = append(m.appendevent_kinds, s...)
+}
+
+// AppendedEventKinds returns the list of values that were appended to the "event_kinds" field in this mutation.
+func (m *NotificationChannelMutation) AppendedEventKinds() ([]string, bool) {
+	if len(m.appendevent_kinds) == 0 {
+		return nil, false
+	}
+	return m.appendevent_kinds, true
+}
+
+// ClearEventKinds clears the value of the "event_kinds" field.
+func (m *NotificationChannelMutation) ClearEventKinds() {
+	m.event_kinds = nil
+	m.appendevent_kinds = nil
+	m.clearedFields[notificationchannel.FieldEventKinds] = struct{}{}
+}
+
+// EventKindsCleared returns if the "event_kinds" field was cleared in this mutation.
+func (m *NotificationChannelMutation) EventKindsCleared() bool {
+	_, ok := m.clearedFields[notificationchannel.FieldEventKinds]
+	return ok
+}
+
+// ResetEventKinds resets all changes to the "event_kinds" field.
+func (m *NotificationChannelMutation) ResetEventKinds() {
+	m.event_kinds = nil
+	m.appendevent_kinds = nil
+	delete(m.clearedFields, notificationchannel.FieldEventKinds)
+}
+
+// SetDigestEnabled sets the "digest_enabled" field.
+func (m *NotificationChannelMutation) SetDigestEnabled(b bool) {
+	m.digest_enabled = &b
+}
+
+// DigestEnabled returns the value of the "digest_enabled" field in the mutation.
+func (m *NotificationChannelMutation) DigestEnabled() (r bool, exists bool) {
+	v := m.digest_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDigestEnabled returns the old "digest_enabled" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldDigestEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDigestEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDigestEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDigestEnabled: %w", err)
+	}
+	return oldValue.DigestEnabled, nil
+}
+
+// ResetDigestEnabled resets all changes to the "digest_enabled" field.
+func (m *NotificationChannelMutation) ResetDigestEnabled() {
+	m.digest_enabled = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *NotificationChannelMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -4964,7 +5068,7 @@ func (m *NotificationChannelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationChannelMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 10)
 	if m.channel_type != nil {
 		fields = append(fields, notificationchannel.FieldChannelType)
 	}
@@ -4982,6 +5086,12 @@ func (m *NotificationChannelMutation) Fields() []string {
 	}
 	if m.allow_private != nil {
 		fields = append(fields, notificationchannel.FieldAllowPrivate)
+	}
+	if m.event_kinds != nil {
+		fields = append(fields, notificationchannel.FieldEventKinds)
+	}
+	if m.digest_enabled != nil {
+		fields = append(fields, notificationchannel.FieldDigestEnabled)
 	}
 	if m.created_at != nil {
 		fields = append(fields, notificationchannel.FieldCreatedAt)
@@ -5009,6 +5119,10 @@ func (m *NotificationChannelMutation) Field(name string) (ent.Value, bool) {
 		return m.SecretEnvelope()
 	case notificationchannel.FieldAllowPrivate:
 		return m.AllowPrivate()
+	case notificationchannel.FieldEventKinds:
+		return m.EventKinds()
+	case notificationchannel.FieldDigestEnabled:
+		return m.DigestEnabled()
 	case notificationchannel.FieldCreatedAt:
 		return m.CreatedAt()
 	case notificationchannel.FieldUpdatedAt:
@@ -5034,6 +5148,10 @@ func (m *NotificationChannelMutation) OldField(ctx context.Context, name string)
 		return m.OldSecretEnvelope(ctx)
 	case notificationchannel.FieldAllowPrivate:
 		return m.OldAllowPrivate(ctx)
+	case notificationchannel.FieldEventKinds:
+		return m.OldEventKinds(ctx)
+	case notificationchannel.FieldDigestEnabled:
+		return m.OldDigestEnabled(ctx)
 	case notificationchannel.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case notificationchannel.FieldUpdatedAt:
@@ -5089,6 +5207,20 @@ func (m *NotificationChannelMutation) SetField(name string, value ent.Value) err
 		}
 		m.SetAllowPrivate(v)
 		return nil
+	case notificationchannel.FieldEventKinds:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEventKinds(v)
+		return nil
+	case notificationchannel.FieldDigestEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDigestEnabled(v)
+		return nil
 	case notificationchannel.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -5132,7 +5264,11 @@ func (m *NotificationChannelMutation) AddField(name string, value ent.Value) err
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *NotificationChannelMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(notificationchannel.FieldEventKinds) {
+		fields = append(fields, notificationchannel.FieldEventKinds)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -5145,6 +5281,11 @@ func (m *NotificationChannelMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *NotificationChannelMutation) ClearField(name string) error {
+	switch name {
+	case notificationchannel.FieldEventKinds:
+		m.ClearEventKinds()
+		return nil
+	}
 	return fmt.Errorf("unknown NotificationChannel nullable field %s", name)
 }
 
@@ -5169,6 +5310,12 @@ func (m *NotificationChannelMutation) ResetField(name string) error {
 		return nil
 	case notificationchannel.FieldAllowPrivate:
 		m.ResetAllowPrivate()
+		return nil
+	case notificationchannel.FieldEventKinds:
+		m.ResetEventKinds()
+		return nil
+	case notificationchannel.FieldDigestEnabled:
+		m.ResetDigestEnabled()
 		return nil
 	case notificationchannel.FieldCreatedAt:
 		m.ResetCreatedAt()

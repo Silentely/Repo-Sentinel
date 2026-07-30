@@ -190,6 +190,8 @@ var (
 		{Name: "target", Type: field.TypeString, Default: ""},
 		{Name: "secret_envelope", Type: field.TypeString, Default: ""},
 		{Name: "allow_private", Type: field.TypeBool, Default: false},
+		{Name: "event_kinds", Type: field.TypeJSON, Nullable: true},
+		{Name: "digest_enabled", Type: field.TypeBool, Default: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}

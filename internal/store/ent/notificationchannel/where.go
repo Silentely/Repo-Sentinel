@@ -94,6 +94,11 @@ func AllowPrivate(v bool) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldAllowPrivate, v))
 }
 
+// DigestEnabled applies equality check predicate on the "digest_enabled" field. It's identical to DigestEnabledEQ.
+func DigestEnabled(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldDigestEnabled, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldCreatedAt, v))
@@ -382,6 +387,26 @@ func AllowPrivateEQ(v bool) predicate.NotificationChannel {
 // AllowPrivateNEQ applies the NEQ predicate on the "allow_private" field.
 func AllowPrivateNEQ(v bool) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldNEQ(FieldAllowPrivate, v))
+}
+
+// EventKindsIsNil applies the IsNil predicate on the "event_kinds" field.
+func EventKindsIsNil() predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldIsNull(FieldEventKinds))
+}
+
+// EventKindsNotNil applies the NotNil predicate on the "event_kinds" field.
+func EventKindsNotNil() predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNotNull(FieldEventKinds))
+}
+
+// DigestEnabledEQ applies the EQ predicate on the "digest_enabled" field.
+func DigestEnabledEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldDigestEnabled, v))
+}
+
+// DigestEnabledNEQ applies the NEQ predicate on the "digest_enabled" field.
+func DigestEnabledNEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldDigestEnabled, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

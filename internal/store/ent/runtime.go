@@ -90,6 +90,10 @@ func init() {
 	notificationchannelDescAllowPrivate := notificationchannelFields[6].Descriptor()
 	// notificationchannel.DefaultAllowPrivate holds the default value on creation for the allow_private field.
 	notificationchannel.DefaultAllowPrivate = notificationchannelDescAllowPrivate.Default.(bool)
+	// notificationchannelDescDigestEnabled is the schema descriptor for digest_enabled field.
+	notificationchannelDescDigestEnabled := notificationchannelFields[8].Descriptor()
+	// notificationchannel.DefaultDigestEnabled holds the default value on creation for the digest_enabled field.
+	notificationchannel.DefaultDigestEnabled = notificationchannelDescDigestEnabled.Default.(bool)
 	notificationoutboxFields := schema.NotificationOutbox{}.Fields()
 	_ = notificationoutboxFields
 	// notificationoutboxDescAggregateKey is the schema descriptor for aggregate_key field.
