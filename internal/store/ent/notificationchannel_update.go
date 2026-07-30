@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationchannel"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/predicate"
@@ -112,6 +113,38 @@ func (_u *NotificationChannelUpdate) SetNillableAllowPrivate(v *bool) *Notificat
 	return _u
 }
 
+// SetEventKinds sets the "event_kinds" field.
+func (_u *NotificationChannelUpdate) SetEventKinds(v []string) *NotificationChannelUpdate {
+	_u.mutation.SetEventKinds(v)
+	return _u
+}
+
+// AppendEventKinds appends value to the "event_kinds" field.
+func (_u *NotificationChannelUpdate) AppendEventKinds(v []string) *NotificationChannelUpdate {
+	_u.mutation.AppendEventKinds(v)
+	return _u
+}
+
+// ClearEventKinds clears the value of the "event_kinds" field.
+func (_u *NotificationChannelUpdate) ClearEventKinds() *NotificationChannelUpdate {
+	_u.mutation.ClearEventKinds()
+	return _u
+}
+
+// SetDigestEnabled sets the "digest_enabled" field.
+func (_u *NotificationChannelUpdate) SetDigestEnabled(v bool) *NotificationChannelUpdate {
+	_u.mutation.SetDigestEnabled(v)
+	return _u
+}
+
+// SetNillableDigestEnabled sets the "digest_enabled" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableDigestEnabled(v *bool) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetDigestEnabled(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *NotificationChannelUpdate) SetUpdatedAt(v time.Time) *NotificationChannelUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -184,6 +217,20 @@ func (_u *NotificationChannelUpdate) sqlSave(ctx context.Context) (_node int, er
 	}
 	if value, ok := _u.mutation.AllowPrivate(); ok {
 		_spec.SetField(notificationchannel.FieldAllowPrivate, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.EventKinds(); ok {
+		_spec.SetField(notificationchannel.FieldEventKinds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedEventKinds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, notificationchannel.FieldEventKinds, value)
+		})
+	}
+	if _u.mutation.EventKindsCleared() {
+		_spec.ClearField(notificationchannel.FieldEventKinds, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.DigestEnabled(); ok {
+		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(notificationchannel.FieldUpdatedAt, field.TypeTime, value)
@@ -292,6 +339,38 @@ func (_u *NotificationChannelUpdateOne) SetNillableAllowPrivate(v *bool) *Notifi
 	return _u
 }
 
+// SetEventKinds sets the "event_kinds" field.
+func (_u *NotificationChannelUpdateOne) SetEventKinds(v []string) *NotificationChannelUpdateOne {
+	_u.mutation.SetEventKinds(v)
+	return _u
+}
+
+// AppendEventKinds appends value to the "event_kinds" field.
+func (_u *NotificationChannelUpdateOne) AppendEventKinds(v []string) *NotificationChannelUpdateOne {
+	_u.mutation.AppendEventKinds(v)
+	return _u
+}
+
+// ClearEventKinds clears the value of the "event_kinds" field.
+func (_u *NotificationChannelUpdateOne) ClearEventKinds() *NotificationChannelUpdateOne {
+	_u.mutation.ClearEventKinds()
+	return _u
+}
+
+// SetDigestEnabled sets the "digest_enabled" field.
+func (_u *NotificationChannelUpdateOne) SetDigestEnabled(v bool) *NotificationChannelUpdateOne {
+	_u.mutation.SetDigestEnabled(v)
+	return _u
+}
+
+// SetNillableDigestEnabled sets the "digest_enabled" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableDigestEnabled(v *bool) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetDigestEnabled(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *NotificationChannelUpdateOne) SetUpdatedAt(v time.Time) *NotificationChannelUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -394,6 +473,20 @@ func (_u *NotificationChannelUpdateOne) sqlSave(ctx context.Context) (_node *Not
 	}
 	if value, ok := _u.mutation.AllowPrivate(); ok {
 		_spec.SetField(notificationchannel.FieldAllowPrivate, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.EventKinds(); ok {
+		_spec.SetField(notificationchannel.FieldEventKinds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedEventKinds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, notificationchannel.FieldEventKinds, value)
+		})
+	}
+	if _u.mutation.EventKindsCleared() {
+		_spec.ClearField(notificationchannel.FieldEventKinds, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.DigestEnabled(); ok {
+		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(notificationchannel.FieldUpdatedAt, field.TypeTime, value)

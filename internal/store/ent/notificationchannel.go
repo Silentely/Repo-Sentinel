@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -29,6 +30,10 @@ type NotificationChannel struct {
 	SecretEnvelope string `json:"secret_envelope,omitempty"`
 	// AllowPrivate holds the value of the "allow_private" field.
 	AllowPrivate bool `json:"allow_private,omitempty"`
+	// EventKinds holds the value of the "event_kinds" field.
+	EventKinds []string `json:"event_kinds,omitempty"`
+	// DigestEnabled holds the value of the "digest_enabled" field.
+	DigestEnabled bool `json:"digest_enabled,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -41,7 +46,9 @@ func (*NotificationChannel) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case notificationchannel.FieldEnabled, notificationchannel.FieldAllowPrivate:
+		case notificationchannel.FieldEventKinds:
+			values[i] = new([]byte)
+		case notificationchannel.FieldEnabled, notificationchannel.FieldAllowPrivate, notificationchannel.FieldDigestEnabled:
 			values[i] = new(sql.NullBool)
 		case notificationchannel.FieldID, notificationchannel.FieldChannelType, notificationchannel.FieldName, notificationchannel.FieldTarget, notificationchannel.FieldSecretEnvelope:
 			values[i] = new(sql.NullString)
@@ -103,6 +110,20 @@ func (_m *NotificationChannel) assignValues(columns []string, values []any) erro
 				return fmt.Errorf("unexpected type %T for field allow_private", values[i])
 			} else if value.Valid {
 				_m.AllowPrivate = value.Bool
+			}
+		case notificationchannel.FieldEventKinds:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field event_kinds", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.EventKinds); err != nil {
+					return fmt.Errorf("unmarshal field event_kinds: %w", err)
+				}
+			}
+		case notificationchannel.FieldDigestEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field digest_enabled", values[i])
+			} else if value.Valid {
+				_m.DigestEnabled = value.Bool
 			}
 		case notificationchannel.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -169,6 +190,12 @@ func (_m *NotificationChannel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_private=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowPrivate))
+	builder.WriteString(", ")
+	builder.WriteString("event_kinds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.EventKinds))
+	builder.WriteString(", ")
+	builder.WriteString("digest_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DigestEnabled))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

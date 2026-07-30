@@ -1,4 +1,4 @@
-h1:ZGd3diKfARbH12hRleRV1piO6NO0bXh7o2ow28e8Nko=
+h1:78j00LBlIPs64u6tJfh+8MIQoGjDl11z92VRhNInU2w=
 20260727000100_initial.sql h1:flTt/4EIbVVbivWtwkV6G8WDC6zLDOE9jCd2zvrlRBo=
 20260728000100_domain_core.sql h1:MHOJX9iFWZGdoa92CJbhfOydpQcb/HW9BSXS+oPnpKU=
 20260729000100_repo_capability_toggles.sql h1:F00DXUB6k5F9Pi7eQ9wELVPUwCDIEkmw0gUpJp4RmeI=
@@ -6,3 +6,4 @@ h1:ZGd3diKfARbH12hRleRV1piO6NO0bXh7o2ow28e8Nko=
 20260729000300_item_ignored.sql h1:JPcaMxJOdiTUkgp999uAk+baBTxzxAYx3ODZ5BpvNXk=
 20260729000400_workflow_run_bigint.sql h1:hfgVB/+PPYPhqjNssBufP0gYr8S95aVstlNESTTk7n0=
 20260730000100_github_id_bigint.sql h1:HnmcBKjAC/m0EXnv0kh9gLjar/EjjACT8hVmVhepNzA=
+20260730000200_channel_subscription.sql h1:ovtYB7hioJKrlpFxnlL4g+o4ydF0SNiiKI4fZqAz0Mo=

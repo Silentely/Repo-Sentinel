@@ -195,15 +195,48 @@ type Event struct {
 
 // NotificationChannel 通知渠道。
 type NotificationChannel struct {
-	ID             string    `json:"id"`
-	ChannelType    string    `json:"channel_type"`
-	Name           string    `json:"name"`
-	Enabled        bool      `json:"enabled"`
-	Target         string    `json:"target"`
-	SecretEnvelope string    `json:"-"`
-	AllowPrivate   bool      `json:"allow_private"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             string `json:"id"`
+	ChannelType    string `json:"channel_type"`
+	Name           string `json:"name"`
+	Enabled        bool   `json:"enabled"`
+	Target         string `json:"target"`
+	SecretEnvelope string `json:"-"`
+	AllowPrivate   bool   `json:"allow_private"`
+	// EventKinds 订阅的实时通知类型；nil 表示全部，空数组表示不订阅实时通知。
+	EventKinds []string `json:"event_kinds"`
+	// DigestEnabled 是否接收每日汇总。
+	DigestEnabled bool      `json:"digest_enabled"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// SubscribableEventKinds 渠道可订阅的实时通知类型白名单。
+var SubscribableEventKinds = []string{
+	WorkItemKindIssue, WorkItemKindPR, "workflow_run",
+	AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning,
+}
+
+// IsSubscribableKind 判定 kind 是否在订阅白名单内。
+func IsSubscribableKind(kind string) bool {
+	for _, k := range SubscribableEventKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// AcceptsKind 渠道是否接收该类型的实时通知；EventKinds 为 nil 表示全部订阅。
+func (c NotificationChannel) AcceptsKind(kind string) bool {
+	if c.EventKinds == nil {
+		return true
+	}
+	for _, k := range c.EventKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // NotificationOutbox 待投递通知。

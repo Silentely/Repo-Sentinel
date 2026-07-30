@@ -96,6 +96,26 @@ func (_c *NotificationChannelCreate) SetNillableAllowPrivate(v *bool) *Notificat
 	return _c
 }
 
+// SetEventKinds sets the "event_kinds" field.
+func (_c *NotificationChannelCreate) SetEventKinds(v []string) *NotificationChannelCreate {
+	_c.mutation.SetEventKinds(v)
+	return _c
+}
+
+// SetDigestEnabled sets the "digest_enabled" field.
+func (_c *NotificationChannelCreate) SetDigestEnabled(v bool) *NotificationChannelCreate {
+	_c.mutation.SetDigestEnabled(v)
+	return _c
+}
+
+// SetNillableDigestEnabled sets the "digest_enabled" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableDigestEnabled(v *bool) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetDigestEnabled(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *NotificationChannelCreate) SetCreatedAt(v time.Time) *NotificationChannelCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -169,6 +189,10 @@ func (_c *NotificationChannelCreate) defaults() {
 		v := notificationchannel.DefaultAllowPrivate
 		_c.mutation.SetAllowPrivate(v)
 	}
+	if _, ok := _c.mutation.DigestEnabled(); !ok {
+		v := notificationchannel.DefaultDigestEnabled
+		_c.mutation.SetDigestEnabled(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -190,6 +214,9 @@ func (_c *NotificationChannelCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowPrivate(); !ok {
 		return &ValidationError{Name: "allow_private", err: errors.New(`ent: missing required field "NotificationChannel.allow_private"`)}
+	}
+	if _, ok := _c.mutation.DigestEnabled(); !ok {
+		return &ValidationError{Name: "digest_enabled", err: errors.New(`ent: missing required field "NotificationChannel.digest_enabled"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "NotificationChannel.created_at"`)}
@@ -255,6 +282,14 @@ func (_c *NotificationChannelCreate) createSpec() (*NotificationChannel, *sqlgra
 	if value, ok := _c.mutation.AllowPrivate(); ok {
 		_spec.SetField(notificationchannel.FieldAllowPrivate, field.TypeBool, value)
 		_node.AllowPrivate = value
+	}
+	if value, ok := _c.mutation.EventKinds(); ok {
+		_spec.SetField(notificationchannel.FieldEventKinds, field.TypeJSON, value)
+		_node.EventKinds = value
+	}
+	if value, ok := _c.mutation.DigestEnabled(); ok {
+		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)
+		_node.DigestEnabled = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(notificationchannel.FieldCreatedAt, field.TypeTime, value)

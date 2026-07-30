@@ -23,6 +23,10 @@ const (
 	FieldSecretEnvelope = "secret_envelope"
 	// FieldAllowPrivate holds the string denoting the allow_private field in the database.
 	FieldAllowPrivate = "allow_private"
+	// FieldEventKinds holds the string denoting the event_kinds field in the database.
+	FieldEventKinds = "event_kinds"
+	// FieldDigestEnabled holds the string denoting the digest_enabled field in the database.
+	FieldDigestEnabled = "digest_enabled"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -40,6 +44,8 @@ var Columns = []string{
 	FieldTarget,
 	FieldSecretEnvelope,
 	FieldAllowPrivate,
+	FieldEventKinds,
+	FieldDigestEnabled,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -65,6 +71,8 @@ var (
 	DefaultSecretEnvelope string
 	// DefaultAllowPrivate holds the default value on creation for the "allow_private" field.
 	DefaultAllowPrivate bool
+	// DefaultDigestEnabled holds the default value on creation for the "digest_enabled" field.
+	DefaultDigestEnabled bool
 )
 
 // OrderOption defines the ordering options for the NotificationChannel queries.
@@ -103,6 +111,11 @@ func BySecretEnvelope(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowPrivate orders the results by the allow_private field.
 func ByAllowPrivate(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowPrivate, opts...).ToFunc()
+}
+
+// ByDigestEnabled orders the results by the digest_enabled field.
+func ByDigestEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDigestEnabled, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
