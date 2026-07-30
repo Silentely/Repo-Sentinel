@@ -300,4 +300,44 @@ func Test渠道订阅配置API(t *testing.T) {
 		`{"name":"Telegram","enabled":true,"target":"-1001","event_kinds":["issue","nope"]}`,
 		"127.0.0.1:46005", cookies, csrfHeader)
 	assertAPIError(t, bad, http.StatusBadRequest, errorCodeValidationFailed)
+
+	// 新渠道省略订阅字段时：event_kinds 为 null（订阅全部）且每日汇总默认开。
+	createdDefault := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/http_webhook",
+		`{"name":"hook","enabled":true,"target":"https://example.com/hook"}`,
+		"127.0.0.1:46006", cookies, csrfHeader)
+	if createdDefault.Code != http.StatusOK {
+		t.Fatalf("create default status=%d body=%s", createdDefault.Code, createdDefault.Body.String())
+	}
+	listDefault := fixture.request(t, http.MethodGet, "/api/v1/notifications/channels",
+		"", "127.0.0.1:46007", cookies, nil)
+	var page3 struct {
+		Items []struct {
+			ChannelType   string   `json:"channel_type"`
+			EventKinds    []string `json:"event_kinds"`
+			DigestEnabled bool     `json:"digest_enabled"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listDefault.Body.Bytes(), &page3); err != nil {
+		t.Fatal(err)
+	}
+	if len(page3.Items) != 2 {
+		t.Fatalf("期望 2 条渠道，got %d", len(page3.Items))
+	}
+	foundHook := false
+	var hookKinds []string
+	hookDigest := false
+	for _, item := range page3.Items {
+		if item.ChannelType == "http_webhook" {
+			foundHook, hookKinds, hookDigest = true, item.EventKinds, item.DigestEnabled
+		}
+	}
+	if !foundHook {
+		t.Fatal("缺少 http_webhook 渠道")
+	}
+	if hookKinds != nil {
+		t.Fatalf("省略 event_kinds 应保持 null=订阅全部: %v", hookKinds)
+	}
+	if !hookDigest {
+		t.Fatal("省略 digest_enabled 应默认 true")
+	}
 }

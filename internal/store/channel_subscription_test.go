@@ -51,6 +51,36 @@ func TestNotificationChannelSubscriptionRoundTrip(t *testing.T) {
 	}
 }
 
+func TestToggleEnabled保留订阅配置(t *testing.T) {
+	ctx := t.Context()
+	data := openTestStore(t)
+
+	saved, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg",
+		Enabled: true, Target: "1", EventKinds: []string{store.WorkItemKindIssue},
+		DigestEnabled: false,
+	})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := data.Channels().ToggleEnabled(ctx, saved.ID, false); err != nil {
+		t.Fatalf("toggle: %v", err)
+	}
+	got, err := data.Channels().Get(ctx, saved.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Enabled {
+		t.Fatal("toggle 后应为禁用")
+	}
+	if len(got.EventKinds) != 1 || got.EventKinds[0] != store.WorkItemKindIssue {
+		t.Fatalf("toggle 不应改动订阅类型: %+v", got.EventKinds)
+	}
+	if got.DigestEnabled {
+		t.Fatal("toggle 不应改动每日汇总开关")
+	}
+}
+
 func TestAcceptsKind三态(t *testing.T) {
 	cases := []struct {
 		name  string
