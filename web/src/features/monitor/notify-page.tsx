@@ -264,10 +264,12 @@ export function NotifyPage() {
             ))}
           </div>
         </fieldset>
-        <label className="field--plain channel-kinds__digest">
-          <input type="checkbox" checked={telegramDigest} onChange={(e) => setTelegramDigest(e.target.checked)} />
-          <span>接收每日汇总</span>
-        </label>
+        <div className="field--plain">
+          <label className="channel-kinds__item">
+            <input type="checkbox" checked={telegramDigest} onChange={(e) => setTelegramDigest(e.target.checked)} />
+            接收每日汇总
+          </label>
+        </div>
         <div className="channel-form__buttons">
           <button className="primary-button primary-button--inline" type="button" disabled={saveTelegram.isPending} onClick={() => saveTelegram.mutate()}>
             {saveTelegram.isPending ? "保存中…" : "保存 Telegram"}
@@ -328,10 +330,12 @@ export function NotifyPage() {
             ))}
           </div>
         </fieldset>
-        <label className="field--plain channel-kinds__digest">
-          <input type="checkbox" checked={httpDigest} onChange={(e) => setHttpDigest(e.target.checked)} />
-          <span>接收每日汇总</span>
-        </label>
+        <div className="field--plain">
+          <label className="channel-kinds__item">
+            <input type="checkbox" checked={httpDigest} onChange={(e) => setHttpDigest(e.target.checked)} />
+            接收每日汇总
+          </label>
+        </div>
         <div className="channel-form__buttons">
           <button className="primary-button primary-button--inline" type="button" disabled={saveHTTP.isPending} onClick={() => saveHTTP.mutate()}>
             {saveHTTP.isPending ? "保存中…" : "保存 HTTP Webhook"}
