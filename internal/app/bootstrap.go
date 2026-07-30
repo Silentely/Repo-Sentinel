@@ -106,7 +106,14 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	}
 	sessionService := auth.NewSessionService(data, nil, nil, cfg.Admin.SessionTTL)
 	readiness := &readinessState{}
+	// workerCancel 在成功装配前由本函数持有；失败路径必须取消，成功后交给 App.Close/Run。
 	workerCtx, workerCancel := context.WithCancel(context.Background())
+	workerOwned := true
+	defer func() {
+		if workerOwned {
+			workerCancel()
+		}
+	}()
 
 	ghClient := githubx.NewAppClient(cfg.GitHub.AppID, cfg.GitHub.PrivateKeyPath)
 	ghRuntime := newRuntimeFromEnv(cfg, ghClient)
@@ -168,7 +175,6 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		Background:     workerCtx,
 	})
 	if err := bootstrapNotifyChannels(ctx, data, keyRing, cfg); err != nil {
-		workerCancel()
 		return nil, err
 	}
 	built := &App{
@@ -185,6 +191,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		cleanupInterval: defaultCleanupInterval,
 		scheduler:       scheduler,
 	}
+	workerOwned = false
 	readiness.Set(true)
 	info := buildinfo.Current()
 	logger.Info(
