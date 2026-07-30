@@ -33,7 +33,8 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	}
 	title, body, htmlURL := renderMessage(res.Event, repoFullName)
 	for _, ch := range channels {
-		if !ch.Enabled {
+		// 渠道未订阅该事件类型时跳过。
+		if !ch.Enabled || !ch.AcceptsKind(res.Event.Kind) {
 			continue
 		}
 		idem := idempotencyKey(ch.ID, res.Event.ID, "realtime")
