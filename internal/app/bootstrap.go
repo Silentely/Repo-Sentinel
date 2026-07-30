@@ -357,6 +357,7 @@ func bootstrapNotifyChannels(ctx context.Context, data store.Store, keyRing *cry
 			ch, err := data.Channels().Upsert(ctx, store.NotificationChannel{
 				ChannelType: store.ChannelTelegram, Name: "Telegram", Enabled: true,
 				Target: cfg.Notify.Telegram.ChatID, SecretEnvelope: env,
+				DigestEnabled: true, // 环境种子渠道与历史默认一致：全订阅 + 收每日汇总
 			})
 			if err != nil {
 				return newPublicError("database_unavailable", "无法初始化 Telegram 渠道。", err)
@@ -377,6 +378,7 @@ func bootstrapNotifyChannels(ctx context.Context, data store.Store, keyRing *cry
 			ch, err := data.Channels().Upsert(ctx, store.NotificationChannel{
 				ChannelType: store.ChannelHTTPWebhook, Name: "HTTP Webhook", Enabled: true,
 				Target: url, SecretEnvelope: secretEnv, AllowPrivate: cfg.Notify.HTTPWebhook.AllowPrivate,
+				DigestEnabled: true, // 环境种子渠道与历史默认一致：全订阅 + 收每日汇总
 			})
 			if err != nil {
 				return newPublicError("database_unavailable", "无法初始化 HTTP Webhook 渠道。", err)
