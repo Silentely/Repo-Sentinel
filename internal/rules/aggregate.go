@@ -132,16 +132,60 @@ func (a *Aggregator) flush(key string) {
 		_ = (&Engine{Store: a.Store}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName)
 		return
 	}
-	// 合并消息（标题/正文对 Telegram HTML 做转义）
-	categoryCN := categoryDisplayName(b.category)
-	title := fmt.Sprintf("📋 %s：%s × %d（已合并）", htmlEscape(b.repoName), htmlEscape(categoryCN), len(b.events))
+	_ = a.enqueueMerged(ctx, b)
+}
+
+// enqueueMerged 按渠道订阅过滤桶内事件子集，逐渠道构建合并消息。
+func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
+	channels, err := a.Store.Channels().List(ctx)
+	if err != nil {
+		return err
+	}
+	// 多实例：幂等键按「渠道 + 仓 + 类别 + 时间桶」稳定，避免各副本各写一条合并通知。
+	// 进程内合并仍是 best-effort；跨实例重复事件靠 Outbox 唯一约束收敛。
+	bucket := timeBucket(time.Now().UTC(), a.Window)
+	for _, ch := range channels {
+		if !ch.Enabled {
+			continue
+		}
+		sub := make([]*store.Event, 0, len(b.events))
+		for _, ev := range b.events {
+			if ch.AcceptsKind(ev.Kind) {
+				sub = append(sub, ev)
+			}
+		}
+		if len(sub) == 0 {
+			continue
+		}
+		title, body := renderMergedMessage(b.repoName, b.category, sub)
+		variant := fmt.Sprintf("agg|%s|%s|%d", b.repoID, b.category, bucket)
+		idem := idempotencyKey(ch.ID, b.repoID, variant)
+		eventID := sub[0].ID
+		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
+			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eventID,
+			AggregateKey: b.repoID + "|" + b.category, IdempotencyKey: idem,
+			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
+			Title: title, BodyText: body, ParseMode: "HTML",
+			BodyJSON: map[string]any{"aggregate": true, "count": len(sub), "category": b.category, "bucket": bucket},
+		})
+		if err != nil && err != store.ErrConflict {
+			return err
+		}
+	}
+	return nil
+}
+
+// renderMergedMessage 由事件子集构建合并标题与正文（对 Telegram HTML 做转义）。
+func renderMergedMessage(repoName, category string, events []*store.Event) (string, string) {
+	categoryCN := categoryDisplayName(category)
+	title := fmt.Sprintf("📋 %s：%s × %d（已合并）", htmlEscape(repoName), htmlEscape(categoryCN), len(events))
 	var body strings.Builder
 	body.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
 	body.WriteString("────────────────\n")
 	maxSamples := 8
-	for i, ev := range b.events {
+	for i, ev := range events {
 		if i >= maxSamples {
-			body.WriteString(fmt.Sprintf("…另有 %d 条\n", len(b.events)-maxSamples))
+			body.WriteString(fmt.Sprintf("…另有 %d 条\n", len(events)-maxSamples))
 			break
 		}
 		emoji := eventEmoji(ev)
@@ -155,37 +199,7 @@ func (a *Aggregator) flush(key string) {
 		}
 		body.WriteString(fmt.Sprintf("%s%s %s%s\n", emoji, numStr, htmlEscape(ev.Title), stateStr))
 	}
-	_ = a.enqueueMerged(ctx, b, title, body.String())
-}
-
-func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket, title, body string) error {
-	channels, err := a.Store.Channels().List(ctx)
-	if err != nil {
-		return err
-	}
-	// 多实例：幂等键按「渠道 + 仓 + 类别 + 时间桶」稳定，避免各副本各写一条合并通知。
-	// 进程内合并仍是 best-effort；跨实例重复事件靠 Outbox 唯一约束收敛。
-	firstID := b.events[0].ID
-	bucket := timeBucket(time.Now().UTC(), a.Window)
-	for _, ch := range channels {
-		if !ch.Enabled {
-			continue
-		}
-		variant := fmt.Sprintf("agg|%s|%s|%d", b.repoID, b.category, bucket)
-		idem := idempotencyKey(ch.ID, b.repoID, variant)
-		eventID := firstID
-		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
-			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eventID,
-			AggregateKey: b.repoID + "|" + b.category, IdempotencyKey: idem,
-			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
-			Title: title, BodyText: body, ParseMode: "HTML",
-			BodyJSON: map[string]any{"aggregate": true, "count": len(b.events), "category": b.category, "bucket": bucket},
-		})
-		if err != nil && err != store.ErrConflict {
-			return err
-		}
-	}
-	return nil
+	return title, body.String()
 }
 
 func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, cat, title string, sample *store.Event) error {
@@ -200,7 +214,8 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 	safeCat := htmlEscape(categoryCN)
 	body := fmt.Sprintf("<b>%s</b>\n────────────────\n📦 仓库：<code>%s</code>\n📋 类型：%s\n🔇 已降级为摘要模式，请在仪表盘查看详情", safeTitle, safeRepo, safeCat)
 	for _, ch := range channels {
-		if !ch.Enabled {
+		// 以 sample 事件的类型判定渠道是否接收超频摘要。
+		if !ch.Enabled || !ch.AcceptsKind(sample.Kind) {
 			continue
 		}
 		variant := fmt.Sprintf("burst|%s|%s|%d", repoID, cat, bucket)

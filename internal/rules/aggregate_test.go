@@ -3,6 +3,7 @@ package rules
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -153,5 +154,101 @@ func TestTimeBucket(t *testing.T) {
 	b3 := timeBucket(ts.Add(2*time.Minute), time.Minute)
 	if b3 == b1 {
 		t.Fatal("later minute should differ")
+	}
+}
+
+func TestAggregator合并按渠道订阅重建子集(t *testing.T) {
+	data := openTestStore(t)
+	ctx := context.Background()
+	// 渠道只订阅 dependabot；security 桶内含 dependabot + code_scanning。
+	_, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-sub", ChannelType: store.ChannelTelegram, Name: "sub", Enabled: true,
+		Target: "1", EventKinds: []string{store.AlertKindDependabot}, DigestEnabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agg := NewAggregator(data, 50*time.Millisecond, 100, time.Minute)
+	repoID := ulid.Make().String()
+	events := []*store.Event{
+		{ID: ulid.Make().String(), Kind: store.AlertKindDependabot, Action: "opened", Title: "dep-alert", RepositoryID: &repoID, OccurredAt: time.Now().UTC()},
+		{ID: ulid.Make().String(), Kind: store.AlertKindCodeScanning, Action: "opened", Title: "cs-alert", RepositoryID: &repoID, OccurredAt: time.Now().UTC()},
+	}
+	for _, ev := range events {
+		if err := agg.Evaluate(ctx, normalizer.Result{Event: ev}, "acme/demo"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(80 * time.Millisecond)
+	out, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("合并应 1 条 outbox，got %d", len(out))
+	}
+	if !strings.Contains(out[0].BodyText, "dep-alert") {
+		t.Fatalf("应包含订阅的 dependabot 事件，正文: %s", out[0].BodyText)
+	}
+	if strings.Contains(out[0].BodyText, "cs-alert") {
+		t.Fatalf("不应包含未订阅的 code_scanning 事件，正文: %s", out[0].BodyText)
+	}
+	if !strings.Contains(out[0].Title, "× 1") {
+		t.Fatalf("标题计数应为 1，实际: %s", out[0].Title)
+	}
+}
+
+func TestAggregator渠道全不命中不产生outbox(t *testing.T) {
+	data := openTestStore(t)
+	ctx := context.Background()
+	_, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-none", ChannelType: store.ChannelTelegram, Name: "none", Enabled: true,
+		Target: "1", EventKinds: []string{store.WorkItemKindPR}, DigestEnabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agg := NewAggregator(data, 50*time.Millisecond, 100, time.Minute)
+	repoID := ulid.Make().String()
+	for _, kind := range []string{store.AlertKindDependabot, store.AlertKindCodeScanning} {
+		ev := &store.Event{ID: ulid.Make().String(), Kind: kind, Action: "opened", Title: kind, RepositoryID: &repoID, OccurredAt: time.Now().UTC()}
+		if err := agg.Evaluate(ctx, normalizer.Result{Event: ev}, "acme/demo"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(80 * time.Millisecond)
+	out, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Fatalf("渠道不订阅桶内任何类型时不应有 outbox，got %d", len(out))
+	}
+}
+
+func TestAggregatorBurst按sample类型过滤(t *testing.T) {
+	data := openTestStore(t)
+	ctx := context.Background()
+	_, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-burst", ChannelType: store.ChannelTelegram, Name: "burst", Enabled: true,
+		Target: "1", EventKinds: []string{store.WorkItemKindPR}, DigestEnabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agg := NewAggregator(data, time.Minute, 3, time.Minute)
+	repoID := ulid.Make().String()
+	for i := 0; i < 4; i++ {
+		ev := &store.Event{ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened", Title: "x", RepositoryID: &repoID, OccurredAt: time.Now().UTC()}
+		if err := agg.Evaluate(ctx, normalizer.Result{Event: ev}, "acme/demo"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Fatalf("渠道不订阅 issue，超频摘要不应投递，got %d", len(out))
 	}
 }
