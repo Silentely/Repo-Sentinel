@@ -132,9 +132,9 @@ func (c *AppClient) ListSecretScanningAlerts(ctx context.Context, token, owner, 
 
 // PRReviewItem PR 审核条目。
 type PRReviewItem struct {
-	ID     int64  `json:"id"`
-	State  string `json:"state"`
-	User   struct {
+	ID    int64  `json:"id"`
+	State string `json:"state"`
+	User  struct {
 		Login string `json:"login"`
 	} `json:"user"`
 	Body        string    `json:"body"`

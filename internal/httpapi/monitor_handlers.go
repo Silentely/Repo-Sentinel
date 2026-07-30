@@ -399,8 +399,8 @@ func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
 	_, err = s.dependencies.Store.Outbox().Create(r.Context(), store.NotificationOutbox{
 		ID: ulid.Make().String(), ChannelID: ch.ID,
 		Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
-		Title:    "🔔 测试通知",
-		BodyText: "🔔 <b>测试通知</b>\n────────────────\n来自 RepoSentinel 的测试消息。\n如果您收到了这条消息，说明通知渠道配置正确！",
+		Title:     "🔔 测试通知",
+		BodyText:  "🔔 <b>测试通知</b>\n────────────────\n来自 RepoSentinel 的测试消息。\n如果您收到了这条消息，说明通知渠道配置正确！",
 		ParseMode: "HTML",
 	})
 	if err != nil {
@@ -466,9 +466,9 @@ func (s *server) handleToggleChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":        "ok",
-		"channel_type":  channelType,
-		"enabled":       body.Enabled,
+		"status":       "ok",
+		"channel_type": channelType,
+		"enabled":      body.Enabled,
 	})
 }
 
@@ -688,7 +688,7 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		"admin.timezone": true, "digest.local_time": true, "digest.send_empty": true,
 		"notify.aggregate_window_sec": true, "notify.burst_threshold": true, "notify.burst_window_sec": true,
 		"display.closed_limit": true,
-		"feature.issues": true, "feature.pull_requests": true, "feature.actions": true, "feature.security_alerts": true,
+		"feature.issues":       true, "feature.pull_requests": true, "feature.actions": true, "feature.security_alerts": true,
 	}
 	for k, v := range body {
 		if !allowed[k] {
