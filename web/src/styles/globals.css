@@ -1201,13 +1201,6 @@ a.primary-button {
   accent-color: var(--accent);
 }
 
-.channel-kinds__digest {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.8rem;
-}
-
 .channel-row {
   display: flex;
   align-items: center;
