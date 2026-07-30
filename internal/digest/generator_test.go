@@ -3,6 +3,7 @@ package digest
 import (
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,5 +132,115 @@ func TestRunOnceEmptyDefaultNoSend(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatalf("无事件默认不发送，got %d", len(items))
+	}
+}
+
+func TestBuildDigestBody_WithEvents(t *testing.T) {
+	num1 := 8
+	num2 := 42
+	events := []store.Event{
+		{Kind: store.WorkItemKindIssue, Action: "opened", Title: "[BUG] 脚本不停", SubjectNumber: &num1},
+		{Kind: store.WorkItemKindPR, Action: "merged", Title: "feat: 新功能", SubjectNumber: &num2},
+		{Kind: store.WorkItemKindIssue, Action: "closed", Title: "修复完成"},
+		{Kind: store.AlertKindDependabot, Action: "opened", Title: "bump lodash"},
+		{Kind: "workflow_run", Action: "completed", Title: "CI"},
+	}
+	body := buildDigestBody("📊 每日摘要 2026-07-30", events)
+
+	if !strings.Contains(body, "共 5 条事件") {
+		t.Errorf("期望包含事件总数，实际: %s", body)
+	}
+	if !strings.Contains(body, "Issue × 2") {
+		t.Errorf("期望 Issue × 2，实际: %s", body)
+	}
+	if !strings.Contains(body, "PR × 1") {
+		t.Errorf("期望 PR × 1，实际: %s", body)
+	}
+	if !strings.Contains(body, "Dependabot × 1") {
+		t.Errorf("期望 Dependabot × 1，实际: %s", body)
+	}
+	if !strings.Contains(body, "#8") {
+		t.Errorf("期望包含 #8，实际: %s", body)
+	}
+	if !strings.Contains(body, "#42") {
+		t.Errorf("期望包含 #42，实际: %s", body)
+	}
+}
+
+func TestBuildDigestBody_Empty(t *testing.T) {
+	body := buildDigestBody("📊 每日摘要 2026-07-30", nil)
+
+	if !strings.Contains(body, "无新事件") {
+		t.Errorf("期望无事件提示，实际: %s", body)
+	}
+}
+
+func TestBuildDigestBody_ManyEvents(t *testing.T) {
+	events := make([]store.Event, 10)
+	for i := range events {
+		events[i] = store.Event{Kind: store.WorkItemKindIssue, Action: "opened", Title: "test"}
+	}
+	body := buildDigestBody("test", events)
+
+	if !strings.Contains(body, "共 10 条事件") {
+		t.Errorf("期望包含总数，实际: %s", body)
+	}
+	previewCount := strings.Count(body, "• ")
+	if previewCount != 5 {
+		t.Errorf("期望 5 条预览，实际: %d", previewCount)
+	}
+}
+
+func TestBuildDigestBody_SortedByCount(t *testing.T) {
+	events := []store.Event{
+		{Kind: "workflow_run", Title: "a"},
+		{Kind: "workflow_run", Title: "b"},
+		{Kind: "workflow_run", Title: "c"},
+		{Kind: store.WorkItemKindIssue, Title: "d"},
+	}
+	body := buildDigestBody("test", events)
+
+	idxWorkflow := strings.Index(body, "工作流")
+	idxIssue := strings.Index(body, "Issue")
+	if idxWorkflow > idxIssue {
+		t.Error("工作流应排在 Issue 前面")
+	}
+}
+
+func TestKindEmoji(t *testing.T) {
+	cases := []struct {
+		kind, want string
+	}{
+		{store.WorkItemKindIssue, "🐛"},
+		{store.WorkItemKindPR, "🔀"},
+		{store.AlertKindDependabot, "📦"},
+		{store.AlertKindCodeScanning, "🔎"},
+		{store.AlertKindSecretScanning, "🔑"},
+		{"workflow_run", "⚙️"},
+		{"unknown", "📋"},
+	}
+	for _, tc := range cases {
+		if got := kindEmoji(tc.kind); got != tc.want {
+			t.Errorf("kind=%q: 期望 %s，实际 %s", tc.kind, tc.want, got)
+		}
+	}
+}
+
+func TestKindDisplayName(t *testing.T) {
+	cases := []struct {
+		kind, want string
+	}{
+		{store.WorkItemKindIssue, "Issue"},
+		{store.WorkItemKindPR, "PR"},
+		{store.AlertKindDependabot, "Dependabot"},
+		{store.AlertKindCodeScanning, "Code Scanning"},
+		{store.AlertKindSecretScanning, "Secret Scanning"},
+		{"workflow_run", "工作流"},
+		{"custom_kind", "custom_kind"},
+	}
+	for _, tc := range cases {
+		if got := kindDisplayName(tc.kind); got != tc.want {
+			t.Errorf("kind=%q: 期望 %s，实际 %s", tc.kind, tc.want, got)
+		}
 	}
 }

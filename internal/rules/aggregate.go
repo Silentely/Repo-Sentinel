@@ -96,7 +96,7 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	a.bursts[repoID] = filtered
 	if len(filtered) > a.BurstThreshold {
 		sample := res.Event
-		title := fmt.Sprintf("%s：通知过于频繁，已降级为摘要", repoFullName)
+		title := "⚠️ 通知频率超限"
 		a.mu.Unlock()
 		// 降级：只写一条速率限制摘要（必须在锁外访问 Store）
 		return a.enqueueBurstSummary(ctx, repoID, repoFullName, cat, title, sample)
@@ -133,20 +133,27 @@ func (a *Aggregator) flush(key string) {
 		return
 	}
 	// 合并消息（标题/正文对 Telegram HTML 做转义）
-	title := fmt.Sprintf("📋 %s：%s %d 条（已合并）", htmlEscape(b.repoName), htmlEscape(b.category), len(b.events))
+	categoryCN := categoryDisplayName(b.category)
+	title := fmt.Sprintf("📋 %s：%s × %d（已合并）", htmlEscape(b.repoName), htmlEscape(categoryCN), len(b.events))
 	var body strings.Builder
-	body.WriteString(title)
-	body.WriteByte('\n')
-	maxSamples := 5
+	body.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
+	body.WriteString("────────────────\n")
+	maxSamples := 8
 	for i, ev := range b.events {
 		if i >= maxSamples {
 			body.WriteString(fmt.Sprintf("…另有 %d 条\n", len(b.events)-maxSamples))
 			break
 		}
-		body.WriteString(fmt.Sprintf("• %s / %s — %s\n", htmlEscape(ev.Kind), htmlEscape(ev.Action), htmlEscape(ev.Title)))
-		if ev.HTMLURL != "" {
-			body.WriteString(fmt.Sprintf("  %s\n", htmlEscape(ev.HTMLURL)))
+		emoji := eventEmoji(ev)
+		numStr := ""
+		if ev.SubjectNumber != nil {
+			numStr = fmt.Sprintf(" #%d", *ev.SubjectNumber)
 		}
+		stateStr := ""
+		if ev.Action != "" {
+			stateStr = fmt.Sprintf("（%s）", htmlEscape(ev.Action))
+		}
+		body.WriteString(fmt.Sprintf("%s%s %s%s\n", emoji, numStr, htmlEscape(ev.Title), stateStr))
 	}
 	_ = a.enqueueMerged(ctx, b, title, body.String())
 }
@@ -187,6 +194,11 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 		return err
 	}
 	bucket := timeBucket(time.Now().UTC(), a.BurstWindow)
+	categoryCN := categoryDisplayName(cat)
+	safeTitle := htmlEscape(title)
+	safeRepo := htmlEscape(repoName)
+	safeCat := htmlEscape(categoryCN)
+	body := fmt.Sprintf("<b>%s</b>\n────────────────\n📦 仓库：<code>%s</code>\n📋 类型：%s\n🔇 已降级为摘要模式，请在仪表盘查看详情", safeTitle, safeRepo, safeCat)
 	for _, ch := range channels {
 		if !ch.Enabled {
 			continue
@@ -194,13 +206,11 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 		variant := fmt.Sprintf("burst|%s|%s|%d", repoID, cat, bucket)
 		idem := idempotencyKey(ch.ID, repoID, variant)
 		eid := sample.ID
-		safeTitle := htmlEscape(title)
-		safeRepo := htmlEscape(repoName)
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eid,
 			AggregateKey: repoID + "|burst", IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
-			Title: safeTitle, BodyText: safeTitle + "\n仓库：" + safeRepo, ParseMode: "HTML",
+			Title: safeTitle, BodyText: body, ParseMode: "HTML",
 		})
 		if err != nil && err != store.ErrConflict {
 			return err
@@ -237,4 +247,20 @@ func htmlEscape(s string) string {
 		`"`, "&quot;",
 	)
 	return replacer.Replace(s)
+}
+
+// categoryDisplayName 返回类别的中文显示名。
+func categoryDisplayName(cat string) string {
+	switch cat {
+	case "security":
+		return "安全告警"
+	case "actions":
+		return "工作流"
+	case "issue":
+		return "Issue"
+	case "pr":
+		return "PR"
+	default:
+		return cat
+	}
 }

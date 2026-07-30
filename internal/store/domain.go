@@ -338,6 +338,8 @@ type EventStore interface {
 	GetByFingerprint(context.Context, string) (Event, error)
 	List(context.Context, ListFilter) ([]Event, PageResult, error)
 	CountSince(context.Context, time.Time) (int, error)
+	// ListSince 查询指定时间之后的事件，按时间倒序，limit 控制最大返回数。
+	ListSince(ctx context.Context, since time.Time, limit int) ([]Event, error)
 }
 
 // ChannelStore 通知渠道。

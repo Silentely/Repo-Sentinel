@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -62,9 +64,9 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 		}
 	}
 
-	// 收集近 24h 非实时类事件（简化：全部事件计数）
+	// 收集近 24h 事件并按类别分组
 	since := now.Add(-24 * time.Hour)
-	count, err := g.Store.Events().CountSince(ctx, since)
+	events, err := g.Store.Events().ListSince(ctx, since, 500)
 	if err != nil {
 		return err
 	}
@@ -72,13 +74,13 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 	if s, err := g.Store.Settings().Get(ctx, settingSendEmpty); err == nil {
 		_ = json.Unmarshal(s.ValueJSON, &sendEmpty)
 	}
-	if count == 0 && !sendEmpty {
-		// 仍标记已检查日期，避免每小时空转？规格：无事件默认不发送；不写 last 以便次日再试
+	if len(events) == 0 && !sendEmpty {
 		return nil
 	}
 
-	title := fmt.Sprintf("📋 每日摘要 %s", dateKey)
-	body := fmt.Sprintf("<b>%s</b>\n过去 24 小时事件 %d 条。\n请在仪表盘查看详情。", title, count)
+	title := fmt.Sprintf("📊 每日摘要 %s", dateKey)
+	body := buildDigestBody(title, events)
+
 	channels, err := g.Store.Channels().List(ctx)
 	if err != nil {
 		return err
@@ -92,7 +94,7 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 			ID: ulid.Make().String(), ChannelID: ch.ID, IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: title, BodyText: body, ParseMode: "HTML",
-			BodyJSON: map[string]any{"digest": true, "date": dateKey, "count": count},
+			BodyJSON: map[string]any{"digest": true, "date": dateKey, "count": len(events)},
 		})
 		if err != nil && err != store.ErrConflict {
 			return err
@@ -104,4 +106,96 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 		UpdatedAt: time.Now().UTC(), UpdatedBy: "system",
 	})
 	return nil
+}
+
+// buildDigestBody 构建分组格式的每日摘要正文。
+func buildDigestBody(title string, events []store.Event) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
+	b.WriteString("────────────────\n")
+
+	if len(events) == 0 {
+		b.WriteString("🎉 过去 24 小时无新事件\n")
+		return b.String()
+	}
+
+	b.WriteString(fmt.Sprintf("过去 24 小时共 %d 条事件\n", len(events)))
+	b.WriteString("────────────────\n")
+
+	// 按 kind 分组计数
+	groups := make(map[string]int)
+	for _, ev := range events {
+		groups[ev.Kind]++
+	}
+	// 按数量降序排列
+	type kv struct {
+		kind  string
+		count int
+	}
+	sorted := make([]kv, 0, len(groups))
+	for k, v := range groups {
+		sorted = append(sorted, kv{k, v})
+	}
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].count > sorted[j].count })
+	for _, g := range sorted {
+		b.WriteString(fmt.Sprintf("%s %s × %d\n", kindEmoji(g.kind), kindDisplayName(g.kind), g.count))
+	}
+
+	// 最近 5 条事件预览
+	maxPreview := 5
+	b.WriteString("────────────────\n")
+	b.WriteString("最近活动：\n")
+	for i, ev := range events {
+		if i >= maxPreview {
+			break
+		}
+		emoji := kindEmoji(ev.Kind)
+		numStr := ""
+		if ev.SubjectNumber != nil {
+			numStr = fmt.Sprintf(" #%d", *ev.SubjectNumber)
+		}
+		b.WriteString(fmt.Sprintf("• %s%s %s\n", emoji, numStr, ev.Title))
+	}
+
+	return b.String()
+}
+
+// kindEmoji 根据事件类别返回 emoji。
+func kindEmoji(kind string) string {
+	switch kind {
+	case store.WorkItemKindIssue:
+		return "🐛"
+	case store.WorkItemKindPR:
+		return "🔀"
+	case store.AlertKindDependabot:
+		return "📦"
+	case store.AlertKindCodeScanning:
+		return "🔎"
+	case store.AlertKindSecretScanning:
+		return "🔑"
+	case "workflow_run":
+		return "⚙️"
+	default:
+		return "📋"
+	}
+}
+
+// kindDisplayName 返回事件类别的中文显示名。
+func kindDisplayName(kind string) string {
+	switch kind {
+	case store.WorkItemKindIssue:
+		return "Issue"
+	case store.WorkItemKindPR:
+		return "PR"
+	case store.AlertKindDependabot:
+		return "Dependabot"
+	case store.AlertKindCodeScanning:
+		return "Code Scanning"
+	case store.AlertKindSecretScanning:
+		return "Secret Scanning"
+	case "workflow_run":
+		return "工作流"
+	default:
+		return kind
+	}
 }

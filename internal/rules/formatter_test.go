@@ -56,8 +56,8 @@ func TestRenderMessagePRMerged(t *testing.T) {
 	}
 	title, body, htmlURL := renderMessage(ev, "org/repo")
 
-	if !strings.Contains(title, "✅") {
-		t.Fatalf("merged 应显示 ✅，实际: %s", title)
+	if !strings.Contains(title, "🟣") {
+		t.Fatalf("merged 应显示 🟣，实际: %s", title)
 	}
 	if !strings.Contains(body, "pull_request") {
 		t.Fatal("正文应包含 PR 类型")
