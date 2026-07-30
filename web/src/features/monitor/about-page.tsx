@@ -40,6 +40,9 @@ export function AboutPage() {
   const [aggregateSec, setAggregateSec] = useState(60);
   const [burstThreshold, setBurstThreshold] = useState(15);
   const [closedDisplayLimit, setClosedDisplayLimit] = useState(20);
+  const [retentionEventsDays, setRetentionEventsDays] = useState(90);
+  const [retentionOutboxDays, setRetentionOutboxDays] = useState(30);
+  const [retentionDeliveriesDays, setRetentionDeliveriesDays] = useState(30);
   const [featureIssues, setFeatureIssues] = useState(true);
   const [featurePRs, setFeaturePRs] = useState(true);
   const [featureActions, setFeatureActions] = useState(true);
@@ -53,6 +56,9 @@ export function AboutPage() {
     setAggregateSec(Number(settings.data["notify.aggregate_window_sec"] ?? 60));
     setBurstThreshold(Number(settings.data["notify.burst_threshold"] ?? 15));
     setClosedDisplayLimit(Number(settings.data["display.closed_limit"] ?? 20));
+    setRetentionEventsDays(Number(settings.data["retention.events_days"] ?? 90));
+    setRetentionOutboxDays(Number(settings.data["retention.outbox_days"] ?? 30));
+    setRetentionDeliveriesDays(Number(settings.data["retention.webhook_deliveries_days"] ?? 30));
     setFeatureIssues(settings.data["feature.issues"] !== false);
     setFeaturePRs(settings.data["feature.pull_requests"] !== false);
     setFeatureActions(settings.data["feature.actions"] !== false);
@@ -174,8 +180,11 @@ export function AboutPage() {
           <label className="field--plain"><span>通知聚合窗口（秒）</span><input type="number" min={0} value={aggregateSec} onChange={(e) => setAggregateSec(Number(e.target.value) || 0)} /></label>
           <label className="field--plain"><span>超频阈值</span><input type="number" min={1} value={burstThreshold} onChange={(e) => setBurstThreshold(Number(e.target.value) || 1)} /></label>
           <label className="field--plain"><span>已关闭/已忽略显示数量</span><input type="number" min={1} max={200} value={closedDisplayLimit} onChange={(e) => setClosedDisplayLimit(Math.min(200, Math.max(1, Number(e.target.value) || 1)))} /></label>
+          <label className="field--plain"><span>事件保留天数</span><input type="number" min={0} max={3650} value={retentionEventsDays} onChange={(e) => setRetentionEventsDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
+          <label className="field--plain"><span>投递记录保留天数</span><input type="number" min={0} max={3650} value={retentionOutboxDays} onChange={(e) => setRetentionOutboxDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
+          <label className="field--plain"><span>Webhook Delivery 保留天数</span><input type="number" min={0} max={3650} value={retentionDeliveriesDays} onChange={(e) => setRetentionDeliveriesDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
         </div>
-        <p className="field-hint">Issues、PR、安全告警的 Closed/Dismissed 列表默认只显示最近指定数量的条目。</p>
+        <p className="field-hint">Issues、PR、安全告警的 Closed/Dismissed 列表默认只显示最近指定数量的条目。保留天数用于后台定期清理历史数据（0 表示禁用该类清理）；默认事件 90 天、投递与 Delivery 各 30 天。</p>
         <label className="check-row"><input type="checkbox" checked={digestEmpty} onChange={(e) => setDigestEmpty(e.target.checked)} /><span>无事件时仍发送空摘要</span></label>
         <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending} onClick={() => {
           setSettingsMsg("");
@@ -186,6 +195,9 @@ export function AboutPage() {
             "notify.aggregate_window_sec": aggregateSec,
             "notify.burst_threshold": burstThreshold,
             "display.closed_limit": closedDisplayLimit,
+            "retention.events_days": retentionEventsDays,
+            "retention.outbox_days": retentionOutboxDays,
+            "retention.webhook_deliveries_days": retentionDeliveriesDays,
             "feature.issues": featureIssues,
             "feature.pull_requests": featurePRs,
             "feature.actions": featureActions,
@@ -213,6 +225,9 @@ export function AboutPage() {
             "notify.aggregate_window_sec": aggregateSec,
             "notify.burst_threshold": burstThreshold,
             "display.closed_limit": closedDisplayLimit,
+            "retention.events_days": retentionEventsDays,
+            "retention.outbox_days": retentionOutboxDays,
+            "retention.webhook_deliveries_days": retentionDeliveriesDays,
             "feature.issues": featureIssues,
             "feature.pull_requests": featurePRs,
             "feature.actions": featureActions,

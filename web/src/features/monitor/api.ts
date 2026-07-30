@@ -290,6 +290,9 @@ export interface SystemSettings {
   "notify.burst_threshold"?: number;
   "display.closed_limit"?: number;
   "notify.burst_window_sec"?: number;
+  "retention.events_days"?: number;
+  "retention.outbox_days"?: number;
+  "retention.webhook_deliveries_days"?: number;
   "feature.issues"?: boolean;
   "feature.pull_requests"?: boolean;
   "feature.actions"?: boolean;

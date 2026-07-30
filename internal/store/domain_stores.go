@@ -364,6 +364,13 @@ func (s *webhookDeliveryStore) MarkProcessed(ctx context.Context, id, status, er
 	return mapStoreError(err)
 }
 
+func (s *webhookDeliveryStore) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error) {
+	n, err := s.client.WebhookDelivery.Delete().
+		Where(webhookdelivery.ReceivedAtLT(cutoff.UTC())).
+		Exec(ctx)
+	return n, mapStoreError(err)
+}
+
 func webhookDeliveryFromEntity(e *entclient.WebhookDelivery) WebhookDelivery {
 	return WebhookDelivery{
 		ID: e.ID, DeliveryID: e.DeliveryID, EventType: e.EventType, Action: e.Action,
@@ -1045,6 +1052,13 @@ func (s *eventStore) CountSince(ctx context.Context, since time.Time) (int, erro
 	return n, mapStoreError(err)
 }
 
+func (s *eventStore) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error) {
+	n, err := s.client.Event.Delete().
+		Where(event.CreatedAtLT(cutoff.UTC())).
+		Exec(ctx)
+	return n, mapStoreError(err)
+}
+
 func (s *eventStore) ListSince(ctx context.Context, since time.Time, limit int) ([]Event, error) {
 	if limit <= 0 {
 		limit = 500
@@ -1335,6 +1349,16 @@ func (s *outboxStore) RetryDead(ctx context.Context, id string, next time.Time) 
 		Exec(ctx))
 }
 
+func (s *outboxStore) DeleteTerminalOlderThan(ctx context.Context, cutoff time.Time) (int, error) {
+	n, err := s.client.NotificationOutbox.Delete().
+		Where(
+			notificationoutbox.StatusIn(OutboxSent, OutboxDead),
+			notificationoutbox.CreatedAtLT(cutoff.UTC()),
+		).
+		Exec(ctx)
+	return n, mapStoreError(err)
+}
+
 func outboxFromEntity(e *entclient.NotificationOutbox) NotificationOutbox {
 	out := NotificationOutbox{
 		ID: e.ID, ChannelID: e.ChannelID, EventID: e.EventID, AggregateKey: e.AggregateKey,
@@ -1413,6 +1437,38 @@ func cursorFromEntity(e *entclient.SyncCursor) SyncCursor {
 		ID: e.ID, RepositoryID: e.RepositoryID, Resource: e.Resource, CursorValue: e.CursorValue,
 		ETag: e.Etag, LastSuccessAt: e.LastSuccessAt, LastErrorCode: e.LastErrorCode, UpdatedAt: e.UpdatedAt,
 	}
+}
+
+// CleanupRetention 按策略删除过期历史数据；days<=0 的类别跳过。
+func (s *storeImpl) CleanupRetention(ctx context.Context, policy RetentionPolicy, now time.Time) (CleanupResult, error) {
+	var result CleanupResult
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	if policy.EventsDays > 0 {
+		n, err := s.Events().DeleteOlderThan(ctx, now.AddDate(0, 0, -policy.EventsDays))
+		if err != nil {
+			return result, err
+		}
+		result.EventsDeleted = n
+	}
+	if policy.OutboxDays > 0 {
+		n, err := s.Outbox().DeleteTerminalOlderThan(ctx, now.AddDate(0, 0, -policy.OutboxDays))
+		if err != nil {
+			return result, err
+		}
+		result.OutboxDeleted = n
+	}
+	if policy.WebhookDeliveriesDays > 0 {
+		n, err := s.WebhookDeliveries().DeleteOlderThan(ctx, now.AddDate(0, 0, -policy.WebhookDeliveriesDays))
+		if err != nil {
+			return result, err
+		}
+		result.WebhookDeliveriesDeleted = n
+	}
+	return result, nil
 }
 
 // Dashboard 聚合统计。

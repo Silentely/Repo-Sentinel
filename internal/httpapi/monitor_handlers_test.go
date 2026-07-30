@@ -114,6 +114,73 @@ func Test工作项忽略API需要认证与CSRF并支持列表筛选(t *testing.T
 	}
 }
 
+func Test系统设置保留天数校验与回读(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	// 默认值应包含保留天数。
+	get := fixture.request(t, http.MethodGet, "/api/v1/system/settings", "", "127.0.0.1:45201", cookies, nil)
+	if get.Code != http.StatusOK {
+		t.Fatalf("get settings status=%d body=%s", get.Code, get.Body.String())
+	}
+	var defaults map[string]any
+	if err := json.Unmarshal(get.Body.Bytes(), &defaults); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]float64{
+		"retention.events_days":             90,
+		"retention.outbox_days":             30,
+		"retention.webhook_deliveries_days": 30,
+	} {
+		if got, ok := defaults[key].(float64); !ok || got != want {
+			t.Fatalf("默认 %s=%v，期望 %v；完整响应=%v", key, defaults[key], want, defaults)
+		}
+	}
+
+	// 非法值应拒绝且返回 validation_failed。
+	for _, body := range []string{
+		`{"retention.events_days":-1}`,
+		`{"retention.outbox_days":3651}`,
+		`{"retention.events_days":1.5}`,
+		`{"retention.webhook_deliveries_days":"90"}`,
+	} {
+		resp := fixture.request(t, http.MethodPut, "/api/v1/system/settings", body,
+			"127.0.0.1:45202", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+		assertAPIError(t, resp, http.StatusBadRequest, "validation_failed")
+	}
+
+	// 合法值（含 0=禁用清理）应写入并回读。
+	put := fixture.request(t, http.MethodPut, "/api/v1/system/settings",
+		`{"retention.events_days":0,"retention.outbox_days":45,"retention.webhook_deliveries_days":7}`,
+		"127.0.0.1:45203", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if put.Code != http.StatusOK {
+		t.Fatalf("put settings status=%d body=%s", put.Code, put.Body.String())
+	}
+	var updated map[string]any
+	if err := json.Unmarshal(put.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]float64{
+		"retention.events_days":             0,
+		"retention.outbox_days":             45,
+		"retention.webhook_deliveries_days": 7,
+	} {
+		if got, ok := updated[key].(float64); !ok || got != want {
+			t.Fatalf("更新后 %s=%v，期望 %v；完整响应=%v", key, updated[key], want, updated)
+		}
+	}
+
+	// 未认证与缺 CSRF 仍应拒绝。
+	unauth := fixture.request(t, http.MethodPut, "/api/v1/system/settings",
+		`{"retention.events_days":30}`, "127.0.0.1:45204", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+	noCSRF := fixture.request(t, http.MethodPut, "/api/v1/system/settings",
+		`{"retention.events_days":30}`, "127.0.0.1:45205", cookies, nil)
+	assertAPIError(t, noCSRF, http.StatusForbidden, "csrf_failed")
+}
+
 func TestDashboard统计排除归档仓与已忽略项(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
 	fixture.bootstrapAdmin(t)

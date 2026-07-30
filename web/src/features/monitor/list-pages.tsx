@@ -1,8 +1,6 @@
-import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { EyeOff, RotateCcw } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
@@ -15,25 +13,21 @@ import {
   setSecurityAlertIgnored,
   setWorkItemIgnored,
   setWorkflowRunIgnored,
-  settingsQueryOptions,
   updateRepositorySettings,
   type Repository,
   type RepositorySettings,
 } from "./api";
-
-function FeatureGuard({ featureKey, featureName, children }: { featureKey: string; featureName: string; children: ReactNode }) {
-  const settings = useQuery(settingsQueryOptions);
-  if (settings.isLoading) return null;
-  const enabled = settings.data?.[featureKey as keyof typeof settings.data] !== false;
-  if (!enabled) {
-    return (
-      <ListShell eyebrow="仓库" title={featureName} description="">
-        <EmptyState title={`${featureName} 功能已禁用`} description="可在「关于与设置 → 功能模块开关」中重新启用。" action={<Link to="/about">打开设置</Link>} />
-      </ListShell>
-    );
-  }
-  return <>{children}</>;
-}
+import {
+  FeatureGuard,
+  IgnoreButton,
+  IgnoredToggle,
+  ListShell,
+  ListSkeleton,
+  RepoFilterSelect,
+  useActiveRepos,
+  useIgnoreMutation,
+  type IgnoredMode,
+} from "./list-shared";
 
 interface WorkItem {
   id: string;
@@ -92,117 +86,13 @@ interface SecurityAlert {
   ignored?: boolean;
 }
 
-type IgnoredMode = "active" | "ignored";
-
-function LoadingIndicator() {
-  return (
-    <ul className="skeleton-list" aria-label="加载中" role="status">
-      {Array.from({ length: 5 }, (_, i) => (
-        <li key={i} className="skeleton-row">
-          <span className="skeleton-row__badge" />
-          <span className="skeleton-row__text skeleton-row__text--lg" />
-          <span className="skeleton-row__text skeleton-row__text--sm" />
-          <span className="skeleton-row__text skeleton-row__text--xs" />
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** 活跃（未归档）仓库下拉，用于四页共用筛选。 */
-function useActiveRepos() {
-  const repos = useQuery(repositoriesQueryOptions);
-  const active = useMemo(
-    () => (repos.data?.items ?? []).filter((r) => !r.is_archived && r.sync_status !== "archived"),
-    [repos.data?.items],
-  );
-  return { active, isLoading: repos.isLoading };
-}
-
-function RepoFilterSelect({
-  value,
-  onChange,
-  repos,
-}: {
-  value: string;
-  onChange: (id: string) => void;
-  repos: Repository[];
-}) {
-  return (
-    <label className="repo-filter">
-      <span className="sr-only">按仓库筛选</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="按仓库筛选">
-        <option value="">全部仓库</option>
-        {repos.map((r) => (
-          <option key={r.id} value={r.id}>
-            {r.full_name || `${r.owner}/${r.name}`}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function IgnoredToggle({
-  mode,
-  onChange,
-}: {
-  mode: IgnoredMode;
-  onChange: (mode: IgnoredMode) => void;
-}) {
-  return (
-    <>
-      <span className="filter-bar__sep" />
-      <button
-        className={`quiet-button${mode === "active" ? " active" : ""}`}
-        type="button"
-        onClick={() => onChange("active")}
-      >
-        关注中
-      </button>
-      <button
-        className={`quiet-button${mode === "ignored" ? " active" : ""}`}
-        type="button"
-        onClick={() => onChange("ignored")}
-      >
-        已忽略
-      </button>
-    </>
-  );
-}
-
-function IgnoreButton({
-  ignored,
-  busy,
-  onToggle,
-}: {
-  ignored?: boolean;
-  busy?: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      className="quiet-button quiet-button--compact"
-      type="button"
-      disabled={busy}
-      onClick={onToggle}
-      title={ignored ? "取消忽略" : "忽略此项"}
-    >
-      {ignored ? <RotateCcw size={14} aria-hidden="true" /> : <EyeOff size={14} aria-hidden="true" />}
-      <span>{ignored ? "取消忽略" : "忽略"}</span>
-    </button>
-  );
-}
-
 function WorkItemsList({ kind, title, description }: { kind: string; title: string; description: string }) {
-  const queryClient = useQueryClient();
   const { active: activeRepos } = useActiveRepos();
   const [state, setState] = useState<string>("open");
   const [repoId, setRepoId] = useState<string>("");
   const [ignoredMode, setIgnoredMode] = useState<IgnoredMode>("active");
   const [reviewFilter, setReviewFilter] = useState<string>("");
   const [checkFilter, setCheckFilter] = useState<string>("");
-  const [busyId, setBusyId] = useState<string | null>(null);
 
   const q = useQuery({
     queryKey: ["work-items", kind, state, repoId, ignoredMode],
@@ -215,15 +105,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
     },
   });
 
-  const ignoreMutation = useMutation({
-    mutationFn: ({ id, ignored }: { id: string; ignored: boolean }) => setWorkItemIgnored(id, ignored),
-    onMutate: ({ id }) => setBusyId(id),
-    onSettled: async () => {
-      setBusyId(null);
-      await queryClient.invalidateQueries({ queryKey: ["work-items"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
+  const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
 
   const filteredItems = (q.data?.items || []).filter((it) => {
     if (reviewFilter === "approved" && it.review_decision !== "approved") return false;
@@ -277,7 +159,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
       {q.isError ? (
         <ErrorAlert title="加载失败" message={toApiError(q.error).message || "无法加载工作项"} />
       ) : q.isLoading ? (
-        <LoadingIndicator />
+        <ListSkeleton />
       ) : filteredItems.length ? (
         <ul className="event-list">
           {filteredItems.map((it) => {
@@ -479,7 +361,7 @@ export function ReposPage() {
         </button>
       </div>
       {repos.isLoading ? (
-        <LoadingIndicator />
+        <ListSkeleton />
       ) : displayed.length ? (
         <ul className="repo-settings-list">
           {displayed.map((repo) => (
@@ -566,15 +448,12 @@ function Toggle({
   );
 }
 
-export function ActionsPage() {
-  const settings = useQuery(settingsQueryOptions);
-  const featureEnabled = settings.data?.["feature.actions"] !== false;
-  const queryClient = useQueryClient();
+function ActionsList() {
   const { active: activeRepos } = useActiveRepos();
   const [repoId, setRepoId] = useState<string>("");
   const [conclusion, setConclusion] = useState<string>("");
   const [ignoredMode, setIgnoredMode] = useState<IgnoredMode>("active");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkflowRunIgnored, ["workflow-runs"]);
 
   const q = useQuery({
     queryKey: ["workflow-runs", repoId, conclusion, ignoredMode],
@@ -586,24 +465,6 @@ export function ActionsPage() {
       return apiRequest<Page<WorkflowRun>>(`/api/v1/workflow-runs?${params.toString()}`);
     },
   });
-
-  const ignoreMutation = useMutation({
-    mutationFn: ({ id, ignored }: { id: string; ignored: boolean }) => setWorkflowRunIgnored(id, ignored),
-    onMutate: ({ id }) => setBusyId(id),
-    onSettled: async () => {
-      setBusyId(null);
-      await queryClient.invalidateQueries({ queryKey: ["workflow-runs"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
-
-  if (!featureEnabled) {
-    return (
-      <ListShell eyebrow="仓库" title="Actions" description="Workflow Run 结论与恢复状态。">
-        <EmptyState title="Actions 功能已禁用" description="可在「关于与设置 → 功能模块开关」中重新启用。" action={<Link to="/about">打开设置</Link>} />
-      </ListShell>
-    );
-  }
 
   return (
     <ListShell
@@ -643,7 +504,7 @@ export function ActionsPage() {
       {q.isError ? (
         <ErrorAlert title="加载失败" message={toApiError(q.error).message || "无法加载 Actions 运行记录"} />
       ) : q.isLoading ? (
-        <LoadingIndicator />
+        <ListSkeleton />
       ) : q.data?.items.length ? (
         <ul className="event-list">
           {q.data.items.map((run) => {
@@ -703,16 +564,25 @@ export function ActionsPage() {
   );
 }
 
-export function SecurityPage() {
-  const settings = useQuery(settingsQueryOptions);
-  const featureEnabled = settings.data?.["feature.security_alerts"] !== false;
-  const queryClient = useQueryClient();
+export function ActionsPage() {
+  return (
+    <FeatureGuard
+      featureKey="feature.actions"
+      featureName="Actions"
+      description="Workflow Run 结论与恢复状态。依赖 GitHub App 的 Actions 只读权限与 workflow_run 事件；也可在仪表盘触发对账补拉。"
+    >
+      <ActionsList />
+    </FeatureGuard>
+  );
+}
+
+function SecurityList() {
   const { active: activeRepos } = useActiveRepos();
   const [state, setState] = useState<string>("open");
   const [alertKind, setAlertKind] = useState<string>("");
   const [repoId, setRepoId] = useState<string>("");
   const [ignoredMode, setIgnoredMode] = useState<IgnoredMode>("active");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setSecurityAlertIgnored, ["security-alerts"]);
 
   const q = useQuery({
     queryKey: ["security-alerts", state, alertKind, repoId, ignoredMode],
@@ -725,24 +595,6 @@ export function SecurityPage() {
       return apiRequest<Page<SecurityAlert>>(`/api/v1/security-alerts?${params.toString()}`);
     },
   });
-
-  const ignoreMutation = useMutation({
-    mutationFn: ({ id, ignored }: { id: string; ignored: boolean }) => setSecurityAlertIgnored(id, ignored),
-    onMutate: ({ id }) => setBusyId(id),
-    onSettled: async () => {
-      setBusyId(null);
-      await queryClient.invalidateQueries({ queryKey: ["security-alerts"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
-
-  if (!featureEnabled) {
-    return (
-      <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning 安全告警。">
-        <EmptyState title="安全告警功能已禁用" description="可在「关于与设置 → 功能模块开关」中重新启用。" action={<Link to="/about">打开设置</Link>} />
-      </ListShell>
-    );
-  }
 
   return (
     <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning 安全告警。">
@@ -792,7 +644,7 @@ export function SecurityPage() {
       {q.isError ? (
         <ErrorAlert title="加载失败" message={toApiError(q.error).message || "无法加载安全告警"} />
       ) : q.isLoading ? (
-        <LoadingIndicator />
+        <ListSkeleton />
       ) : q.data?.items.length ? (
         <ul className="event-list">
           {q.data.items.map((a) => {
@@ -854,27 +706,15 @@ export function SecurityPage() {
   );
 }
 
-export function ListShell({
-  eyebrow = "仓库值守",
-  title,
-  description,
-  children,
-}: {
-  eyebrow?: string;
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
+export function SecurityPage() {
   return (
-    <>
-      <section className="page-intro">
-        <div>
-          <p className="eyebrow">{eyebrow}</p>
-          <h1>{title}</h1>
-          <p>{description}</p>
-        </div>
-      </section>
-      <section className="onboarding-card">{children}</section>
-    </>
+    <FeatureGuard
+      featureKey="feature.security_alerts"
+      featureName="安全告警"
+      description="Dependabot / Code Scanning / Secret Scanning 安全告警。"
+    >
+      <SecurityList />
+    </FeatureGuard>
   );
 }
+

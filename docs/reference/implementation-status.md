@@ -28,6 +28,7 @@
 | doctor / backup / restore | 已交付 | 备份须同时保管主密钥 |
 | GHCR 镜像 | 已交付 | `main`/`dev` 推送对应浮动标签；`v*` 推送 `vX.Y.Z` + `latest` |
 | Prometheus `/metrics` | 已交付 | 进程内计数 + 可选 Bearer；建议内网抓取 |
+| 历史数据保留清理 | 已交付 | settings 可配事件/Outbox/Delivery 保留天数；后台每日清理；0 表示禁用该类 |
 
 ## 验证命令
 

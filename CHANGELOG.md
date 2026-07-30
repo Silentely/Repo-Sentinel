@@ -2,6 +2,17 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 SemVer。
 
+## [0.3.7] - 2026-07-30
+
+### Added
+
+- 历史数据保留策略：事件 / 终态投递 / Webhook Delivery 保留天数可在「关于与设置」配置（默认 90 / 30 / 30 天，0 表示禁用该类清理），后台每日自动清理
+- Issues / PR / Actions / 安全告警列表抽取共享骨架屏与功能开关守卫组件，加载中展示列表骨架而非空白
+
+### Fixed
+
+- 应用装配失败路径未取消 worker 上下文导致的 goroutine 泄漏（`go vet` 已拦截）
+
 ## [0.3.6] - 2026-07-29
 
 ### Added
