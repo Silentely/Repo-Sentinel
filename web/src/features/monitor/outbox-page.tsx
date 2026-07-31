@@ -4,8 +4,7 @@ import { Loader2, X } from "lucide-react";
 
 import { apiRequest } from "../../lib/api/client";
 import { EmptyState } from "../../components/empty-state";
-import { ErrorAlert } from "../../components/error-alert";
-import { toApiError } from "../../lib/api/errors";
+import { QueryGate } from "../../components/query-gate";
 import { formatRelativeTime } from "../../lib/format";
 import { retryOutbox, type OutboxItem, type Page } from "./api";
 
@@ -40,8 +39,13 @@ export function OutboxPage() {
     refetchInterval: 15_000,
   });
 
+  // 行级忙碌：只让当前重试的记录转圈，避免整列禁用。
+  const [retryBusyId, setRetryBusyId] = useState<string | null>(null);
+
   const retry = useMutation({
     mutationFn: (id: string) => retryOutbox(id),
+    onMutate: (id) => setRetryBusyId(id),
+    onSettled: () => setRetryBusyId(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["outbox"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -73,14 +77,6 @@ export function OutboxPage() {
           <p>查看通知投递状态，重试失败的投递消息。</p>
         </div>
       </section>
-
-      {outbox.isError ? (
-        <ErrorAlert
-          title="无法加载投递记录"
-          message={toApiError(outbox.error).message}
-          errorCode={toApiError(outbox.error).errorCode}
-        />
-      ) : null}
 
       <section className="onboarding-card">
         <div className="outbox-toolbar">
@@ -126,16 +122,21 @@ export function OutboxPage() {
           </div>
         </div>
 
-        {items.length === 0 ? (
-          <EmptyState
-            title="没有投递记录"
-            description={
-              statusFilter || channelFilter
-                ? "当前筛选条件下没有记录。"
-                : "配置通知渠道后，实时通知会进入投递队列。"
-            }
-          />
-        ) : (
+        <QueryGate
+          query={outbox}
+          errorTitle="无法加载投递记录"
+          isEmpty={items.length === 0}
+          emptyState={
+            <EmptyState
+              title="没有投递记录"
+              description={
+                statusFilter || channelFilter
+                  ? "当前筛选条件下没有记录。"
+                  : "配置通知渠道后，实时通知会进入投递队列。"
+              }
+            />
+          }
+        >
           <ul className="event-list">
             {items.map((item) => (
               <li
@@ -156,15 +157,15 @@ export function OutboxPage() {
                     className="quiet-button"
                     type="button"
                     onClick={(e) => { e.stopPropagation(); retry.mutate(item.id); }}
-                    disabled={retry.isPending}
+                    disabled={retryBusyId === item.id}
                   >
-                    {retry.isPending ? "重试中…" : "重试"}
+                    {retryBusyId === item.id ? "重试中…" : "重试"}
                   </button>
                 ) : null}
               </li>
             ))}
           </ul>
-        )}
+        </QueryGate>
       </section>
 
       {selectedItem && (
