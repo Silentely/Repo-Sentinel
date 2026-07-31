@@ -39,7 +39,6 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   document.documentElement.classList.remove("dark");
-  document.documentElement.removeAttribute("data-theme");
   for (const cookie of document.cookie.split(";")) {
     const name = cookie.split("=")[0]?.trim();
     if (name) {

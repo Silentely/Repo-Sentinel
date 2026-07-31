@@ -3,6 +3,7 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   Navigate,
   Outlet,
   useNavigate,
@@ -15,19 +16,19 @@ import { SetupPage } from "../features/auth/setup-page";
 import { createAdmin, login, setupStatusQueryOptions } from "../features/auth/api";
 import { useSession } from "../features/auth/use-session";
 import { queryClient } from "../lib/query-client";
-import { DashboardPage } from "../features/monitor/dashboard-page";
-import { NotifyPage } from "../features/monitor/notify-page";
-import { OutboxPage } from "../features/monitor/outbox-page";
-import {
-  ActionsPage,
-  IssuesPage,
-  PullRequestsPage,
-  ReposPage,
-  SecurityPage,
-} from "../features/monitor/list-pages";
-import { GitHubPage } from "../features/monitor/github-page";
-import { AboutPage } from "../features/monitor/about-page";
 import { RootLayout, RouteLoading } from "./root-layout";
+
+// 监控/功能页面按路由拆分 chunk；登录与初始化页保持静态，保证首屏认证链路即时可用。
+const DashboardPage = lazyRouteComponent(() => import("../features/monitor/dashboard-page"), "DashboardPage");
+const NotifyPage = lazyRouteComponent(() => import("../features/monitor/notify-page"), "NotifyPage");
+const OutboxPage = lazyRouteComponent(() => import("../features/monitor/outbox-page"), "OutboxPage");
+const IssuesPage = lazyRouteComponent(() => import("../features/monitor/list-pages"), "IssuesPage");
+const PullRequestsPage = lazyRouteComponent(() => import("../features/monitor/list-pages"), "PullRequestsPage");
+const ReposPage = lazyRouteComponent(() => import("../features/monitor/list-pages"), "ReposPage");
+const ActionsPage = lazyRouteComponent(() => import("../features/monitor/list-pages"), "ActionsPage");
+const SecurityPage = lazyRouteComponent(() => import("../features/monitor/list-pages"), "SecurityPage");
+const GitHubPage = lazyRouteComponent(() => import("../features/monitor/github-page"), "GitHubPage");
+const AboutPage = lazyRouteComponent(() => import("../features/monitor/about-page"), "AboutPage");
 
 export interface RouterContext {
   queryClient: QueryClient;
