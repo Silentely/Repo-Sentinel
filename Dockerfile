@@ -13,9 +13,13 @@ FROM golang:1.26-bookworm AS backend
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY . .
+# 仅复制构建所需路径，配合 .dockerignore 缩小上下文并提升缓存命中率
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY migrations/ ./migrations/
+COPY web/*.go ./web/
 COPY --from=frontend /src/web/dist ./web/dist
-ARG VERSION=0.3.4
+ARG VERSION=0.3.7
 ARG GIT_SHA=unknown
 ARG GIT_BRANCH=unknown
 ARG BUILD_TIME=unknown
@@ -39,6 +43,6 @@ ENV REPOSENTINEL_HTTP_ADDR=0.0.0.0:8080 \
     REPOSENTINEL_DATABASE_URL=file:/data/reposentinel.db
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["/reposentinel", "version"]
+  CMD ["/reposentinel", "healthcheck"]
 ENTRYPOINT ["/reposentinel"]
 CMD ["serve"]
