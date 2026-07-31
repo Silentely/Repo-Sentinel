@@ -112,6 +112,10 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	if res.Event == nil || res.SuppressNotify || res.Event.SuppressNotification {
 		return nil
 	}
+	// 能力开关兜底：关闭的开关不产生实时通知（防止聚合窗口期间开关变化导致漏拦）。
+	if !repoAllowsKind(res.Repository, res.Event.Kind) {
+		return nil
+	}
 	if !shouldNotifyRealtime(res.Event) {
 		return nil
 	}

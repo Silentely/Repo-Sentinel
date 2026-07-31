@@ -47,6 +47,8 @@ type fakeGitHub struct {
 	// 请求计数器（httptest 每个请求独立 goroutine，必须用原子量）。
 	prDetailRequests atomic.Int64 // GET /pulls/{n}：enrich 预算观测点
 	dependabotPages  atomic.Int64 // dependabot alerts 请求总次数
+	issuesPages      atomic.Int64 // issues 请求总次数（能力开关观测点）
+	actionsPages     atomic.Int64 // actions runs 请求总次数（能力开关观测点）
 }
 
 // ServeHTTP 实现 http.Handler，把 Reconciler 可能触达的端点全部接管。
@@ -62,12 +64,14 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Installation Token 签发：任意 JWT 都接受，直接返回测试 token。
 		write(map[string]any{"token": "test-installation-token", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
 	case reIssues.MatchString(path):
+		f.issuesPages.Add(1)
 		if f.issuesFn != nil {
 			write(f.issuesFn(page))
 			return
 		}
 		write([]any{})
 	case reActionsRuns.MatchString(path):
+		f.actionsPages.Add(1)
 		write(map[string]any{"workflow_runs": []any{}})
 	case reDependabot.MatchString(path):
 		f.dependabotPages.Add(1)
@@ -294,6 +298,123 @@ func TestReconcileDependabotAlertsPagination(t *testing.T) {
 
 // TestReconcilePREnrichBudget 验证单轮 PR enrich 预算上限：
 // 30 个待 enrich 的新 PR 只允许 25 次 PR 详情请求，超预算的 PR 仍须正常落库。
+// TestReconcileRespectsCapabilityToggles 验证能力开关对对账的分流：
+// 关闭 PR/Actions/告警后，仅 Issues 被采集，对应 GitHub API 完全不被请求。
+func TestReconcileRespectsCapabilityToggles(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	updated := time.Now().UTC().Truncate(time.Second)
+
+	fake.issuesFn = func(page int) any {
+		return []map[string]any{
+			{
+				"number": 1, "state": "open", "title": "保留的 issue",
+				"html_url":   "https://github.com/acme/demo/issues/1",
+				"updated_at": updated.Format(time.RFC3339),
+				"user":       map[string]any{"login": "alice"},
+				"labels":     []any{}, "assignees": []any{},
+			},
+			{
+				"number": 2, "state": "open", "title": "被开关关闭的 PR",
+				"html_url":     "https://github.com/acme/demo/pull/2",
+				"pull_request": map[string]any{"url": "https://api.github.com/repos/acme/demo/pulls/2"},
+				"updated_at":   updated.Format(time.RFC3339),
+				"user":         map[string]any{"login": "bob"},
+				"labels":       []any{}, "assignees": []any{},
+			},
+		}
+	}
+
+	off := false
+	if err := data.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{
+		PrEnabled: &off, ActionsEnabled: &off, AlertsEnabled: &off,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// ReconcileRepository 消费的是传入快照：必须取回开关更新后的仓库。
+	repo, err := data.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+	if got := fake.actionsPages.Load(); got != 0 {
+		t.Fatalf("Actions 关闭不应请求 actions runs，got %d", got)
+	}
+	if got := fake.dependabotPages.Load(); got != 0 {
+		t.Fatalf("告警关闭不应请求 dependabot，got %d", got)
+	}
+	if _, err := data.WorkItems().GetByRepoNumber(ctx, repo.ID, 1); err != nil {
+		t.Fatalf("issue 应正常采集: %v", err)
+	}
+	if _, err := data.WorkItems().GetByRepoNumber(ctx, repo.ID, 2); err == nil {
+		t.Fatal("PR 开关关闭后不应采集 PR")
+	}
+}
+
+// 监控总开关关闭的仓库：整仓跳过对账，不产生任何 GitHub 请求。
+func TestReconcileSkipsMonitorDisabledRepo(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+
+	off := false
+	if err := data.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{MonitorEnabled: &off}); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := data.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("关监控的仓库应静默跳过: %v", err)
+	}
+	if got := fake.issuesPages.Load(); got != 0 {
+		t.Fatalf("关监控不应请求 issues，got %d", got)
+	}
+	if got := fake.actionsPages.Load(); got != 0 {
+		t.Fatalf("关监控不应请求 actions runs，got %d", got)
+	}
+}
+
+// GitHub 侧已归档（is_archived=true 但状态未联动）的历史不一致仓库：
+// 对账轮顺手收口归档并跳过采集。
+func TestReconcileAllConvergesArchivedRepo(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+
+	// 模拟历史不一致：is_archived=true 但 sync_status 仍 active、开关全开（Upsert 保留开关）。
+	if _, err := data.Repositories().Upsert(ctx, store.Repository{
+		Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: repo.Owner, Name: repo.Name, FullName: repo.FullName,
+		InstallationID: repo.InstallationID, IsArchived: true,
+		HTMLURL: repo.HTMLURL,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileAll(ctx, 10); err != nil {
+		t.Fatalf("ReconcileAll: %v", err)
+	}
+	got, err := data.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SyncStatus != store.SyncStatusArchived {
+		t.Fatalf("归档仓应收口为 archived，got %s", got.SyncStatus)
+	}
+	if got.MonitorEnabled || got.ActionsEnabled {
+		t.Fatalf("归档联动应关闭开关: %+v", got)
+	}
+	if got := fake.issuesPages.Load(); got != 0 {
+		t.Fatalf("归档仓不应再采集，got issues 请求 %d 次", got)
+	}
+}
+
 func TestReconcilePREnrichBudget(t *testing.T) {
 	data, fake, repo := newReconcileFixture(t)
 	ctx := t.Context()

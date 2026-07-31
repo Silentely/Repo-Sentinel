@@ -536,6 +536,20 @@ func activeRepositoryIDs(ctx context.Context, client *entclient.Client) ([]strin
 	return rows, nil
 }
 
+// archivedRepositoryIDs 返回已归档仓库的 ID 列表。
+// 事件类查询采用「排除归档」而非「仅含活跃」：repository_id 为空的孤儿事件保持可见，
+// 避免历史数据因仓库行缺失而凭空消失。
+func archivedRepositoryIDs(ctx context.Context, client *entclient.Client) ([]string, error) {
+	rows, err := client.Repository.Query().
+		Where(repository.IsArchivedEQ(true)).
+		Select(repository.FieldID).
+		Strings(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	return rows, nil
+}
+
 func (s *workItemStore) Get(ctx context.Context, id string) (WorkItem, error) {
 	entity, err := s.client.WorkItem.Get(ctx, id)
 	if err != nil {
@@ -1085,6 +1099,16 @@ func (s *eventStore) List(ctx context.Context, f ListFilter) ([]Event, PageResul
 	q := s.client.Event.Query()
 	if f.RepositoryID != "" {
 		q = q.Where(event.RepositoryIDEQ(f.RepositoryID))
+	} else if !f.IncludeArchivedRepos {
+		// 事件列表默认排除已归档仓库（与其他资源列表同一约定）；
+		// 显式按仓库过滤（RepositoryID）或 IncludeArchivedRepos=true 时不受限。
+		ids, err := archivedRepositoryIDs(ctx, s.client)
+		if err != nil {
+			return nil, PageResult{}, err
+		}
+		if len(ids) > 0 {
+			q = q.Where(event.Or(event.RepositoryIDIsNil(), event.RepositoryIDNotIn(ids...)))
+		}
 	}
 	if f.Kind != "" {
 		q = q.Where(event.KindEQ(f.Kind))
@@ -1117,12 +1141,22 @@ func (s *eventStore) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int
 	return n, mapStoreError(err)
 }
 
+// ListSince 每日摘要专用：只取未被抑制（非基线/归档期间产生）且非已归档仓库的事件。
 func (s *eventStore) ListSince(ctx context.Context, since time.Time, limit int) ([]Event, error) {
 	if limit <= 0 {
 		limit = 500
 	}
-	entList, err := s.client.Event.Query().
+	q := s.client.Event.Query().
 		Where(event.OccurredAtGTE(since.UTC())).
+		Where(event.SuppressNotificationEQ(false))
+	ids, err := archivedRepositoryIDs(ctx, s.client)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) > 0 {
+		q = q.Where(event.Or(event.RepositoryIDIsNil(), event.RepositoryIDNotIn(ids...)))
+	}
+	entList, err := q.
 		Order(entclient.Desc(event.FieldOccurredAt)).
 		Limit(limit).
 		All(ctx)
