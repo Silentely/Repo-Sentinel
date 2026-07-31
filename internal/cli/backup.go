@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,16 +15,17 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// 约定：子命令只返回错误，由 Runner.Run 统一向 stderr 打印一次。
 func (r Runner) runBackup(ctx context.Context, args []string) error {
 	fs := newFlagSet("backup")
 	configPath := fs.String("config", "", "配置文件路径")
 	output := fs.String("output", "", "备份输出路径")
 	if err := fs.Parse(args); err != nil {
-		return reportError(r.stderr, newCLIError("backup 参数无效。"))
+		return newCLIError("backup 参数无效。")
 	}
 	cfg, err := r.dependencies.LoadConfig(ctx, config.LoadOptions{ConfigPath: strings.TrimSpace(*configPath)})
 	if err != nil {
-		return reportError(r.stderr, err)
+		return err
 	}
 	out := strings.TrimSpace(*output)
 	if out == "" {
@@ -35,7 +37,7 @@ func (r Runner) runBackup(ctx context.Context, args []string) error {
 	case "postgres":
 		return r.backupPostgres(ctx, cfg.Database.URL, out)
 	default:
-		return reportError(r.stderr, newCLIError("不支持的数据库驱动。"))
+		return newCLIError("不支持的数据库驱动。")
 	}
 }
 
@@ -44,21 +46,21 @@ func (r Runner) backupSQLite(dbURL, out string) error {
 	path := strings.TrimPrefix(dbURL, "file:")
 	path = strings.Split(path, "?")[0]
 	if path == "" {
-		return reportError(r.stderr, newCLIError("无法解析 SQLite 路径。"))
+		return newCLIError("无法解析 SQLite 路径。")
 	}
 	// 使用驱动 VACUUM INTO，避免 shell 拼接路径。
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return reportError(r.stderr, err)
+		return err
 	}
 	defer db.Close()
 	if dir := filepath.Dir(out); dir != "." && dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return reportError(r.stderr, err)
+			return err
 		}
 	}
 	if _, err := db.Exec("VACUUM INTO ?", out); err != nil {
-		return reportError(r.stderr, fmt.Errorf("vacuum into failed: %w", err))
+		return fmt.Errorf("vacuum into failed: %w", err)
 	}
 	fmt.Fprintf(r.stdout, "backup=%s\n", out)
 	fmt.Fprintf(r.stdout, "note=请同时备份 REPOSENTINEL_ENCRYPTION_KEY\n")
@@ -67,14 +69,14 @@ func (r Runner) backupSQLite(dbURL, out string) error {
 
 func (r Runner) backupPostgres(ctx context.Context, dbURL, out string) error {
 	if _, err := exec.LookPath("pg_dump"); err != nil {
-		return reportError(r.stderr, newCLIError("未找到 pg_dump，请安装 PostgreSQL 客户端工具。"))
+		return newCLIError("未找到 pg_dump，请安装 PostgreSQL 客户端工具。")
 	}
 	if !strings.HasSuffix(out, ".dump") {
 		out = out + ".dump"
 	}
 	cmd := exec.CommandContext(ctx, "pg_dump", "--format=custom", "--file="+out, dbURL)
 	if b, err := cmd.CombinedOutput(); err != nil {
-		return reportError(r.stderr, fmt.Errorf("pg_dump failed: %w (%s)", err, string(b)))
+		return fmt.Errorf("pg_dump failed: %w (%s)", err, string(b))
 	}
 	fmt.Fprintf(r.stdout, "backup=%s\n", out)
 	fmt.Fprintf(r.stdout, "note=请同时备份 REPOSENTINEL_ENCRYPTION_KEY\n")
@@ -86,50 +88,76 @@ func (r Runner) runRestore(ctx context.Context, args []string) error {
 	configPath := fs.String("config", "", "配置文件路径")
 	input := fs.String("input", "", "备份文件路径")
 	if err := fs.Parse(args); err != nil {
-		return reportError(r.stderr, newCLIError("restore 参数无效。"))
+		return newCLIError("restore 参数无效。")
 	}
 	in := strings.TrimSpace(*input)
 	if in == "" {
-		return reportError(r.stderr, newCLIError("必须提供 --input 备份文件。"))
+		return newCLIError("必须提供 --input 备份文件。")
 	}
 	cfg, err := r.dependencies.LoadConfig(ctx, config.LoadOptions{ConfigPath: strings.TrimSpace(*configPath)})
 	if err != nil {
-		return reportError(r.stderr, err)
+		return err
 	}
 	switch cfg.Database.Driver {
 	case "sqlite":
 		path := strings.TrimPrefix(cfg.Database.URL, "file:")
 		path = strings.Split(path, "?")[0]
-		// 先备份当前
+		// 先备份当前库；源库存在但副本失败时中止恢复，宁可不动主库。
 		safety := path + ".pre-restore-" + time.Now().Format("20060102T150405")
-		_ = copyFile(path, safety)
+		if err := copyFile(path, safety); err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("安全副本创建失败，已中止恢复: %w", err)
+			}
+			safety = ""
+		}
+		// WAL 模式下替换主文件前必须清理旧日志，否则残留 -wal 会被重放到新库上。
+		for _, suffix := range []string{"-wal", "-shm"} {
+			if err := os.Remove(path + suffix); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("清理 %s 失败: %w", path+suffix, err)
+			}
+		}
 		if err := copyFile(in, path); err != nil {
-			return reportError(r.stderr, err)
+			return err
 		}
 		fmt.Fprintf(r.stdout, "restored=%s\n", path)
-		fmt.Fprintf(r.stdout, "safety_copy=%s\n", safety)
-		fmt.Fprintf(r.stdout, "note=请使用与备份匹配的 REPOSENTINEL_ENCRYPTION_KEY 启动并验证通知凭据可解密\n")
+		if safety != "" {
+			fmt.Fprintf(r.stdout, "safety_copy=%s\n", safety)
+		}
+		fmt.Fprintf(r.stdout, "note=restore 请在服务停止后执行；启动前确认 REPOSENTINEL_ENCRYPTION_KEY 与备份匹配\n")
 		return nil
 	case "postgres":
 		if _, err := exec.LookPath("pg_restore"); err != nil {
-			return reportError(r.stderr, newCLIError("未找到 pg_restore。"))
+			return newCLIError("未找到 pg_restore。")
 		}
 		cmd := exec.CommandContext(ctx, "pg_restore", "--clean", "--if-exists", "--dbname="+cfg.Database.URL, in)
 		if b, err := cmd.CombinedOutput(); err != nil {
-			return reportError(r.stderr, fmt.Errorf("pg_restore failed: %w (%s)", err, string(b)))
+			return fmt.Errorf("pg_restore failed: %w (%s)", err, string(b))
 		}
 		fmt.Fprintf(r.stdout, "restored=postgres\n")
-		fmt.Fprintf(r.stdout, "note=请使用与备份匹配的 REPOSENTINEL_ENCRYPTION_KEY 启动并验证\n")
+		fmt.Fprintf(r.stdout, "note=restore 请在服务停止后执行；启动前确认 REPOSENTINEL_ENCRYPTION_KEY 与备份匹配\n")
 		return nil
 	default:
-		return reportError(r.stderr, newCLIError("不支持的数据库驱动。"))
+		return newCLIError("不支持的数据库驱动。")
 	}
 }
 
+// copyFile 流式拷贝，避免大库一次性载入内存；目标统一收紧为 0600（覆盖既有文件时也生效）。
 func copyFile(src, dst string) error {
-	in, err := os.ReadFile(src)
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, in, 0o600)
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	return os.Chmod(dst, 0o600)
 }

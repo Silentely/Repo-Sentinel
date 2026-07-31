@@ -10,15 +10,16 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
+// 约定：子命令只返回错误，由 Runner.Run 统一向 stderr 打印一次。
 func (r Runner) runDoctor(ctx context.Context, args []string) error {
 	fs := newFlagSet("doctor")
 	configPath := fs.String("config", "", "配置文件路径")
 	if err := fs.Parse(args); err != nil {
-		return reportError(r.stderr, newCLIError("doctor 参数无效。"))
+		return newCLIError("doctor 参数无效。")
 	}
 	cfg, err := r.dependencies.LoadConfig(ctx, config.LoadOptions{ConfigPath: strings.TrimSpace(*configPath)})
 	if err != nil {
-		return reportError(r.stderr, err)
+		return err
 	}
 	fmt.Fprintf(r.stdout, "http_addr=%s\n", cfg.HTTP.Addr)
 	fmt.Fprintf(r.stdout, "database_driver=%s\n", cfg.Database.Driver)
@@ -35,7 +36,7 @@ func (r Runner) runDoctor(ctx context.Context, args []string) error {
 	data, err := store.Open(ctx, cfg.Database)
 	if err != nil {
 		fmt.Fprintf(r.stdout, "database_open=false\n")
-		return reportError(r.stderr, err)
+		return err
 	}
 	defer data.Close()
 	fmt.Fprintf(r.stdout, "database_open=true\n")
