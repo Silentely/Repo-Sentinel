@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -49,6 +50,46 @@ func NewAggregator(st store.Store, window time.Duration, burstThreshold int, bur
 		Store: st, Window: window, BurstThreshold: burstThreshold, BurstWindow: burstWindow,
 		buckets: make(map[string]*aggBucket), bursts: make(map[string][]time.Time),
 	}
+}
+
+// ReloadFrom 从 system_settings 热加载聚合参数；未设置或非法的键保留当前值。
+// 管理台修改 notify.* 后调用，参数即时生效而无需重启。
+func (a *Aggregator) ReloadFrom(ctx context.Context) error {
+	window, err1 := readPositiveIntSetting(ctx, a.Store, "notify.aggregate_window_sec")
+	threshold, err2 := readPositiveIntSetting(ctx, a.Store, "notify.burst_threshold")
+	burstWindow, err3 := readPositiveIntSetting(ctx, a.Store, "notify.burst_window_sec")
+	if err1 != nil && err2 != nil && err3 != nil {
+		return err1
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if window > 0 {
+		a.Window = time.Duration(window) * time.Second
+	}
+	if threshold > 0 {
+		a.BurstThreshold = threshold
+	}
+	if burstWindow > 0 {
+		a.BurstWindow = time.Duration(burstWindow) * time.Second
+	}
+	return nil
+}
+
+// readPositiveIntSetting 读取整型设置；键不存在或值非法时返回 0。
+func readPositiveIntSetting(ctx context.Context, st store.Store, key string) (int, error) {
+	row, err := st.Settings().Get(ctx, key)
+	if err != nil {
+		return 0, err
+	}
+	var v float64
+	if err := json.Unmarshal(row.ValueJSON, &v); err != nil {
+		return 0, err
+	}
+	n := int(v)
+	if float64(n) != v || n <= 0 {
+		return 0, nil
+	}
+	return n, nil
 }
 
 func categoryOf(ev *store.Event) string {

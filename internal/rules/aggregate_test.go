@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -250,5 +251,41 @@ func TestAggregatorBurst按sample类型过滤(t *testing.T) {
 	}
 	if len(out) != 0 {
 		t.Fatalf("渠道不订阅 issue，超频摘要不应投递，got %d", len(out))
+	}
+}
+
+// 聚合参数可从 system_settings 热加载：管理台修改 notify.* 后无需重启即生效。
+func TestAggregatorReloadFromSettings(t *testing.T) {
+	ctx := t.Context()
+	data := openTestStore(t)
+	agg := NewAggregator(data, time.Minute, 3, time.Minute)
+
+	writeInt := func(key string, n int) {
+		t.Helper()
+		raw, _ := json.Marshal(n)
+		if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+			ID: ulid.Make().String(), Key: key, ValueJSON: raw, UpdatedAt: time.Now().UTC(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeInt("notify.aggregate_window_sec", 120)
+	writeInt("notify.burst_threshold", 50)
+	writeInt("notify.burst_window_sec", 600)
+
+	if err := agg.ReloadFrom(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if agg.Window != 120*time.Second || agg.BurstThreshold != 50 || agg.BurstWindow != 600*time.Second {
+		t.Fatalf("热加载未生效: window=%v threshold=%d burst=%v", agg.Window, agg.BurstThreshold, agg.BurstWindow)
+	}
+
+	// 非法值不得覆盖已生效参数。
+	writeInt("notify.aggregate_window_sec", -5)
+	if err := agg.ReloadFrom(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if agg.Window != 120*time.Second {
+		t.Fatalf("非法值不应覆盖现有配置: %v", agg.Window)
 	}
 }
