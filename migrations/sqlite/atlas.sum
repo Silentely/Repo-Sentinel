@@ -1,4 +1,4 @@
-h1:OJKjZNKipmdgmLxopF9pxuh3hPREHBQXXAGKCvgpuw4=
+h1:CL8TbdSvjIxuwDw6x3HV+FX3znmtelyYeuc4GPJpzBA=
 20260727000100_initial.sql h1:IZH3NW1MvYSmhBbiJfrMsVfIafVUkDEcDjJ1nVWiU8k=
 20260728000100_domain_core.sql h1:lmdbx1mJCthTGw+1leGYhe2yoMZ7MRLqoCfOGYBdbcQ=
 20260729000100_repo_capability_toggles.sql h1:r6Qv4zeU5Sn70i93B+7E3HP+TOQQpu5Tt72s5w8Hq7c=
@@ -7,3 +7,4 @@ h1:OJKjZNKipmdgmLxopF9pxuh3hPREHBQXXAGKCvgpuw4=
 20260730000200_channel_subscription.sql h1:lKadfd4auwy+ditNdgIWgIYxdLqdNSDNicqjAIVlC2k=
 20260731000100_missing_indexes.sql h1:AvjRgJqbJN3L8XWjoYwYg4OfIqaOprK3xAU56wEWgSY=
 20260731000200_drop_scheduled_jobs.sql h1:Q3k/RmVFXqXb9hJf/V9ht6c6J905te7rhfKcipT0MSI=
+20260731000400_drop_redundant_repository_type_index.sql h1:G9b439kIUI3IEGuEkuerNYhdw05IKi2/+QgYTlUS7hU=

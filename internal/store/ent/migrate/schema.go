@@ -298,11 +298,6 @@ var (
 				Columns: []*schema.Column{RepositoriesColumns[3]},
 			},
 			{
-				Name:    "repository_type",
-				Unique:  false,
-				Columns: []*schema.Column{RepositoriesColumns[1]},
-			},
-			{
 				Name:    "repository_type_last_synced_at",
 				Unique:  false,
 				Columns: []*schema.Column{RepositoriesColumns[1], RepositoriesColumns[19]},
