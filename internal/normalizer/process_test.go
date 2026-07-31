@@ -59,6 +59,197 @@ func TestProcessIssueOpenedCreatesEvent(t *testing.T) {
 	}
 }
 
+// demoRepoPayload 构造 acme/demo 的 repository 载荷；archived 控制 GitHub 侧归档标记。
+func demoRepoPayload(archived bool) map[string]any {
+	return map[string]any{
+		"id":             99,
+		"name":           "demo",
+		"full_name":      "acme/demo",
+		"private":        false,
+		"archived":       archived,
+		"html_url":       "https://github.com/acme/demo",
+		"default_branch": "main",
+		"owner":          map[string]any{"login": "acme"},
+	}
+}
+
+// seedActiveDemoRepo 预置 acme/demo 为 active 状态（能力开关取 schema 默认值 true）。
+func seedActiveDemoRepo(t *testing.T, data store.Store) store.Repository {
+	t.Helper()
+	repo, err := data.Repositories().Upsert(t.Context(), store.Repository{
+		ID: "repo-demo", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "acme", Name: "demo", FullName: "acme/demo",
+		HTMLURL: "https://github.com/acme/demo",
+	})
+	if err != nil {
+		t.Fatalf("seed repo: %v", err)
+	}
+	return repo
+}
+
+func openProcessStore(t *testing.T) store.Store {
+	t.Helper()
+	dbURL := "file:" + filepath.Join(t.TempDir(), "n.db")
+	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+	return data
+}
+
+// 关闭 Actions 开关的仓库收到 workflow_run：不写 WorkflowRun、不建事件。
+func TestProcessWorkflowRunRespectsActionsToggle(t *testing.T) {
+	data := openProcessStore(t)
+	repo := seedActiveDemoRepo(t, data)
+	off := false
+	if err := data.Repositories().UpdateSettings(t.Context(), repo.ID, store.RepositorySettings{ActionsEnabled: &off}); err != nil {
+		t.Fatal(err)
+	}
+
+	conclusion := "failure"
+	payload, _ := json.Marshal(map[string]any{
+		"action": "completed",
+		"workflow_run": map[string]any{
+			"id": 12345, "name": "ci", "workflow_id": 77, "run_number": 9,
+			"event": "push", "status": "completed", "conclusion": conclusion,
+			"html_url":    "https://github.com/acme/demo/actions/runs/12345",
+			"head_branch": "main", "head_sha": "abc1234", "run_attempt": 1,
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"actor":      map[string]any{"login": "alice"},
+		},
+		"repository": demoRepoPayload(false),
+	})
+
+	proc := &normalizer.Processor{Store: data}
+	res, err := proc.Process(t.Context(), "workflow_run", "delivery-actions-off", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Event != nil {
+		t.Fatalf("Actions 关闭不应产生事件: %+v", res.Event)
+	}
+	if !res.SuppressNotify {
+		t.Fatal("关闭的开关必须抑制通知")
+	}
+	_, page, err := data.WorkflowRuns().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10, RepositoryID: repo.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 0 {
+		t.Fatalf("Actions 关闭不应落库 WorkflowRun，got total=%d", page.Total)
+	}
+}
+
+// 已归档仓库的 PR 事件：不更新数据、不建事件。
+func TestProcessSkipsArchivedRepo(t *testing.T) {
+	data := openProcessStore(t)
+	repo := seedActiveDemoRepo(t, data)
+	archived := true
+	if err := data.Repositories().UpdateSettings(t.Context(), repo.ID, store.RepositorySettings{IsArchived: &archived}); err != nil {
+		t.Fatal(err)
+	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"action": "opened",
+		"pull_request": map[string]any{
+			"number": 11, "title": "archived pr", "state": "open",
+			"html_url":   "https://github.com/acme/demo/pull/11",
+			"user":       map[string]any{"login": "alice"},
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"labels":     []any{}, "assignees": []any{},
+		},
+		"repository": demoRepoPayload(false),
+	})
+
+	proc := &normalizer.Processor{Store: data}
+	res, err := proc.Process(t.Context(), "pull_request", "delivery-archived-pr", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Event != nil {
+		t.Fatalf("已归档仓库不应产生事件: %+v", res.Event)
+	}
+	if _, err := data.WorkItems().GetByRepoNumber(t.Context(), repo.ID, 11); err == nil {
+		t.Fatal("已归档仓库不应落库 WorkItem")
+	}
+}
+
+// GitHub 侧归档（payload.repository.archived=true）必须联动收口：
+// sync_status=archived、开关全关，且该事件自身不再被采集。
+func TestProcessLinksGitHubSideArchive(t *testing.T) {
+	data := openProcessStore(t)
+	repo := seedActiveDemoRepo(t, data)
+
+	payload, _ := json.Marshal(map[string]any{
+		"action": "opened",
+		"issue": map[string]any{
+			"number": 21, "title": "late issue", "state": "open",
+			"html_url":   "https://github.com/acme/demo/issues/21",
+			"user":       map[string]any{"login": "alice"},
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"labels":     []any{}, "assignees": []any{},
+		},
+		"repository": demoRepoPayload(true),
+	})
+
+	proc := &normalizer.Processor{Store: data}
+	res, err := proc.Process(t.Context(), "issues", "delivery-gh-archive", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Event != nil {
+		t.Fatalf("GitHub 已归档仓库不应产生事件: %+v", res.Event)
+	}
+	got, err := data.Repositories().Get(t.Context(), repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SyncStatus != store.SyncStatusArchived || !got.IsArchived {
+		t.Fatalf("归档联动失败: status=%s archived=%v", got.SyncStatus, got.IsArchived)
+	}
+	if got.MonitorEnabled || got.IssuesEnabled || got.PrEnabled || got.ActionsEnabled || got.AlertsEnabled {
+		t.Fatalf("归档应联动关闭全部开关: %+v", got)
+	}
+}
+
+// repository archived/unarchived 事件：归档与取消归档都必须联动开关。
+func TestProcessRepositoryEventArchiveLinkage(t *testing.T) {
+	data := openProcessStore(t)
+	repo := seedActiveDemoRepo(t, data)
+	proc := &normalizer.Processor{Store: data}
+
+	archivedPayload, _ := json.Marshal(map[string]any{
+		"action":     "archived",
+		"repository": demoRepoPayload(true),
+	})
+	if _, err := proc.Process(t.Context(), "repository", "delivery-arch-1", archivedPayload); err != nil {
+		t.Fatal(err)
+	}
+	got, err := data.Repositories().Get(t.Context(), repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SyncStatus != store.SyncStatusArchived || !got.IsArchived || got.MonitorEnabled {
+		t.Fatalf("archived 事件应联动归档并关监控: %+v", got)
+	}
+
+	unarchivedPayload, _ := json.Marshal(map[string]any{
+		"action":     "unarchived",
+		"repository": demoRepoPayload(false),
+	})
+	if _, err := proc.Process(t.Context(), "repository", "delivery-arch-2", unarchivedPayload); err != nil {
+		t.Fatal(err)
+	}
+	got, err = data.Repositories().Get(t.Context(), repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SyncStatus != store.SyncStatusActive || got.IsArchived || !got.MonitorEnabled {
+		t.Fatalf("unarchived 事件应恢复监控: %+v", got)
+	}
+}
+
 // 合并事件必须持久化 Merged：StateHash 不含 merged，若沿用 UpsertIfNewer 会恒早退。
 func TestProcessPullRequestMergedPersistsFlag(t *testing.T) {
 	dbURL := "file:" + filepath.Join(t.TempDir(), "n.db")

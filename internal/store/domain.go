@@ -384,6 +384,7 @@ type EventStore interface {
 	List(context.Context, ListFilter) ([]Event, PageResult, error)
 	CountSince(context.Context, time.Time) (int, error)
 	// ListSince 查询指定时间之后的事件，按时间倒序，limit 控制最大返回数。
+	// 每日摘要专用：已归档仓库与被抑制（基线/归档期间产生）的事件不返回。
 	ListSince(ctx context.Context, since time.Time, limit int) ([]Event, error)
 	// DeleteOlderThan 删除 created_at 早于 cutoff 的事件，返回删除行数。
 	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error)

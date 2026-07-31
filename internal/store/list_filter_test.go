@@ -246,6 +246,101 @@ func TestListIncludeArchivedReposOptIn(t *testing.T) {
 	}
 }
 
+func TestEventListExcludesArchivedReposByDefault(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC()
+
+	active, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-ev-a", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "ev-a", FullName: "o/ev-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-ev-b", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusArchived,
+		Owner: "o", Name: "ev-b", FullName: "o/ev-b", IsArchived: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	aid, bid := active.ID, archived.ID
+	for _, ev := range []store.Event{
+		{ID: "ev-1", Source: "webhook", Kind: store.WorkItemKindPR, Action: "opened", RepositoryID: &aid, Title: "active pr", OccurredAt: now, DedupeFingerprint: "fp-ev-1"},
+		{ID: "ev-2", Source: "webhook", Kind: store.WorkItemKindPR, Action: "opened", RepositoryID: &bid, Title: "archived pr", OccurredAt: now, DedupeFingerprint: "fp-ev-2"},
+	} {
+		if _, err := data.Events().Create(ctx, ev); err != nil {
+			t.Fatalf("create %s: %v", ev.ID, err)
+		}
+	}
+
+	items, page, err := data.Events().List(ctx, store.ListFilter{Page: 1, PerPage: 50})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if page.Total != 1 || len(items) != 1 || items[0].ID != "ev-1" {
+		t.Fatalf("默认事件列表应排除已归档仓库，got total=%d items=%v", page.Total, items)
+	}
+
+	// 显式按归档仓筛选仍可查（与其他资源列表同一约定）。
+	byRepo, page, err := data.Events().List(ctx, store.ListFilter{Page: 1, PerPage: 50, RepositoryID: archived.ID})
+	if err != nil {
+		t.Fatalf("list by repo: %v", err)
+	}
+	if page.Total != 1 || len(byRepo) != 1 || byRepo[0].ID != "ev-2" {
+		t.Fatalf("按归档仓 ID 筛选应返回 ev-2，got total=%d items=%v", page.Total, byRepo)
+	}
+
+	all, page, err := data.Events().List(ctx, store.ListFilter{Page: 1, PerPage: 50, IncludeArchivedRepos: true})
+	if err != nil {
+		t.Fatalf("list include archived: %v", err)
+	}
+	if page.Total != 2 || len(all) != 2 {
+		t.Fatalf("IncludeArchivedRepos 应返回 2 条，got total=%d len=%d", page.Total, len(all))
+	}
+}
+
+// 每日摘要数据源（ListSince）：已归档仓库与被抑制的事件都不得出现。
+func TestEventListSinceExcludesArchivedAndSuppressed(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC()
+
+	active, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-ls-a", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "ls-a", FullName: "o/ls-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-ls-b", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusArchived,
+		Owner: "o", Name: "ls-b", FullName: "o/ls-b", IsArchived: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	aid, bid := active.ID, archived.ID
+	for _, ev := range []store.Event{
+		{ID: "ev-ls-1", Source: "webhook", Kind: store.WorkItemKindPR, Action: "opened", RepositoryID: &aid, Title: "正常事件", OccurredAt: now, DedupeFingerprint: "fp-ls-1"},
+		{ID: "ev-ls-2", Source: "webhook", Kind: store.WorkItemKindPR, Action: "opened", RepositoryID: &bid, Title: "归档仓事件", OccurredAt: now, DedupeFingerprint: "fp-ls-2"},
+		{ID: "ev-ls-3", Source: "webhook", Kind: store.WorkItemKindIssue, Action: "opened", RepositoryID: &aid, Title: "被抑制事件", OccurredAt: now, SuppressNotification: true, DedupeFingerprint: "fp-ls-3"},
+	} {
+		if _, err := data.Events().Create(ctx, ev); err != nil {
+			t.Fatalf("create %s: %v", ev.ID, err)
+		}
+	}
+
+	got, err := data.Events().ListSince(ctx, now.Add(-time.Hour), 10)
+	if err != nil {
+		t.Fatalf("ListSince: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "ev-ls-1" {
+		t.Fatalf("ListSince 应只返回 ev-ls-1，got %v", got)
+	}
+}
+
 func TestOutboxListFiltersByChannelIDs(t *testing.T) {
 	ctx := context.Background()
 	data := openTestStore(t)

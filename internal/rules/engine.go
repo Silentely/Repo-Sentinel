@@ -24,6 +24,10 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	if res.Event == nil || res.SuppressNotify || res.Event.SuppressNotification {
 		return nil
 	}
+	// 能力开关兜底：采集侧门禁之前的存量事件、以及开关刚关闭的间隙事件，不能外发。
+	if !repoAllowsKind(res.Repository, res.Event.Kind) {
+		return nil
+	}
 	if !shouldNotifyRealtime(res.Event) {
 		return nil
 	}
@@ -50,6 +54,32 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		}
 	}
 	return nil
+}
+
+// repoAllowsKind 兜底判定仓库能力开关是否放行该类型事件的实时通知。
+// 与 normalizer 的采集门禁使用同一套语义，两道防线保证「关闭即生效」。
+// res.Repository 为 nil（例如聚合器 flush 的单事件回放）时不做拦截。
+func repoAllowsKind(repo *store.Repository, kind string) bool {
+	if repo == nil {
+		return true
+	}
+	if !repo.MonitorEnabled {
+		return false
+	}
+	if repo.IsArchived || repo.SyncStatus == store.SyncStatusArchived || repo.SyncStatus == store.SyncStatusUnavailable {
+		return false
+	}
+	switch kind {
+	case store.WorkItemKindIssue:
+		return repo.IssuesEnabled
+	case store.WorkItemKindPR:
+		return repo.PrEnabled
+	case "workflow_run":
+		return repo.ActionsEnabled
+	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
+		return repo.AlertsEnabled
+	}
+	return true
 }
 
 func shouldNotifyRealtime(ev *store.Event) bool {

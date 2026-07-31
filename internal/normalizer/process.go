@@ -220,6 +220,18 @@ func (p *Processor) ensureRepository(ctx context.Context, gh *ghRepository, inst
 		if existing.SyncStatus == "" {
 			in.SyncStatus = store.SyncStatusBaseline
 		}
+		// payload 显示 GitHub 侧已归档而本地未归档：联动收口归档状态与能力开关
+		//（与设置页手动归档语义一致，均由 UpdateSettings 统一处理）。
+		if gh.Archived && existing.SyncStatus != store.SyncStatusArchived {
+			archived := true
+			if uerr := p.Store.Repositories().UpdateSettings(ctx, existing.ID, store.RepositorySettings{IsArchived: &archived}); uerr == nil {
+				in.SyncStatus = store.SyncStatusArchived
+			}
+		}
+		// 本地归档标记不被单条 payload 抹掉：取消归档仅经 unarchived 事件或设置页操作。
+		if existing.IsArchived && !gh.Archived {
+			in.IsArchived = true
+		}
 		// 已存在仓库保持状态，仅更新元数据
 		return p.Store.Repositories().Upsert(ctx, in)
 	}
@@ -307,11 +319,17 @@ func (p *Processor) processRepositoryEvent(ctx context.Context, env envelope) (R
 	}
 	switch env.Action {
 	case "archived":
-		_ = p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusArchived)
+		// 归档走 UpdateSettings 联动：sync_status、is_archived 与全部能力开关一起收口，
+		// 与设置页手动归档的结果完全一致。
+		archived := true
+		_ = p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived})
 		repo.SyncStatus = store.SyncStatusArchived
+		repo.IsArchived = true
 	case "unarchived":
-		_ = p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusActive)
+		archived := false
+		_ = p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived})
 		repo.SyncStatus = store.SyncStatusActive
+		repo.IsArchived = false
 	case "deleted", "transferred":
 		_ = p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable)
 		repo.SyncStatus = store.SyncStatusUnavailable
@@ -334,6 +352,10 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 	repo, err := p.ensureRepository(ctx, env.Repository, nil)
 	if err != nil {
 		return Result{}, err
+	}
+	// 能力门禁：对应类型开关关闭或仓库已归档时不再采集（不更新数据、不创建事件）。
+	if !ingestGate(repo, kind) {
+		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	labels := make([]any, 0, len(env.Issue.Labels))
 	for _, l := range env.Issue.Labels {
@@ -431,6 +453,10 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	repo, err := p.ensureRepository(ctx, env.Repository, nil)
 	if err != nil {
 		return Result{}, fmt.Errorf("ensure repository: %w", err)
+	}
+	// 能力门禁：Actions 关闭或仓库已归档时不再采集。
+	if !ingestGate(repo, "workflow_run") {
+		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	run := env.WorkflowRun
 	conclusion := ""
@@ -547,6 +573,10 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 	if err != nil {
 		return Result{}, err
 	}
+	// 能力门禁：告警关闭或仓库已归档时不再采集。
+	if !ingestGate(repo, kind) {
+		return Result{Repository: &repo, SuppressNotify: true}, nil
+	}
 	a := env.Alert
 	severity := a.Severity
 	rule := ""
@@ -614,6 +644,30 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 		return Result{}, err
 	}
 	return Result{Event: &created, Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
+}
+
+// ingestGate 判定该仓库是否应继续采集指定类型数据。
+// 监控总开关关闭、仓库已归档/不可用、或对应能力开关关闭时直接跳过
+// （不写领域数据、不创建事件），与设置页的开关语义一一对应；
+// 基线同步中的仓库保持采集（仅抑制通知），保证基线数据完整。
+func ingestGate(repo store.Repository, kind string) bool {
+	if !repo.MonitorEnabled {
+		return false
+	}
+	if repo.IsArchived || repo.SyncStatus == store.SyncStatusArchived || repo.SyncStatus == store.SyncStatusUnavailable {
+		return false
+	}
+	switch kind {
+	case store.WorkItemKindIssue:
+		return repo.IssuesEnabled
+	case store.WorkItemKindPR:
+		return repo.PrEnabled
+	case "workflow_run":
+		return repo.ActionsEnabled
+	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
+		return repo.AlertsEnabled
+	}
+	return true
 }
 
 func normalizeAction(action string) string {

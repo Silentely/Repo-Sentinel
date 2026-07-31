@@ -640,6 +640,18 @@ func (s *server) handleSyncInstallationRepositories(w http.ResponseWriter, r *ht
 					if existing.SyncStatus == "" {
 						in.SyncStatus = store.SyncStatusBaseline
 					}
+					// GitHub 侧已归档而本地未归档：联动收口归档状态与能力开关
+					//（与 normalizer 的 webhook 侧处理同一语义）。
+					if gr.Archived && existing.SyncStatus != store.SyncStatusArchived {
+						archived := true
+						if uerr := s.dependencies.Store.Repositories().UpdateSettings(r.Context(), existing.ID, store.RepositorySettings{IsArchived: &archived}); uerr == nil {
+							in.SyncStatus = store.SyncStatusArchived
+						}
+					}
+					// 本地归档标记不因清单数据抹掉：取消归档仅经 unarchived 事件或设置页操作。
+					if existing.IsArchived && !gr.Archived {
+						in.IsArchived = true
+					}
 					if _, err := s.dependencies.Store.Repositories().Upsert(r.Context(), in); err != nil {
 						lastErr = err.Error()
 						continue

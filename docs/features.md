@@ -21,8 +21,8 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | Session / CSRF | HttpOnly Session、双提交 CSRF、登录限流 |
 | Webhook 接收 | 验签（含 previous Secret）、Delivery 幂等、异步规范化 |
 | 事件与资源 | Issue/PR、Workflow Run、三类安全告警、安装与仓库元数据 |
-| 仓库能力开关 | 单仓独立开关：监控、Issues、PR、Actions、安全告警；归档联动 |
-| 列表筛选与忽略 | 按仓库筛选；本地忽略长期打开项（不回写 GitHub）；默认排除归档仓与已忽略项 |
+| 仓库能力开关 | 单仓独立开关：监控（总开关）、Issues、PR、Actions、安全告警；关闭即停止采集、不建事件、不通知；归档联动关闭全部开关 |
+| 列表筛选与忽略 | 按仓库筛选；本地忽略长期打开项（不回写 GitHub）；事件流/每日汇总与资源列表默认排除归档仓与已忽略项 |
 | 基线与乱序 | 新仓基线抑制通知；陈旧 `source_updated_at` 丢弃回滚 |
 | 通知 | Outbox、Telegram、HTTP Webhook、死信重试、短时聚合与超频摘要 |
 | 渠道订阅 | 每渠道独立勾选订阅类型（Issue、PR、工作流、Dependabot、Code Scanning、Secret Scanning，默认全部）与「每日汇总」开关（默认开），合并通知按订阅重建子集 |

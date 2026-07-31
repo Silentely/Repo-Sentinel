@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -131,13 +132,66 @@ func TestExternalPollActiveCreatesEventOnChange(t *testing.T) {
 	}
 }
 
+// 监控关闭或已归档的外部仓：轮询直接跳过，不请求 GitHub、不写数据。
+func TestExternalPollSkipsGatedRepos(t *testing.T) {
+	data := openSyncStore(t)
+	var requests atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		_ = json.NewEncoder(w).Encode([]any{})
+	}))
+	t.Cleanup(srv.Close)
+
+	disabled, err := data.Repositories().Upsert(t.Context(), store.Repository{
+		ID: ulid.Make().String(), Type: store.RepositoryTypeExternal,
+		SyncStatus: store.SyncStatusActive, Owner: "acme", Name: "off", FullName: "acme/off",
+		HTMLURL: "https://github.com/acme/off",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	if err := data.Repositories().UpdateSettings(t.Context(), disabled.ID, store.RepositorySettings{MonitorEnabled: &off}); err != nil {
+		t.Fatal(err)
+	}
+	disabled, err = data.Repositories().Get(t.Context(), disabled.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	archived, err := data.Repositories().Upsert(t.Context(), store.Repository{
+		ID: ulid.Make().String(), Type: store.RepositoryTypeExternal,
+		SyncStatus: store.SyncStatusArchived, Owner: "acme", Name: "arch", FullName: "acme/arch",
+		IsArchived: true, HTMLURL: "https://github.com/acme/arch",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := &ExternalPoller{
+		Store:  data,
+		Client: &githubx.PublicClient{BaseURL: srv.URL, HTTP: srv.Client()},
+	}
+	if err := p.PollOne(t.Context(), disabled); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.PollOne(t.Context(), archived); err != nil {
+		t.Fatal(err)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("被门禁拦截的仓库不应发起请求，got %d", got)
+	}
+}
+
 func TestReconcileRequiresGitHubApp(t *testing.T) {
 	data := openSyncStore(t)
 	r := &Reconciler{Store: data, GitHub: nil}
 	inst := "1"
+	// 监控开关必须显式开启：能力门禁优先于 App 配置检查。
 	err := r.ReconcileRepository(t.Context(), store.Repository{
 		ID: "x", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
 		Owner: "a", Name: "b", FullName: "a/b",
+		MonitorEnabled: true,
 		InstallationID: &inst,
 	})
 	if err == nil {

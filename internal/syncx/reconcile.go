@@ -32,6 +32,10 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	if repo.Type != store.RepositoryTypeInstallation {
 		return nil
 	}
+	// 监控总开关关闭或仓库已归档：不再采集，与设置页开关语义一致。
+	if !repo.MonitorEnabled || repo.IsArchived {
+		return nil
+	}
 	if repo.InstallationID == nil || *repo.InstallationID == "" {
 		return fmt.Errorf("missing_installation")
 	}
@@ -69,22 +73,29 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 		}
 	}
 
-	if err := r.syncIssues(ctx, token, repo, since, isBaseline); err != nil {
-		return err
-	}
-	softFailed := false
-	if err := r.syncWorkflows(ctx, token, repo, isBaseline); err != nil {
-		// Actions 权限不足时软失败
-		softFailed = true
-		if r.Logger != nil {
-			r.Logger.Warn("workflow reconcile soft-fail", "repo", repo.FullName, "error_code", "reconcile_workflows", "error", err.Error())
+	// Issues 与 PR 共用 GitHub Issues API：任一开启才需要拉取。
+	if repo.IssuesEnabled || repo.PrEnabled {
+		if err := r.syncIssues(ctx, token, repo, since, isBaseline); err != nil {
+			return err
 		}
 	}
-	for _, kind := range []string{store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning} {
-		if err := r.syncAlerts(ctx, token, repo, kind, isBaseline); err != nil {
+	softFailed := false
+	if repo.ActionsEnabled {
+		if err := r.syncWorkflows(ctx, token, repo, isBaseline); err != nil {
+			// Actions 权限不足时软失败
 			softFailed = true
 			if r.Logger != nil {
-				r.Logger.Warn("alerts reconcile soft-fail", "repo", repo.FullName, "kind", kind, "error_code", "reconcile_alerts", "error", err.Error())
+				r.Logger.Warn("workflow reconcile soft-fail", "repo", repo.FullName, "error_code", "reconcile_workflows", "error", err.Error())
+			}
+		}
+	}
+	if repo.AlertsEnabled {
+		for _, kind := range []string{store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning} {
+			if err := r.syncAlerts(ctx, token, repo, kind, isBaseline); err != nil {
+				softFailed = true
+				if r.Logger != nil {
+					r.Logger.Warn("alerts reconcile soft-fail", "repo", repo.FullName, "kind", kind, "error_code", "reconcile_alerts", "error", err.Error())
+				}
 			}
 		}
 	}
@@ -131,6 +142,13 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			kind := store.WorkItemKindIssue
 			if it.PullRequest != nil {
 				kind = store.WorkItemKindPR
+			}
+			// Issues API 混合返回 issue 与 PR：按各自开关决定采集谁。
+			if kind == store.WorkItemKindIssue && !repo.IssuesEnabled {
+				continue
+			}
+			if kind == store.WorkItemKindPR && !repo.PrEnabled {
+				continue
 			}
 			labels := make([]any, 0, len(it.Labels))
 			for _, l := range it.Labels {
@@ -371,6 +389,17 @@ func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 	n := 0
 	for _, repo := range repos {
 		if repo.SyncStatus == store.SyncStatusArchived || repo.SyncStatus == store.SyncStatusUnavailable {
+			continue
+		}
+		if repo.IsArchived {
+			// GitHub 侧已归档但本地状态未联动（历史数据）：顺手收口归档，
+			// UpdateSettings 会一并关闭监控与全部能力开关。
+			archived := true
+			_ = r.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived})
+			continue
+		}
+		// 监控总开关关闭的仓库不参与对账。
+		if !repo.MonitorEnabled {
 			continue
 		}
 		if err := r.ReconcileRepository(ctx, repo); err != nil && r.Logger != nil {
