@@ -281,7 +281,6 @@ type ListFilter struct {
 	Kind         string
 	State        string
 	Status       string
-	Query        string
 	// ChannelIDs 限定 Outbox 的渠道集合（SQL 层过滤，保证分页与 total 正确）。
 	ChannelIDs []string
 	// ReviewDecision 按 PR 审核结论过滤（approved / changes_requested）。
@@ -353,6 +352,8 @@ type WorkItemStore interface {
 	List(context.Context, ListFilter) ([]WorkItem, PageResult, error)
 	CountOpen(context.Context) (int, error)
 	SetIgnored(context.Context, string, bool) error
+	// MarkMerged 定向置位 PR 合并标记；StateHash 不含 merged，不能走 UpsertIfNewer。
+	MarkMerged(context.Context, string, int) error
 }
 
 // WorkflowRunStore Actions。

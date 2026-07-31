@@ -413,12 +413,9 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 		return res, err
 	}
 	if res.Event != nil && env.PullRequest.Merged {
-		// 标记 merged
-		item, err := p.Store.WorkItems().GetByRepoNumber(ctx, *res.Event.RepositoryID, env.PullRequest.Number)
-		if err == nil {
-			item.Merged = true
-			item.State = "closed"
-			_, _, _ = p.Store.WorkItems().UpsertIfNewer(ctx, item)
+		// merged 不在 StateHash 内，UpsertIfNewer 会恒早退，必须定向置位。
+		if err := p.Store.WorkItems().MarkMerged(ctx, *res.Event.RepositoryID, env.PullRequest.Number); err != nil {
+			return res, fmt.Errorf("mark merged: %w", err)
 		}
 	}
 	return res, nil
