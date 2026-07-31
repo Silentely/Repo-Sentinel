@@ -28,7 +28,6 @@ on:
 permissions:
   contents: read
   packages: write
-  id-token: write
   actions: write  # cleanup-old-runs 删除本工作流历史运行记录
 
 concurrency:
@@ -39,6 +38,22 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # 与 deployments/test/postgres.compose.yml 凭据保持一致；
+    # 供 internal/store/contract 的 PostgreSQL 契约测试真实跑迁移（防 int4/bigint 类回归）。
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: reposentinel_test
+          POSTGRES_USER: reposentinel
+          POSTGRES_PASSWORD: reposentinel
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U reposentinel -d reposentinel_test"
+          --health-interval 1s
+          --health-timeout 5s
+          --health-retries 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -49,8 +64,17 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Gofmt check
+        run: test -z "$(gofmt -l cmd internal migrations)"
+
       - name: Go test
-        run: go test ./...
+        run: go test -race ./...
+        env:
+          # 未设置时契约测试自动 skip；设置后对 PostgreSQL 跑全套运行时契约与迁移
+          REPOSENTINEL_TEST_POSTGRES_URL: postgres://reposentinel:reposentinel@127.0.0.1:55432/reposentinel_test?sslmode=disable
 
       - name: Set up Node
         uses: actions/setup-node@v7
