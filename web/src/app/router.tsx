@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import {
   createRootRouteWithContext,
   createRoute,
@@ -11,14 +11,17 @@ import {
 import type { QueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 
-import { LoginPage } from "../features/auth/login-page";
-import { SetupPage } from "../features/auth/setup-page";
 import { createAdmin, login, setupStatusQueryOptions } from "../features/auth/api";
 import { useSession } from "../features/auth/use-session";
+import { EmptyState } from "../components/empty-state";
+import { ApiError } from "../lib/api/errors";
 import { queryClient } from "../lib/query-client";
 import { RootLayout, RouteLoading } from "./root-layout";
+import { RouteErrorFallback, RouteNotFoundFallback } from "./route-fallbacks";
 
-// 监控/功能页面按路由拆分 chunk；登录与初始化页保持静态，保证首屏认证链路即时可用。
+// 全部页面按路由拆分 chunk（含认证链路，其表单校验库体量不小）。
+const LoginPage = lazy(() => import("../features/auth/login-page").then((m) => ({ default: m.LoginPage })));
+const SetupPage = lazy(() => import("../features/auth/setup-page").then((m) => ({ default: m.SetupPage })));
 const DashboardPage = lazyRouteComponent(() => import("../features/monitor/dashboard-page"), "DashboardPage");
 const NotifyPage = lazyRouteComponent(() => import("../features/monitor/notify-page"), "NotifyPage");
 const OutboxPage = lazyRouteComponent(() => import("../features/monitor/outbox-page"), "OutboxPage");
@@ -137,6 +140,8 @@ export const router = createRouter({
   routeTree,
   context: { queryClient },
   defaultPreload: "intent",
+  defaultErrorComponent: RouteErrorFallback,
+  defaultNotFoundComponent: RouteNotFoundFallback,
 });
 
 declare module "@tanstack/react-router" {
@@ -155,7 +160,11 @@ function LoginRoute() {
     }
   }, [navigate, setup.data?.required]);
 
-  return <LoginPage loginAction={login} onAuthenticated={() => void navigate({ to: "/", replace: true })} />;
+  return (
+    <Suspense fallback={<RouteLoading />}>
+      <LoginPage loginAction={login} onAuthenticated={() => void navigate({ to: "/", replace: true })} />
+    </Suspense>
+  );
 }
 
 function SetupRoute() {
@@ -168,7 +177,11 @@ function SetupRoute() {
     }
   }, [navigate, setup.data]);
 
-  return <SetupPage setupAction={createAdmin} onCreated={() => void navigate({ to: "/", replace: true })} />;
+  return (
+    <Suspense fallback={<RouteLoading />}>
+      <SetupPage setupAction={createAdmin} onCreated={() => void navigate({ to: "/", replace: true })} />
+    </Suspense>
+  );
 }
 
 function AuthenticatedRoute() {
@@ -176,7 +189,24 @@ function AuthenticatedRoute() {
   if (session.isPending) {
     return <RouteLoading />;
   }
-  if (session.isError || !session.data) {
+  if (session.isError) {
+    // 仅 401 视为登出；网络抖动/实例重启应允许原地重试，避免误踢登录。
+    if (session.error instanceof ApiError && session.error.status === 401) {
+      return <Navigate to="/login" replace />;
+    }
+    return (
+      <EmptyState
+        title="无法连接服务"
+        description="网络异常或实例正在重启，登录状态仍然保留，请稍后重试。"
+        action={
+          <button type="button" className="primary-button primary-button--inline" onClick={() => void session.refetch()}>
+            重新连接
+          </button>
+        }
+      />
+    );
+  }
+  if (!session.data) {
     return <Navigate to="/login" replace />;
   }
   return <RootLayout session={session.data} />;
