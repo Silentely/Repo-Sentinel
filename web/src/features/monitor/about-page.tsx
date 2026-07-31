@@ -29,6 +29,7 @@ export function AboutPage() {
     url?: string | null;
   } | null>(null);
   const [settingsMsg, setSettingsMsg] = useState("");
+  const [featuresMsg, setFeaturesMsg] = useState("");
   const [passwordMsg, setPasswordMsg] = useState("");
   const [passwordError, setPasswordError] = useState<string>();
   const [currentPassword, setCurrentPassword] = useState("");
@@ -69,10 +70,35 @@ export function AboutPage() {
   const saveSettings = useMutation({
     mutationFn: (body: SystemSettings) => saveSystemSettings(body),
     onSuccess: async () => {
-      setSettingsMsg("系统偏好已保存。");
       await queryClient.invalidateQueries({ queryKey: ["system-settings"] });
     },
   });
+
+  // 运行偏好与功能模块开关保存的是同一份键值，共用提交逻辑；
+  // 成功提示按区块分别落位，避免提示出现在用户看不到的位置。
+  function submitSettings(section: "prefs" | "features") {
+    const setMsg = section === "prefs" ? setSettingsMsg : setFeaturesMsg;
+    const successText = section === "prefs" ? "系统偏好已保存。" : "功能模块开关已保存。";
+    setMsg("");
+    saveSettings.mutate(
+      {
+        "admin.timezone": timezone.trim() || "UTC",
+        "digest.local_time": digestTime.trim() || "09:00",
+        "digest.send_empty": digestEmpty,
+        "notify.aggregate_window_sec": aggregateSec,
+        "notify.burst_threshold": burstThreshold,
+        "display.closed_limit": closedDisplayLimit,
+        "retention.events_days": retentionEventsDays,
+        "retention.outbox_days": retentionOutboxDays,
+        "retention.webhook_deliveries_days": retentionDeliveriesDays,
+        "feature.issues": featureIssues,
+        "feature.pull_requests": featurePRs,
+        "feature.actions": featureActions,
+        "feature.security_alerts": featureAlerts,
+      },
+      { onSuccess: () => setMsg(successText) },
+    );
+  }
   const savePassword = useMutation({
     mutationFn: () => changePassword({ current_password: currentPassword, new_password: newPassword }),
     onSuccess: () => {
@@ -186,24 +212,7 @@ export function AboutPage() {
         </div>
         <p className="field-hint">Issues、PR、安全告警的 Closed/Dismissed 列表默认只显示最近指定数量的条目。保留天数用于后台定期清理历史数据（0 表示禁用该类清理）；默认事件 90 天、投递与 Delivery 各 30 天。</p>
         <label className="check-row"><input type="checkbox" checked={digestEmpty} onChange={(e) => setDigestEmpty(e.target.checked)} /><span>无事件时仍发送空摘要</span></label>
-        <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending} onClick={() => {
-          setSettingsMsg("");
-          saveSettings.mutate({
-            "admin.timezone": timezone.trim() || "UTC",
-            "digest.local_time": digestTime.trim() || "09:00",
-            "digest.send_empty": digestEmpty,
-            "notify.aggregate_window_sec": aggregateSec,
-            "notify.burst_threshold": burstThreshold,
-            "display.closed_limit": closedDisplayLimit,
-            "retention.events_days": retentionEventsDays,
-            "retention.outbox_days": retentionOutboxDays,
-            "retention.webhook_deliveries_days": retentionDeliveriesDays,
-            "feature.issues": featureIssues,
-            "feature.pull_requests": featurePRs,
-            "feature.actions": featureActions,
-            "feature.security_alerts": featureAlerts,
-          });
-        }}>
+        <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending} onClick={() => submitSettings("prefs")}>
           {saveSettings.isPending ? "保存中…" : "保存偏好"}
         </button>
         {saveSettings.isError ? <ErrorAlert title="保存失败" message={toApiError(saveSettings.error).message} errorCode={toApiError(saveSettings.error).errorCode} /> : null}
@@ -212,28 +221,12 @@ export function AboutPage() {
       <section className="onboarding-card channel-form" aria-labelledby="about-features-title">
         <h2 id="about-features-title">功能模块开关</h2>
         <p className="field-hint">关闭后对应模块在侧边栏和列表中将显示为禁用状态。不影响已有的 Webhook 数据入库。</p>
+        {featuresMsg ? <p className="success-banner" role="status">{featuresMsg}</p> : null}
         <label className="check-row"><input type="checkbox" checked={featureIssues} onChange={(e) => setFeatureIssues(e.target.checked)} /><span>Issues</span></label>
         <label className="check-row"><input type="checkbox" checked={featurePRs} onChange={(e) => setFeaturePRs(e.target.checked)} /><span>Pull Requests</span></label>
         <label className="check-row"><input type="checkbox" checked={featureActions} onChange={(e) => setFeatureActions(e.target.checked)} /><span>Actions</span></label>
         <label className="check-row"><input type="checkbox" checked={featureAlerts} onChange={(e) => setFeatureAlerts(e.target.checked)} /><span>安全告警</span></label>
-        <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending} onClick={() => {
-          setSettingsMsg("");
-          saveSettings.mutate({
-            "admin.timezone": timezone.trim() || "UTC",
-            "digest.local_time": digestTime.trim() || "09:00",
-            "digest.send_empty": digestEmpty,
-            "notify.aggregate_window_sec": aggregateSec,
-            "notify.burst_threshold": burstThreshold,
-            "display.closed_limit": closedDisplayLimit,
-            "retention.events_days": retentionEventsDays,
-            "retention.outbox_days": retentionOutboxDays,
-            "retention.webhook_deliveries_days": retentionDeliveriesDays,
-            "feature.issues": featureIssues,
-            "feature.pull_requests": featurePRs,
-            "feature.actions": featureActions,
-            "feature.security_alerts": featureAlerts,
-          });
-        }}>
+        <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending} onClick={() => submitSettings("features")}>
           {saveSettings.isPending ? "保存中…" : "保存开关"}
         </button>
         {saveSettings.isError ? <ErrorAlert title="保存失败" message={toApiError(saveSettings.error).message} errorCode={toApiError(saveSettings.error).errorCode} /> : null}
