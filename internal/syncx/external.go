@@ -2,7 +2,9 @@ package syncx
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -40,8 +42,12 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 	}
 	items, remaining, err := p.Client.ListPublicIssues(ctx, repo.Owner, repo.Name, since, 1)
 	if err != nil {
-		// 转私有/删除
-		_ = p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable)
+		// 仅 404/410 说明仓转私有或已删除，标记不可用并暂停轮询；
+		// 超时/限流/5xx 是临时故障，保持现状等待下轮重试。
+		var stErr *githubx.HTTPStatusError
+		if errors.As(err, &stErr) && (stErr.StatusCode == http.StatusNotFound || stErr.StatusCode == http.StatusGone) {
+			_ = p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable)
+		}
 		return err
 	}
 	if remaining >= 0 && remaining < 20 && p.Logger != nil {
@@ -97,7 +103,8 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 
 // PollAll 轮询全部外部仓（最多 20）。
 func (p *ExternalPoller) PollAll(ctx context.Context) error {
-	repos, _, err := p.Store.Repositories().List(ctx, store.ListFilter{Page: 1, PerPage: 20, Kind: store.RepositoryTypeExternal})
+	// 按最后同步时间取候选，保证所有外部仓轮流被轮询。
+	repos, err := p.Store.Repositories().ListSyncCandidates(ctx, store.RepositoryTypeExternal, 20)
 	if err != nil {
 		return err
 	}
