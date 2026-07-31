@@ -255,7 +255,7 @@ func (c *AppClient) DoJSON(ctx context.Context, method, path, token string, out 
 		return rateRemaining, fmt.Errorf("github_rate_limited")
 	}
 	if resp.StatusCode >= 300 {
-		return rateRemaining, fmt.Errorf("github_http_%d", resp.StatusCode)
+		return rateRemaining, &HTTPStatusError{StatusCode: resp.StatusCode}
 	}
 	if out != nil {
 		if err := json.Unmarshal(body, out); err != nil {
@@ -271,3 +271,11 @@ var errNotModified = fmt.Errorf("not_modified")
 func IsNotModified(err error) bool {
 	return err == errNotModified
 }
+
+// HTTPStatusError 携带 GitHub API 的 HTTP 状态码，便于调用方按状态分类
+// （如仅 404/410 判定仓库已转私有/删除，其余错误视为临时故障）。
+type HTTPStatusError struct {
+	StatusCode int
+}
+
+func (e *HTTPStatusError) Error() string { return fmt.Sprintf("github_http_%d", e.StatusCode) }

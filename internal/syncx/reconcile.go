@@ -54,7 +54,6 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	}
 	token, err := r.GitHub.InstallationToken(ctx, inst.InstallationID)
 	if err != nil {
-		_ = r.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, repo.SyncStatus)
 		return err
 	}
 
@@ -73,19 +72,30 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	if err := r.syncIssues(ctx, token, repo, since, isBaseline); err != nil {
 		return err
 	}
+	softFailed := false
 	if err := r.syncWorkflows(ctx, token, repo, isBaseline); err != nil {
 		// Actions 权限不足时软失败
+		softFailed = true
 		if r.Logger != nil {
-			r.Logger.Warn("workflow reconcile soft-fail", "repo", repo.FullName, "error_code", "reconcile_workflows")
+			r.Logger.Warn("workflow reconcile soft-fail", "repo", repo.FullName, "error_code", "reconcile_workflows", "error", err.Error())
 		}
 	}
-	_ = r.syncAlerts(ctx, token, repo, store.AlertKindDependabot, isBaseline)
-	_ = r.syncAlerts(ctx, token, repo, store.AlertKindCodeScanning, isBaseline)
-	_ = r.syncAlerts(ctx, token, repo, store.AlertKindSecretScanning, isBaseline)
+	for _, kind := range []string{store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning} {
+		if err := r.syncAlerts(ctx, token, repo, kind, isBaseline); err != nil {
+			softFailed = true
+			if r.Logger != nil {
+				r.Logger.Warn("alerts reconcile soft-fail", "repo", repo.FullName, "kind", kind, "error_code", "reconcile_alerts", "error", err.Error())
+			}
+		}
+	}
 
 	now := time.Now().UTC()
 	repo.LastSyncedAt = &now
+	// 部分失败不能静默抹平：记录痕迹供管理台提示权限不足。
 	repo.LastSyncErrorCode = ""
+	if softFailed {
+		repo.LastSyncErrorCode = "reconcile_partial"
+	}
 	if isBaseline {
 		repo.SyncStatus = store.SyncStatusActive
 		repo.BaselineFinishedAt = &now
@@ -98,7 +108,12 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	return nil
 }
 
+// 单仓单轮对账的 PR enrich 预算（每个 PR 需要 reviews/reviewers/detail/check-runs 共 4 次 API 调用）。
+// PR 密集的仓库若无预算约束，一轮对账即可耗尽 installation token 的 5000 次/时配额。
+const prEnrichBudgetPerRound = 25
+
 func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Repository, since *time.Time, baseline bool) error {
+	enrichBudget := prEnrichBudgetPerRound
 	for page := 1; page <= r.MaxPages; page++ {
 		items, remaining, err := r.GitHub.ListIssues(ctx, token, repo.Owner, repo.Name, since, page)
 		if err != nil {
@@ -136,61 +151,25 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 				Draft: it.Draft, HTMLURL: it.HTMLURL, SourceUpdatedAt: it.UpdatedAt, StateHash: hash,
 			}
 
-			// 获取 PR 的 Review 和 Check 状态（仅对 PR 且非基线同步）
+			// PR 审核/检查状态 enrich（仅对 PR 且非基线同步）：
+			// 每次调用需 4 次 GitHub API，对新/变化/检查进行中的 PR 才触发，且受单轮预算约束。
 			if kind == store.WorkItemKindPR && !baseline {
-				// 获取 Review 状态
-				reviews, reviewErr := r.GitHub.ListPRReviews(ctx, token, repo.Owner, repo.Name, it.Number)
-				if reviewErr == nil && len(reviews) > 0 {
-					// 找到最新的 Review（按 SubmittedAt 时间排序）
-					latestReview := reviews[0]
-					for _, rv := range reviews[1:] {
-						if rv.SubmittedAt.After(latestReview.SubmittedAt) {
-							latestReview = rv
-						}
-					}
-					item.ReviewState = latestReview.State
-					// 计算审核决策
-					if latestReview.State == "APPROVED" {
-						item.ReviewDecision = "approved"
-					} else if latestReview.State == "CHANGES_REQUESTED" {
-						item.ReviewDecision = "changes_requested"
-					}
+				existing, _ := r.Store.WorkItems().GetByRepoNumber(ctx, repo.ID, it.Number)
+				if existing.ID != "" {
+					// 先沿用已存储的审核/检查字段：UpsertIfNewer 用入参全量覆盖，
+					// 预算耗尽跳过 enrich 时不能把已有数据清零。
+					item.ReviewState = existing.ReviewState
+					item.ReviewDecision = existing.ReviewDecision
+					item.Reviewers = existing.Reviewers
+					item.CheckStatus = existing.CheckStatus
+					item.CheckConclusion = existing.CheckConclusion
+					item.ChecksTotal = existing.ChecksTotal
+					item.ChecksPassed = existing.ChecksPassed
 				}
-
-				// 获取 Requested Reviewers
-				requestedReviewers, reviewersErr := r.GitHub.ListRequestedReviewers(ctx, token, repo.Owner, repo.Name, it.Number)
-				if reviewersErr == nil {
-					item.Reviewers = requestedReviewers
-				}
-
-				// 获取 PR 详情以获取 head SHA（Issues API 不返回此字段）
-				prDetail, prErr := r.GitHub.GetPRDetail(ctx, token, repo.Owner, repo.Name, it.Number)
-				if prErr == nil && prDetail.Head.SHA != "" {
-					// 获取 Check Runs
-					checkRuns, checkErr := r.GitHub.ListCheckRuns(ctx, token, repo.Owner, repo.Name, prDetail.Head.SHA)
-					if checkErr == nil {
-						item.ChecksTotal = len(checkRuns)
-						passed := 0
-						hasFailure := false
-						for _, cr := range checkRuns {
-							if cr.Conclusion == "success" {
-								passed++
-							} else if cr.Conclusion == "failure" || cr.Conclusion == "timed_out" {
-								hasFailure = true
-							}
-						}
-						item.ChecksPassed = passed
-						if hasFailure {
-							item.CheckStatus = "failure"
-							item.CheckConclusion = "failure"
-						} else if passed == len(checkRuns) {
-							item.CheckStatus = "success"
-							item.CheckConclusion = "success"
-						} else {
-							item.CheckStatus = "pending"
-							item.CheckConclusion = "pending"
-						}
-					}
+				stale := existing.ID == "" || existing.StateHash != hash || existing.CheckStatus == "pending"
+				if stale && enrichBudget > 0 {
+					enrichBudget--
+					r.enrichPullRequest(ctx, token, repo, it.Number, &item)
 				}
 			}
 
@@ -217,6 +196,65 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 		}
 	}
 	return nil
+}
+
+// enrichPullRequest 拉取 PR 的审核结论、评审人与检查状态并回填到 item。
+// 尽力而为：单个 API 失败只记日志，不清空已从现有记录沿用的字段。
+func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo store.Repository, number int, item *store.WorkItem) {
+	// 获取 Review 状态
+	reviews, reviewErr := r.GitHub.ListPRReviews(ctx, token, repo.Owner, repo.Name, number)
+	if reviewErr == nil && len(reviews) > 0 {
+		// 找到最新的 Review（按 SubmittedAt 时间排序）
+		latestReview := reviews[0]
+		for _, rv := range reviews[1:] {
+			if rv.SubmittedAt.After(latestReview.SubmittedAt) {
+				latestReview = rv
+			}
+		}
+		item.ReviewState = latestReview.State
+		// 计算审核决策
+		if latestReview.State == "APPROVED" {
+			item.ReviewDecision = "approved"
+		} else if latestReview.State == "CHANGES_REQUESTED" {
+			item.ReviewDecision = "changes_requested"
+		}
+	}
+
+	// 获取 Requested Reviewers
+	requestedReviewers, reviewersErr := r.GitHub.ListRequestedReviewers(ctx, token, repo.Owner, repo.Name, number)
+	if reviewersErr == nil {
+		item.Reviewers = requestedReviewers
+	}
+
+	// 获取 PR 详情以获取 head SHA（Issues API 不返回此字段）
+	prDetail, prErr := r.GitHub.GetPRDetail(ctx, token, repo.Owner, repo.Name, number)
+	if prErr == nil && prDetail.Head.SHA != "" {
+		// 获取 Check Runs
+		checkRuns, checkErr := r.GitHub.ListCheckRuns(ctx, token, repo.Owner, repo.Name, prDetail.Head.SHA)
+		if checkErr == nil {
+			item.ChecksTotal = len(checkRuns)
+			passed := 0
+			hasFailure := false
+			for _, cr := range checkRuns {
+				if cr.Conclusion == "success" {
+					passed++
+				} else if cr.Conclusion == "failure" || cr.Conclusion == "timed_out" {
+					hasFailure = true
+				}
+			}
+			item.ChecksPassed = passed
+			if hasFailure {
+				item.CheckStatus = "failure"
+				item.CheckConclusion = "failure"
+			} else if passed == len(checkRuns) {
+				item.CheckStatus = "success"
+				item.CheckConclusion = "success"
+			} else {
+				item.CheckStatus = "pending"
+				item.CheckConclusion = "pending"
+			}
+		}
+	}
 }
 
 func (r *Reconciler) syncWorkflows(ctx context.Context, token string, repo store.Repository, baseline bool) error {
@@ -247,22 +285,30 @@ func (r *Reconciler) syncWorkflows(ctx context.Context, token string, repo store
 }
 
 func (r *Reconciler) syncAlerts(ctx context.Context, token string, repo store.Repository, kind string, baseline bool) error {
-	var (
-		items []githubx.AlertItem
-		err   error
-	)
-	switch kind {
-	case store.AlertKindDependabot:
-		items, _, err = r.GitHub.ListDependabotAlerts(ctx, token, repo.Owner, repo.Name, 1)
-	case store.AlertKindCodeScanning:
-		items, _, err = r.GitHub.ListCodeScanningAlerts(ctx, token, repo.Owner, repo.Name, 1)
-	case store.AlertKindSecretScanning:
-		items, _, err = r.GitHub.ListSecretScanningAlerts(ctx, token, repo.Owner, repo.Name, 1)
+	// 告警按页拉取（每页 50 条）：只拉第 1 页会导致中大型仓库的告警永远只同步前 50 条。
+	var all []githubx.AlertItem
+	for page := 1; page <= r.MaxPages; page++ {
+		var (
+			items []githubx.AlertItem
+			err   error
+		)
+		switch kind {
+		case store.AlertKindDependabot:
+			items, _, err = r.GitHub.ListDependabotAlerts(ctx, token, repo.Owner, repo.Name, page)
+		case store.AlertKindCodeScanning:
+			items, _, err = r.GitHub.ListCodeScanningAlerts(ctx, token, repo.Owner, repo.Name, page)
+		case store.AlertKindSecretScanning:
+			items, _, err = r.GitHub.ListSecretScanningAlerts(ctx, token, repo.Owner, repo.Name, page)
+		}
+		if err != nil {
+			return err
+		}
+		all = append(all, items...)
+		if len(items) < 50 {
+			break
+		}
 	}
-	if err != nil {
-		return err
-	}
-	for _, a := range items {
+	for _, a := range all {
 		severity := a.Severity
 		rule := ""
 		switch kind {
@@ -316,7 +362,9 @@ func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 	if limit <= 0 {
 		limit = 10
 	}
-	repos, _, err := r.Store.Repositories().List(ctx, store.ListFilter{Page: 1, PerPage: 100, Kind: store.RepositoryTypeInstallation})
+	// 按最后同步时间升序取候选（最久未同步的优先），多取余量覆盖会被跳过的归档/不可用仓；
+	// 若按更新时间倒序取仓，刚对账过的仓会永远插队，导致其余仓无限饥饿。
+	repos, err := r.Store.Repositories().ListSyncCandidates(ctx, store.RepositoryTypeInstallation, limit*3)
 	if err != nil {
 		return err
 	}
