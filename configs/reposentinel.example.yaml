@@ -65,3 +65,19 @@ metrics:
   # 是否暴露 GET /metrics（Prometheus 文本格式）。
   enabled: true
   # 可选 Bearer Token；通过 REPOSENTINEL_METRICS_TOKEN 注入，非空时要求 Authorization: Bearer <token>。
+
+update_check:
+  # 是否启用关于页远程版本检查；内网部署可关闭，检查失败仅降级展示不影响服务。
+  enabled: true
+  # 版本检查 JSON 源；默认 GitHub releases API，可替换为自定义 HTTPS 源。
+  url: "https://api.github.com/repos/Silentely/Repo-Sentinel/releases/latest"
+  # 可选访问令牌（私有源或提高配额）；通过 REPOSENTINEL_UPDATE_CHECK_TOKEN 注入。
+
+aggregation:
+  # 同仓同类事件的短时合并窗口，使用 Go duration 格式。
+  window: "60s"
+  # 超频阈值；窗口内同渠道事件数超过后转为摘要通知。
+  burst_threshold: 15
+  # 超频统计窗口，使用 Go duration 格式。
+  burst_window: "5m"
+  # 多实例时合并与摘要依赖 Outbox 幂等键去重，进程内合并仍为 best-effort。

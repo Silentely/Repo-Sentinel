@@ -49,11 +49,14 @@ printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --passwor
 
 数据库类型由 `REPOSENTINEL_DATABASE_DRIVER` + `REPOSENTINEL_DATABASE_URL` 决定（见配置参考）。
 
-### 推荐（应用命令）
+> **容器部署注意**：官方镜像基于 distroless，**不含 `pg_dump` / `pg_restore` 等 PostgreSQL 客户端**。
+> 容器内执行 `backup` / `restore` 仅适用于 SQLite；PostgreSQL 部署请从容器**外部**直连数据库执行备份（见下文「PostgreSQL（容器外执行）」）。
+
+### SQLite（应用命令，可在容器内执行）
 
 ```bash
 reposentinel backup --output /path/to/backups/reposentinel-$(date -u +%Y%m%dT%H%M%SZ)
-# Compose 示例：
+# Compose 示例（仅 SQLite 可用；PostgreSQL 会因镜像内缺少 pg_dump 而失败）：
 # docker compose exec reposentinel /reposentinel backup --output /tmp/backup
 
 # 恢复前会尽量另存当前库；恢复后用与备份匹配的主密钥启动
@@ -71,11 +74,23 @@ sqlite3 .tmp/reposentinel.db ".backup '.tmp/backups/reposentinel-$(date +%Y%m%d)
 
 恢复：停服务 → 另存当前库 → 换回备份文件 → 用**同一主密钥**启动。启动流程会做迁移与加密相关校验。
 
-### PostgreSQL 备选
+### PostgreSQL（容器外执行）
+
+在能直连数据库的主机上执行，要求本地 `pg_dump` / `pg_restore` 大版本不低于服务端（镜像用 `postgres:17-alpine` 时建议使用 17.x 客户端）：
 
 ```bash
-pg_dump --format=custom --file=reposentinel.dump "$REPOSENTINEL_DATABASE_URL"
-pg_restore --clean --if-exists --dbname="$REPOSENTINEL_DATABASE_URL" reposentinel.dump
+# 备份
+pg_dump --format=custom --file=reposentinel-$(date -u +%Y%m%dT%H%M%SZ).dump "$REPOSENTINEL_DATABASE_URL"
+
+# 恢复（先确认主密钥匹配）
+pg_restore --clean --if-exists --dbname="$REPOSENTINEL_DATABASE_URL" reposentinel-20260727T120000Z.dump
+```
+
+主机没有 PostgreSQL 客户端时，可用一次性容器代替（不进入应用容器）：
+
+```bash
+docker run --rm -v "$PWD:/backup" postgres:17-alpine \
+  pg_dump --format=custom --file=/backup/reposentinel.dump "$REPOSENTINEL_DATABASE_URL"
 ```
 
 ## 主密钥轮换
