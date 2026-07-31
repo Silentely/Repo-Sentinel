@@ -443,7 +443,8 @@ func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem) (WorkIte
 			SetAssigneesJSON(in.AssigneesJSON).
 			SetMilestone(in.Milestone).
 			SetDraft(in.Draft).
-			SetMerged(in.Merged).
+			// 已合并 PR 不会被后续事件回退为未合并。
+			SetMerged(in.Merged || existing.Merged).
 			SetHTMLURL(in.HTMLURL).
 			SetSourceUpdatedAt(in.SourceUpdatedAt.UTC()).
 			SetStateHash(in.StateHash).
@@ -548,6 +549,16 @@ func (s *workItemStore) SetIgnored(ctx context.Context, id string, ignored bool)
 		SetIgnored(ignored).
 		SetUpdatedAt(time.Now().UTC()).
 		Exec(ctx)
+	return mapStoreError(err)
+}
+
+// MarkMerged 仅置位 merged；GitHub 语义上已合并 PR 不会回退，允许重复调用。
+func (s *workItemStore) MarkMerged(ctx context.Context, repoID string, number int) error {
+	_, err := s.client.WorkItem.Update().
+		Where(workitem.RepositoryIDEQ(repoID), workitem.NumberEQ(number)).
+		SetMerged(true).
+		SetUpdatedAt(time.Now().UTC()).
+		Save(ctx)
 	return mapStoreError(err)
 }
 

@@ -59,6 +59,85 @@ func TestProcessIssueOpenedCreatesEvent(t *testing.T) {
 	}
 }
 
+// 合并事件必须持久化 Merged：StateHash 不含 merged，若沿用 UpsertIfNewer 会恒早退。
+func TestProcessPullRequestMergedPersistsFlag(t *testing.T) {
+	dbURL := "file:" + filepath.Join(t.TempDir(), "n.db")
+	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+
+	repo := map[string]any{
+		"id":             99,
+		"name":           "demo",
+		"full_name":      "acme/demo",
+		"private":        false,
+		"html_url":       "https://github.com/acme/demo",
+		"default_branch": "main",
+		"owner":          map[string]any{"login": "acme"},
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	payload, _ := json.Marshal(map[string]any{
+		"action": "closed",
+		"pull_request": map[string]any{
+			"number":     7,
+			"title":      "feat",
+			"state":      "closed",
+			"merged":     true,
+			"html_url":   "https://github.com/acme/demo/pull/7",
+			"user":       map[string]any{"login": "alice"},
+			"updated_at": now,
+			"labels":     []any{},
+			"assignees":  []any{},
+		},
+		"repository": repo,
+	})
+
+	proc := &normalizer.Processor{Store: data}
+	res, err := proc.Process(t.Context(), "pull_request", "delivery-m1", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Event == nil {
+		t.Fatal("期望产生事件")
+	}
+	item, err := data.WorkItems().GetByRepoNumber(t.Context(), res.Repository.ID, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !item.Merged {
+		t.Fatal("合并事件应持久化 Merged=true")
+	}
+
+	// 后续未合并语义的更新不得回退 merged。
+	payload2, _ := json.Marshal(map[string]any{
+		"action": "closed",
+		"pull_request": map[string]any{
+			"number":     7,
+			"title":      "feat v2",
+			"state":      "closed",
+			"merged":     false,
+			"html_url":   "https://github.com/acme/demo/pull/7",
+			"user":       map[string]any{"login": "alice"},
+			"updated_at": time.Now().UTC().Add(time.Minute).Format(time.RFC3339),
+			"labels":     []any{},
+			"assignees":  []any{},
+		},
+		"repository": repo,
+	})
+	if _, err := proc.Process(t.Context(), "pull_request", "delivery-m2", payload2); err != nil {
+		t.Fatal(err)
+	}
+	item, err = data.WorkItems().GetByRepoNumber(t.Context(), res.Repository.ID, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !item.Merged {
+		t.Fatal("后续事件不应回退已合并标记")
+	}
+}
+
 func TestProcessInstallationCreatedImportsTopLevelRepositories(t *testing.T) {
 	dbURL := "file:" + filepath.Join(t.TempDir(), "install.db")
 	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})
