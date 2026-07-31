@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiRequest } from "../../lib/api/client";
+import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
+import { QueryGate } from "../../components/query-gate";
 import { toApiError } from "../../lib/api/errors";
 import { upsertChannel, testChannel, deleteChannel, toggleChannel } from "./api";
 import { SUBSCRIBABLE_KINDS, subscriptionSummary, uiCheckedKinds } from "./notify-subscription";
@@ -160,63 +162,60 @@ export function NotifyPage() {
         </div>
       </section>
 
-      {channels.isError ? (
-        <ErrorAlert
-          title="无法加载渠道"
-          message={toApiError(channels.error).message}
-          errorCode={toApiError(channels.error).errorCode}
-        />
-      ) : null}
       {message ? <p className="success-banner" role="status">{message}</p> : null}
       {error ? <ErrorAlert title="操作失败" message={error} /> : null}
 
-      {/* 渠道状态概览 */}
+      {/* 渠道状态概览：查询失败仅在本区块提示，下方表单仍可用。 */}
       <section className="onboarding-card">
         <h2>当前渠道</h2>
-        <ul className="event-list">
-          {(channels.data?.items ?? []).map((ch) => (
-            <li key={ch.id} className="channel-row">
-              <span className={`event-kind ${ch.enabled ? "status-sent" : "status-dead"}`}>
-                {ch.channel_type === "telegram" ? "📱 Telegram" : "🌐 HTTP Webhook"}
-              </span>
-              <strong>{ch.enabled ? "已启用" : "已禁用"}</strong>
-              <span className="channel-target">{ch.target || "（无目标）"}</span>
-              <span className="muted">{ch.secret_configured ? "密钥已配置" : "无密钥"}</span>
-              <span className="muted">{subscriptionSummary(ch.event_kinds, ch.digest_enabled)}</span>
-              <div className="channel-actions">
-                <button
-                  className="quiet-button"
-                  type="button"
-                  onClick={() =>
-                    toggleMut.mutate({ type: ch.channel_type as "telegram" | "http_webhook", enabled: !ch.enabled })
-                  }
-                  disabled={toggleMut.isPending}
-                >
-                  {ch.enabled ? "禁用" : "启用"}
-                </button>
-                <button
-                  className="quiet-button"
-                  type="button"
-                  onClick={() => testMut.mutate(ch.channel_type as "telegram" | "http_webhook")}
-                  disabled={testMut.isPending || !ch.enabled}
-                >
-                  {testMut.isPending ? "发送中…" : "测试"}
-                </button>
-                <button
-                  className="quiet-button quiet-button--danger"
-                  type="button"
-                  onClick={() => handleDelete(ch.channel_type as "telegram" | "http_webhook")}
-                  disabled={deleteMut.isPending}
-                >
-                  删除
-                </button>
-              </div>
-            </li>
-          ))}
-          {(channels.data?.items ?? []).length === 0 && (
-            <li className="muted">尚未配置任何渠道，请在下方添加。</li>
-          )}
-        </ul>
+        <QueryGate
+          query={channels}
+          errorTitle="无法加载渠道"
+          isEmpty={(channels.data?.items ?? []).length === 0}
+          emptyState={<EmptyState title="尚未配置渠道" description="请在下方添加 Telegram 或 HTTP Webhook 渠道。" />}
+        >
+          <ul className="event-list">
+            {(channels.data?.items ?? []).map((ch) => (
+              <li key={ch.id} className="channel-row">
+                <span className={`event-kind ${ch.enabled ? "status-sent" : "status-dead"}`}>
+                  {ch.channel_type === "telegram" ? "📱 Telegram" : "🌐 HTTP Webhook"}
+                </span>
+                <strong>{ch.enabled ? "已启用" : "已禁用"}</strong>
+                <span className="channel-target">{ch.target || "（无目标）"}</span>
+                <span className="muted">{ch.secret_configured ? "密钥已配置" : "无密钥"}</span>
+                <span className="muted">{subscriptionSummary(ch.event_kinds, ch.digest_enabled)}</span>
+                <div className="channel-actions">
+                  <button
+                    className="quiet-button"
+                    type="button"
+                    onClick={() =>
+                      toggleMut.mutate({ type: ch.channel_type as "telegram" | "http_webhook", enabled: !ch.enabled })
+                    }
+                    disabled={toggleMut.isPending}
+                  >
+                    {ch.enabled ? "禁用" : "启用"}
+                  </button>
+                  <button
+                    className="quiet-button"
+                    type="button"
+                    onClick={() => testMut.mutate(ch.channel_type as "telegram" | "http_webhook")}
+                    disabled={testMut.isPending || !ch.enabled}
+                  >
+                    {testMut.isPending ? "发送中…" : "测试"}
+                  </button>
+                  <button
+                    className="quiet-button quiet-button--danger"
+                    type="button"
+                    onClick={() => handleDelete(ch.channel_type as "telegram" | "http_webhook")}
+                    disabled={deleteMut.isPending}
+                  >
+                    删除
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </QueryGate>
       </section>
 
       {/* Telegram 配置 */}

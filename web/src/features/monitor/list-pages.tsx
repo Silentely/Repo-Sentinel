@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
+import { QueryGate } from "../../components/query-gate";
 import { apiRequest } from "../../lib/api/client";
 import { toApiError } from "../../lib/api/errors";
 import { formatRelativeTime } from "../../lib/format";
@@ -22,7 +23,6 @@ import {
   IgnoreButton,
   IgnoredToggle,
   ListShell,
-  ListSkeleton,
   RepoFilterSelect,
   useActiveRepos,
   useIgnoreMutation,
@@ -94,28 +94,30 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
   const [reviewFilter, setReviewFilter] = useState<string>("");
   const [checkFilter, setCheckFilter] = useState<string>("");
 
-  const q = useQuery({
-    queryKey: ["work-items", kind, state, repoId, ignoredMode],
-    queryFn: () => {
-      const params = new URLSearchParams({ per_page: "50", kind });
+  // 审核/检查状态由后端按 review/check 参数过滤（total 为过滤后总数），客户端不再二次过滤；
+  // 每页 50 条，超过时通过「加载更多」翻页拉取。
+  const q = useInfiniteQuery({
+    queryKey: ["work-items", kind, state, repoId, ignoredMode, reviewFilter, checkFilter],
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ per_page: "50", kind, page: String(pageParam) });
       if (state) params.set("state", state);
       if (repoId) params.set("repository_id", repoId);
       if (ignoredMode === "ignored") params.set("ignored", "true");
+      if (reviewFilter) params.set("review", reviewFilter);
+      if (checkFilter) params.set("check", checkFilter);
       return apiRequest<Page<WorkItem>>(`/api/v1/work-items?${params.toString()}`);
     },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page * lastPage.per_page < lastPage.total ? lastPage.page + 1 : undefined,
   });
 
   const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
 
-  const filteredItems = (q.data?.items || []).filter((it) => {
-    if (reviewFilter === "approved" && it.review_decision !== "approved") return false;
-    if (reviewFilter === "changes_requested" && it.review_decision !== "changes_requested") return false;
-    if (reviewFilter === "pending" && it.review_decision) return false;
-    if (checkFilter === "passed" && it.check_status !== "success") return false;
-    if (checkFilter === "failed" && it.check_status !== "failure") return false;
-    if (checkFilter === "pending" && it.check_status) return false;
-    return true;
-  });
+  const items = q.data?.pages.flatMap((page) => page.items) ?? [];
+  const total = q.data?.pages[q.data.pages.length - 1]?.total ?? 0;
+  // 仓库/审核/检查筛选激活时，空态需区分「筛选后为空」与「真的没有」。
+  const filtersActive = repoId !== "" || reviewFilter !== "" || checkFilter !== "";
 
   return (
     <ListShell eyebrow="仓库" title={title} description={description}>
@@ -156,107 +158,120 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
           </>
         )}
       </div>
-      {q.isError ? (
-        <ErrorAlert title="加载失败" message={toApiError(q.error).message || "无法加载工作项"} />
-      ) : q.isLoading ? (
-        <ListSkeleton />
-      ) : filteredItems.length ? (
-        <ul className="event-list">
-          {filteredItems.map((it) => {
-            const num = it.number ?? 0;
-            const itemTitle = (it.title || "").trim() || "（无标题）";
-            return (
-              <li key={it.id}>
-                <div className="pr-header">
-                  <span className={`event-kind state-${it.state || "open"}`}>{it.state || "—"}</span>
-                  {it.draft && <span className="draft-badge">Draft</span>}
-                  {it.merged && <span className="merged-badge">Merged</span>}
-                  {it.ignored && <span className="ignored-badge">已忽略</span>}
-                  {it.repository_full_name ? <span className="event-repo">{it.repository_full_name}</span> : null}
-                  <strong>
-                    #{num} {itemTitle}
-                  </strong>
-                </div>
-                <div className="pr-meta">
-                  <span className="muted">{it.author ? ` · ${it.author}` : ""}</span>
-                  {it.labels && it.labels.length > 0 && (
-                    <div className="labels">
-                      {it.labels.slice(0, 3).map((label, idx) => (
-                        <span key={idx} className="label">
-                          {label}
-                        </span>
-                      ))}
-                      {it.labels.length > 3 && <span className="label-more">+{it.labels.length - 3}</span>}
-                    </div>
-                  )}
-                  {it.assignees && it.assignees.length > 0 && (
-                    <span className="assignees">→ {it.assignees.join(", ")}</span>
-                  )}
-                  {it.milestone && <span className="milestone">🎯 {it.milestone}</span>}
-                  {it.source_updated_at && <span className="updated-at">{formatRelativeTime(it.source_updated_at)}</span>}
-                </div>
-                <div className="pr-status">
-                  {it.review_decision ? (
-                    <span className={`review-badge review-${it.review_decision}`}>
-                      {it.review_decision === "approved"
-                        ? "✅ 审核通过"
-                        : it.review_decision === "changes_requested"
-                          ? "❌ 需要修改"
-                          : it.review_state || "审核中"}
-                    </span>
-                  ) : it.reviewers && it.reviewers.length > 0 ? (
-                    <span className="review-badge review-pending">⏳ 等待审核</span>
-                  ) : null}
-                  {it.reviewers && it.reviewers.length > 0 && (
-                    <span className="reviewers">👀 {it.reviewers.join(", ")}</span>
-                  )}
-                  {it.checks_total && it.checks_total > 0 && (
-                    <span className={`check-badge check-${it.check_status || "pending"}`}>
-                      {it.check_status === "success" ? "✅" : it.check_status === "failure" ? "❌" : "⏳"}
-                      {it.checks_passed}/{it.checks_total} 项检查通过
-                    </span>
-                  )}
-                </div>
-                <div className="item-actions">
-                  {it.html_url ? (
-                    <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">
-                      在 GitHub 查看
-                    </a>
-                  ) : null}
-                  <IgnoreButton
-                    ignored={it.ignored || ignoredMode === "ignored"}
-                    busy={busyId === it.id}
-                    onToggle={() =>
-                      ignoreMutation.mutate({
-                        id: it.id,
-                        ignored: !(it.ignored || ignoredMode === "ignored"),
-                      })
-                    }
-                  />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <EmptyState
-          title={
-            ignoredMode === "ignored"
-              ? "没有已忽略的项目"
-              : state === "closed"
-                ? "没有已关闭的项目"
-                : "暂无工作项"
-          }
-          description={
-            ignoredMode === "ignored"
-              ? "忽略的长期打开 Issue/PR 会显示在这里，可随时取消忽略。"
-              : state === "closed"
-                ? "已关闭的 Issues 或 PR 会显示在这里。"
-                : "安装 GitHub App 并完成对账后，相关数据会自动同步到这里。已归档仓库的历史项默认不显示。"
-          }
-          action={<Link to="/">返回仪表盘</Link>}
-        />
-      )}
+      <QueryGate
+        query={q}
+        isEmpty={items.length === 0}
+        emptyState={
+          <EmptyState
+            title={
+              filtersActive
+                ? "没有符合筛选条件的项目"
+                : ignoredMode === "ignored"
+                  ? "没有已忽略的项目"
+                  : state === "closed"
+                    ? "没有已关闭的项目"
+                    : "暂无工作项"
+            }
+            description={
+              filtersActive
+                ? "可尝试调整或清除筛选条件后重试。"
+                : ignoredMode === "ignored"
+                  ? "忽略的长期打开 Issue/PR 会显示在这里，可随时取消忽略。"
+                  : state === "closed"
+                    ? "已关闭的 Issues 或 PR 会显示在这里。"
+                    : "安装 GitHub App 并完成对账后，相关数据会自动同步到这里。已归档仓库的历史项默认不显示。"
+            }
+            action={<Link to="/">返回仪表盘</Link>}
+          />
+        }
+      >
+        <>
+          <ul className="event-list">
+            {items.map((it) => {
+              const num = it.number ?? 0;
+              const itemTitle = (it.title || "").trim() || "（无标题）";
+              return (
+                <li key={it.id}>
+                  <div className="pr-header">
+                    <span className={`event-kind state-${it.state || "open"}`}>{it.state || "—"}</span>
+                    {it.draft && <span className="draft-badge">Draft</span>}
+                    {it.merged && <span className="merged-badge">Merged</span>}
+                    {it.ignored && <span className="ignored-badge">已忽略</span>}
+                    {it.repository_full_name ? <span className="event-repo">{it.repository_full_name}</span> : null}
+                    <strong>
+                      #{num} {itemTitle}
+                    </strong>
+                  </div>
+                  <div className="pr-meta">
+                    <span className="muted">{it.author ? ` · ${it.author}` : ""}</span>
+                    {it.labels && it.labels.length > 0 && (
+                      <div className="labels">
+                        {it.labels.slice(0, 3).map((label, idx) => (
+                          <span key={idx} className="label">
+                            {label}
+                          </span>
+                        ))}
+                        {it.labels.length > 3 && <span className="label-more">+{it.labels.length - 3}</span>}
+                      </div>
+                    )}
+                    {it.assignees && it.assignees.length > 0 && (
+                      <span className="assignees">→ {it.assignees.join(", ")}</span>
+                    )}
+                    {it.milestone && <span className="milestone">🎯 {it.milestone}</span>}
+                    {it.source_updated_at && <span className="updated-at">{formatRelativeTime(it.source_updated_at)}</span>}
+                  </div>
+                  <div className="pr-status">
+                    {it.review_decision ? (
+                      <span className={`review-badge review-${it.review_decision}`}>
+                        {it.review_decision === "approved"
+                          ? "✅ 审核通过"
+                          : it.review_decision === "changes_requested"
+                            ? "❌ 需要修改"
+                            : it.review_state || "审核中"}
+                      </span>
+                    ) : it.reviewers && it.reviewers.length > 0 ? (
+                      <span className="review-badge review-pending">⏳ 等待审核</span>
+                    ) : null}
+                    {it.reviewers && it.reviewers.length > 0 && (
+                      <span className="reviewers">👀 {it.reviewers.join(", ")}</span>
+                    )}
+                    {it.checks_total && it.checks_total > 0 && (
+                      <span className={`check-badge check-${it.check_status || "pending"}`}>
+                        {it.check_status === "success" ? "✅" : it.check_status === "failure" ? "❌" : "⏳"}
+                        {it.checks_passed}/{it.checks_total} 项检查通过
+                      </span>
+                    )}
+                  </div>
+                  <div className="item-actions">
+                    {it.html_url ? (
+                      <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">
+                        在 GitHub 查看
+                      </a>
+                    ) : null}
+                    <IgnoreButton
+                      ignored={it.ignored || ignoredMode === "ignored"}
+                      busy={busyId === it.id}
+                      onToggle={() =>
+                        ignoreMutation.mutate({
+                          id: it.id,
+                          ignored: !(it.ignored || ignoredMode === "ignored"),
+                        })
+                      }
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <ListFooter
+            shown={items.length}
+            total={total}
+            hasNextPage={q.hasNextPage}
+            fetchingNextPage={q.isFetchingNextPage}
+            onLoadMore={() => q.fetchNextPage()}
+          />
+        </>
+      </QueryGate>
     </ListShell>
   );
 }
@@ -360,9 +375,18 @@ export function ReposPage() {
           已归档 ({archivedRepos.length})
         </button>
       </div>
-      {repos.isLoading ? (
-        <ListSkeleton />
-      ) : displayed.length ? (
+      <QueryGate
+        query={repos}
+        errorTitle="无法加载仓库列表"
+        isEmpty={displayed.length === 0}
+        emptyState={
+          <EmptyState
+            title={showArchived ? "没有已归档的仓库" : "暂无关注的仓库"}
+            description={showArchived ? "归档的仓库会显示在这里。" : "安装 GitHub App 后仓库会自动出现。"}
+            action={showArchived ? undefined : <Link to="/github">打开 GitHub App 页</Link>}
+          />
+        }
+      >
         <ul className="repo-settings-list">
           {displayed.map((repo) => (
             <RepoCard
@@ -373,13 +397,7 @@ export function ReposPage() {
             />
           ))}
         </ul>
-      ) : (
-        <EmptyState
-          title={showArchived ? "没有已归档的仓库" : "暂无关注的仓库"}
-          description={showArchived ? "归档的仓库会显示在这里。" : "安装 GitHub App 后仓库会自动出现。"}
-          action={showArchived ? undefined : <Link to="/github">打开 GitHub App 页</Link>}
-        />
-      )}
+      </QueryGate>
     </ListShell>
   );
 }
@@ -455,16 +473,23 @@ function ActionsList() {
   const [ignoredMode, setIgnoredMode] = useState<IgnoredMode>("active");
   const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkflowRunIgnored, ["workflow-runs"]);
 
-  const q = useQuery({
+  const q = useInfiniteQuery({
     queryKey: ["workflow-runs", repoId, conclusion, ignoredMode],
-    queryFn: () => {
-      const params = new URLSearchParams({ per_page: "50" });
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ per_page: "50", page: String(pageParam) });
       if (repoId) params.set("repository_id", repoId);
       if (conclusion) params.set("conclusion", conclusion);
       if (ignoredMode === "ignored") params.set("ignored", "true");
       return apiRequest<Page<WorkflowRun>>(`/api/v1/workflow-runs?${params.toString()}`);
     },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page * lastPage.per_page < lastPage.total ? lastPage.page + 1 : undefined,
   });
+
+  const items = q.data?.pages.flatMap((page) => page.items) ?? [];
+  const total = q.data?.pages[q.data.pages.length - 1]?.total ?? 0;
+  const filtersActive = repoId !== "" || conclusion !== "";
 
   return (
     <ListShell
@@ -501,65 +526,82 @@ function ActionsList() {
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
       </div>
-      {q.isError ? (
-        <ErrorAlert title="加载失败" message={toApiError(q.error).message || "无法加载 Actions 运行记录"} />
-      ) : q.isLoading ? (
-        <ListSkeleton />
-      ) : q.data?.items.length ? (
-        <ul className="event-list">
-          {q.data.items.map((run) => {
-            const name = (run.workflow_name || "").trim() || "workflow";
-            const num = run.run_number ?? 0;
-            const runConclusion = run.conclusion || run.status || "run";
-            return (
-              <li key={run.id}>
-                <div className="run-header">
-                  <span className={`event-kind state-${runConclusion}`}>{runConclusion}</span>
-                  {run.event && <span className="event-type">{run.event}</span>}
-                  {run.run_attempt && run.run_attempt > 1 && <span className="attempt-badge">Attempt #{run.run_attempt}</span>}
-                  {run.ignored && <span className="ignored-badge">已忽略</span>}
-                  {run.repository_full_name ? <span className="event-repo">{run.repository_full_name}</span> : null}
-                  <strong>
-                    {name} #{num}
-                  </strong>
-                  <span className="muted">{run.head_branch || "—"}</span>
-                </div>
-                <div className="run-meta">
-                  {run.actor && <span className="actor">by {run.actor}</span>}
-                  {run.run_started_at && <span className="started-at">{formatRelativeTime(run.run_started_at)}</span>}
-                </div>
-                <div className="item-actions">
-                  {run.html_url ? (
-                    <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">
-                      在 GitHub 查看
-                    </a>
-                  ) : null}
-                  <IgnoreButton
-                    ignored={run.ignored || ignoredMode === "ignored"}
-                    busy={busyId === run.id}
-                    onToggle={() =>
-                      ignoreMutation.mutate({
-                        id: run.id,
-                        ignored: !(run.ignored || ignoredMode === "ignored"),
-                      })
-                    }
-                  />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <EmptyState
-          title={ignoredMode === "ignored" ? "没有已忽略的运行" : "暂无 Actions 运行"}
-          description={
-            ignoredMode === "ignored"
-              ? "忽略的运行记录会显示在这里。"
-              : "常见原因：① GitHub App 未授予 Actions 只读权限；② 未订阅 workflow_run 事件；③ 仓库尚未对账/基线同步。可到「仓库管理」确认 Actions 开关开启，并在仪表盘触发对账。"
-          }
-          action={<Link to="/github">检查 GitHub App 权限</Link>}
-        />
-      )}
+      <QueryGate
+        query={q}
+        isEmpty={items.length === 0}
+        emptyState={
+          <EmptyState
+            title={
+              filtersActive
+                ? "没有符合筛选条件的运行"
+                : ignoredMode === "ignored"
+                  ? "没有已忽略的运行"
+                  : "暂无 Actions 运行"
+            }
+            description={
+              filtersActive
+                ? "可尝试调整或清除筛选条件后重试。"
+                : ignoredMode === "ignored"
+                  ? "忽略的运行记录会显示在这里。"
+                  : "常见原因：① GitHub App 未授予 Actions 只读权限；② 未订阅 workflow_run 事件；③ 仓库尚未对账/基线同步。可到「仓库管理」确认 Actions 开关开启，并在仪表盘触发对账。"
+            }
+            action={<Link to="/github">检查 GitHub App 权限</Link>}
+          />
+        }
+      >
+        <>
+          <ul className="event-list">
+            {items.map((run) => {
+              const name = (run.workflow_name || "").trim() || "workflow";
+              const num = run.run_number ?? 0;
+              const runConclusion = run.conclusion || run.status || "run";
+              return (
+                <li key={run.id}>
+                  <div className="run-header">
+                    <span className={`event-kind state-${runConclusion}`}>{runConclusion}</span>
+                    {run.event && <span className="event-type">{run.event}</span>}
+                    {run.run_attempt && run.run_attempt > 1 && <span className="attempt-badge">Attempt #{run.run_attempt}</span>}
+                    {run.ignored && <span className="ignored-badge">已忽略</span>}
+                    {run.repository_full_name ? <span className="event-repo">{run.repository_full_name}</span> : null}
+                    <strong>
+                      {name} #{num}
+                    </strong>
+                    <span className="muted">{run.head_branch || "—"}</span>
+                  </div>
+                  <div className="run-meta">
+                    {run.actor && <span className="actor">by {run.actor}</span>}
+                    {run.run_started_at && <span className="started-at">{formatRelativeTime(run.run_started_at)}</span>}
+                  </div>
+                  <div className="item-actions">
+                    {run.html_url ? (
+                      <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">
+                        在 GitHub 查看
+                      </a>
+                    ) : null}
+                    <IgnoreButton
+                      ignored={run.ignored || ignoredMode === "ignored"}
+                      busy={busyId === run.id}
+                      onToggle={() =>
+                        ignoreMutation.mutate({
+                          id: run.id,
+                          ignored: !(run.ignored || ignoredMode === "ignored"),
+                        })
+                      }
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <ListFooter
+            shown={items.length}
+            total={total}
+            hasNextPage={q.hasNextPage}
+            fetchingNextPage={q.isFetchingNextPage}
+            onLoadMore={() => q.fetchNextPage()}
+          />
+        </>
+      </QueryGate>
     </ListShell>
   );
 }
@@ -584,17 +626,24 @@ function SecurityList() {
   const [ignoredMode, setIgnoredMode] = useState<IgnoredMode>("active");
   const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setSecurityAlertIgnored, ["security-alerts"]);
 
-  const q = useQuery({
+  const q = useInfiniteQuery({
     queryKey: ["security-alerts", state, alertKind, repoId, ignoredMode],
-    queryFn: () => {
-      const params = new URLSearchParams({ per_page: "50" });
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ per_page: "50", page: String(pageParam) });
       if (state) params.set("state", state);
       if (alertKind) params.set("alert_kind", alertKind);
       if (repoId) params.set("repository_id", repoId);
       if (ignoredMode === "ignored") params.set("ignored", "true");
       return apiRequest<Page<SecurityAlert>>(`/api/v1/security-alerts?${params.toString()}`);
     },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page * lastPage.per_page < lastPage.total ? lastPage.page + 1 : undefined,
   });
+
+  const items = q.data?.pages.flatMap((page) => page.items) ?? [];
+  const total = q.data?.pages[q.data.pages.length - 1]?.total ?? 0;
+  const filtersActive = repoId !== "" || alertKind !== "";
 
   return (
     <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning 安全告警。">
@@ -641,67 +690,80 @@ function SecurityList() {
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
       </div>
-      {q.isError ? (
-        <ErrorAlert title="加载失败" message={toApiError(q.error).message || "无法加载安全告警"} />
-      ) : q.isLoading ? (
-        <ListSkeleton />
-      ) : q.data?.items.length ? (
-        <ul className="event-list">
-          {q.data.items.map((a) => {
-            const num = a.alert_number ?? 0;
-            const label = (a.rule_or_dependency || a.severity || "").trim() || "告警";
-            return (
-              <li key={a.id}>
-                <span className={`event-kind state-${a.state || "open"}`}>{a.alert_kind || "alert"}</span>
-                {a.ignored && <span className="ignored-badge">已忽略</span>}
-                {a.repository_full_name ? <span className="event-repo">{a.repository_full_name}</span> : null}
-                <strong>
-                  #{num} {label}
-                </strong>
-                <span className="muted">
-                  {a.state || "—"}
-                  {a.severity ? ` · ${a.severity}` : ""}
-                </span>
-                <div className="item-actions">
-                  {a.html_url ? (
-                    <a className="quiet-button" href={a.html_url} target="_blank" rel="noreferrer">
-                      在 GitHub 查看
-                    </a>
-                  ) : null}
-                  <IgnoreButton
-                    ignored={a.ignored || ignoredMode === "ignored"}
-                    busy={busyId === a.id}
-                    onToggle={() =>
-                      ignoreMutation.mutate({
-                        id: a.id,
-                        ignored: !(a.ignored || ignoredMode === "ignored"),
-                      })
-                    }
-                  />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <EmptyState
-          title={
-            ignoredMode === "ignored"
-              ? "没有本地忽略的告警"
-              : state === "dismissed"
-                ? "没有 GitHub 已忽略的告警"
-                : "暂无安全告警"
-          }
-          description={
-            ignoredMode === "ignored"
-              ? "在本系统忽略的告警会显示在这里（不回写 GitHub）。"
-              : state === "dismissed"
-                ? "GitHub 侧已忽略的告警会显示在这里。"
-                : "开启 GitHub 仓库的安全功能后，告警会自动同步到这里。"
-          }
-          action={<Link to="/github">查看权限配置</Link>}
-        />
-      )}
+      <QueryGate
+        query={q}
+        isEmpty={items.length === 0}
+        emptyState={
+          <EmptyState
+            title={
+              filtersActive
+                ? "没有符合筛选条件的告警"
+                : ignoredMode === "ignored"
+                  ? "没有本地忽略的告警"
+                  : state === "dismissed"
+                    ? "没有 GitHub 已忽略的告警"
+                    : "暂无安全告警"
+            }
+            description={
+              filtersActive
+                ? "可尝试调整或清除筛选条件后重试。"
+                : ignoredMode === "ignored"
+                  ? "在本系统忽略的告警会显示在这里（不回写 GitHub）。"
+                  : state === "dismissed"
+                    ? "GitHub 侧已忽略的告警会显示在这里。"
+                    : "开启 GitHub 仓库的安全功能后，告警会自动同步到这里。"
+            }
+            action={<Link to="/github">查看权限配置</Link>}
+          />
+        }
+      >
+        <>
+          <ul className="event-list">
+            {items.map((a) => {
+              const num = a.alert_number ?? 0;
+              const label = (a.rule_or_dependency || a.severity || "").trim() || "告警";
+              return (
+                <li key={a.id}>
+                  <span className={`event-kind state-${a.state || "open"}`}>{a.alert_kind || "alert"}</span>
+                  {a.ignored && <span className="ignored-badge">已忽略</span>}
+                  {a.repository_full_name ? <span className="event-repo">{a.repository_full_name}</span> : null}
+                  <strong>
+                    #{num} {label}
+                  </strong>
+                  <span className="muted">
+                    {a.state || "—"}
+                    {a.severity ? ` · ${a.severity}` : ""}
+                  </span>
+                  <div className="item-actions">
+                    {a.html_url ? (
+                      <a className="quiet-button" href={a.html_url} target="_blank" rel="noreferrer">
+                        在 GitHub 查看
+                      </a>
+                    ) : null}
+                    <IgnoreButton
+                      ignored={a.ignored || ignoredMode === "ignored"}
+                      busy={busyId === a.id}
+                      onToggle={() =>
+                        ignoreMutation.mutate({
+                          id: a.id,
+                          ignored: !(a.ignored || ignoredMode === "ignored"),
+                        })
+                      }
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <ListFooter
+            shown={items.length}
+            total={total}
+            hasNextPage={q.hasNextPage}
+            fetchingNextPage={q.isFetchingNextPage}
+            onLoadMore={() => q.fetchNextPage()}
+          />
+        </>
+      </QueryGate>
     </ListShell>
   );
 }
@@ -715,6 +777,34 @@ export function SecurityPage() {
     >
       <SecurityList />
     </FeatureGuard>
+  );
+}
+
+/** 列表底部分页条：展示已加载数量与服务端总数，并提供「加载更多」翻页。 */
+function ListFooter({
+  shown,
+  total,
+  hasNextPage,
+  fetchingNextPage,
+  onLoadMore,
+}: {
+  shown: number;
+  total: number;
+  hasNextPage: boolean;
+  fetchingNextPage: boolean;
+  onLoadMore: () => void;
+}) {
+  return (
+    <div className="list-footer">
+      <span className="muted">
+        已显示 {shown} / 共 {total} 条
+      </span>
+      {hasNextPage ? (
+        <button className="quiet-button" type="button" disabled={fetchingNextPage} onClick={onLoadMore}>
+          {fetchingNextPage ? "加载中…" : "加载更多"}
+        </button>
+      ) : null}
+    </div>
   );
 }
 

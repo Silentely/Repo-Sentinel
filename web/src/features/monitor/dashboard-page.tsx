@@ -5,6 +5,7 @@ import { CheckCircle2, ChevronDown, CircleDashed, ExternalLink } from "lucide-re
 
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
+import { QueryGate } from "../../components/query-gate";
 import { toApiError } from "../../lib/api/errors";
 import { formatRelativeTime } from "../../lib/format";
 import {
@@ -61,6 +62,10 @@ export function DashboardPage() {
 
   // 折叠状态从 localStorage 恢复，切换后写回。
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(readOpenPanels);
+  // 行级忙碌与对账错误：只让当前操作的行转圈，失败时在对应面板内提示。
+  const [retryBusyId, setRetryBusyId] = useState<string | null>(null);
+  const [reconcileBusyId, setReconcileBusyId] = useState<string | null>(null);
+  const [reconcileError, setReconcileError] = useState<string | null>(null);
 
   const activate = useMutation({
     mutationFn: activateRepository,
@@ -71,12 +76,30 @@ export function DashboardPage() {
   });
   const reconcileOne = useMutation({
     mutationFn: reconcileRepository,
+    onMutate: (id) => {
+      setReconcileBusyId(id);
+      setReconcileError(null);
+    },
+    onSettled: () => setReconcileBusyId(null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (error) => setReconcileError(toApiError(error).message || "对账请求失败"),
   });
   const reconcileEverything = useMutation({
     mutationFn: reconcileAll,
+    onMutate: () => setReconcileError(null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (error) => setReconcileError(toApiError(error).message || "对账请求失败"),
   });
   const retry = useMutation({
     mutationFn: retryOutbox,
+    onMutate: (id) => setRetryBusyId(id),
+    onSettled: () => setRetryBusyId(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["outbox"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -146,9 +169,14 @@ export function DashboardPage() {
         open={openPanels.outbox}
         onToggle={() => togglePanel("outbox")}
       >
-        {outboxItems.length === 0 ? (
-          <EmptyState title="还没有投递记录" description="配置 Telegram 或 HTTP Webhook 渠道后，实时通知会进入 Outbox。" />
-        ) : (
+        <QueryGate
+          query={outbox}
+          errorTitle="无法加载投递记录"
+          isEmpty={outboxItems.length === 0}
+          emptyState={
+            <EmptyState title="还没有投递记录" description="配置 Telegram 或 HTTP Webhook 渠道后，实时通知会进入 Outbox。" />
+          }
+        >
           <ul className="feed-list">
             {outboxItems.map((item) => (
               <li key={item.id} className="feed-row">
@@ -169,16 +197,16 @@ export function DashboardPage() {
                       className="quiet-button quiet-button--compact"
                       type="button"
                       onClick={() => retry.mutate(item.id)}
-                      disabled={retry.isPending}
+                      disabled={retryBusyId === item.id}
                     >
-                      重试
+                      {retryBusyId === item.id ? "重试中…" : "重试"}
                     </button>
                   ) : null}
                 </div>
               </li>
             ))}
           </ul>
-        )}
+        </QueryGate>
       </CollapsiblePanel>
 
       <CollapsiblePanel
@@ -188,12 +216,17 @@ export function DashboardPage() {
         open={openPanels.events}
         onToggle={() => togglePanel("events")}
       >
-        {eventItems.length === 0 ? (
-          <EmptyState
-            title="还没有事件"
-            description="配置 GitHub Webhook 后，Issue / PR / Actions / 安全告警会出现在这里。"
-          />
-        ) : (
+        <QueryGate
+          query={events}
+          errorTitle="无法加载事件"
+          isEmpty={eventItems.length === 0}
+          emptyState={
+            <EmptyState
+              title="还没有事件"
+              description="配置 GitHub Webhook 后，Issue / PR / Actions / 安全告警会出现在这里。"
+            />
+          }
+        >
           <ul className="feed-list">
             {eventItems.map((ev) => {
               const repoName = ev.repository_id ? repoNameMap[ev.repository_id] : undefined;
@@ -228,7 +261,7 @@ export function DashboardPage() {
               );
             })}
           </ul>
-        )}
+        </QueryGate>
       </CollapsiblePanel>
 
       <CollapsiblePanel
@@ -251,20 +284,24 @@ export function DashboardPage() {
           </button>
         }
       >
-        {repos.isPending ? <p className="muted">加载仓库…</p> : null}
-        {!repos.isPending && visibleRepos.length === 0 ? (
-          <EmptyState
-            title="还没有关注中的仓库"
-            description="安装 GitHub App 并配置 Webhook 后，仓库会自动出现。已归档仓库请在「仓库管理」查看。"
-            action={
-              <span className="link-row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
-                <Link to="/github">打开 GitHub App 页</Link>
-                <span className="muted">· 安装后点「从 GitHub 同步仓库」可补拉仓库</span>
-              </span>
-            }
-          />
-        ) : null}
-        {visibleRepos.length > 0 ? (
+        {reconcileError ? <ErrorAlert title="对账失败" message={reconcileError} /> : null}
+        <QueryGate
+          query={repos}
+          errorTitle="无法加载仓库与基线"
+          isEmpty={visibleRepos.length === 0}
+          emptyState={
+            <EmptyState
+              title="还没有关注中的仓库"
+              description="安装 GitHub App 并配置 Webhook 后，仓库会自动出现。已归档仓库请在「仓库管理」查看。"
+              action={
+                <span className="link-row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+                  <Link to="/github">打开 GitHub App 页</Link>
+                  <span className="muted">· 安装后点「从 GitHub 同步仓库」可补拉仓库</span>
+                </span>
+              }
+            />
+          }
+        >
           <ul className="repo-baseline-list">
             {visibleRepos.map((repo) => {
               const name = repo.full_name || `${repo.owner}/${repo.name}`.replace(/^\/|\/$/g, "") || repo.id;
@@ -298,10 +335,10 @@ export function DashboardPage() {
                       <button
                         className="quiet-button quiet-button--compact"
                         type="button"
-                        disabled={reconcileOne.isPending}
+                        disabled={reconcileBusyId === repo.id}
                         onClick={() => reconcileOne.mutate(repo.id)}
                       >
-                        对账
+                        {reconcileBusyId === repo.id ? "对账中…" : "对账"}
                       </button>
                     ) : (
                       <span className="repo-baseline-row__slot" aria-hidden="true" />
@@ -323,7 +360,7 @@ export function DashboardPage() {
               );
             })}
           </ul>
-        ) : null}
+        </QueryGate>
         {baselineRepos.length > 0 ? (
           <p className="panel-footnote">基线中的仓库会抑制实时通知，避免首次同步洪流。确认快照就绪后点击「完成基线」。</p>
         ) : null}
