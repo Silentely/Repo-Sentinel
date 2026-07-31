@@ -235,14 +235,16 @@ func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbo
 	code := "delivery_failed"
 	if ra, ok := err.(*retryAfterError); ok {
 		code = ra.code
+		// 限流退避同样受重试上限约束，否则目标长期 429 时条目会无限重投。
+		if item.AttemptCount >= maxAttempts {
+			w.markDead(ctx, item.ID, code)
+			return
+		}
 		_ = w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(time.Duration(ra.seconds)*time.Second), code)
 		return
 	}
 	if item.AttemptCount >= maxAttempts {
-		_ = w.Store.Outbox().MarkDead(ctx, item.ID, code)
-		if w.OnDead != nil {
-			w.OnDead()
-		}
+		w.markDead(ctx, item.ID, code)
 		return
 	}
 	idx := item.AttemptCount - 1
@@ -253,6 +255,14 @@ func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbo
 		idx = len(defaultBackoff) - 1
 	}
 	_ = w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(defaultBackoff[idx]), code)
+}
+
+// markDead 将条目转入死信并触发指标回调。
+func (w *Worker) markDead(ctx context.Context, id, code string) {
+	_ = w.Store.Outbox().MarkDead(ctx, id, code)
+	if w.OnDead != nil {
+		w.OnDead()
+	}
 }
 
 type retryAfterError struct {
