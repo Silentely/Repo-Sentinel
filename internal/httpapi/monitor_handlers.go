@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -118,6 +119,9 @@ func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
 	f.Kind = r.URL.Query().Get("kind")
 	f.State = r.URL.Query().Get("state")
 	f.RepositoryID = r.URL.Query().Get("repository_id")
+	// PR 维度过滤下沉到 SQL：客户端对首页 50 条二次过滤会导致总数失真。
+	f.ReviewDecision = r.URL.Query().Get("review")
+	f.CheckStatus = mapCheckStatusParam(r.URL.Query().Get("check"))
 	applyIgnoredFilter(&f, r)
 	// closed 状态应用系统设置的显示限制，避免历史数据无限增长。
 	if f.State == "closed" && f.PerPage == 0 {
@@ -249,33 +253,31 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
 	f.Status = r.URL.Query().Get("status")
 	channelTypeFilter := r.URL.Query().Get("channel_type")
+	// 渠道查询一次即可：既用于把 channel_type 过滤下沉到 SQL（分页/total 才正确），
+	// 也用于响应中的渠道类型回填。
+	channels, chErr := s.dependencies.Store.Channels().List(r.Context())
+	if chErr != nil {
+		s.writeMappedError(w, r, chErr)
+		return
+	}
+	if channelTypeFilter != "" {
+		ids := make([]string, 0, len(channels))
+		for _, ch := range channels {
+			if ch.ChannelType == channelTypeFilter {
+				ids = append(ids, ch.ID)
+			}
+		}
+		if len(ids) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"items": []any{}, "page": f.Page, "per_page": f.PerPage, "total": 0})
+			return
+		}
+		f.ChannelIDs = ids
+	}
 	items, page, err := s.dependencies.Store.Outbox().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
 		return
 	}
-	// 按渠道类型过滤：先查渠道 ID，再筛选 outbox 条目
-	if channelTypeFilter != "" {
-		channels, chErr := s.dependencies.Store.Channels().List(r.Context())
-		if chErr == nil {
-			allowed := make(map[string]bool, len(channels))
-			for _, ch := range channels {
-				if ch.ChannelType == channelTypeFilter {
-					allowed[ch.ID] = true
-				}
-			}
-			filtered := make([]store.NotificationOutbox, 0, len(items))
-			for _, item := range items {
-				if allowed[item.ChannelID] {
-					filtered = append(filtered, item)
-				}
-			}
-			items = filtered
-			page.Total = len(filtered)
-		}
-	}
-	// 附带 channel_type 便于前端展示
-	channels, _ := s.dependencies.Store.Channels().List(r.Context())
 	chMap := make(map[string]string, len(channels))
 	for _, ch := range channels {
 		chMap[ch.ID] = ch.ChannelType
@@ -419,9 +421,12 @@ func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
+	// 幂等键必须唯一：idempotency_key 有 NOT NULL + UNIQUE 约束，
+	// 留空会让第二次测试通知撞唯一索引返回 409。
 	_, err = s.dependencies.Store.Outbox().Create(r.Context(), store.NotificationOutbox{
 		ID: ulid.Make().String(), ChannelID: ch.ID,
-		Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
+		IdempotencyKey: "test|" + ulid.Make().String(),
+		Status:         store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 		Title:     "🔔 测试通知",
 		BodyText:  "🔔 <b>测试通知</b>\n────────────────\n来自 RepoSentinel 的测试消息。\n如果您收到了这条消息，说明通知渠道配置正确！",
 		ParseMode: "HTML",
@@ -499,6 +504,20 @@ func listFilterFromRequest(r *http.Request) store.ListFilter {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
 	return store.ListFilter{Page: page, PerPage: perPage}
+}
+
+// mapCheckStatusParam 将对外 API 的检查状态词映射为存储值；未知值视为不过滤。
+func mapCheckStatusParam(v string) string {
+	switch v {
+	case "passed":
+		return "success"
+	case "failed":
+		return "failure"
+	case "pending":
+		return "pending"
+	default:
+		return ""
+	}
 }
 
 func (s *server) handleListInstallations(w http.ResponseWriter, r *http.Request) {
@@ -661,9 +680,9 @@ func (s *server) handleReconcileRepository(w http.ResponseWriter, r *http.Reques
 		s.writeMappedError(w, r, err)
 		return
 	}
-	go func() {
+	s.safeGo("reconcile_repo", func() {
 		_ = s.dependencies.Reconciler.ReconcileRepository(s.dependencies.Background, repo)
-	}()
+	})
 	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "repository_id": id})
 }
 
@@ -672,9 +691,15 @@ func (s *server) handleReconcileAll(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, "reconcile_unavailable", nil)
 		return
 	}
-	go func() {
+	// 全量对账互斥：连点按钮并发多轮会打爆 GitHub 配额并争抢数据库连接。
+	if !s.reconcileAllRunning.CompareAndSwap(false, true) {
+		s.writeAPIError(w, r, http.StatusConflict, "reconcile_in_progress", nil)
+		return
+	}
+	s.safeGo("reconcile_all", func() {
+		defer s.reconcileAllRunning.Store(false)
 		_ = s.dependencies.Reconciler.ReconcileAll(s.dependencies.Background, 20)
-	}()
+	})
 	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued"})
 }
 
@@ -686,6 +711,7 @@ func (s *server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"digest.send_empty":                 false,
 		"notify.aggregate_window_sec":       60,
 		"notify.burst_threshold":            15,
+		"notify.burst_window_sec":           300,
 		"display.closed_limit":              20,
 		"retention.events_days":             defaults.EventsDays,
 		"retention.outbox_days":             defaults.OutboxDays,
@@ -718,21 +744,24 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		"retention.events_days": true, "retention.outbox_days": true, "retention.webhook_deliveries_days": true,
 		"feature.issues": true, "feature.pull_requests": true, "feature.actions": true, "feature.security_alerts": true,
 	}
+	// 先全量校验再写入：map 遍历顺序随机，边校验边写会导致部分生效——
+	// 用户看到 400 却已有键被落库。
+	validated := make(map[string]any, len(body))
 	for k, v := range body {
 		if !allowed[k] {
 			continue
 		}
-		if isRetentionSetting(k) {
-			days, ok := coerceRetentionDays(v)
-			if !ok {
-				s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{
-					"field":   k,
-					"message": "保留天数须为 0–3650 的整数（0 表示禁用该类清理）。",
-				})
-				return
-			}
-			v = days
+		nv, msg, ok := validateSettingValue(k, v)
+		if !ok {
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{
+				"field":   k,
+				"message": msg,
+			})
+			return
 		}
+		validated[k] = nv
+	}
+	for k, v := range validated {
 		raw, _ := json.Marshal(v)
 		_, err := s.dependencies.Store.Settings().Upsert(r.Context(), store.SystemSetting{
 			ID: ulid.Make().String(), Key: k, ValueJSON: raw, UpdatedAt: time.Now().UTC(), UpdatedBy: "admin",
@@ -742,41 +771,97 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// 聚合参数热生效：无需重启进程。
+	if s.dependencies.Aggregator != nil {
+		if err := s.dependencies.Aggregator.ReloadFrom(r.Context()); err != nil {
+			s.dependencies.Logger.Warn("aggregator reload failed", "error", err.Error())
+		}
+	}
 	s.handleGetSettings(w, r)
 }
 
-func isRetentionSetting(key string) bool {
+// validateSettingValue 校验并规范化单个设置项；返回规范化值、失败提示与是否通过。
+func validateSettingValue(key string, v any) (any, string, bool) {
 	switch key {
 	case "retention.events_days", "retention.outbox_days", "retention.webhook_deliveries_days":
-		return true
+		days, ok := coerceIntInRange(v, 0, 3650)
+		return days, "保留天数须为 0–3650 的整数（0 表示禁用该类清理）。", ok
+	case "notify.aggregate_window_sec", "notify.burst_window_sec":
+		sec, ok := coerceIntInRange(v, 1, 86400)
+		return sec, "时间窗须为 1–86400 的整数秒。", ok
+	case "notify.burst_threshold":
+		n, ok := coerceIntInRange(v, 1, 10000)
+		return n, "突发阈值须为 1–10000 的整数。", ok
+	case "display.closed_limit":
+		n, ok := coerceIntInRange(v, 1, 500)
+		return n, "展示上限须为 1–500 的整数。", ok
+	case "digest.local_time":
+		s, ok := v.(string)
+		if !ok {
+			return nil, "时间格式须为 HH:MM。", false
+		}
+		normalized, ok := normalizeLocalTime(s)
+		return normalized, "时间格式须为 HH:MM（00:00–23:59）。", ok
+	case "admin.timezone":
+		s, ok := v.(string)
+		if !ok || s == "" {
+			return nil, "时区须为 IANA 名称（如 Asia/Shanghai）。", false
+		}
+		if _, err := time.LoadLocation(s); err != nil {
+			return nil, "时区须为 IANA 名称（如 Asia/Shanghai）。", false
+		}
+		return s, "", true
+	case "digest.send_empty",
+		"feature.issues", "feature.pull_requests", "feature.actions", "feature.security_alerts":
+		b, ok := v.(bool)
+		return b, "开关值须为布尔类型。", ok
 	default:
-		return false
+		return v, "", true
 	}
 }
 
+// normalizeLocalTime 校验并归一化 HH:MM（允许 9:00，统一输出 09:00）。
+func normalizeLocalTime(s string) (string, bool) {
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", false
+	}
+	hh, err1 := strconv.Atoi(parts[0])
+	mm, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil || hh < 0 || hh > 23 || mm < 0 || mm > 59 {
+		return "", false
+	}
+	return fmt.Sprintf("%02d:%02d", hh, mm), true
+}
+
 func coerceRetentionDays(v any) (int, bool) {
-	var days int
-	switch n := v.(type) {
+	return coerceIntInRange(v, 0, 3650)
+}
+
+// coerceIntInRange 将 JSON 数值收敛为 [min, max] 内的整数。
+func coerceIntInRange(v any, min, max int) (int, bool) {
+	var n int
+	switch num := v.(type) {
 	case float64:
-		if n != float64(int(n)) {
+		if num != float64(int(num)) {
 			return 0, false
 		}
-		days = int(n)
+		n = int(num)
 	case int:
-		days = n
+		n = num
 	case int64:
-		days = int(n)
+		n = int(num)
 	case json.Number:
-		i, err := n.Int64()
+		i, err := num.Int64()
 		if err != nil {
 			return 0, false
 		}
-		days = int(i)
+		n = int(i)
 	default:
 		return 0, false
 	}
-	if days < 0 || days > 3650 {
+	if n < min || n > max {
 		return 0, false
 	}
-	return days, true
+	return n, true
 }
