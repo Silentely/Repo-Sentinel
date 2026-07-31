@@ -245,3 +245,146 @@ func TestListIncludeArchivedReposOptIn(t *testing.T) {
 		t.Fatalf("IncludeArchivedRepos 应返回 2 条，got total=%d len=%d", page.Total, len(all))
 	}
 }
+
+func TestOutboxListFiltersByChannelIDs(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC()
+
+	// 渠道类型过滤必须下沉到 SQL：分页与 total 才不会被内存过滤改写失真。
+	for _, item := range []store.NotificationOutbox{
+		{ID: "ob-1", ChannelID: "ch-tg-1", IdempotencyKey: "k|1", Status: store.OutboxPending, NextAttemptAt: now, Title: "a"},
+		{ID: "ob-2", ChannelID: "ch-tg-2", IdempotencyKey: "k|2", Status: store.OutboxPending, NextAttemptAt: now, Title: "b"},
+		{ID: "ob-3", ChannelID: "ch-wh-1", IdempotencyKey: "k|3", Status: store.OutboxPending, NextAttemptAt: now, Title: "c"},
+	} {
+		if _, err := data.Outbox().Create(ctx, item); err != nil {
+			t.Fatalf("create %s: %v", item.ID, err)
+		}
+	}
+
+	items, page, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 1, ChannelIDs: []string{"ch-tg-1", "ch-tg-2"}})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if page.Total != 2 || len(items) != 1 {
+		t.Fatalf("渠道集合过滤 total 应为 2 且每页 1 条，got total=%d len=%d", page.Total, len(items))
+	}
+	if items[0].ChannelID == "ch-wh-1" {
+		t.Fatalf("不应返回渠道集合之外的条目: %+v", items[0])
+	}
+
+	empty, page, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 50, ChannelIDs: []string{"ch-tg-1"}})
+	if err != nil {
+		t.Fatalf("list single: %v", err)
+	}
+	if page.Total != 1 || len(empty) != 1 || empty[0].ID != "ob-1" {
+		t.Fatalf("单渠道过滤应只返回 ob-1，got total=%d items=%v", page.Total, empty)
+	}
+}
+
+func TestWorkItemListFiltersPRReviewAndCheck(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC()
+
+	repo, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-pr", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "pr", FullName: "o/pr",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []store.WorkItem{
+		{ID: "pr-1", RepositoryID: repo.ID, Number: 1, Kind: store.WorkItemKindPR, State: "open", Title: "approved", SourceUpdatedAt: now, StateHash: "p1", ReviewDecision: "approved", CheckStatus: "success"},
+		{ID: "pr-2", RepositoryID: repo.ID, Number: 2, Kind: store.WorkItemKindPR, State: "open", Title: "changes", SourceUpdatedAt: now, StateHash: "p2", ReviewDecision: "changes_requested", CheckStatus: "failure"},
+		{ID: "pr-3", RepositoryID: repo.ID, Number: 3, Kind: store.WorkItemKindPR, State: "open", Title: "reviewing", SourceUpdatedAt: now, StateHash: "p3", ReviewState: "PENDING", CheckStatus: "pending"},
+		{ID: "pr-4", RepositoryID: repo.ID, Number: 4, Kind: store.WorkItemKindPR, State: "open", Title: "no checks", SourceUpdatedAt: now, StateHash: "p4"},
+	} {
+		if _, _, err := data.WorkItems().UpsertIfNewer(ctx, item); err != nil {
+			t.Fatalf("upsert %s: %v", item.ID, err)
+		}
+	}
+
+	approved, page, err := data.WorkItems().List(ctx, store.ListFilter{
+		Page: 1, PerPage: 50, Kind: store.WorkItemKindPR, ReviewDecision: "approved",
+	})
+	if err != nil {
+		t.Fatalf("list approved: %v", err)
+	}
+	if page.Total != 1 || len(approved) != 1 || approved[0].ID != "pr-1" {
+		t.Fatalf("review=approved 应只返回 pr-1，got total=%d items=%v", page.Total, approved)
+	}
+
+	failed, page, err := data.WorkItems().List(ctx, store.ListFilter{
+		Page: 1, PerPage: 50, Kind: store.WorkItemKindPR, CheckStatus: "failure",
+	})
+	if err != nil {
+		t.Fatalf("list check failure: %v", err)
+	}
+	if page.Total != 1 || len(failed) != 1 || failed[0].ID != "pr-2" {
+		t.Fatalf("check=failed 应只返回 pr-2，got total=%d items=%v", page.Total, failed)
+	}
+
+	// pending 覆盖「无检查数据（空串）」与「检查进行中（pending）」两种记录。
+	pending, page, err := data.WorkItems().List(ctx, store.ListFilter{
+		Page: 1, PerPage: 50, Kind: store.WorkItemKindPR, CheckStatus: "pending",
+	})
+	if err != nil {
+		t.Fatalf("list check pending: %v", err)
+	}
+	if page.Total != 2 || len(pending) != 2 {
+		t.Fatalf("check=pending 应返回 pr-3 与 pr-4，got total=%d items=%v", page.Total, pending)
+	}
+
+	// 「审核中」= 尚无审核结论（pr-3 审核中、pr-4 无任何审核数据）。
+	reviewPending, page, err := data.WorkItems().List(ctx, store.ListFilter{
+		Page: 1, PerPage: 50, Kind: store.WorkItemKindPR, ReviewDecision: "pending",
+	})
+	if err != nil {
+		t.Fatalf("list review pending: %v", err)
+	}
+	if page.Total != 2 || len(reviewPending) != 2 {
+		t.Fatalf("review=pending 应返回 pr-3 与 pr-4，got total=%d items=%v", page.Total, reviewPending)
+	}
+}
+
+func TestListSyncCandidatesOrdersByLastSyncedAt(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+
+	older := time.Now().UTC().Add(-48 * time.Hour)
+	recent := time.Now().UTC()
+	mk := func(id string, synced *time.Time) {
+		t.Helper()
+		if _, err := data.Repositories().Upsert(ctx, store.Repository{
+			ID: id, Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+			Owner: "o", Name: id, FullName: "o/" + id, LastSyncedAt: synced,
+		}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+	mk("repo-recent", &recent)
+	mk("repo-never", nil) // 从未同步：必须排最前
+	mk("repo-older", &older)
+	// 外部仓不应混入 installation 候选。
+	if _, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-ext", Type: store.RepositoryTypeExternal, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "ext", FullName: "o/ext",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := data.Repositories().ListSyncCandidates(ctx, store.RepositoryTypeInstallation, 10)
+	if err != nil {
+		t.Fatalf("ListSyncCandidates: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("应只有 3 个 installation 仓，got %d", len(got))
+	}
+	want := []string{"repo-never", "repo-older", "repo-recent"}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Fatalf("候选顺序应为 %v，got [%s %s %s]", want, got[0].ID, got[1].ID, got[2].ID)
+		}
+	}
+}

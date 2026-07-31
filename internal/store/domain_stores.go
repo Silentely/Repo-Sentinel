@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	entclient "github.com/Silentely/Repo-Sentinel/internal/store/ent"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/event"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/githubinstallation"
@@ -192,6 +193,16 @@ func (s *repositoryStore) Upsert(ctx context.Context, in Repository) (Repository
 	if in.InstallationID != nil {
 		c.SetInstallationID(*in.InstallationID)
 	}
+	// 与更新路径保持一致：可选时间字段在创建时同样要落库。
+	if in.BaselineStartedAt != nil {
+		c.SetBaselineStartedAt(*in.BaselineStartedAt)
+	}
+	if in.BaselineFinishedAt != nil {
+		c.SetBaselineFinishedAt(*in.BaselineFinishedAt)
+	}
+	if in.LastSyncedAt != nil {
+		c.SetLastSyncedAt(*in.LastSyncedAt)
+	}
 	entity, err := c.Save(ctx)
 	if err != nil {
 		return Repository{}, mapStoreError(err)
@@ -246,6 +257,25 @@ func (s *repositoryStore) List(ctx context.Context, f ListFilter) ([]Repository,
 		out = append(out, repositoryFromEntity(row))
 	}
 	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+}
+
+func (s *repositoryStore) ListSyncCandidates(ctx context.Context, repoType string, limit int) ([]Repository, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.client.Repository.Query().
+		Where(repository.TypeEQ(repoType)).
+		Order(repository.ByLastSyncedAt(entsql.OrderAsc(), entsql.OrderNullsFirst())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	out := make([]Repository, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, repositoryFromEntity(row))
+	}
+	return out, nil
 }
 
 func (s *repositoryStore) UpdateSyncStatus(ctx context.Context, id, status string) error {
@@ -541,6 +571,23 @@ func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, Pag
 	}
 	if f.State != "" {
 		q = q.Where(workitem.StateEQ(f.State))
+	}
+	// PR 审核结论与检查状态在 SQL 层过滤，保证筛选结果与分页计数不被截断。
+	if f.ReviewDecision != "" {
+		if f.ReviewDecision == "pending" {
+			// 「审核中」= 尚无审核结论（approved/changes_requested 之外的记录）。
+			q = q.Where(workitem.ReviewDecisionEQ(""))
+		} else {
+			q = q.Where(workitem.ReviewDecisionEQ(f.ReviewDecision))
+		}
+	}
+	if f.CheckStatus != "" {
+		if f.CheckStatus == "pending" {
+			// 尚无检查数据（空串）与检查进行中（pending）都视为待检查。
+			q = q.Where(workitem.CheckStatusIn("", "pending"))
+		} else {
+			q = q.Where(workitem.CheckStatusEQ(f.CheckStatus))
+		}
 	}
 	if f.OnlyIgnored {
 		q = q.Where(workitem.IgnoredEQ(true))
@@ -1321,6 +1368,9 @@ func (s *outboxStore) List(ctx context.Context, f ListFilter) ([]NotificationOut
 	q := s.client.NotificationOutbox.Query()
 	if f.Status != "" {
 		q = q.Where(notificationoutbox.StatusEQ(f.Status))
+	}
+	if len(f.ChannelIDs) > 0 {
+		q = q.Where(notificationoutbox.ChannelIDIn(f.ChannelIDs...))
 	}
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
