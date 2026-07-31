@@ -5,6 +5,8 @@ import { ApiError } from "./errors";
 
 const csrfCookieName = "reposentinel_csrf";
 const csrfHeaderName = "X-CSRF-Token";
+// 请求默认 20s 超时：弱网/服务挂起时让查询与变更可以失败重试，而不是永久 pending。
+const defaultTimeoutMs = 20_000;
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -41,6 +43,7 @@ export function createApiClient(dependencies: ApiClientDependencies = {}): ApiRe
       method,
       headers,
       credentials: init.credentials ?? "same-origin",
+      signal: init.signal ?? AbortSignal.timeout(defaultTimeoutMs),
     });
 
     if (!response.ok) {
