@@ -341,3 +341,76 @@ func Test渠道订阅配置API(t *testing.T) {
 		t.Fatal("省略 digest_enabled 应默认 true")
 	}
 }
+
+// 设置批量写入必须先全量校验：任何一个键非法时整批拒绝，不得出现"部分落库"。
+func TestSettingsPutValidatesAllBeforeWriting(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	bad := fixture.request(t, http.MethodPut, "/api/v1/system/settings",
+		`{"digest.local_time":"25:99","retention.events_days":45}`, "127.0.0.1:45100", cookies, headers)
+	assertAPIError(t, bad, http.StatusBadRequest, errorCodeValidationFailed)
+
+	if _, err := fixture.store.Settings().Get(t.Context(), "retention.events_days"); err != store.ErrNotFound {
+		t.Fatalf("校验失败的批量写入不应部分落库，err=%v", err)
+	}
+
+	ok := fixture.request(t, http.MethodPut, "/api/v1/system/settings",
+		`{"digest.local_time":"9:5","retention.events_days":45,"notify.burst_threshold":30,"feature.issues":false}`,
+		"127.0.0.1:45101", cookies, headers)
+	if ok.Code != http.StatusOK {
+		t.Fatalf("PUT settings status=%d body=%s", ok.Code, ok.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(ok.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["digest.local_time"] != "09:05" {
+		t.Fatalf("local_time 应归一化为 09:05，got %v", out["digest.local_time"])
+	}
+	if out["retention.events_days"] != float64(45) {
+		t.Fatalf("retention 应为 45，got %v", out["retention.events_days"])
+	}
+	// GET 必须返回 burst_window_sec（此前 PUT 白名单接受但 GET 不返回）。
+	if out["notify.burst_window_sec"] != float64(300) {
+		t.Fatalf("GET 应返回 burst_window_sec 默认 300，got %v", out["notify.burst_window_sec"])
+	}
+}
+
+func TestValidateSettingValueRules(t *testing.T) {
+	cases := []struct {
+		key   string
+		value any
+		ok    bool
+		want  any
+	}{
+		{"digest.local_time", "23:59", true, "23:59"},
+		{"digest.local_time", "9:05", true, "09:05"},
+		{"digest.local_time", "25:99", false, nil},
+		{"digest.local_time", "12:30junk", false, nil},
+		{"digest.local_time", 123, false, nil},
+		{"admin.timezone", "Asia/Shanghai", true, "Asia/Shanghai"},
+		{"admin.timezone", "Mars/Olympus", false, nil},
+		{"notify.aggregate_window_sec", float64(120), true, 120},
+		{"notify.aggregate_window_sec", float64(0), false, nil},
+		{"notify.aggregate_window_sec", float64(1.5), false, nil},
+		{"notify.burst_threshold", float64(10001), false, nil},
+		{"display.closed_limit", float64(0), false, nil},
+		{"feature.issues", true, true, true},
+		{"feature.issues", "yes", false, nil},
+		{"retention.events_days", float64(0), true, 0},
+		{"retention.events_days", float64(3651), false, nil},
+	}
+	for _, tc := range cases {
+		got, _, ok := validateSettingValue(tc.key, tc.value)
+		if ok != tc.ok {
+			t.Fatalf("%s=%v 校验结果 want %v got %v", tc.key, tc.value, tc.ok, ok)
+		}
+		if ok && got != tc.want {
+			t.Fatalf("%s=%v 归一化 want %v got %v", tc.key, tc.value, tc.want, got)
+		}
+	}
+}

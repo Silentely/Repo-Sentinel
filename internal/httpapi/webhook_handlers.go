@@ -108,7 +108,9 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		"delivery_id": deliveryID,
 	})
 
-	go s.processWebhookAsync(delivery.ID, eventType, deliveryID, body)
+	s.safeGo("webhook_process", func() {
+		s.processWebhookAsync(delivery.ID, eventType, deliveryID, body)
+	})
 }
 
 func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body []byte) {
@@ -141,7 +143,10 @@ func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body [
 			err = (&rules.Engine{Store: s.dependencies.Store}).Evaluate(ctx, res, repoName)
 		}
 		if err != nil {
+			// 通知已丢：状态必须可查，标记为失败而不是 processed。
 			s.dependencies.Logger.Error("rule evaluate failed", "delivery_id", deliveryID, "error_code", "rule_failed")
+			_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(ctx, rowID, store.DeliveryFailed, "rule_failed")
+			return
 		}
 	}
 	_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(ctx, rowID, store.DeliveryProcessed, "")

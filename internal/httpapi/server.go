@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
@@ -70,6 +72,26 @@ type Dependencies struct {
 type server struct {
 	dependencies  Dependencies
 	secureCookies bool
+	// reconcileAllRunning 防止全量对账并发触发（对账会大量调用 GitHub API 并写库）。
+	reconcileAllRunning atomic.Bool
+}
+
+// safeGo 以后台 goroutine 执行 fn；panic 只记录日志，不拖垮整个进程。
+// recoveryMiddleware 只能护住同步请求路径，后台任务必须单独设防。
+func (s *server) safeGo(name string, fn func()) {
+	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				s.dependencies.Logger.Error(
+					"background task panic",
+					"task", name,
+					"error_code", "background_panic",
+					"panic", fmt.Sprint(rec),
+				)
+			}
+		}()
+		fn()
+	}()
 }
 
 // New 创建管理 API HTTP Handler。
