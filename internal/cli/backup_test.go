@@ -183,6 +183,37 @@ func TestRunnerSQLite恢复回滚数据并清理WAL残留(t *testing.T) {
 	}
 }
 
+func TestRunnerSQLite恢复失败时主库保持原状(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	writeSQLiteFixtureDB(t, dbPath, "a")
+	// 手工放置 -wal 残留：restore 失败时旧日志同样不得被删除，否则主库丢数据。
+	if err := os.WriteFile(dbPath+"-wal", []byte("未重放日志"), 0o644); err != nil {
+		t.Fatalf("放置 -wal 失败: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runner := sqliteTestRunner(&stdout, &stderr, config.DatabaseConfig{Driver: "sqlite", URL: "file:" + dbPath})
+
+	// 备份文件不存在：暂存拷贝必然失败，此时主库与 WAL 都必须原封不动。
+	err := runner.Run(t.Context(), []string{"restore", "--input", filepath.Join(dir, "missing.db")})
+	if err == nil {
+		t.Fatal("备份文件缺失时 restore 应返回错误")
+	}
+	// 顺序不可颠倒：打开 sqlite 连接会把头校验失败的伪造 -wal 当作损坏日志删除，
+	// 必须先断言 restore 本身没有清理它。
+	if _, statErr := os.Stat(dbPath + "-wal"); statErr != nil {
+		t.Fatalf("restore 失败后 -wal 不应被删除: %v", statErr)
+	}
+	if got := readSQLiteFixtureValue(t, dbPath); got != "a" {
+		t.Fatalf("restore 失败后主库值=%q，期望保持 %q", got, "a")
+	}
+	if _, statErr := os.Stat(dbPath + ".restore-tmp"); !os.IsNotExist(statErr) {
+		t.Fatalf("暂存文件应被清理（err=%v）", statErr)
+	}
+}
+
 func TestRunner恢复缺少Input时错误只打印一次(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
