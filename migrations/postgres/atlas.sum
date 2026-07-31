@@ -1,4 +1,4 @@
-h1:78j00LBlIPs64u6tJfh+8MIQoGjDl11z92VRhNInU2w=
+h1:GWTMOZPoBxdnBzoXE7paZONRg4NbnuEv1zAJbNeRXcA=
 20260727000100_initial.sql h1:flTt/4EIbVVbivWtwkV6G8WDC6zLDOE9jCd2zvrlRBo=
 20260728000100_domain_core.sql h1:MHOJX9iFWZGdoa92CJbhfOydpQcb/HW9BSXS+oPnpKU=
 20260729000100_repo_capability_toggles.sql h1:F00DXUB6k5F9Pi7eQ9wELVPUwCDIEkmw0gUpJp4RmeI=
@@ -7,3 +7,6 @@ h1:78j00LBlIPs64u6tJfh+8MIQoGjDl11z92VRhNInU2w=
 20260729000400_workflow_run_bigint.sql h1:hfgVB/+PPYPhqjNssBufP0gYr8S95aVstlNESTTk7n0=
 20260730000100_github_id_bigint.sql h1:HnmcBKjAC/m0EXnv0kh9gLjar/EjjACT8hVmVhepNzA=
 20260730000200_channel_subscription.sql h1:ovtYB7hioJKrlpFxnlL4g+o4ydF0SNiiKI4fZqAz0Mo=
+20260731000100_missing_indexes.sql h1:q9f9+4zuSJ+ZTgR42StmhO5MgZhzEotENMmdf+hZFC8=
+20260731000200_drop_scheduled_jobs.sql h1:3V4G60zj1jhP0LtKLF38gdzo/wVL1lKp0cSbVACDTLM=
+20260731000300_unify_jsonb.sql h1:xNusvcsHyYWn/b9mTl4dAlogOTwyvxOoIMryii8iPKo=

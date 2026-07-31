@@ -51,6 +51,8 @@ func (WorkItem) Indexes() []ent.Index {
 		index.Fields("repository_id", "number").Unique(),
 		index.Fields("repository_id", "kind", "state"),
 		index.Fields("ignored", "kind", "state"),
+		index.Fields("ignored", "review_decision"),
+		index.Fields("ignored", "check_status"),
 		index.Fields("updated_at"),
 	}
 }
