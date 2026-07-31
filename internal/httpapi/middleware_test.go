@@ -21,6 +21,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 )
 
 const (
@@ -118,6 +119,12 @@ type httpTestOptions struct {
 	keyRing       *cryptox.KeyRing
 	// envAppID > 0 时模拟环境变量已设置 App ID（管理台锁定）。
 	envAppID int64
+	// updateChecker 装配到 Dependencies.UpdateChecker；nil 时 handler 回退临时检查器。
+	// 注入后可断言共享 Checker 的状态不被请求改写（并发数据竞争回归用）。
+	updateChecker *updatecheck.Checker
+	// decorateStore 包装装配到 Dependencies.Store 的实现；AdminStore、认证与会话
+	// 仍持有原始 Store，用于"只让指定子存储故障"的错误分支注入。
+	decorateStore func(store.Store) store.Store
 }
 
 type httpTestFixture struct {
@@ -182,9 +189,15 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		ghRuntime.AppID = options.envAppID
 		ghRuntime.AppIDSource = "env"
 	}
+	// decorateStore 仅包装 handler 持有的 Store；登录、会话与 CSRF 依赖的
+	// AdminService/SessionService 继续使用原始 opened，保证鉴权路径不受注入故障影响。
+	handlerStore := opened
+	if options.decorateStore != nil {
+		handlerStore = options.decorateStore(opened)
+	}
 	dependencies := Dependencies{
 		Config:         cfg,
-		Store:          opened,
+		Store:          handlerStore,
 		AdminStore:     opened.Admins(),
 		AdminService:   adminService,
 		SessionService: sessionService,
@@ -204,6 +217,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		Frontend:      options.frontend,
 		KeyRing:       options.keyRing,
 		GitHubRuntime: ghRuntime,
+		UpdateChecker: options.updateChecker,
 	}
 	return &httpTestFixture{
 		handler:        New(dependencies),

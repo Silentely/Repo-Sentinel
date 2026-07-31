@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -412,5 +415,152 @@ func TestValidateSettingValueRules(t *testing.T) {
 		if ok && got != tc.want {
 			t.Fatalf("%s=%v 归一化 want %v got %v", tc.key, tc.value, tc.want, got)
 		}
+	}
+}
+
+// toggleableChannelFailure 包装真实 Store：broken 置位后仅 Channels() 返回
+// GetEnabledByType 必失败的实现，其余子存储原样透传（登录态与 CSRF 依赖它们保持可用）。
+// 经 httpTestOptions.decorateStore 注入 handler 装配，认证/会话路径不受影响。
+type toggleableChannelFailure struct {
+	store.Store
+	broken *atomic.Bool
+	err    error
+}
+
+func (s *toggleableChannelFailure) Channels() store.ChannelStore {
+	if s.broken.Load() {
+		return failingChannelStore{ChannelStore: s.Store.Channels(), err: s.err}
+	}
+	return s.Store.Channels()
+}
+
+// failingChannelStore 仅让 GetEnabledByType 失败，其余方法透传真实实现。
+type failingChannelStore struct {
+	store.ChannelStore
+	err error
+}
+
+func (f failingChannelStore) GetEnabledByType(context.Context, string) (store.NotificationChannel, error) {
+	return store.NotificationChannel{}, f.err
+}
+
+func Test渠道Upsert在渠道存储故障时返回500而非静默创建(t *testing.T) {
+	// 保护行为：handleUpsertChannel 中 GetEnabledByType 返回 DB 故障（非 ErrNotFound）时，
+	// 必须向上返回 500 internal_error；历史 bug 把故障当作"无既有渠道"继续静默创建，
+	// 会生成重复渠道并丢失原配置。这里只让渠道子存储按开关失败，认证与 CSRF 不受影响，
+	// 因此 500 必然来自 handler 的错误分支本身。
+	broken := &atomic.Bool{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		decorateStore: func(inner store.Store) store.Store {
+			return &toggleableChannelFailure{
+				Store:  inner,
+				broken: broken,
+				err:    errors.New("fixture: 注入的渠道存储故障"),
+			}
+		},
+	})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	body := `{"name":"Telegram","enabled":true,"target":"-1001"}`
+	created := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		body, "127.0.0.1:46301", cookies, headers)
+	if created.Code != http.StatusOK {
+		t.Fatalf("首次创建 status=%d body=%s", created.Code, created.Body.String())
+	}
+
+	broken.Store(true)
+	failed := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		body, "127.0.0.1:46302", cookies, headers)
+	assertAPIError(t, failed, http.StatusInternalServerError, errorCodeInternal)
+
+	// 恢复存储后回读：失败请求不得静默创建出第二条同类型渠道。
+	broken.Store(false)
+	list := fixture.request(t, http.MethodGet, "/api/v1/notifications/channels",
+		"", "127.0.0.1:46303", cookies, nil)
+	if list.Code != http.StatusOK {
+		t.Fatalf("回读渠道列表 status=%d body=%s", list.Code, list.Body.String())
+	}
+	var page struct {
+		Items []struct {
+			ChannelType string `json:"channel_type"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	telegramCount := 0
+	for _, item := range page.Items {
+		if item.ChannelType == "telegram" {
+			telegramCount++
+		}
+	}
+	if telegramCount != 1 {
+		t.Fatalf("存储故障期间不应静默创建渠道，telegram 渠道数=%d，期望 1", telegramCount)
+	}
+}
+
+func Test渠道Upsert在底层存储关闭后绝不静默成功(t *testing.T) {
+	// 保护行为（行为契约级）：底层存储整体不可用（连接已关闭）时，渠道写接口无论故障
+	// 暴露在认证、会话还是渠道读写路径，都必须返回内部错误而非 2xx 静默成功——
+	// 与上一个测试互补：那个测试精确锁定 handler 分支，这个测试覆盖端到端契约。
+	// 注意：database/sql 的 Close 幂等，fixture 清理阶段再次 Close 不会报错。
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	body := `{"name":"hook","enabled":true,"target":"https://example.com/hook"}`
+	created := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/http_webhook",
+		body, "127.0.0.1:46311", cookies, headers)
+	if created.Code != http.StatusOK {
+		t.Fatalf("首次创建 status=%d body=%s", created.Code, created.Body.String())
+	}
+
+	if err := fixture.store.Close(); err != nil {
+		t.Fatalf("关闭测试存储失败: %v", err)
+	}
+	afterClose := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/http_webhook",
+		body, "127.0.0.1:46312", cookies, headers)
+	if afterClose.Code >= 200 && afterClose.Code < 300 {
+		t.Fatalf("存储已关闭仍返回 2xx（疑似静默成功）: %s", afterClose.Body.String())
+	}
+	assertAPIError(t, afterClose, http.StatusInternalServerError, errorCodeInternal)
+}
+
+func TestOutbox空渠道匹配置退分支归一化分页参数(t *testing.T) {
+	// 保护行为：按 channel_type 过滤且渠道表无任何匹配时，handleListOutbox 的置退响应
+	// 必须与其他列表端点一致地归一化分页参数（page=1、per_page=20），items 为 [],
+	// 而非回显请求中的 0/0（历史 bug 直接把未归一化的 f.Page/f.PerPage 写进响应）。
+	// 路由以 server.go 为准：GET /api/v1/notifications/outbox。
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	const path = "/api/v1/notifications/outbox?channel_type=does-not-exist&page=0&per_page=0"
+	unauth := fixture.request(t, http.MethodGet, path, "", "127.0.0.1:46321", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	resp := fixture.request(t, http.MethodGet, path, "", "127.0.0.1:46322", cookies, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("outbox 列表 status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var page struct {
+		Items   []any `json:"items"`
+		Page    int   `json:"page"`
+		PerPage int   `json:"per_page"`
+		Total   int   `json:"total"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
+		t.Fatalf("outbox 响应不是合法 JSON: %v", err)
+	}
+	if page.Page != 1 || page.PerPage != 20 || page.Total != 0 {
+		t.Fatalf("置退分页=(page=%d,per_page=%d,total=%d)，期望 (1,20,0)", page.Page, page.PerPage, page.Total)
+	}
+	if page.Items == nil {
+		t.Fatal("空匹配时 items 必须是空数组 []，不得为 null")
 	}
 }

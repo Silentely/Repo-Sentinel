@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -268,7 +269,18 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if len(ids) == 0 {
-			writeJSON(w, http.StatusOK, map[string]any{"items": []any{}, "page": f.Page, "per_page": f.PerPage, "total": 0})
+			// 早退分支同样归一化分页参数，保持与其他列表端点响应一致。
+			pageNo, perPage := f.Page, f.PerPage
+			if pageNo < 1 {
+				pageNo = 1
+			}
+			if perPage < 1 {
+				perPage = 20
+			}
+			if perPage > 100 {
+				perPage = 100
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": []any{}, "page": pageNo, "per_page": perPage, "total": 0})
 			return
 		}
 		f.ChannelIDs = ids
@@ -344,6 +356,11 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	existing, err := s.dependencies.Store.Channels().GetEnabledByType(r.Context(), channelType)
+	// 真实存储故障不得按"无既有渠道"处理，否则会静默创建重复渠道并丢失原配置。
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		s.writeMappedError(w, r, err)
+		return
+	}
 	ch := store.NotificationChannel{
 		ChannelType: channelType, Name: body.Name, Enabled: body.Enabled,
 		Target: body.Target, AllowPrivate: body.AllowPrivate,

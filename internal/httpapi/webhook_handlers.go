@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -118,10 +119,13 @@ func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body [
 	if ctx == nil {
 		return
 	}
+	// 关闭期间 Background 已取消：状态标记必须脱离取消，否则行永久停留在 accepted。
+	markCtx, markCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer markCancel()
 	proc := &normalizer.Processor{Store: s.dependencies.Store}
 	res, err := proc.Process(ctx, eventType, deliveryID, body)
 	if err != nil {
-		_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(ctx, rowID, store.DeliveryFailed, "normalize_failed")
+		_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, "normalize_failed")
 		s.dependencies.Logger.Error(
 			"webhook normalize failed",
 			"delivery_id", deliveryID,
@@ -145,11 +149,11 @@ func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body [
 		if err != nil {
 			// 通知已丢：状态必须可查，标记为失败而不是 processed。
 			s.dependencies.Logger.Error("rule evaluate failed", "delivery_id", deliveryID, "error_code", "rule_failed")
-			_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(ctx, rowID, store.DeliveryFailed, "rule_failed")
+			_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, "rule_failed")
 			return
 		}
 	}
-	_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(ctx, rowID, store.DeliveryProcessed, "")
+	_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryProcessed, "")
 	s.dependencies.Logger.Info(
 		"github webhook processed",
 		"delivery_id", deliveryID,
