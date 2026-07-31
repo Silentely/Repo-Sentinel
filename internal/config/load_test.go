@@ -242,6 +242,61 @@ func TestPostgres未显式设置最大连接数时使用十(t *testing.T) {
 	}
 }
 
+func TestPostgres连接池默认值与显式配置优先级(t *testing.T) {
+	// 保护行为：postgres 驱动且连接池参数未显式配置时，MaxOpenConns=10 且
+	// MaxIdleConns 自动对齐 MaxOpenConns（空闲连接与上限同量级，避免每请求重建 TCP 连接）；
+	// 任一参数经 YAML 或环境变量显式设置后以显式值为准，默认推导不得覆盖用户意图。
+	tests := []struct {
+		name     string
+		yaml     string
+		env      map[string]string
+		wantOpen int
+		wantIdle int
+	}{
+		{
+			name:     "未显式配置池参数时 idle 自动对齐 open",
+			yaml:     "database:\n  driver: postgres\n  url: postgres://db.example.com/reposentinel\n",
+			wantOpen: 10,
+			wantIdle: 10,
+		},
+		{
+			name: "仅环境变量显式 max_idle_conns 时 open 仍为默认十",
+			env: map[string]string{
+				"REPOSENTINEL_DATABASE_DRIVER":         "postgres",
+				"REPOSENTINEL_DATABASE_URL":            "postgres://db.example.com/reposentinel",
+				"REPOSENTINEL_DATABASE_MAX_IDLE_CONNS": "3",
+			},
+			wantOpen: 10,
+			wantIdle: 3,
+		},
+		{
+			name:     "YAML 显式两者时默认推导不得覆盖",
+			yaml:     "database:\n  driver: postgres\n  url: postgres://db.example.com/reposentinel\n  max_open_conns: 25\n  max_idle_conns: 7\n",
+			wantOpen: 25,
+			wantIdle: 7,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			options := LoadOptions{LookupEnv: lookupFromMap(tt.env)}
+			if tt.yaml != "" {
+				options.ConfigPath = "config.yaml"
+				options.FileSystem = fstest.MapFS{"config.yaml": {Data: []byte(tt.yaml)}}
+			}
+
+			cfg, err := Load(context.Background(), options)
+			if err != nil {
+				t.Fatalf("加载 PostgreSQL 配置失败: %v", err)
+			}
+			if cfg.Database.MaxOpenConns != tt.wantOpen || cfg.Database.MaxIdleConns != tt.wantIdle {
+				t.Fatalf("连接池=(%d,%d)，期望 (%d,%d)",
+					cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns, tt.wantOpen, tt.wantIdle)
+			}
+		})
+	}
+}
+
 func Test配置解析错误安全且标明变量或字段(t *testing.T) {
 	tests := []struct {
 		name     string

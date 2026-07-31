@@ -24,7 +24,7 @@ func Load(ctx context.Context, options LoadOptions) (Config, error) {
 	}
 
 	cfg := defaultConfig()
-	maxOpenExplicit := false
+	var explicit poolExplicitFlags
 
 	if options.ConfigPath != "" {
 		fileSystem := options.FileSystem
@@ -35,7 +35,7 @@ func Load(ctx context.Context, options LoadOptions) (Config, error) {
 		if err != nil {
 			return Config{}, fmt.Errorf("read config file %q: %w", options.ConfigPath, err)
 		}
-		maxOpenExplicit, err = decodeYAML(data, &cfg)
+		explicit, err = decodeYAML(data, &cfg)
 		if err != nil {
 			return Config{}, err
 		}
@@ -45,14 +45,21 @@ func Load(ctx context.Context, options LoadOptions) (Config, error) {
 	if lookupEnv == nil {
 		lookupEnv = os.LookupEnv
 	}
-	if explicit, err := applyEnvironment(&cfg, lookupEnv); err != nil {
+	envExplicit, err := applyEnvironment(&cfg, lookupEnv)
+	if err != nil {
 		return Config{}, err
-	} else if explicit {
-		maxOpenExplicit = true
 	}
+	explicit.maxOpen = explicit.maxOpen || envExplicit.maxOpen
+	explicit.maxIdle = explicit.maxIdle || envExplicit.maxIdle
 
-	if cfg.Database.Driver == "postgres" && !maxOpenExplicit {
-		cfg.Database.MaxOpenConns = defaultPostgresMaxOpenConns
+	if cfg.Database.Driver == "postgres" {
+		if !explicit.maxOpen {
+			cfg.Database.MaxOpenConns = defaultPostgresMaxOpenConns
+		}
+		// PostgreSQL 下空闲连接应与上限同量级，否则每次请求都重建 TCP 连接。
+		if !explicit.maxIdle {
+			cfg.Database.MaxIdleConns = cfg.Database.MaxOpenConns
+		}
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -68,29 +75,38 @@ func (osFileSystem) Open(name string) (fs.File, error) {
 	return os.Open(name)
 }
 
-func decodeYAML(data []byte, cfg *Config) (bool, error) {
+// poolExplicitFlags 记录连接池参数是否被显式配置，区分"用户意图"与"可再推导的默认值"。
+type poolExplicitFlags struct {
+	maxOpen bool
+	maxIdle bool
+}
+
+func decodeYAML(data []byte, cfg *Config) (poolExplicitFlags, error) {
 	var root yaml.Node
 	if err := yaml.NewDecoder(bytes.NewReader(data)).Decode(&root); err != nil {
 		if err == io.EOF {
-			return false, nil
+			return poolExplicitFlags{}, nil
 		}
-		return false, newValidationError("config file", "YAML contains an invalid document")
+		return poolExplicitFlags{}, newValidationError("config file", "YAML contains an invalid document")
 	}
 	if err := validateYAMLTypedFields(&root); err != nil {
-		return false, err
+		return poolExplicitFlags{}, err
 	}
 
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(cfg); err != nil {
-		return false, newValidationError("config file", "YAML contains an unknown or invalid field")
+		return poolExplicitFlags{}, newValidationError("config file", "YAML contains an unknown or invalid field")
 	}
 	var extra yaml.Node
 	if err := decoder.Decode(&extra); err != io.EOF {
-		return false, newValidationError("config file", "YAML must contain one document")
+		return poolExplicitFlags{}, newValidationError("config file", "YAML must contain one document")
 	}
 
-	return yamlHasKey(&root, "database", "max_open_conns"), nil
+	return poolExplicitFlags{
+		maxOpen: yamlHasKey(&root, "database", "max_open_conns"),
+		maxIdle: yamlHasKey(&root, "database", "max_idle_conns"),
+	}, nil
 }
 
 func yamlHasKey(root *yaml.Node, path ...string) bool {
@@ -173,8 +189,8 @@ func yamlDuration(node *yaml.Node) bool {
 	return node.Decode(&value) == nil
 }
 
-func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (bool, error) {
-	maxOpenExplicit := false
+func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExplicitFlags, error) {
+	var explicit poolExplicitFlags
 	if value, ok := lookup("REPOSENTINEL_HTTP_ADDR"); ok {
 		cfg.HTTP.Addr = value
 	}
@@ -190,17 +206,18 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (bool, er
 	if value, ok := lookup("REPOSENTINEL_DATABASE_MAX_OPEN_CONNS"); ok {
 		parsed, err := parseIntEnvironment("REPOSENTINEL_DATABASE_MAX_OPEN_CONNS", value)
 		if err != nil {
-			return false, err
+			return poolExplicitFlags{}, err
 		}
 		cfg.Database.MaxOpenConns = parsed
-		maxOpenExplicit = true
+		explicit.maxOpen = true
 	}
 	if value, ok := lookup("REPOSENTINEL_DATABASE_MAX_IDLE_CONNS"); ok {
 		parsed, err := parseIntEnvironment("REPOSENTINEL_DATABASE_MAX_IDLE_CONNS", value)
 		if err != nil {
-			return false, err
+			return poolExplicitFlags{}, err
 		}
 		cfg.Database.MaxIdleConns = parsed
+		explicit.maxIdle = true
 	}
 	if value, ok := lookup("REPOSENTINEL_ADMIN_USERNAME"); ok {
 		cfg.Admin.Username = value
@@ -211,14 +228,14 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (bool, er
 	if value, ok := lookup("REPOSENTINEL_ADMIN_SESSION_TTL"); ok {
 		parsed, err := parseDurationEnvironment("REPOSENTINEL_ADMIN_SESSION_TTL", value)
 		if err != nil {
-			return false, err
+			return poolExplicitFlags{}, err
 		}
 		cfg.Admin.SessionTTL = parsed
 	}
 	if value, ok := lookup("REPOSENTINEL_SETUP_ALLOW_REMOTE"); ok {
 		parsed, err := parseBoolEnvironment("REPOSENTINEL_SETUP_ALLOW_REMOTE", value)
 		if err != nil {
-			return false, err
+			return poolExplicitFlags{}, err
 		}
 		cfg.Setup.AllowRemote = parsed
 	}
@@ -231,7 +248,7 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (bool, er
 	if value, ok := lookup("REPOSENTINEL_GITHUB_APP_ID"); ok {
 		parsed, err := parseInt64Environment("REPOSENTINEL_GITHUB_APP_ID", value)
 		if err != nil {
-			return false, err
+			return poolExplicitFlags{}, err
 		}
 		cfg.GitHub.AppID = parsed
 	}
@@ -265,7 +282,7 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (bool, er
 	if value, ok := lookup("REPOSENTINEL_HTTP_WEBHOOK_ALLOW_PRIVATE"); ok {
 		parsed, err := parseBoolEnvironment("REPOSENTINEL_HTTP_WEBHOOK_ALLOW_PRIVATE", value)
 		if err != nil {
-			return false, err
+			return poolExplicitFlags{}, err
 		}
 		cfg.Notify.HTTPWebhook.AllowPrivate = parsed
 	}
@@ -285,7 +302,7 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (bool, er
 	if value, ok := lookup("REPOSENTINEL_METRICS_ENABLED"); ok {
 		parsed, err := parseBoolEnvironment("REPOSENTINEL_METRICS_ENABLED", value)
 		if err != nil {
-			return false, err
+			return poolExplicitFlags{}, err
 		}
 		cfg.Metrics.Enabled = parsed
 	}
@@ -295,7 +312,7 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (bool, er
 	if value, ok := lookup("REPOSENTINEL_UPDATE_CHECK"); ok {
 		parsed, err := parseBoolEnvironment("REPOSENTINEL_UPDATE_CHECK", value)
 		if err != nil {
-			return false, err
+			return poolExplicitFlags{}, err
 		}
 		cfg.UpdateCheck.Enabled = parsed
 	}
@@ -308,25 +325,25 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (bool, er
 	if value, ok := lookup("REPOSENTINEL_AGGREGATION_WINDOW"); ok {
 		d, err := time.ParseDuration(value)
 		if err != nil {
-			return false, newValidationError("REPOSENTINEL_AGGREGATION_WINDOW", "must be a duration")
+			return poolExplicitFlags{}, newValidationError("REPOSENTINEL_AGGREGATION_WINDOW", "must be a duration")
 		}
 		cfg.Aggregation.Window = d
 	}
 	if value, ok := lookup("REPOSENTINEL_AGGREGATION_BURST_THRESHOLD"); ok {
 		n, err := parseIntEnvironment("REPOSENTINEL_AGGREGATION_BURST_THRESHOLD", value)
 		if err != nil {
-			return false, err
+			return poolExplicitFlags{}, err
 		}
 		cfg.Aggregation.BurstThreshold = n
 	}
 	if value, ok := lookup("REPOSENTINEL_AGGREGATION_BURST_WINDOW"); ok {
 		d, err := time.ParseDuration(value)
 		if err != nil {
-			return false, newValidationError("REPOSENTINEL_AGGREGATION_BURST_WINDOW", "must be a duration")
+			return poolExplicitFlags{}, newValidationError("REPOSENTINEL_AGGREGATION_BURST_WINDOW", "must be a duration")
 		}
 		cfg.Aggregation.BurstWindow = d
 	}
-	return maxOpenExplicit, nil
+	return explicit, nil
 }
 
 func parseIntEnvironment(name, value string) (int, error) {

@@ -123,17 +123,25 @@ func (c *Checker) Check(ctx context.Context, force bool) Result {
 	}
 }
 
-func (c *Checker) client() *http.Client {
+// client 返回 HTTP 客户端；注入 HTTPClient 时以其为准。
+// noFollow 为真时强制就地读取 Location（HTML 主路径自行解析跳转）。
+func (c *Checker) client(noFollow bool) *http.Client {
 	if c.HTTPClient != nil {
-		return c.HTTPClient
+		cl := *c.HTTPClient
+		if noFollow {
+			cl.CheckRedirect = func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			}
+		}
+		return &cl
 	}
-	return &http.Client{
-		Timeout: defaultHTTPTimeout,
-		// HTML 主路径自行控制是否跟随；默认 Client 用于 JSON。
-		CheckRedirect: func(*http.Request, []*http.Request) error {
+	cl := &http.Client{Timeout: defaultHTTPTimeout}
+	if noFollow {
+		cl.CheckRedirect = func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
-		},
+		}
 	}
+	return cl
 }
 
 func (c *Checker) now() time.Time {
@@ -194,12 +202,7 @@ func (c *Checker) fetchViaHTMLRedirect(ctx context.Context, htmlLatest string) (
 	req.Header.Set("User-Agent", userAgent)
 
 	// 不跟随跳转，只读 Location（与 TG-SignPulse 一致）。
-	client := &http.Client{
-		Timeout: defaultHTTPTimeout,
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := c.client(true)
 	resp, err := client.Do(req)
 	if err != nil {
 		return Result{}, err
@@ -222,7 +225,7 @@ func (c *Checker) fetchViaHTMLRedirect(ctx context.Context, htmlLatest string) (
 	}
 	if tag == "" {
 		// 再试跟随跳转
-		follow := &http.Client{Timeout: defaultHTTPTimeout}
+		follow := c.client(false)
 		resp2, err := follow.Do(req.Clone(ctx))
 		if err != nil {
 			return Result{}, fmt.Errorf("无法从 releases/latest 解析 tag: %w", err)
@@ -261,7 +264,7 @@ func (c *Checker) fetchJSONRelease(ctx context.Context, rawURL string) (Result, 
 	if tok := strings.TrimSpace(c.Token); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
-	client := &http.Client{Timeout: defaultHTTPTimeout}
+	client := c.client(false)
 	resp, err := client.Do(req)
 	if err != nil {
 		return Result{}, err
