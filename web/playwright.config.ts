@@ -25,6 +25,9 @@ function serverCommand(name: string, port: number): string {
 export default defineConfig({
   testDir: "./e2e",
   outputDir: "../.test-run-data/playwright-artifacts",
+  // 实例为单管理员模型且首次设置只能完成一次：各用例文件共用同一服务与数据库，
+  // 必须串行执行（fullyParallel:false 仅保证文件内串行，跨文件仍会并发）。
+  workers: 1,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,

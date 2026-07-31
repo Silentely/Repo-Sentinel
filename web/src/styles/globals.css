@@ -94,6 +94,7 @@ button:disabled {
   position: relative;
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   place-items: center;
   padding: 48px 20px;
 }
@@ -335,6 +336,8 @@ a.primary-button {
   display: grid;
   grid-template-columns: 236px minmax(0, 1fr);
   height: 100vh;
+  /* 移动端地址栏伸缩时使用动态视口高度，避免底部内容被遮挡 */
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -482,10 +485,29 @@ a.primary-button {
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.app-topbar__lead {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+}
+
 .app-topbar__title {
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
+  white-space: nowrap;
+}
+
+/* 移动端抽屉导航的触发/关闭/遮罩元素，桌面与窄宽侧边栏形态下不出现 */
+.app-topbar__menu,
+.app-sidebar__close,
+.app-scrim {
+  display: none;
+}
+
+.app-topbar__title--mobile {
+  display: none;
 }
 
 .app-topbar__actions {
@@ -1018,25 +1040,180 @@ a.primary-button {
     overflow: visible;
   }
 
+  /* 抽屉形态依赖 body 滚动：清除 .app-main 的独立滚动容器，
+     否则 sticky 顶栏的滚动参照不是视口，粘性定位失效 */
+  .app-main {
+    overflow: visible;
+  }
+
+  /* ── 移动端抽屉导航 ──
+     ≤900px 时侧栏折叠为 72px 图标栏；进入 ≤640px 后改为离屏抽屉，
+     需逐项恢复被折叠态隐藏的文字与布局。 */
   .app-sidebar {
-    display: none;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    align-items: stretch;
+    width: min(300px, 84vw);
+    padding: max(24px, env(safe-area-inset-top)) 18px
+      max(28px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+    border-right: 1px solid var(--border-subtle);
+    background: var(--bg-surface);
+    box-shadow: 24px 0 56px color-mix(in oklch, var(--text-primary) 16%, transparent);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    transform: translateX(-110%);
+    visibility: hidden;
+    transition:
+      transform 260ms cubic-bezier(0.32, 0.72, 0, 1),
+      visibility 0s linear 260ms;
   }
 
-  .app-topbar {
-    min-height: 64px;
-    padding: 0 16px;
+  .app-sidebar.is-open {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
-  .app-content {
-    padding: 28px 16px 48px;
+  /* 恢复抽屉内的完整导航内容（覆盖 900px 折叠态的 display:none） */
+  .app-brand span:not(.app-brand__mark),
+  .app-nav a > span:not(.nav-badge) {
+    display: inline;
   }
 
-  .page-intro {
+  .app-nav__label,
+  .app-sidebar__version {
     display: block;
   }
 
-  .status-grid {
-    grid-template-columns: 1fr;
+  .app-nav {
+    gap: 4px;
+  }
+
+  .app-nav a {
+    justify-content: flex-start;
+    position: static;
+    width: auto;
+    min-height: 44px;
+    padding: 0 11px;
+  }
+
+  /* 徽章回归行内布局，脱离图标栏的绝对定位角标形态 */
+  .app-nav .nav-badge {
+    position: static;
+    top: auto;
+    right: auto;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    margin-left: auto;
+    font-size: 0.72rem;
+  }
+
+  .app-sidebar__close {
+    position: absolute;
+    top: max(16px, env(safe-area-inset-top));
+    right: max(14px, env(safe-area-inset-right));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-control);
+    color: var(--text-secondary);
+    background: transparent;
+    cursor: pointer;
+    transition: background 140ms ease, color 140ms ease;
+  }
+
+  .app-sidebar__close:hover {
+    color: var(--text-primary);
+    background: color-mix(in oklch, var(--accent) 10%, var(--bg-muted));
+  }
+
+  /* 抽屉遮罩：点击任意空白处收起 */
+  .app-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    border: 0;
+    padding: 0;
+    background: color-mix(in oklch, var(--text-primary) 26%, transparent);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    animation: scrim-fade 200ms ease both;
+  }
+
+  /* ── 顶栏：吸顶 + 移动端操作排布 ── */
+  .app-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    gap: 10px;
+    min-height: 64px;
+    padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) 0
+      max(12px, env(safe-area-inset-left));
+    background: color-mix(in oklch, var(--bg-canvas) 88%, transparent);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  }
+
+  .app-topbar__lead {
+    gap: 10px;
+  }
+
+  /* 抽屉启用后展示当前页面名，替代泛化的“管理控制台” */
+  .app-topbar__title--desktop {
+    display: none;
+  }
+
+  .app-topbar__title--mobile {
+    display: inline;
+  }
+
+  .app-topbar__menu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    color: var(--text-secondary);
+    background: var(--bg-surface);
+    cursor: pointer;
+    transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+  }
+
+  .app-topbar__menu:hover {
+    border-color: color-mix(in oklch, var(--accent) 46%, var(--border-subtle));
+    color: var(--accent);
+    background: color-mix(in oklch, var(--accent) 8%, var(--bg-surface));
+  }
+
+  .app-topbar__actions {
+    gap: 8px;
+  }
+
+  /* 窄屏状态灯只保留圆点，状态文案由 aria-label 及 role="status" 提供给读屏器 */
+  .health-pill {
+    min-height: 34px;
+    padding: 0 9px;
+  }
+
+  .health-pill__label {
+    display: none;
+  }
+
+  .app-topbar__actions .theme-toggle {
+    min-height: 44px;
+    padding: 0 12px;
   }
 
   .app-topbar__actions .theme-toggle select {
@@ -1044,6 +1221,49 @@ a.primary-button {
     width: 0;
     padding: 0;
     opacity: 0;
+  }
+
+  /* 退出按钮窄屏纯图标化，保证 44px 触控目标 */
+  .app-topbar__actions .quiet-button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+  }
+
+  .app-topbar__actions .quiet-button__label {
+    display: none;
+  }
+
+  /* 列表区操作按钮统一抬高触控目标 */
+  .quiet-button,
+  .quiet-button--compact {
+    min-height: 40px;
+  }
+
+  .repo-filter select {
+    min-height: 40px;
+  }
+
+  .app-content {
+    padding: 28px 16px calc(48px + env(safe-area-inset-bottom));
+  }
+
+  .page-intro {
+    display: block;
+  }
+
+  /* 统计卡 320px 宽自动降为单列，更大屏幕保持两列网格 */
+  .status-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@keyframes scrim-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
