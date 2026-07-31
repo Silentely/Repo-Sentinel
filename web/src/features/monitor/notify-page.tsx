@@ -245,7 +245,7 @@ export function NotifyPage() {
           />
         </label>
         <fieldset className="field--plain">
-          <span>订阅通知类型</span>
+          <legend>订阅通知类型</legend>
           <div className="channel-kinds">
             {SUBSCRIBABLE_KINDS.map((k) => (
               <label key={k.value} className="channel-kinds__item">
@@ -313,7 +313,7 @@ export function NotifyPage() {
           />
         </label>
         <fieldset className="field--plain">
-          <span>订阅通知类型</span>
+          <legend>订阅通知类型</legend>
           <div className="channel-kinds">
             {SUBSCRIBABLE_KINDS.map((k) => (
               <label key={k.value} className="channel-kinds__item">

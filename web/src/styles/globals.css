@@ -24,6 +24,27 @@
   --radius-dialog: 1.125rem;
 }
 
+/* 事件类型（kind）徽章色：tokens.css 无对应语义 token，在此定义。
+   取值与原 Tailwind 调色板 hex 等价的 oklch；.dark 下按 tokens.css 同款思路提亮，
+   保证暗色背景上的文字对比度。徽章背景统一用 14% color-mix 着色，故单变量即可。 */
+:root {
+  --kind-issue: oklch(0.546 0.245 262.881); /* #2563eb */
+  --kind-pull_request: oklch(0.491 0.27 292.581); /* #6d28d9 */
+  --kind-workflow_run: oklch(0.666 0.179 58.318); /* #d97706 */
+  --kind-dependabot: oklch(0.577 0.245 27.325); /* #dc2626 */
+  --kind-code_scanning: oklch(0.646 0.222 41.116); /* #ea580c */
+  --kind-secret_scanning: oklch(0.592 0.249 0.584); /* #db2777 */
+}
+
+.dark {
+  --kind-issue: oklch(0.707 0.165 254.624); /* 提亮 #60a5fa 档 */
+  --kind-pull_request: oklch(0.702 0.183 293.541); /* 提亮 #a78bfa 档 */
+  --kind-workflow_run: oklch(0.79 0.16 68);
+  --kind-dependabot: oklch(0.704 0.191 22.216); /* 提亮 #f87171 档 */
+  --kind-code_scanning: oklch(0.75 0.18 48);
+  --kind-secret_scanning: oklch(0.718 0.202 349.761); /* 提亮 #f472b6 档 */
+}
+
 * {
   box-sizing: border-box;
 }
@@ -332,6 +353,19 @@ a.primary-button {
   font-size: 0.7rem;
 }
 
+/* 路由级错误/404 兜底页：独立于应用布局，居中呈现恢复入口 */
+.route-fallback {
+  max-width: 480px;
+  margin: 12vh auto 0;
+  padding: 0 16px;
+}
+
+.route-fallback__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 236px minmax(0, 1fr);
@@ -385,7 +419,8 @@ a.primary-button {
 }
 
 .app-nav a,
-.app-nav span {
+.app-nav a > span:not(.nav-badge),
+.app-nav > span {
   display: flex;
   gap: 10px;
   align-items: center;
@@ -1364,7 +1399,9 @@ a.primary-button {
   font-weight: 650;
 }
 
-.field--plain > span {
+.field--plain > span,
+.field--plain > legend {
+  padding: 0;
   color: var(--text-secondary);
 }
 
@@ -1526,12 +1563,6 @@ a.primary-button {
 .event-list li > a.quiet-button {
   margin-left: auto;
   flex: 0 0 auto;
-}
-
-.about-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 0.75rem;
 }
 
 .about-banner {
@@ -2360,12 +2391,12 @@ a.primary-button {
 
 /* ── 事件类型样式 ── */
 
-.kind-issue { background: color-mix(in oklch, #3b82f6 14%, var(--bg-surface)); color: #2563eb; }
-.kind-pull_request { background: color-mix(in oklch, #7c3aed 14%, var(--bg-surface)); color: #6d28d9; }
-.kind-workflow_run { background: color-mix(in oklch, #f59e0b 14%, var(--bg-surface)); color: #d97706; }
-.kind-dependabot { background: color-mix(in oklch, #ef4444 14%, var(--bg-surface)); color: #dc2626; }
-.kind-code_scanning { background: color-mix(in oklch, #f97316 14%, var(--bg-surface)); color: #ea580c; }
-.kind-secret_scanning { background: color-mix(in oklch, #ec4899 14%, var(--bg-surface)); color: #db2777; }
+.kind-issue { background: color-mix(in oklch, var(--kind-issue) 14%, var(--bg-surface)); color: var(--kind-issue); }
+.kind-pull_request { background: color-mix(in oklch, var(--kind-pull_request) 14%, var(--bg-surface)); color: var(--kind-pull_request); }
+.kind-workflow_run { background: color-mix(in oklch, var(--kind-workflow_run) 14%, var(--bg-surface)); color: var(--kind-workflow_run); }
+.kind-dependabot { background: color-mix(in oklch, var(--kind-dependabot) 14%, var(--bg-surface)); color: var(--kind-dependabot); }
+.kind-code_scanning { background: color-mix(in oklch, var(--kind-code_scanning) 14%, var(--bg-surface)); color: var(--kind-code_scanning); }
+.kind-secret_scanning { background: color-mix(in oklch, var(--kind-secret_scanning) 14%, var(--bg-surface)); color: var(--kind-secret_scanning); }
 
 .event-action {
   font-size: 0.78rem;
@@ -2387,15 +2418,15 @@ a.primary-button {
   border-radius: 999px;
 }
 
-.severity-critical { color: #dc2626; background: color-mix(in oklch, #dc2626 14%, transparent); }
-.severity-high { color: #ea580c; background: color-mix(in oklch, #ea580c 14%, transparent); }
-.severity-medium { color: #d97706; background: color-mix(in oklch, #d97706 14%, transparent); }
-.severity-low { color: #65a30d; background: color-mix(in oklch, #65a30d 14%, transparent); }
+.severity-critical { color: var(--severity-critical); background: color-mix(in oklch, var(--severity-critical) 14%, transparent); }
+.severity-high { color: var(--severity-high); background: color-mix(in oklch, var(--severity-high) 14%, transparent); }
+.severity-medium { color: var(--severity-medium); background: color-mix(in oklch, var(--severity-medium) 14%, transparent); }
+.severity-low { color: var(--severity-low); background: color-mix(in oklch, var(--severity-low) 14%, transparent); }
 
-.status-pending { background: color-mix(in oklch, #3b82f6 14%, var(--bg-surface)); color: #2563eb; }
-.status-sending { background: color-mix(in oklch, #f59e0b 14%, var(--bg-surface)); color: #d97706; }
-.status-sent { background: color-mix(in oklch, #1a9f5c 14%, var(--bg-surface)); color: #15803d; }
-.status-dead { background: color-mix(in oklch, #dc2626 14%, var(--bg-surface)); color: #b91c1c; }
+.status-pending { background: color-mix(in oklch, var(--info) 14%, var(--bg-surface)); color: var(--info); }
+.status-sending { background: color-mix(in oklch, var(--warning) 14%, var(--bg-surface)); color: var(--warning); }
+.status-sent { background: color-mix(in oklch, var(--success) 14%, var(--bg-surface)); color: var(--success); }
+.status-dead { background: color-mix(in oklch, var(--danger) 14%, var(--bg-surface)); color: var(--danger); }
 
 .error-code {
   font-size: 0.75rem;
