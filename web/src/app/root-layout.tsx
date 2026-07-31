@@ -7,14 +7,16 @@ import {
   Info,
   ListTodo,
   LogOut,
+  Menu,
   Send,
   Shield,
   ShieldCheck,
   Workflow,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 
 import { ThemeToggle } from "../components/theme-toggle";
 import {
@@ -28,6 +30,20 @@ export interface RootLayoutProps {
   session: AuthenticationResponse;
 }
 
+/** 移动端顶栏标题：侧边栏收起后需要向用户明示当前位置。 */
+function mobileTitleFor(pathname: string): string {
+  if (pathname.startsWith("/notifications/outbox")) return "投递记录";
+  if (pathname.startsWith("/notifications")) return "渠道配置";
+  if (pathname.startsWith("/repos")) return "仓库管理";
+  if (pathname.startsWith("/issues")) return "Issues";
+  if (pathname.startsWith("/pull-requests")) return "Pull Requests";
+  if (pathname.startsWith("/actions")) return "Actions";
+  if (pathname.startsWith("/security")) return "安全告警";
+  if (pathname.startsWith("/github")) return "GitHub App";
+  if (pathname.startsWith("/about")) return "关于与设置";
+  return "仪表盘";
+}
+
 export function RootLayout({ session }: RootLayoutProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -35,6 +51,73 @@ export function RootLayout({ session }: RootLayoutProps) {
   const ready = useQuery(readyStatusQueryOptions);
   const dashboard = useQuery(dashboardQueryOptions);
   const settings = useQuery(settingsQueryOptions);
+
+  // 移动端抽屉导航：≤640px 时侧边栏变为离屏抽屉，由顶栏菜单按钮唤起。
+  const [navOpen, setNavOpen] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+
+  // 离开当前路由（含浏览器前进/后退）后收起抽屉，避免遮挡新页面。
+  const previousPathname = useRef(pathname);
+  useEffect(() => {
+    if (previousPathname.current !== pathname) {
+      previousPathname.current = pathname;
+      setNavOpen(false);
+    }
+  }, [pathname]);
+
+  // 视口变宽超出移动端断点（如横屏、窗口拉伸）时强制收起，解除滚动锁。
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 640px)");
+    const onChange = (event: MediaQueryListEvent) => {
+      if (!event.matches) {
+        setNavOpen(false);
+      }
+    };
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  // 抽屉打开期间：锁定背景滚动、支持 Escape 关闭。
+  useEffect(() => {
+    if (!navOpen) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNavOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [navOpen]);
+
+  // 焦点管理：打开时进入抽屉，关闭（含任意关闭路径）后回到菜单按钮。
+  useEffect(() => {
+    if (!navOpen) {
+      return;
+    }
+    const menuButton = menuButtonRef.current;
+    sidebarRef.current?.querySelector<HTMLElement>(".app-sidebar__close")?.focus();
+    return () => menuButton?.focus();
+  }, [navOpen]);
+
+  function closeNav() {
+    setNavOpen(false);
+  }
+
+  /** 点击导航链接即时收起抽屉；事件委托处理，避免给每个链接重复绑定。 */
+  function handleNavClick(event: React.MouseEvent<HTMLElement>) {
+    if ((event.target as HTMLElement).closest("a")) {
+      setNavOpen(false);
+    }
+  }
 
   const healthState = ready.isPending
     ? "warning"
@@ -72,14 +155,26 @@ export function RootLayout({ session }: RootLayoutProps) {
 
   return (
     <div className="app-shell">
-      <aside className="app-sidebar">
+      <aside
+        id="app-sidebar"
+        ref={sidebarRef}
+        className={`app-sidebar${navOpen ? " is-open" : ""}`}
+      >
         <div className="app-brand">
           <span className="app-brand__mark" aria-hidden="true">
             <ShieldCheck size={18} strokeWidth={1.8} />
           </span>
           <span>RepoSentinel</span>
         </div>
-        <nav className="app-nav" aria-label="主导航">
+        <button
+          type="button"
+          className="app-sidebar__close"
+          aria-label="收起导航菜单"
+          onClick={closeNav}
+        >
+          <X aria-hidden="true" size={18} strokeWidth={1.8} />
+        </button>
+        <nav className="app-nav" aria-label="主导航" onClick={handleNavClick}>
           <span className="app-nav__label">概览</span>
           <Link to="/" activeProps={{ "aria-current": "page" }}>
             <Activity aria-hidden="true" size={17} />
@@ -133,18 +228,44 @@ export function RootLayout({ session }: RootLayoutProps) {
         <span className="app-sidebar__version">RepoSentinel</span>
       </aside>
 
+      {navOpen && <div className="app-scrim" aria-hidden="true" onClick={closeNav} />}
+
       <div className="app-main">
         <header className="app-topbar">
-          <p className="app-topbar__title">管理控制台</p>
+          <div className="app-topbar__lead">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              className="app-topbar__menu"
+              aria-expanded={navOpen}
+              aria-controls="app-sidebar"
+              aria-label="打开导航菜单"
+              onClick={() => setNavOpen(true)}
+            >
+              <Menu aria-hidden="true" size={20} strokeWidth={1.8} />
+            </button>
+            <p className="app-topbar__title">
+              <span className="app-topbar__title--desktop">管理控制台</span>
+              <span className="app-topbar__title--mobile">{mobileTitleFor(pathname)}</span>
+            </p>
+          </div>
           <div className="app-topbar__actions">
-            <span className={`health-pill health-pill--${healthState}`}>{healthLabel}</span>
+            <span className={`health-pill health-pill--${healthState}`} role="status" aria-label={`服务状态：${healthLabel}`}>
+              <span className="health-pill__label">{healthLabel}</span>
+            </span>
             <ThemeToggle />
             <span className="sr-only" id="current-admin">
               当前管理员 {session.admin.username}
             </span>
-            <button className="quiet-button" type="button" onClick={handleLogout} disabled={loggingOut}>
+            <button
+              className="quiet-button"
+              type="button"
+              aria-label={loggingOut ? "正在退出" : "退出登录"}
+              onClick={handleLogout}
+              disabled={loggingOut}
+            >
               <LogOut aria-hidden="true" size={16} />
-              <span>{loggingOut ? "退出中…" : "退出"}</span>
+              <span className="quiet-button__label">{loggingOut ? "退出中…" : "退出"}</span>
             </button>
           </div>
         </header>

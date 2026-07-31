@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const username = "Repo Admin";
-const password = "安全管理员密码一二三四五六";
+import { adminUsername as username, adminPassword as password } from "./helpers";
 
 test("首次设置、退出、错误凭据与重新登录形成完整认证旅程", async ({ page }) => {
   await page.goto("/");
@@ -26,7 +25,7 @@ test("首次设置、退出、错误凭据与重新登录形成完整认证旅�
   await page.getByLabel("确认密码").fill(password);
   await page.getByRole("button", { name: "创建管理员" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "先确认系统，再接入仓库。" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "现在是否健康，今天发生了什么。" })).toBeVisible();
 
   await page.getByRole("button", { name: "退出" }).click();
   await expect(page).toHaveURL(/\/login$/);
@@ -56,6 +55,6 @@ test("首次设置、退出、错误凭据与重新登录形成完整认证旅�
   await page.getByLabel("密码", { exact: true }).fill(password);
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "先确认系统，再接入仓库。" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "现在是否健康，今天发生了什么。" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "主题" })).toHaveValue("dark");
 });
