@@ -110,14 +110,23 @@ func (r Runner) runRestore(ctx context.Context, args []string) error {
 			}
 			safety = ""
 		}
+		// 先写同目录暂存文件再 rename 原子替换：直接截断式覆盖一旦中途失败，
+		// 主库会变成空文件且 WAL 已被清理，只能手工从安全副本救回。
+		tmp := path + ".restore-tmp"
+		if err := copyFile(in, tmp); err != nil {
+			_ = os.Remove(tmp)
+			return fmt.Errorf("备份文件写入暂存失败，主库未改动: %w", err)
+		}
 		// WAL 模式下替换主文件前必须清理旧日志，否则残留 -wal 会被重放到新库上。
 		for _, suffix := range []string{"-wal", "-shm"} {
 			if err := os.Remove(path + suffix); err != nil && !os.IsNotExist(err) {
+				_ = os.Remove(tmp)
 				return fmt.Errorf("清理 %s 失败: %w", path+suffix, err)
 			}
 		}
-		if err := copyFile(in, path); err != nil {
-			return err
+		if err := os.Rename(tmp, path); err != nil {
+			_ = os.Remove(tmp)
+			return fmt.Errorf("原子替换主库失败: %w", err)
 		}
 		fmt.Fprintf(r.stdout, "restored=%s\n", path)
 		if safety != "" {
