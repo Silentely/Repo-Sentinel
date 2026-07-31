@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 )
 
 func Test健康检查区分存活与就绪且不泄漏失败原因(t *testing.T) {
@@ -114,6 +116,53 @@ func Test版本检查API需要认证与CSRF并返回softFail结果(t *testing.T)
 	}
 	if body.UpdateCheck.Enabled {
 		t.Fatal("fixture 默认应关闭或未开启远程检查")
+	}
+}
+
+// roundTripperFunc 将函数适配为 http.RoundTripper，用于注入可观测的假传输层。
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func Test版本检查端点不改写装配Checker的Current(t *testing.T) {
+	// 保护行为：handleVersionCheck 使用装配的共享 UpdateChecker 时不得覆写其 Current
+	// （历史 bug：每次请求把本地版本写进共享 checker.Current，并发请求下构成数据竞争，
+	// 修复见 system_handlers.go 中"不得写共享 Checker"注释）。
+	// 注入启用了远程检查的 Checker：其 HTTPClient 传输层记录命中并立即失败
+	// （Check 对此 soft-fail，不触网、结果确定性）。命中数>0 证明 handler 走的是
+	// 装配的 Checker 而非临时回退分支；连续两次请求后 Current 必须保持装配基线值。
+	const baselineCurrent = "0.0.0-fixture-baseline"
+	var transportHits int
+	checker := &updatecheck.Checker{
+		Enabled:  true,
+		Current:  baselineCurrent,
+		CheckURL: "https://example.com/api/releases/latest",
+		HTTPClient: &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			transportHits++
+			return nil, errors.New("fixture: 测试环境禁网")
+		})},
+	}
+	fixture := newHTTPTestFixture(t, httpTestOptions{updateChecker: checker})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	// 路由以 server.go 为准：POST /api/v1/system/version/check（CSRF 保护的写端点）。
+	for i, remoteAddr := range []string{"127.0.0.1:43121", "127.0.0.1:43122"} {
+		resp := fixture.request(
+			t, http.MethodPost, "/api/v1/system/version/check?force=true", `{}`,
+			remoteAddr, cookies, headers,
+		)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("第 %d 次版本检查 status=%d，响应=%s", i+1, resp.Code, resp.Body.String())
+		}
+	}
+	if transportHits == 0 {
+		t.Fatal("装配的 UpdateChecker 未被使用（传输层零命中）")
+	}
+	if checker.Current != baselineCurrent {
+		t.Fatalf("handler 改写了共享 Checker.Current：期望保持 %q，实际 %q", baselineCurrent, checker.Current)
 	}
 }
 

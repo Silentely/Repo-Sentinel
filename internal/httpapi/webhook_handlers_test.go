@@ -413,6 +413,58 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
+// TestWebhook关闭期状态标记不受Background取消影响 回归验证 processWebhookAsync 内
+// markCtx（context.WithoutCancel(Background)+5s 超时，见 webhook_handlers.go）的修复：
+// 优雅关闭瞬间 Background 已被 App 取消，delivery 行不得永久停留在 accepted。
+// 本用例让 Background 在处理开始前就已取消：规范化首个 DB 调用必然以
+// context.Canceled 失败走 normalize_failed 分支，但 MarkProcessed 必须脱离取消
+// 仍然提交成功，行终态为 failed 而非 accepted。
+func TestWebhook关闭期状态标记不受Background取消影响(t *testing.T) {
+	// 处理开始前即取消，模拟优雅关闭瞬间。
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	fixture := newWebhookTestFixture(t, webhookTestOptions{
+		runtimeSecret: webhookTestSecret,
+		background:    cancelled,
+	})
+
+	// 手工写入 accepted 行：等价于 202 已返回、异步处理尚未执行的瞬间。
+	body := issueOpenedPayload(t, 201, time.Now().UTC())
+	row, err := fixture.store.WebhookDeliveries().Create(context.Background(), store.WebhookDelivery{
+		ID:         "wd-shutdown-mark",
+		DeliveryID: "delivery-shutdown-mark",
+		EventType:  "issues",
+		Status:     store.DeliveryAccepted,
+		Payload:    body,
+		ReceivedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("预置 accepted delivery 失败: %v", err)
+	}
+
+	// 直接同步调用（不经 safeGo），调用返回即处理完毕，无需轮询。
+	fixture.srv.processWebhookAsync(row.ID, "issues", "delivery-shutdown-mark", body)
+
+	got, err := fixture.store.WebhookDeliveries().GetByDeliveryID(context.Background(), "delivery-shutdown-mark")
+	if err != nil {
+		t.Fatalf("回读 delivery 失败: %v", err)
+	}
+	// 核心回归断言：状态必须脱离 accepted。若 markCtx 未用 WithoutCancel 脱离取消，
+	// MarkProcessed 会以已取消 ctx 静默失败（返回值被忽略），行将永久停留 accepted。
+	if got.Status == store.DeliveryAccepted {
+		t.Fatalf("关闭期标记失败：状态仍为 accepted；行=%+v", got)
+	}
+	// Background 已取消 → 规范化必然 context.Canceled 失败 → normalize_failed 分支。
+	if got.Status != store.DeliveryFailed || got.ErrorCode != "normalize_failed" {
+		t.Fatalf("终态=(%q, %q)，期望 failed/normalize_failed", got.Status, got.ErrorCode)
+	}
+	// ProcessedAt 由 MarkProcessed 一并写入，非空进一步证明标记确实提交成功。
+	if got.ProcessedAt == nil {
+		t.Fatal("ProcessedAt 为空：MarkProcessed 未成功提交")
+	}
+}
+
 func TestWebhook规则评估失败标记rule_failed(t *testing.T) {
 	// 注入一个必然失败的 Aggregator：底层 Store 已关闭，超频（burst）降级路径调用
 	// Channels().List 时必然返回错误，从而使 Aggregator.Evaluate 返回 error。

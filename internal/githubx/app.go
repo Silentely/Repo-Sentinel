@@ -213,6 +213,10 @@ func (c *AppClient) InstallationToken(ctx context.Context, installationID int64)
 		return "", err
 	}
 	c.mu.Lock()
+	// cache 仅在构造函数中初始化；防御结构体字面量构造下的 nil map 写 panic。
+	if c.cache == nil {
+		c.cache = make(map[int64]cachedToken)
+	}
 	c.cache[installationID] = cachedToken{Token: parsed.Token, ExpiresAt: parsed.ExpiresAt}
 	c.mu.Unlock()
 	return parsed.Token, nil

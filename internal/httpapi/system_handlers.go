@@ -61,8 +61,7 @@ func (s *server) handleVersionCheck(w http.ResponseWriter, r *http.Request) {
 			Current:  local.Version,
 		}
 	}
-	// 确保比较基准为当前进程版本。
-	checker.Current = local.Version
+	// 比较基准在装配时即为当前进程版本，此处不得写共享 Checker（并发下构成数据竞争）。
 	remote := checker.Check(r.Context(), force)
 	writeJSON(w, http.StatusOK, versionCheckResponse{
 		Version:     local,
