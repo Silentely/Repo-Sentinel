@@ -34,6 +34,20 @@ func TestPostgreSQL管理员与SessionStore契约(t *testing.T) {
 	runStoreContract(t, postgresFactory{url: url})
 }
 
+// jsonRoundTripEqual 语义比较两份 JSON。
+// SQLite 按原文存取可做字节级比较；PostgreSQL jsonb 有自己的规范文本格式
+// （键重排、冒号后空格），往返后字节必然不同，只能按语义相等判定。
+func jsonRoundTripEqual(a, b []byte) bool {
+	if bytes.Equal(a, b) {
+		return true
+	}
+	var av, bv any
+	if json.Unmarshal(a, &av) != nil || json.Unmarshal(b, &bv) != nil {
+		return false
+	}
+	return reflect.DeepEqual(av, bv)
+}
+
 type sqliteFactory struct{}
 
 func (sqliteFactory) Name() string { return "SQLite" }
@@ -348,7 +362,7 @@ func runStoreContract(t *testing.T, factory ContractFactory) {
 		if err != nil {
 			t.Fatalf("首次写入 Setting 失败: %v", err)
 		}
-		if !bytes.Equal(first.ValueJSON, firstJSON) {
+		if !jsonRoundTripEqual(first.ValueJSON, firstJSON) {
 			t.Fatalf("首次 JSON=%s，期望 %s", first.ValueJSON, firstJSON)
 		}
 
@@ -367,7 +381,7 @@ func runStoreContract(t *testing.T, factory ContractFactory) {
 			t.Fatalf("Upsert 后 ID=%s，期望保留 %s", second.ID, first.ID)
 		}
 		got, err := opened.Settings().Get(t.Context(), first.Key)
-		if err != nil || !bytes.Equal(got.ValueJSON, secondJSON) {
+		if err != nil || !jsonRoundTripEqual(got.ValueJSON, secondJSON) {
 			t.Fatalf("读取 Setting=(%s, %v)，期望 %s", got.ValueJSON, err, secondJSON)
 		}
 	})
@@ -390,7 +404,7 @@ func runStoreContract(t *testing.T, factory ContractFactory) {
 			t.Fatalf("追加 Audit 失败: %v", err)
 		}
 		got, err := opened.Audits().Get(t.Context(), appended.ID)
-		if err != nil || !bytes.Equal(got.MetadataJSON, entry.MetadataJSON) {
+		if err != nil || !jsonRoundTripEqual(got.MetadataJSON, entry.MetadataJSON) {
 			t.Fatalf("读取 Audit=(%+v, %v)，期望 JSON=%s", got, err, entry.MetadataJSON)
 		}
 		listed, err := opened.Audits().List(t.Context(), 100, 0)
