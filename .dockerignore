@@ -1,0 +1,56 @@
+# 构建上下文瘦身：排除镜像构建不需要的内容，缩小传输体积并避免本地产物污染构建
+
+# 版本控制与协作
+.git/
+.github/
+.gitignore
+.dockerignore
+
+# 本地构建产物与运行期数据
+/reposentinel
+/data/
+/logs/
+/data_test/
+*.db
+*.sqlite3
+
+# 前端依赖与构建产物：镜像内由 pnpm install / pnpm build 重建
+node_modules/
+web/node_modules/
+web/dist/
+web/e2e/
+
+# 文档站（不进入镜像）
+docs/
+
+# 本地开发、测试与临时目录
+.tmp/
+.test-run-data/
+.local-data/
+.local-login-data/
+scripts/
+deployments/
+*.log
+*.pid
+
+# 环境变量与密钥，绝不进入构建上下文
+.env
+.env.*
+
+# 平台与编辑器杂项
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.bak
+
+# agent 工具产物
+.claude/
+.omx/
+.omc/
+.ace-tool/
+.full-review/
+.impeccable.md
+.evolver/
+/memory/
+/assets/gep/

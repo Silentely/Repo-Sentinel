@@ -1,101 +1,11 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib64/
-parts/
-sdist/
-var/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*,cover
-.hypothesis/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# IPython Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# dotenv
+# 环境变量与密钥
 .env
 .apienv
 
-# virtualenv
-venv/
-ENV/
-
-# uv
-uv.lock
-
-# Spyder project settings
-.spyderproject
-
-# Rope project settings
-.ropeproject
-
-# Instance
-media/
-logs/
-data/
-data_test/
+# 运行期数据目录（仅仓库根目录，锚定避免屏蔽子目录源码）
+/logs/
+/data/
+/data_test/
 
 # Editors & IDEs
 *.sublime-project
@@ -109,46 +19,27 @@ data_test/
 *.sqlite3
 *.db
 
-# Go build output
-reposentinel
+# Go build output（仅仓库根目录二进制，锚定避免屏蔽 cmd/reposentinel 源码）
+/reposentinel
 
 # macOS
 .DS_Store
 
-# custom
-_test*.py
-_test*.json
-
-# pyrogram
-*.session
-*.session-journal
-
-.signer
-*.session_string
-
-.agent
-
-frontend/node_modules/
+# Node / 前端
 node_modules/
 web/node_modules/
 web/dist/
-frontend/.next/
-frontend/out/
-frontend/tsconfig.tsbuildinfo
-frontend/.env.local
+
+# 文档站构建产物
 docs/.vitepress/cache/
 docs/.vitepress/.temp/
 docs/.vitepress/dist/
 docs/public/_sources/
 docs/public/sitemap.xml
 docs/public/llms.txt
-.venv/
-.venv*/
-.ruff_cache/
-.pytest_cache/
-.mypy_cache/
+
+# 运行期与本地开发产物
 *.pid
-.tg_signpulse_data_dir
 .local-data/
 .local-login-data/
 .test-run-data/
@@ -159,12 +50,7 @@ docs/public/llms.txt
 backend-*.log
 backend-*.pid
 frontend-*.log
-next-dev.*.log
-bandit_report*.json
-ruff_errors.txt
 git_show_head*.txt
-# 仅忽略仓库根目录的临时脚本，不屏蔽 tests/ 下正式用例
-/test_*.py
 
 # agent
 .claude
@@ -175,15 +61,12 @@ git_show_head*.txt
 docs/superpowers/
 .impeccable.md
 
-# VitePress agent markdown sources (build-generated)
-docs/public/_sources/
-
 # EvoMap / Evolver
 .evolver/
 .evolver.lock
 evolver.pid
-memory/
-assets/gep/
+/memory/
+/assets/gep/
 .evomap_device_id
 .evomap_node_id
 *.gepx
