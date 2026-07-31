@@ -2,8 +2,10 @@ package updatecheck
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -93,5 +95,50 @@ func TestSafeReleasePageURL(t *testing.T) {
 	}
 	if SafeReleasePageURL("https://github.com/x/y/releases/tag/v1") == "" {
 		t.Fatal("https allowed")
+	}
+}
+
+// rememberTransport 记录命中次数的假传输层：对所有请求就地返回 302，
+// Location 指向固定 tag 页。用于证明 Checker.HTTPClient 注入字段真正生效。
+type rememberTransport struct {
+	hits int
+}
+
+func (tr *rememberTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	tr.hits++
+	return &http.Response{
+		StatusCode: http.StatusFound,
+		Header:     http.Header{"Location": []string{"/owner/repo/releases/tag/v9.9.9"}},
+		Body:       io.NopCloser(strings.NewReader("")),
+		Request:    req,
+	}, nil
+}
+
+func TestChecker的HTTPClient注入驱动HTML主路径(t *testing.T) {
+	// 保护行为：Checker.HTTPClient 曾是无人读取的死字段；修复后三处请求路径
+	// （HTML 主路径不跟随跳转、跟随跳转回退、JSON API 回退）都必须经注入客户端发出。
+	// 这里用命中计数证明注入生效（零命中即回归），用 redirect Source 证明命中的
+	// 是 HTML 主路径而非 JSON 回退，并验证 302 Location 解析归一化后的版本号。
+	transport := &rememberTransport{}
+	c := &Checker{
+		Enabled:    true,
+		Current:    "1.0.0",
+		CheckURL:   "https://example.com/api/releases/latest",
+		HTMLURL:    "https://example.com/releases/latest",
+		HTTPClient: &http.Client{Transport: transport},
+	}
+
+	res := c.Check(context.Background(), true)
+	if transport.hits == 0 {
+		t.Fatal("注入的 HTTPClient 未被使用（传输层零命中），HTTPClient 字段仍是死代码")
+	}
+	if res.Source != "github_releases_redirect" {
+		t.Fatalf("Source=%q，期望 HTML 主路径 github_releases_redirect", res.Source)
+	}
+	if res.LatestVersion != "9.9.9" {
+		t.Fatalf("LatestVersion=%q，期望从 Location 解析并归一化为 9.9.9", res.LatestVersion)
+	}
+	if !res.UpdateAvailable {
+		t.Fatal("1.0.0 → 9.9.9 应判定有可用更新")
 	}
 }
