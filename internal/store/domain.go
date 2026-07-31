@@ -282,6 +282,12 @@ type ListFilter struct {
 	State        string
 	Status       string
 	Query        string
+	// ChannelIDs 限定 Outbox 的渠道集合（SQL 层过滤，保证分页与 total 正确）。
+	ChannelIDs []string
+	// ReviewDecision 按 PR 审核结论过滤（approved / changes_requested）。
+	ReviewDecision string
+	// CheckStatus 按 PR 检查状态过滤：success / failure；空串值 "pending" 表示尚无检查数据。
+	CheckStatus string
 	// IncludeIgnored=true 时包含已忽略项；默认 false 只返回未忽略。
 	IncludeIgnored bool
 	// OnlyIgnored=true 时仅返回已忽略项（优先于 IncludeIgnored）。
@@ -304,6 +310,9 @@ type RepositoryStore interface {
 	GetByFullName(context.Context, string) (Repository, error)
 	GetByGitHubRepoID(context.Context, int64) (Repository, error)
 	List(context.Context, ListFilter) ([]Repository, PageResult, error)
+	// ListSyncCandidates 按最后同步时间升序返回指定类型的仓库（从未同步的排最前）。
+	// 对账/轮询调度专用：按 updated_at 取仓会让刚同步过的仓永远插队，导致其余仓饥饿。
+	ListSyncCandidates(ctx context.Context, repoType string, limit int) ([]Repository, error)
 	UpdateSyncStatus(context.Context, string, string) error
 	UpdateSettings(context.Context, string, RepositorySettings) error
 	CountByType(context.Context, string) (int, error)
