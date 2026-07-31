@@ -4,6 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#efe9df" />
+    <script>
+      // 主题预置：首帧渲染前同步恢复深色并设置 theme-color，避免深色用户刷新时先闪浅色。
+      // 取值与判定逻辑须与 src/components/theme-toggle.tsx 保持一致。
+      (function () {
+        var stored = null;
+        try {
+          stored = window.localStorage.getItem("reposentinel-theme");
+        } catch (e) {
+          stored = null;
+        }
+        var mode = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+        var dark =
+          mode === "dark" ||
+          (mode === "system" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+        // theme-color 色值取自 src/styles/tokens.css 的 --bg-canvas：浅色 #efe9df，深色为 oklch(0.205 0.018 48)。
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", dark ? "#1e1510" : "#efe9df");
+      })();
+    </script>
     <meta name="description" content="RepoSentinel 自托管的 GitHub 仓库监控" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon.ico" sizes="any" />

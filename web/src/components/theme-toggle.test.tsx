@@ -33,4 +33,26 @@ describe("主题选择", () => {
     expect(window.localStorage.getItem("reposentinel-theme")).toBe("system");
     expect(document.documentElement).toHaveClass("dark");
   });
+
+  it("切换主题时同步更新 theme-color meta", async () => {
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    document.head.appendChild(meta);
+    try {
+      window.localStorage.setItem("reposentinel-theme", "light");
+      const user = userEvent.setup();
+      render(<ThemeToggle />);
+
+      expect(meta.content).toBe("#efe9df");
+
+      const select = screen.getByRole("combobox", { name: "主题" });
+      await user.selectOptions(select, "dark");
+      expect(meta.content).toBe("#1e1510");
+
+      await user.selectOptions(select, "light");
+      expect(meta.content).toBe("#efe9df");
+    } finally {
+      meta.remove();
+    }
+  });
 });
