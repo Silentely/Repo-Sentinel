@@ -59,7 +59,9 @@ reposentinel backup --output /path/to/backups/reposentinel-$(date -u +%Y%m%dT%H%
 # Compose 示例（仅 SQLite 可用；PostgreSQL 会因镜像内缺少 pg_dump 而失败）：
 # docker compose exec reposentinel /reposentinel backup --output /tmp/backup
 
-# 恢复前会尽量另存当前库；恢复后用与备份匹配的主密钥启动
+# 恢复必须在服务停止后执行：运行中进程持有旧库文件句柄，恢复不会对其生效。
+# restore 会先另存当前库（*.pre-restore-*），并自动清理 WAL/SHM 伴随文件；
+# 恢复后用与备份匹配的主密钥启动并验证通知渠道可正常解密。
 reposentinel restore --input /path/to/backup
 ```
 

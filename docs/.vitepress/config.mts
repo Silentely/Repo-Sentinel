@@ -131,6 +131,7 @@ export default defineConfig({
         items: [
           { text: "管理员与 Session", link: "/guide/administrator" },
           { text: "健康检查与版本", link: "/guide/health-and-version" },
+          { text: "列表 API 查询参数", link: "/guide/list-api" },
         ],
       },
       {
