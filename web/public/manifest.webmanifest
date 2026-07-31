@@ -1,0 +1,24 @@
+{
+  "name": "RepoSentinel",
+  "short_name": "RepoSentinel",
+  "description": "自托管的 GitHub 仓库值守平台",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#efe9df",
+  "background_color": "#efe9df",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
