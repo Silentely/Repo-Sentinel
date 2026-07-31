@@ -9,7 +9,6 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationchannel"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationoutbox"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
-	"github.com/Silentely/Repo-Sentinel/internal/store/ent/scheduledjob"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/schema"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
@@ -166,24 +165,6 @@ func init() {
 	repositoryDescLastSyncErrorCode := repositoryFields[20].Descriptor()
 	// repository.DefaultLastSyncErrorCode holds the default value on creation for the last_sync_error_code field.
 	repository.DefaultLastSyncErrorCode = repositoryDescLastSyncErrorCode.Default.(string)
-	scheduledjobFields := schema.ScheduledJob{}.Fields()
-	_ = scheduledjobFields
-	// scheduledjobDescPayloadJSON is the schema descriptor for payload_json field.
-	scheduledjobDescPayloadJSON := scheduledjobFields[2].Descriptor()
-	// scheduledjob.DefaultPayloadJSON holds the default value on creation for the payload_json field.
-	scheduledjob.DefaultPayloadJSON = scheduledjobDescPayloadJSON.Default.(string)
-	// scheduledjobDescStatus is the schema descriptor for status field.
-	scheduledjobDescStatus := scheduledjobFields[3].Descriptor()
-	// scheduledjob.DefaultStatus holds the default value on creation for the status field.
-	scheduledjob.DefaultStatus = scheduledjobDescStatus.Default.(string)
-	// scheduledjobDescAttemptCount is the schema descriptor for attempt_count field.
-	scheduledjobDescAttemptCount := scheduledjobFields[4].Descriptor()
-	// scheduledjob.DefaultAttemptCount holds the default value on creation for the attempt_count field.
-	scheduledjob.DefaultAttemptCount = scheduledjobDescAttemptCount.Default.(int)
-	// scheduledjobDescLastErrorCode is the schema descriptor for last_error_code field.
-	scheduledjobDescLastErrorCode := scheduledjobFields[7].Descriptor()
-	// scheduledjob.DefaultLastErrorCode holds the default value on creation for the last_error_code field.
-	scheduledjob.DefaultLastErrorCode = scheduledjobDescLastErrorCode.Default.(string)
 	securityalertFields := schema.SecurityAlert{}.Fields()
 	_ = securityalertFields
 	// securityalertDescSeverity is the schema descriptor for severity field.

@@ -105,18 +105,6 @@ func (f RepositoryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RepositoryMutation", m)
 }
 
-// The ScheduledJobFunc type is an adapter to allow the use of ordinary
-// function as ScheduledJob mutator.
-type ScheduledJobFunc func(context.Context, *ent.ScheduledJobMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f ScheduledJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.ScheduledJobMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ScheduledJobMutation", m)
-}
-
 // The SecurityAlertFunc type is an adapter to allow the use of ordinary
 // function as SecurityAlert mutator.
 type SecurityAlertFunc func(context.Context, *ent.SecurityAlertMutation) (ent.Value, error)

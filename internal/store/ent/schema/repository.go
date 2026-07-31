@@ -47,6 +47,7 @@ func (Repository) Indexes() []ent.Index {
 		index.Fields("full_name").Unique(),
 		index.Fields("github_repo_id"),
 		index.Fields("type"),
+		index.Fields("type", "last_synced_at"),
 		index.Fields("sync_status"),
 		index.Fields("installation_id"),
 	}

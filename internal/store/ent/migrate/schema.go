@@ -303,6 +303,11 @@ var (
 				Columns: []*schema.Column{RepositoriesColumns[1]},
 			},
 			{
+				Name:    "repository_type_last_synced_at",
+				Unique:  false,
+				Columns: []*schema.Column{RepositoriesColumns[1], RepositoriesColumns[19]},
+			},
+			{
 				Name:    "repository_sync_status",
 				Unique:  false,
 				Columns: []*schema.Column{RepositoriesColumns[2]},
@@ -311,38 +316,6 @@ var (
 				Name:    "repository_installation_id",
 				Unique:  false,
 				Columns: []*schema.Column{RepositoriesColumns[7]},
-			},
-		},
-	}
-	// ScheduledJobsColumns holds the columns for the "scheduled_jobs" table.
-	ScheduledJobsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeString},
-		{Name: "job_type", Type: field.TypeString},
-		{Name: "payload_json", Type: field.TypeString, Default: "{}"},
-		{Name: "status", Type: field.TypeString, Default: "pending"},
-		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
-		{Name: "run_at", Type: field.TypeTime},
-		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
-		{Name: "last_error_code", Type: field.TypeString, Default: ""},
-		{Name: "created_at", Type: field.TypeTime},
-		{Name: "updated_at", Type: field.TypeTime},
-		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
-	}
-	// ScheduledJobsTable holds the schema information for the "scheduled_jobs" table.
-	ScheduledJobsTable = &schema.Table{
-		Name:       "scheduled_jobs",
-		Columns:    ScheduledJobsColumns,
-		PrimaryKey: []*schema.Column{ScheduledJobsColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "scheduledjob_status_run_at",
-				Unique:  false,
-				Columns: []*schema.Column{ScheduledJobsColumns[3], ScheduledJobsColumns[5]},
-			},
-			{
-				Name:    "scheduledjob_job_type_status",
-				Unique:  false,
-				Columns: []*schema.Column{ScheduledJobsColumns[1], ScheduledJobsColumns[3]},
 			},
 		},
 	}
@@ -527,6 +500,16 @@ var (
 				Columns: []*schema.Column{WorkItemsColumns[22], WorkItemsColumns[3], WorkItemsColumns[4]},
 			},
 			{
+				Name:    "workitem_ignored_review_decision",
+				Unique:  false,
+				Columns: []*schema.Column{WorkItemsColumns[22], WorkItemsColumns[16]},
+			},
+			{
+				Name:    "workitem_ignored_check_status",
+				Unique:  false,
+				Columns: []*schema.Column{WorkItemsColumns[22], WorkItemsColumns[18]},
+			},
+			{
 				Name:    "workitem_updated_at",
 				Unique:  false,
 				Columns: []*schema.Column{WorkItemsColumns[24]},
@@ -601,7 +584,6 @@ var (
 		NotificationChannelsTable,
 		NotificationOutboxTable,
 		RepositoriesTable,
-		ScheduledJobsTable,
 		SecurityAlertsTable,
 		SyncCursorsTable,
 		SystemSettingsTable,
@@ -627,9 +609,6 @@ func init() {
 	}
 	RepositoriesTable.Annotation = &entsql.Annotation{
 		Table: "repositories",
-	}
-	ScheduledJobsTable.Annotation = &entsql.Annotation{
-		Table: "scheduled_jobs",
 	}
 	SecurityAlertsTable.Annotation = &entsql.Annotation{
 		Table: "security_alerts",

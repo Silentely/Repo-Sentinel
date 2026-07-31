@@ -30,9 +30,6 @@ type NotificationOutbox func(*sql.Selector)
 // Repository is the predicate function for repository builders.
 type Repository func(*sql.Selector)
 
-// ScheduledJob is the predicate function for scheduledjob builders.
-type ScheduledJob func(*sql.Selector)
-
 // SecurityAlert is the predicate function for securityalert builders.
 type SecurityAlert func(*sql.Selector)
 

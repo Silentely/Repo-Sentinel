@@ -28,8 +28,6 @@ type Tx struct {
 	NotificationOutbox *NotificationOutboxClient
 	// Repository is the client for interacting with the Repository builders.
 	Repository *RepositoryClient
-	// ScheduledJob is the client for interacting with the ScheduledJob builders.
-	ScheduledJob *ScheduledJobClient
 	// SecurityAlert is the client for interacting with the SecurityAlert builders.
 	SecurityAlert *SecurityAlertClient
 	// SyncCursor is the client for interacting with the SyncCursor builders.
@@ -181,7 +179,6 @@ func (tx *Tx) init() {
 	tx.NotificationChannel = NewNotificationChannelClient(tx.config)
 	tx.NotificationOutbox = NewNotificationOutboxClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)
-	tx.ScheduledJob = NewScheduledJobClient(tx.config)
 	tx.SecurityAlert = NewSecurityAlertClient(tx.config)
 	tx.SyncCursor = NewSyncCursorClient(tx.config)
 	tx.SystemSetting = NewSystemSettingClient(tx.config)
