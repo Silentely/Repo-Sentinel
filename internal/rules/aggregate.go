@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	htmlpkg "html"
 	"strings"
 	"sync"
 	"time"
@@ -119,7 +120,6 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	if !shouldNotifyRealtime(res.Event) {
 		return nil
 	}
-	// 系统级关键：不合并（当前事件模型无独立 system kind 实时路径）
 	repoID := ""
 	if res.Event.RepositoryID != nil {
 		repoID = *res.Event.RepositoryID
@@ -225,7 +225,7 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 // renderMergedMessage 由事件子集构建合并标题与正文（对 Telegram HTML 做转义）。
 func renderMergedMessage(repoName, category string, events []*store.Event) (string, string) {
 	categoryCN := categoryDisplayName(category)
-	title := fmt.Sprintf("📋 %s：%s × %d（已合并）", htmlEscape(repoName), htmlEscape(categoryCN), len(events))
+	title := fmt.Sprintf("📋 %s：%s × %d（已合并）", htmlpkg.EscapeString(repoName), htmlpkg.EscapeString(categoryCN), len(events))
 	var body strings.Builder
 	body.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
 	body.WriteString("────────────────\n")
@@ -242,9 +242,9 @@ func renderMergedMessage(repoName, category string, events []*store.Event) (stri
 		}
 		stateStr := ""
 		if ev.Action != "" {
-			stateStr = fmt.Sprintf("（%s）", htmlEscape(ev.Action))
+			stateStr = fmt.Sprintf("（%s）", htmlpkg.EscapeString(ev.Action))
 		}
-		body.WriteString(fmt.Sprintf("%s%s %s%s\n", emoji, numStr, htmlEscape(ev.Title), stateStr))
+		body.WriteString(fmt.Sprintf("%s%s %s%s\n", emoji, numStr, htmlpkg.EscapeString(ev.Title), stateStr))
 	}
 	return title, body.String()
 }
@@ -256,9 +256,9 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 	}
 	bucket := timeBucket(time.Now().UTC(), a.BurstWindow)
 	categoryCN := categoryDisplayName(cat)
-	safeTitle := htmlEscape(title)
-	safeRepo := htmlEscape(repoName)
-	safeCat := htmlEscape(categoryCN)
+	safeTitle := htmlpkg.EscapeString(title)
+	safeRepo := htmlpkg.EscapeString(repoName)
+	safeCat := htmlpkg.EscapeString(categoryCN)
 	body := fmt.Sprintf("<b>%s</b>\n────────────────\n📦 仓库：<code>%s</code>\n📋 类型：%s\n🔇 已降级为摘要模式，请在仪表盘查看详情", safeTitle, safeRepo, safeCat)
 	for _, ch := range channels {
 		// 以 sample 事件的类型判定渠道是否接收超频摘要。
@@ -299,16 +299,6 @@ func timeBucket(t time.Time, window time.Duration) int64 {
 		sec = 1
 	}
 	return t.Unix() / sec
-}
-
-func htmlEscape(s string) string {
-	replacer := strings.NewReplacer(
-		"&", "&amp;",
-		"<", "&lt;",
-		">", "&gt;",
-		`"`, "&quot;",
-	)
-	return replacer.Replace(s)
 }
 
 // categoryDisplayName 返回类别的显示名（与前端标签一致）。

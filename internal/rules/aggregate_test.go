@@ -3,6 +3,7 @@ package rules
 import (
 	"context"
 	"encoding/json"
+	htmlpkg "html"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -140,9 +141,11 @@ func TestAggregatorBurstSummary(t *testing.T) {
 	}
 }
 
+// TestHTMLEscape 守护通知文案的转义行为：合并与实时消息统一使用标准库
+// html.EscapeString（含单引号），避免自定义 replacer 与标准库行为分叉。
 func TestHTMLEscape(t *testing.T) {
-	got := htmlEscape(`a<b>&"c`)
-	want := "a&lt;b&gt;&amp;&quot;c"
+	got := htmlpkg.EscapeString(`a<b>&"c'`)
+	want := "a&lt;b&gt;&amp;&#34;c&#39;"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
