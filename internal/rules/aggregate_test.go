@@ -82,6 +82,40 @@ func TestAggregatorMergesWithinWindow(t *testing.T) {
 	}
 }
 
+func TestAggregator窗口内关闭全局开关不投递(t *testing.T) {
+	data := openTestStore(t)
+	_ = seedChannel(t, data)
+	agg := NewAggregator(data, 50*time.Millisecond, 100, time.Minute)
+
+	repoID := ulid.Make().String()
+	ctx := context.Background()
+	for _, title := range []string{"a", "b"} {
+		ev := &store.Event{
+			ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened",
+			Title: title, RepositoryID: &repoID,
+		}
+		if err := agg.Evaluate(ctx, normalizer.Result{Event: ev}, "acme/demo"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 窗口未到期前全局关闭 Issues：flush 时必须按最新开关过滤，不得投递已入桶事件。
+	raw, _ := json.Marshal(false)
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: "set-issues-off", Key: store.SettingFeatureIssues, ValueJSON: raw,
+		UpdatedAt: time.Now().UTC(), UpdatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(80 * time.Millisecond)
+	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("全局关闭后合并通知不得投递，got %d", len(items))
+	}
+}
+
 func TestAggregatorBurstSummary(t *testing.T) {
 	data := openTestStore(t)
 	_ = seedChannel(t, data)

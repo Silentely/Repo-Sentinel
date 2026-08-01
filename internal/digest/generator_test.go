@@ -241,10 +241,10 @@ func TestBuildDigestBody_SortedByCount(t *testing.T) {
 	}
 	body := buildDigestBody("test", events)
 
-	idxWorkflow := strings.Index(body, "工作流")
+	idxWorkflow := strings.Index(body, "Actions")
 	idxIssue := strings.Index(body, "Issue")
 	if idxWorkflow > idxIssue {
-		t.Error("工作流应排在 Issue 前面")
+		t.Error("Actions 应排在 Issue 前面")
 	}
 }
 
@@ -276,7 +276,7 @@ func TestKindDisplayName(t *testing.T) {
 		{store.AlertKindDependabot, "Dependabot"},
 		{store.AlertKindCodeScanning, "Code Scanning"},
 		{store.AlertKindSecretScanning, "Secret Scanning"},
-		{"workflow_run", "工作流"},
+		{"workflow_run", "Actions"},
 		{"custom_kind", "custom_kind"},
 	}
 	for _, tc := range cases {

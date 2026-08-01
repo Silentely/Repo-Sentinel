@@ -186,6 +186,8 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 	if err != nil {
 		return err
 	}
+	// 窗口结束时再按最新全局功能开关过滤：聚合窗口期间被关闭的类型不得漏发。
+	features := store.LoadFeatureFlags(ctx, a.Store.Settings())
 	// 多实例：幂等键按「渠道 + 仓 + 类别 + 时间桶」稳定，避免各副本各写一条合并通知。
 	// 进程内合并仍是 best-effort；跨实例重复事件靠 Outbox 唯一约束收敛。
 	bucket := timeBucket(time.Now().UTC(), a.Window)
@@ -195,7 +197,7 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 		}
 		sub := make([]*store.Event, 0, len(b.events))
 		for _, ev := range b.events {
-			if ch.AcceptsKind(ev.Kind) {
+			if ch.AcceptsKind(ev.Kind) && features.AllowsKind(ev.Kind) {
 				sub = append(sub, ev)
 			}
 		}
@@ -309,13 +311,13 @@ func htmlEscape(s string) string {
 	return replacer.Replace(s)
 }
 
-// categoryDisplayName 返回类别的中文显示名。
+// categoryDisplayName 返回类别的显示名（与前端标签一致）。
 func categoryDisplayName(cat string) string {
 	switch cat {
 	case "security":
 		return "安全告警"
 	case "actions":
-		return "工作流"
+		return "Actions"
 	case "issue":
 		return "Issue"
 	case "pr":
