@@ -189,7 +189,7 @@ func kindEmoji(kind string) string {
 	}
 }
 
-// kindDisplayName 返回事件类别的中文显示名。
+// kindDisplayName 返回事件类别的显示名（与前端标签一致）。
 func kindDisplayName(kind string) string {
 	switch kind {
 	case store.WorkItemKindIssue:
@@ -203,7 +203,7 @@ func kindDisplayName(kind string) string {
 	case store.AlertKindSecretScanning:
 		return "Secret Scanning"
 	case "workflow_run":
-		return "工作流"
+		return "Actions"
 	default:
 		return kind
 	}
