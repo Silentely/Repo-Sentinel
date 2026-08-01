@@ -83,14 +83,16 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	wantAlerts := features.SecurityAlerts && repo.AlertsEnabled
 
 	// Issues 与 PR 共用 GitHub Issues API：任一仍开启才需要拉取。
+	issuesSynced := false
 	if wantIssues || wantPRs {
 		if err := r.syncIssues(ctx, token, repo, since, isBaseline, wantIssues, wantPRs); err != nil {
 			return err
 		}
+		issuesSynced = true
 	}
 	softFailed := false
 	if wantActions {
-		if err := r.syncWorkflows(ctx, token, repo, isBaseline); err != nil {
+		if err := r.syncWorkflows(ctx, token, repo); err != nil {
 			// Actions 权限不足时软失败
 			softFailed = true
 			if r.Logger != nil {
@@ -100,7 +102,7 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	}
 	if wantAlerts {
 		for _, kind := range []string{store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning} {
-			if err := r.syncAlerts(ctx, token, repo, kind, isBaseline); err != nil {
+			if err := r.syncAlerts(ctx, token, repo, kind); err != nil {
 				if alertUnavailable(kind, err) {
 					// 仓库未开启该功能（或 App 未授权）：静态配置反复对账结果不变，静默跳过。
 					if r.Logger != nil {
@@ -128,10 +130,14 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 		repo.BaselineFinishedAt = &now
 	}
 	_, _ = r.Store.Repositories().Upsert(ctx, repo)
-	_, _ = r.Store.Cursors().Upsert(ctx, store.SyncCursor{
-		RepositoryID: repo.ID, Resource: "issues", CursorValue: now.Format(time.RFC3339),
-		LastSuccessAt: &now,
-	})
+	// issues 游标只在真正执行过 Issues 同步时推进：全局/仓库级开关全关时保留旧值，
+	// 重新开启后增量同步的 since 仍从上次成功位置回退 30 秒，可拉回关窗期内的变更。
+	if issuesSynced {
+		_, _ = r.Store.Cursors().Upsert(ctx, store.SyncCursor{
+			RepositoryID: repo.ID, Resource: "issues", CursorValue: now.Format(time.RFC3339),
+			LastSuccessAt: &now,
+		})
+	}
 	return nil
 }
 
@@ -291,7 +297,7 @@ func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo s
 	}
 }
 
-func (r *Reconciler) syncWorkflows(ctx context.Context, token string, repo store.Repository, baseline bool) error {
+func (r *Reconciler) syncWorkflows(ctx context.Context, token string, repo store.Repository) error {
 	for page := 1; page <= r.MaxPages; page++ {
 		items, _, err := r.GitHub.ListWorkflowRuns(ctx, token, repo.Owner, repo.Name, page)
 		if err != nil {
@@ -309,7 +315,6 @@ func (r *Reconciler) syncWorkflows(ctx context.Context, token string, repo store
 				RunAttempt: run.RunAttempt, HTMLURL: run.HTMLURL, RunUpdatedAt: run.UpdatedAt, StateHash: hash,
 			}
 			_, _, _ = r.Store.WorkflowRuns().UpsertIfNewer(ctx, in)
-			_ = baseline
 		}
 		if len(items) < 50 {
 			break
@@ -318,20 +323,20 @@ func (r *Reconciler) syncWorkflows(ctx context.Context, token string, repo store
 	return nil
 }
 
-func (r *Reconciler) syncAlerts(ctx context.Context, token string, repo store.Repository, kind string, baseline bool) error {
+func (r *Reconciler) syncAlerts(ctx context.Context, token string, repo store.Repository, kind string) error {
 	switch kind {
 	case store.AlertKindDependabot:
-		return r.syncDependabotAlerts(ctx, token, repo, baseline)
+		return r.syncDependabotAlerts(ctx, token, repo)
 	case store.AlertKindCodeScanning:
-		return r.syncPageAlerts(ctx, token, repo, kind, baseline)
+		return r.syncPageAlerts(ctx, token, repo, kind)
 	case store.AlertKindSecretScanning:
-		return r.syncPageAlerts(ctx, token, repo, kind, baseline)
+		return r.syncPageAlerts(ctx, token, repo, kind)
 	}
 	return nil
 }
 
 // syncDependabotAlerts 用游标分页拉取 dependabot alerts。
-func (r *Reconciler) syncDependabotAlerts(ctx context.Context, token string, repo store.Repository, baseline bool) error {
+func (r *Reconciler) syncDependabotAlerts(ctx context.Context, token string, repo store.Repository) error {
 	var cursor string
 	for page := 1; page <= r.MaxPages; page++ {
 		items, next, _, err := r.GitHub.ListDependabotAlerts(ctx, token, repo.Owner, repo.Name, cursor)
@@ -343,13 +348,12 @@ func (r *Reconciler) syncDependabotAlerts(ctx context.Context, token string, rep
 			break
 		}
 		cursor = next
-		_ = baseline
 	}
 	return nil
 }
 
 // syncPageAlerts 用传统 page 分页拉取 code_scanning / secret_scanning alerts。
-func (r *Reconciler) syncPageAlerts(ctx context.Context, token string, repo store.Repository, kind string, baseline bool) error {
+func (r *Reconciler) syncPageAlerts(ctx context.Context, token string, repo store.Repository, kind string) error {
 	var listFn func(context.Context, string, string, string, int) ([]githubx.AlertItem, int, error)
 	switch kind {
 	case store.AlertKindCodeScanning:
@@ -368,7 +372,6 @@ func (r *Reconciler) syncPageAlerts(ctx context.Context, token string, repo stor
 		if len(items) < 50 {
 			break
 		}
-		_ = baseline
 	}
 	return nil
 }
