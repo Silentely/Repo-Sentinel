@@ -16,6 +16,7 @@
 - 应用装配失败路径未取消 worker 上下文导致的 goroutine 泄漏（`go vet` 已拦截）
 - 对账期间 issues / PR 全局功能开关全关时不再推进 issues 增量游标，重新开启后仍可拉回关窗期内的变更
 - 通知文案 HTML 转义统一为标准库 `html.EscapeString`（含单引号），修复合并消息与实时消息转义行为不一致
+- GitHub API 剩余配额头缺失或解析失败时不再误报「配额低」日志（原先剩余 0 会误触发）
 
 ### Changed
 

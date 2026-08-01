@@ -426,6 +426,34 @@ func TestReconcileRespectsGlobalFeatureActions(t *testing.T) {
 	}
 }
 
+// TestAlertUnavailableClassification 表驱动守护告警不可用判定：
+// 仅 HTTP 状态码按 kind 命中才静默跳过，其余错误视为临时故障参与重试。
+func TestAlertUnavailableClassification(t *testing.T) {
+	httpErr := func(code int) error { return &githubx.HTTPStatusError{StatusCode: code} }
+	cases := []struct {
+		name string
+		kind string
+		err  error
+		want bool
+	}{
+		{"dependabot 400 不可用", store.AlertKindDependabot, httpErr(400), true},
+		{"dependabot 500 临时故障", store.AlertKindDependabot, httpErr(500), false},
+		{"code_scanning 403 不可用", store.AlertKindCodeScanning, httpErr(403), true},
+		{"code_scanning 404 不可用", store.AlertKindCodeScanning, httpErr(404), true},
+		{"code_scanning 500 临时故障", store.AlertKindCodeScanning, httpErr(500), false},
+		{"secret_scanning 404 不可用", store.AlertKindSecretScanning, httpErr(404), true},
+		{"secret_scanning 403 临时故障", store.AlertKindSecretScanning, httpErr(403), false},
+		{"非 HTTP 错误临时故障", store.AlertKindDependabot, fmt.Errorf("boom"), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := alertUnavailable(c.kind, c.err); got != c.want {
+				t.Fatalf("alertUnavailable(%s, %v) = %v, want %v", c.kind, c.err, got, c.want)
+			}
+		})
+	}
+}
+
 // 全局 issues 与 pull_requests 开关全关：不请求 Issues API，且不推进 issues 游标。
 // 游标保留旧值，重新开启后增量同步仍能拉回关窗期内的变更（防数据缺口回归）。
 func TestReconcileSkipsCursorWhenIssuesAndPRsDisabled(t *testing.T) {
