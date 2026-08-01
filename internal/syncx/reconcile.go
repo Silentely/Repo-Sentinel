@@ -2,8 +2,10 @@ package syncx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -99,6 +101,13 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	if wantAlerts {
 		for _, kind := range []string{store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning} {
 			if err := r.syncAlerts(ctx, token, repo, kind, isBaseline); err != nil {
+				if alertUnavailable(kind, err) {
+					// 仓库未开启该功能（或 App 未授权）：静态配置反复对账结果不变，静默跳过。
+					if r.Logger != nil {
+						r.Logger.Debug("alerts feature unavailable, skip", "repo", repo.FullName, "kind", kind, "error", err.Error())
+					}
+					continue
+				}
 				softFailed = true
 				if r.Logger != nil {
 					r.Logger.Warn("alerts reconcile soft-fail", "repo", repo.FullName, "kind", kind, "error_code", "reconcile_alerts", "error", err.Error())
@@ -310,29 +319,62 @@ func (r *Reconciler) syncWorkflows(ctx context.Context, token string, repo store
 }
 
 func (r *Reconciler) syncAlerts(ctx context.Context, token string, repo store.Repository, kind string, baseline bool) error {
-	// 告警按页拉取（每页 50 条）：只拉第 1 页会导致中大型仓库的告警永远只同步前 50 条。
-	var all []githubx.AlertItem
+	switch kind {
+	case store.AlertKindDependabot:
+		return r.syncDependabotAlerts(ctx, token, repo, baseline)
+	case store.AlertKindCodeScanning:
+		return r.syncPageAlerts(ctx, token, repo, kind, baseline)
+	case store.AlertKindSecretScanning:
+		return r.syncPageAlerts(ctx, token, repo, kind, baseline)
+	}
+	return nil
+}
+
+// syncDependabotAlerts 用游标分页拉取 dependabot alerts。
+func (r *Reconciler) syncDependabotAlerts(ctx context.Context, token string, repo store.Repository, baseline bool) error {
+	var cursor string
 	for page := 1; page <= r.MaxPages; page++ {
-		var (
-			items []githubx.AlertItem
-			err   error
-		)
-		switch kind {
-		case store.AlertKindDependabot:
-			items, _, err = r.GitHub.ListDependabotAlerts(ctx, token, repo.Owner, repo.Name, page)
-		case store.AlertKindCodeScanning:
-			items, _, err = r.GitHub.ListCodeScanningAlerts(ctx, token, repo.Owner, repo.Name, page)
-		case store.AlertKindSecretScanning:
-			items, _, err = r.GitHub.ListSecretScanningAlerts(ctx, token, repo.Owner, repo.Name, page)
-		}
+		items, next, _, err := r.GitHub.ListDependabotAlerts(ctx, token, repo.Owner, repo.Name, cursor)
 		if err != nil {
 			return err
 		}
-		all = append(all, items...)
+		r.saveAlerts(ctx, repo, store.AlertKindDependabot, items)
+		if next == "" {
+			break
+		}
+		cursor = next
+		_ = baseline
+	}
+	return nil
+}
+
+// syncPageAlerts 用传统 page 分页拉取 code_scanning / secret_scanning alerts。
+func (r *Reconciler) syncPageAlerts(ctx context.Context, token string, repo store.Repository, kind string, baseline bool) error {
+	var listFn func(context.Context, string, string, string, int) ([]githubx.AlertItem, int, error)
+	switch kind {
+	case store.AlertKindCodeScanning:
+		listFn = r.GitHub.ListCodeScanningAlerts
+	case store.AlertKindSecretScanning:
+		listFn = r.GitHub.ListSecretScanningAlerts
+	default:
+		return nil
+	}
+	for page := 1; page <= r.MaxPages; page++ {
+		items, _, err := listFn(ctx, token, repo.Owner, repo.Name, page)
+		if err != nil {
+			return err
+		}
+		r.saveAlerts(ctx, repo, kind, items)
 		if len(items) < 50 {
 			break
 		}
+		_ = baseline
 	}
+	return nil
+}
+
+// saveAlerts 将告警列表写入 store。
+func (r *Reconciler) saveAlerts(ctx context.Context, repo store.Repository, kind string, all []githubx.AlertItem) {
 	for _, a := range all {
 		severity := a.Severity
 		rule := ""
@@ -367,9 +409,31 @@ func (r *Reconciler) syncAlerts(ctx context.Context, token string, repo store.Re
 			Severity: severity, RuleOrDependency: rule, DismissedReason: a.DismissedReason,
 			HTMLURL: a.HTMLURL, SourceUpdatedAt: updated, StateHash: hash,
 		})
-		_ = baseline
 	}
-	return nil
+}
+
+// alertUnavailable 判断告警 API 的错误是否为"功能未开启"不可恢复状态。
+// 功能未开启的仓库反复对账永远是同一结果，应静默跳过而非标记 soft-fail。
+// 判定依据：dependabot 端点返回 400（已改用游标分页后不应再出现）；
+// code_scanning 返回 403/404（Advanced Security 未启用）；
+// secret_scanning 返回 404（Secret Scanning 未启用）。
+func alertUnavailable(kind string, err error) bool {
+	var httpErr *githubx.HTTPStatusError
+	if !errors.As(err, &httpErr) {
+		return false
+	}
+	switch kind {
+	case store.AlertKindDependabot:
+		// 游标分页改完后若仍返回 400，说明仓库不支持 Dependabot alerts。
+		return httpErr.StatusCode == http.StatusBadRequest
+	case store.AlertKindCodeScanning:
+		// 403（Advanced Security 未启用）或 404（仓库不存在/不可见）。
+		return httpErr.StatusCode == http.StatusForbidden || httpErr.StatusCode == http.StatusNotFound
+	case store.AlertKindSecretScanning:
+		// 404（Secret Scanning 未启用或仓库不可见）。
+		return httpErr.StatusCode == http.StatusNotFound
+	}
+	return false
 }
 
 func strPtr(p *string) string {

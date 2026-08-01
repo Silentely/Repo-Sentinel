@@ -41,8 +41,12 @@ type fakeGitHub struct {
 
 	// issuesFn 按页返回 issues 响应体；用例可定制，默认空页。
 	issuesFn func(page int) any
-	// dependabotFn 按页返回 dependabot alerts 响应体；用例可定制，默认空页。
-	dependabotFn func(page int) any
+	// dependabotFn 按 after 游标返回 dependabot alerts 响应体与下一页游标；
+	// 返回的 next 非空时写入 Link header 模拟游标分页；用例可定制，默认空页。
+	dependabotFn func(cursor string) (any, string)
+	// alertHTTPStatus 可选：code/secret scanning 端点的状态码（默认 200），
+	// 用于模拟功能未开启（404）等不可用场景。
+	alertHTTPStatus map[string]int
 
 	// 请求计数器（httptest 每个请求独立 goroutine，必须用原子量）。
 	prDetailRequests atomic.Int64 // GET /pulls/{n}：enrich 预算观测点
@@ -58,6 +62,7 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(v)
 	}
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	cursor := r.URL.Query().Get("after")
 	path := r.URL.Path
 	switch {
 	case reAccessTokens.MatchString(path):
@@ -76,11 +81,25 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case reDependabot.MatchString(path):
 		f.dependabotPages.Add(1)
 		if f.dependabotFn != nil {
-			write(f.dependabotFn(page))
+			items, next := f.dependabotFn(cursor)
+			if next != "" {
+				w.Header().Set("Link", fmt.Sprintf(`<%s/repos/acme/demo/dependabot/alerts?after=%s&per_page=50>; rel="next"`, f.server.URL, next))
+			}
+			write(items)
 			return
 		}
 		write([]any{})
-	case reCodeScanning.MatchString(path) || reSecretScan.MatchString(path):
+	case reCodeScanning.MatchString(path):
+		if status, ok := f.alertHTTPStatus["code_scanning"]; ok {
+			http.Error(w, http.StatusText(status), status)
+			return
+		}
+		write([]any{})
+	case reSecretScan.MatchString(path):
+		if status, ok := f.alertHTTPStatus["secret_scanning"]; ok {
+			http.Error(w, http.StatusText(status), status)
+			return
+		}
 		write([]any{})
 	case rePRReviews.MatchString(path):
 		write([]map[string]any{{
@@ -240,8 +259,9 @@ func TestReconcileRepositoryInstallationSuccess(t *testing.T) {
 	}
 }
 
-// TestReconcileDependabotAlertsPagination 验证告警多页拉取：
-// 第一页满 50 条时必须继续拉第二页，51 条告警须全部落库（防回归"只拉第一页"）。
+// TestReconcileDependabotAlertsPagination 验证 dependabot 告警游标分页：
+// 第一页满 50 条且 Link header 给出下一页游标时必须继续拉取，51 条告警须全部落库
+// （防回归"只拉第一页"，且 dependabot 端点不接受 page 参数，必须走 after 游标）。
 func TestReconcileDependabotAlertsPagination(t *testing.T) {
 	data, fake, repo := newReconcileFixture(t)
 	ctx := t.Context()
@@ -257,18 +277,18 @@ func TestReconcileDependabotAlertsPagination(t *testing.T) {
 		}
 	}
 	fake.issuesFn = func(page int) any { return []any{} }
-	fake.dependabotFn = func(page int) any {
-		switch page {
-		case 1:
+	fake.dependabotFn = func(cursor string) (any, string) {
+		switch cursor {
+		case "":
 			items := make([]map[string]any, 0, 50)
 			for i := 1; i <= 50; i++ {
 				items = append(items, alert(i))
 			}
-			return items
-		case 2:
-			return []map[string]any{alert(51)}
+			return items, "cursor-2"
+		case "cursor-2":
+			return []map[string]any{alert(51)}, ""
 		default:
-			return []any{}
+			return []any{}, ""
 		}
 	}
 
@@ -277,7 +297,7 @@ func TestReconcileDependabotAlertsPagination(t *testing.T) {
 		t.Fatalf("对账应成功: %v", err)
 	}
 	if got := fake.dependabotPages.Load(); got < 2 {
-		t.Fatalf("第一页满 50 条时应继续拉第二页，实际请求 %d 次", got)
+		t.Fatalf("第一页满 50 条时应按游标继续拉第二页，实际请求 %d 次", got)
 	}
 	_, pageResult, err := data.SecurityAlerts().List(ctx, store.ListFilter{Page: 1, PerPage: 100, RepositoryID: repo.ID})
 	if err != nil {
@@ -293,6 +313,32 @@ func TestReconcileDependabotAlertsPagination(t *testing.T) {
 	}
 	if last.RuleOrDependency != "lodash" || last.Severity != "high" {
 		t.Fatalf("告警字段映射错误: rule=%s severity=%s", last.RuleOrDependency, last.Severity)
+	}
+}
+
+// TestReconcileAlertsUnavailableNotPartial 验证仓库未开启 code/secret scanning
+// （GitHub 返回 404）时对账静默跳过该类告警，不标记 reconcile_partial：
+// 功能未开启是静态状态，反复重试结果不变，不应污染"最后同步"状态。
+func TestReconcileAlertsUnavailableNotPartial(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+
+	fake.issuesFn = func(page int) any { return []any{} }
+	fake.alertHTTPStatus = map[string]int{
+		"code_scanning":   http.StatusNotFound,
+		"secret_scanning": http.StatusNotFound,
+	}
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+	got, err := data.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastSyncErrorCode != "" {
+		t.Fatalf("功能未开启不应标记部分失败，got %s", got.LastSyncErrorCode)
 	}
 }
 
