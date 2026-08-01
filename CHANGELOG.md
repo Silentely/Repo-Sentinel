@@ -22,6 +22,7 @@
 - GitHub 429 / 配额耗尽 403 返回携带上游建议等待时长的限流错误（`Retry-After` / `X-RateLimit-Reset`），token 签发端点同样归类
 - 对账与外部轮询遇限流停止本轮（等待时长在 2 分钟预算内先等待再继续），不再逐仓连环请求放大次限流
 - Actions 恢复事件此前永不触发：`LatestCompleted` 查询位于写入之后命中当前运行自身，现前移为写入前基线查询，失败后成功会正确标记 `recovered`
+- Installation Token 并发获取合并为单次签发请求（single-flight），Webhook 处理与后台同步并发触发时不再对 GitHub 签发端点惊群请求
 
 ### Changed
 

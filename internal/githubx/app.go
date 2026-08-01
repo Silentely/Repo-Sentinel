@@ -32,11 +32,20 @@ type AppClient struct {
 	mu    sync.Mutex
 	key   *rsa.PrivateKey
 	cache map[int64]cachedToken
+	// inflight 合并同一 installation 的并发 token 获取，避免对签发端点惊群请求。
+	inflight map[int64]*tokenCall
 }
 
 type cachedToken struct {
 	Token     string
 	ExpiresAt time.Time
+}
+
+// tokenCall 代表一个在途的 installation token 获取；done 关闭后结果可用。
+type tokenCall struct {
+	done  chan struct{}
+	token string
+	err   error
 }
 
 // NewAppClient 创建客户端；AppID 或私钥为空时仍可构造，调用时再报错。
@@ -47,6 +56,7 @@ func NewAppClient(appID int64, privateKeyPath string) *AppClient {
 		HTTP:           &http.Client{Timeout: 30 * time.Second},
 		BaseURL:        "https://api.github.com",
 		cache:          make(map[int64]cachedToken),
+		inflight:       make(map[int64]*tokenCall),
 	}
 }
 
@@ -62,6 +72,7 @@ func (c *AppClient) Configure(appID int64, privateKeyPath, privateKeyPEM string)
 	c.PrivateKeyPEM = strings.TrimSpace(privateKeyPEM)
 	c.key = nil
 	c.cache = make(map[int64]cachedToken)
+	c.inflight = make(map[int64]*tokenCall)
 }
 
 // Configured 表示具备 App 调用条件（App ID + 路径或内存 PEM 其一）。
@@ -171,20 +182,52 @@ func (c *AppClient) AppJWT() (string, error) {
 }
 
 // InstallationToken 获取并缓存 installation access token。
+// 并发调用同一 installation 时合并为一次签发请求，避免惊群放大 GitHub 调用。
 func (c *AppClient) InstallationToken(ctx context.Context, installationID int64) (string, error) {
 	if !c.Configured() {
 		return "", fmt.Errorf("github_app_not_configured")
 	}
 	c.mu.Lock()
+	if c.inflight == nil {
+		c.inflight = make(map[int64]*tokenCall)
+	}
+	// 快路径：缓存命中且余量充足（2 分钟安全边际）。
 	if tok, ok := c.cache[installationID]; ok && time.Now().Before(tok.ExpiresAt.Add(-2*time.Minute)) {
 		c.mu.Unlock()
 		return tok.Token, nil
 	}
+	// 慢路径：同一 installation 已有在途获取时共享其结果。
+	if call, ok := c.inflight[installationID]; ok {
+		c.mu.Unlock()
+		select {
+		case <-call.done:
+			return call.token, call.err
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	call := &tokenCall{done: make(chan struct{})}
+	c.inflight[installationID] = call
 	c.mu.Unlock()
 
+	token, expiresAt, err := c.fetchInstallationToken(ctx, installationID)
+
+	c.mu.Lock()
+	if err == nil && c.cache != nil {
+		c.cache[installationID] = cachedToken{Token: token, ExpiresAt: expiresAt}
+	}
+	call.token, call.err = token, err
+	close(call.done)
+	delete(c.inflight, installationID)
+	c.mu.Unlock()
+	return token, err
+}
+
+// fetchInstallationToken 执行实际的 token 签发请求（须在锁外调用）。
+func (c *AppClient) fetchInstallationToken(ctx context.Context, installationID int64) (string, time.Time, error) {
 	jwtToken, err := c.AppJWT()
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	base := strings.TrimSpace(c.BaseURL)
 	if base == "" {
@@ -193,46 +236,39 @@ func (c *AppClient) InstallationToken(ctx context.Context, installationID int64)
 	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", base, installationID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+jwtToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode == http.StatusTooManyRequests {
 		// 429：次限流，按 Retry-After 响应头给出等待时长。
-		return "", &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
+		return "", time.Time{}, &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
 	}
 	if resp.StatusCode == http.StatusForbidden {
 		// 403 需区分限流与权限/配置错误：主限流响应携带 X-RateLimit-Remaining: 0。
 		if resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")) {
-			return "", &RateLimitError{RetryAfter: resetDelta(resp.Header.Get("X-RateLimit-Reset"))}
+			return "", time.Time{}, &RateLimitError{RetryAfter: resetDelta(resp.Header.Get("X-RateLimit-Reset"))}
 		}
-		return "", fmt.Errorf("installation_token_http_%d", resp.StatusCode)
+		return "", time.Time{}, fmt.Errorf("installation_token_http_%d", resp.StatusCode)
 	}
 	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("installation_token_http_%d", resp.StatusCode)
+		return "", time.Time{}, fmt.Errorf("installation_token_http_%d", resp.StatusCode)
 	}
 	var parsed struct {
 		Token     string    `json:"token"`
 		ExpiresAt time.Time `json:"expires_at"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
-	c.mu.Lock()
-	// cache 仅在构造函数中初始化；防御结构体字面量构造下的 nil map 写 panic。
-	if c.cache == nil {
-		c.cache = make(map[int64]cachedToken)
-	}
-	c.cache[installationID] = cachedToken{Token: parsed.Token, ExpiresAt: parsed.ExpiresAt}
-	c.mu.Unlock()
-	return parsed.Token, nil
+	return parsed.Token, parsed.ExpiresAt, nil
 }
 
 // DoJSON 使用 bearer token 请求 GitHub API。
