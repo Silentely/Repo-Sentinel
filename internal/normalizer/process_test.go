@@ -579,6 +579,69 @@ func TestProcessWorkflowRunWithMissingFields(t *testing.T) {
 	}
 }
 
+// 上一次 completed 运行为失败、本次成功：应触发恢复事件。
+// 回归：LatestCompleted 查询曾位于 UpsertIfNewer 之后，命中刚写入的当前运行，
+// 导致 prevRun.GitHubRunID != run.ID 恒为 false，恢复事件永不触发。
+func TestProcessWorkflowRunRecoveryDetected(t *testing.T) {
+	data := openProcessStore(t)
+	repo := seedActiveDemoRepo(t, data)
+
+	// 预置上一次失败的 completed 运行（时间早于本次 webhook）。
+	failure := "failure"
+	prevTime := time.Now().UTC().Add(-time.Hour)
+	prevCompleted := prevTime.Add(-time.Minute)
+	if _, _, err := data.WorkflowRuns().UpsertIfNewer(t.Context(), store.WorkflowRun{
+		RepositoryID:     repo.ID,
+		GitHubRunID:      1001,
+		GitHubWorkflowID: 77,
+		WorkflowName:     "ci",
+		RunNumber:        8,
+		Event:            "push",
+		HeadBranch:       "main",
+		HeadSHA:          "abc1111",
+		Status:           "completed",
+		Conclusion:       &failure,
+		Actor:            "alice",
+		RunAttempt:       1,
+		HTMLURL:          "https://github.com/acme/demo/actions/runs/1001",
+		RunStartedAt:     &prevTime,
+		RunUpdatedAt:     prevTime,
+		RunCompletedAt:   &prevCompleted,
+		StateHash:        "seed-state-1001",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"action": "completed",
+		"workflow_run": map[string]any{
+			"id": 1002, "name": "ci", "workflow_id": 77, "run_number": 9,
+			"event": "push", "status": "completed", "conclusion": "success",
+			"html_url":    "https://github.com/acme/demo/actions/runs/1002",
+			"head_branch": "main", "head_sha": "abc2222", "run_attempt": 1,
+			"run_started_at": prevTime.Add(30 * time.Minute).Format(time.RFC3339),
+			"updated_at":     time.Now().UTC().Format(time.RFC3339),
+			"actor":          map[string]any{"login": "alice"},
+		},
+		"repository": demoRepoPayload(false),
+	})
+
+	proc := &normalizer.Processor{Store: data}
+	res, err := proc.Process(t.Context(), "workflow_run", "delivery-recovery-1", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Event == nil {
+		t.Fatal("期望产生事件")
+	}
+	if res.Event.Action != "recovered" {
+		t.Fatalf("期望 Action=recovered，实际 %q", res.Event.Action)
+	}
+	if got, ok := res.Event.PayloadSummary["previous_conclusion"]; !ok || got != "failure" {
+		t.Fatalf("期望 previous_conclusion=failure，实际 %v", res.Event.PayloadSummary["previous_conclusion"])
+	}
+}
+
 // TestUpsertPreservesCapabilitySettings 验证 Upsert 不会覆盖用户配置的能力开关。
 func TestUpsertPreservesCapabilitySettings(t *testing.T) {
 	dbURL := "file:" + filepath.Join(t.TempDir(), "cap.db")
