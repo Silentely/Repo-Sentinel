@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -203,6 +204,17 @@ func (c *AppClient) InstallationToken(ctx context.Context, installationID int64)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// 429：次限流，按 Retry-After 响应头给出等待时长。
+		return "", &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		// 403 需区分限流与权限/配置错误：主限流响应携带 X-RateLimit-Remaining: 0。
+		if resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")) {
+			return "", &RateLimitError{RetryAfter: resetDelta(resp.Header.Get("X-RateLimit-Reset"))}
+		}
+		return "", fmt.Errorf("installation_token_http_%d", resp.StatusCode)
+	}
 	if resp.StatusCode >= 300 {
 		return "", fmt.Errorf("installation_token_http_%d", resp.StatusCode)
 	}
@@ -271,13 +283,13 @@ func (c *AppClient) doJSON(ctx context.Context, method, path, token string, out 
 		return rateRemaining, link, errNotModified
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
-		// 429：次限流。
-		return rateRemaining, link, fmt.Errorf("github_rate_limited")
+		// 429：次限流，按 Retry-After 响应头给出等待时长。
+		return rateRemaining, link, &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
 	}
 	if resp.StatusCode == http.StatusForbidden {
 		// 403 需区分限流与权限/功能未开启：主限流响应携带 X-RateLimit-Remaining: 0。
 		if resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")) {
-			return rateRemaining, link, fmt.Errorf("github_rate_limited")
+			return rateRemaining, link, &RateLimitError{RetryAfter: resetDelta(resp.Header.Get("X-RateLimit-Reset"))}
 		}
 		return rateRemaining, link, statusError(resp.StatusCode, body)
 	}
@@ -302,6 +314,65 @@ var errNotModified = fmt.Errorf("not_modified")
 // IsNotModified 判断 304。
 func IsNotModified(err error) bool {
 	return err == errNotModified
+}
+
+// RateLimitError GitHub 限流错误：429 次限流或配额耗尽的 403。
+// RetryAfter 为上游建议的等待时长（0 表示未知），调用方按自身预算决定等待或放弃本轮。
+type RateLimitError struct {
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitError) Error() string { return "github_rate_limited" }
+
+// IsRateLimited 判断错误是否为 GitHub 限流（429 或配额耗尽的 403）。
+func IsRateLimited(err error) bool {
+	var rle *RateLimitError
+	return errors.As(err, &rle)
+}
+
+// RetryAfterOf 返回限流错误携带的建议等待时长；非限流错误返回 0。
+func RetryAfterOf(err error) time.Duration {
+	var rle *RateLimitError
+	if errors.As(err, &rle) {
+		return rle.RetryAfter
+	}
+	return 0
+}
+
+// parseRetryAfterHeader 解析 Retry-After 响应头：整数秒或 HTTP 日期。
+// 头缺失、格式非法或日期已过期时返回 0。
+func parseRetryAfterHeader(h string) time.Duration {
+	h = strings.TrimSpace(h)
+	if h == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(h); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if t, err := http.ParseTime(h); err == nil {
+		d := time.Until(t)
+		if d <= 0 {
+			return 0
+		}
+		return d
+	}
+	return 0
+}
+
+// resetDelta 把 X-RateLimit-Reset（unix 秒）换算为剩余等待时长；缺失或已过期返回 0。
+func resetDelta(header string) time.Duration {
+	ts, err := strconv.ParseInt(strings.TrimSpace(header), 10, 64)
+	if err != nil {
+		return 0
+	}
+	d := time.Until(time.Unix(ts, 0))
+	if d <= 0 {
+		return 0
+	}
+	return d
 }
 
 // HTTPStatusError 携带 GitHub API 的 HTTP 状态码，便于调用方按状态分类
