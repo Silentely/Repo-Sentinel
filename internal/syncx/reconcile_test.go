@@ -426,6 +426,52 @@ func TestReconcileRespectsGlobalFeatureActions(t *testing.T) {
 	}
 }
 
+// 全局 issues 与 pull_requests 开关全关：不请求 Issues API，且不推进 issues 游标。
+// 游标保留旧值，重新开启后增量同步仍能拉回关窗期内的变更（防数据缺口回归）。
+func TestReconcileSkipsCursorWhenIssuesAndPRsDisabled(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+
+	off, _ := json.Marshal(false)
+	for _, key := range []string{store.SettingFeatureIssues, store.SettingFeaturePullRequests} {
+		if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+			ID: "feat-" + key, Key: key, ValueJSON: off,
+			UpdatedAt: time.Now().UTC(), UpdatedBy: "test",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Issues API 有数据返回，用于证明「未请求」而非「请求了但没数据」。
+	fake.issuesFn = func(page int) any {
+		return []map[string]any{{
+			"number": 1, "state": "open", "title": "不应被采集",
+			"html_url":   "https://github.com/acme/demo/issues/1",
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"user":       map[string]any{"login": "alice"},
+			"labels":     []any{}, "assignees": []any{},
+		}}
+	}
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+	if got := fake.issuesPages.Load(); got != 0 {
+		t.Fatalf("全局 issues/PR 关闭不应请求 issues API，got %d", got)
+	}
+	if _, err := data.Cursors().Get(ctx, repo.ID, "issues"); err == nil {
+		t.Fatal("issues/PR 全关时不应推进 issues 游标")
+	}
+	// 仓库最后同步时间仍应刷新（对账确实执行过）。
+	got, err := data.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastSyncedAt == nil {
+		t.Fatal("last_synced_at 应被更新")
+	}
+}
+
 // 监控总开关关闭的仓库：整仓跳过对账，不产生任何 GitHub 请求。
 func TestReconcileSkipsMonitorDisabledRepo(t *testing.T) {
 	data, fake, repo := newReconcileFixture(t)
