@@ -8,6 +8,37 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
+// TestShouldNotifyRealtime 表驱动守护实时通知判定：Issue/PR 按 action 白名单，
+// Actions 按结论失败与恢复，安全告警一律实时。
+func TestShouldNotifyRealtime(t *testing.T) {
+	cases := []struct {
+		name string
+		ev   store.Event
+		want bool
+	}{
+		{"issue opened 实时", store.Event{Kind: store.WorkItemKindIssue, Action: "opened"}, true},
+		{"issue closed 实时", store.Event{Kind: store.WorkItemKindIssue, Action: "closed"}, true},
+		{"issue edited 摘要", store.Event{Kind: store.WorkItemKindIssue, Action: "edited"}, false},
+		{"pr merged 实时", store.Event{Kind: store.WorkItemKindPR, Action: "merged"}, true},
+		{"pr ready_for_review 实时", store.Event{Kind: store.WorkItemKindPR, Action: "ready_for_review"}, true},
+		{"pr converted_to_draft 摘要", store.Event{Kind: store.WorkItemKindPR, Action: "converted_to_draft"}, false},
+		{"workflow 失败实时", store.Event{Kind: "workflow_run", WorkflowConclusion: "failure"}, true},
+		{"workflow 成功摘要", store.Event{Kind: "workflow_run", WorkflowConclusion: "success"}, false},
+		{"workflow 恢复实时", store.Event{Kind: "workflow_run", Action: "recovered"}, true},
+		{"dependabot 创建实时", store.Event{Kind: store.AlertKindDependabot, Action: "created"}, true},
+		{"code_scanning 严重度变化实时", store.Event{Kind: store.AlertKindCodeScanning, Action: "changed"}, true},
+		{"secret_scanning 忽略实时", store.Event{Kind: store.AlertKindSecretScanning, Action: "dismissed"}, true},
+		{"未知 kind 摘要", store.Event{Kind: "unknown", Action: "opened"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := shouldNotifyRealtime(&c.ev); got != c.want {
+				t.Fatalf("shouldNotifyRealtime(%+v) = %v, want %v", c.ev, got, c.want)
+			}
+		})
+	}
+}
+
 func TestRenderMessage_IssueOpened(t *testing.T) {
 	now := time.Date(2026, 7, 30, 9, 15, 0, 0, time.UTC)
 	num := 8

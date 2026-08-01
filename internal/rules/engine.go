@@ -109,14 +109,8 @@ func shouldNotifyRealtime(ev *store.Event) bool {
 		}
 		return normalizerIsFailure(ev.WorkflowConclusion)
 	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
-		switch ev.Action {
-		case "created", "reopened", "opened", "fixed", "resolved", "dismissed",
-			"auto_dismissed", "appear_in_branch":
-			return true
-		default:
-			// 严重程度变化等
-			return true
-		}
+		// 安全告警不论 action（创建/忽略/严重度变化等）一律实时通知，避免遗漏风险。
+		return true
 	}
 	return false
 }
