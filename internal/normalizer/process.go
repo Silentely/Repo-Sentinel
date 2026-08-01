@@ -517,6 +517,14 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		t := run.UpdatedAt
 		in.RunCompletedAt = &t
 	}
+	// 恢复检测需要"上一次已完成运行"的结论作为基线，必须在本次写入之前查询，
+	// 否则 LatestCompleted 会命中刚写入的当前运行，恢复事件将永不触发。
+	var prevRun *store.WorkflowRun
+	if run.Status == "completed" && run.Conclusion != nil && *run.Conclusion == "success" {
+		if prev, err := p.Store.WorkflowRuns().LatestCompleted(ctx, repo.ID, run.WorkflowID, run.HeadBranch); err == nil {
+			prevRun = &prev
+		}
+	}
 	_, updated, err := p.Store.WorkflowRuns().UpsertIfNewer(ctx, in)
 	if err != nil {
 		return Result{}, fmt.Errorf("upsert workflow_run: %w", err)
@@ -546,14 +554,10 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}
-	// 恢复检测
-	if *run.Conclusion == "success" {
-		if prev, err := p.Store.WorkflowRuns().LatestCompleted(ctx, repo.ID, run.WorkflowID, run.HeadBranch); err == nil {
-			if prev.GitHubRunID != run.ID && prev.Conclusion != nil && isFailureConclusion(*prev.Conclusion) {
-				ev.Action = "recovered"
-				ev.PayloadSummary["previous_conclusion"] = *prev.Conclusion
-			}
-		}
+	// 恢复检测：上一次 completed 运行为失败结论时，本次成功视为恢复。
+	if prevRun != nil && prevRun.GitHubRunID != run.ID && prevRun.Conclusion != nil && isFailureConclusion(*prevRun.Conclusion) {
+		ev.Action = "recovered"
+		ev.PayloadSummary["previous_conclusion"] = *prevRun.Conclusion
 	}
 	created, err := p.Store.Events().Create(ctx, ev)
 	if err != nil {

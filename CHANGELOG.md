@@ -21,6 +21,7 @@
 - HTTP Webhook 通道解析 429/503 响应的 `Retry-After` 响应头（秒或 HTTP 日期），按上游指引退避而非固定阶梯
 - GitHub 429 / 配额耗尽 403 返回携带上游建议等待时长的限流错误（`Retry-After` / `X-RateLimit-Reset`），token 签发端点同样归类
 - 对账与外部轮询遇限流停止本轮（等待时长在 2 分钟预算内先等待再继续），不再逐仓连环请求放大次限流
+- Actions 恢复事件此前永不触发：`LatestCompleted` 查询位于写入之后命中当前运行自身，现前移为写入前基线查询，失败后成功会正确标记 `recovered`
 
 ### Changed
 
