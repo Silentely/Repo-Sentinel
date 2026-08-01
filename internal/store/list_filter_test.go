@@ -483,3 +483,53 @@ func TestListSyncCandidatesOrdersByLastSyncedAt(t *testing.T) {
 		}
 	}
 }
+
+// TestListTieBreakStableAcrossPages 验证列表查询在时间戳并列时按 ID 升序稳定排序：
+// 批量对账会让多行共享同一更新时间，缺少 tiebreaker 时翻页顺序不确定，
+// 「加载更多」可能重复或遗漏（防回归）。
+func TestListTieBreakStableAcrossPages(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	repo, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-tie", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "tie", FullName: "o/tie", IsArchived: false,
+		MonitorEnabled: true, IssuesEnabled: true, PrEnabled: true, ActionsEnabled: true, AlertsEnabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 三个告警共享同一 SourceUpdatedAt（模拟批量同步同刻写入），ID 故意乱序。
+	for i, id := range []string{"al-b", "al-a", "al-c"} {
+		if _, _, err := data.SecurityAlerts().UpsertIfNewer(ctx, store.SecurityAlert{
+			ID: id, RepositoryID: repo.ID, AlertKind: store.AlertKindDependabot, AlertNumber: i + 1,
+			State: "open", Severity: "high", SourceUpdatedAt: now, StateHash: id,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 跨页取回全部：并列时间戳必须按 ID 升序稳定排列，翻页不重不漏。
+	var got []string
+	for page := 1; ; page++ {
+		rows, res, err := data.SecurityAlerts().List(ctx, store.ListFilter{Page: page, PerPage: 2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range rows {
+			got = append(got, r.ID)
+		}
+		if page*res.PerPage >= res.Total {
+			break
+		}
+	}
+	want := []string{"al-a", "al-b", "al-c"}
+	if len(got) != len(want) {
+		t.Fatalf("应取回 3 条，got %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("并列时间戳排序不稳定：got %v want %v", got, want)
+		}
+	}
+}
