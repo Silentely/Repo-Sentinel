@@ -93,6 +93,10 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	softFailed := false
 	if wantActions {
 		if err := r.syncWorkflows(ctx, token, repo); err != nil {
+			// 限流是全安装级信号：不能当作单仓软失败吞掉，必须终止本轮。
+			if githubx.IsRateLimited(err) {
+				return err
+			}
 			// Actions 权限不足时软失败
 			softFailed = true
 			if r.Logger != nil {
@@ -103,6 +107,9 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	if wantAlerts {
 		for _, kind := range []string{store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning} {
 			if err := r.syncAlerts(ctx, token, repo, kind); err != nil {
+				if githubx.IsRateLimited(err) {
+					return err
+				}
 				if alertUnavailable(kind, err) {
 					// 仓库未开启该功能（或 App 未授权）：静态配置反复对账结果不变，静默跳过。
 					if r.Logger != nil {
@@ -447,6 +454,10 @@ func strPtr(p *string) string {
 }
 
 // ReconcileAll 对账全部自有仓（受预算限制：每轮最多 N 个）。
+// maxRateLimitWait 限流后单轮等待预算上限：超出说明上游要求长时间冷却（如主配额耗尽），
+// 直接结束本轮等待下一调度周期，避免把对账轮拉得过长。
+var maxRateLimitWait = 2 * time.Minute
+
 func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 	if r.OnRun != nil {
 		r.OnRun()
@@ -461,6 +472,8 @@ func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 		return err
 	}
 	n := 0
+	// 限流等待预算：每轮最多按上游建议等待一次，二次限流说明冷却不足，直接停止本轮。
+	rateLimitWaited := false
 	for _, repo := range repos {
 		if repo.SyncStatus == store.SyncStatusArchived || repo.SyncStatus == store.SyncStatusUnavailable {
 			continue
@@ -476,8 +489,31 @@ func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 		if !repo.MonitorEnabled {
 			continue
 		}
-		if err := r.ReconcileRepository(ctx, repo); err != nil && r.Logger != nil {
-			r.Logger.Error("reconcile failed", "repo", repo.FullName, "error_code", "reconcile_failed")
+		if err := r.ReconcileRepository(ctx, repo); err != nil {
+			if githubx.IsRateLimited(err) {
+				wait := githubx.RetryAfterOf(err)
+				if wait > 0 && wait <= maxRateLimitWait && !rateLimitWaited {
+					// 上游要求短暂冷却：等完继续处理剩余候选，不让单仓限流拖垮整轮。
+					rateLimitWaited = true
+					if r.Logger != nil {
+						r.Logger.Warn("rate limited, wait and continue", "retry_after", wait.String(), "repo", repo.FullName)
+					}
+					select {
+					case <-time.After(wait):
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+					continue
+				}
+				// 超出等待预算或冷却后仍限流：停止本轮，避免逐仓连环请求放大次限流。
+				if r.Logger != nil {
+					r.Logger.Warn("rate limited, stop round", "error_code", "rate_limited_round_stopped", "retry_after", wait.String(), "repo", repo.FullName)
+				}
+				return nil
+			}
+			if r.Logger != nil {
+				r.Logger.Error("reconcile failed", "repo", repo.FullName, "error_code", "reconcile_failed")
+			}
 		}
 		n++
 		if n >= limit {

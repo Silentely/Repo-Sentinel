@@ -47,6 +47,10 @@ type fakeGitHub struct {
 	// alertHTTPStatus 可选：code/secret scanning 端点的状态码（默认 200），
 	// 用于模拟功能未开启（404）等不可用场景。
 	alertHTTPStatus map[string]int
+	// rateLimitIssuesRequests 前 N 次 issues 请求返回 429 + Retry-After 响应头；
+	// issues429RetryAfter 缺省 "60"。N=0 表示不限流。
+	rateLimitIssuesRequests int
+	issues429RetryAfter     string
 
 	// 请求计数器（httptest 每个请求独立 goroutine，必须用原子量）。
 	prDetailRequests atomic.Int64 // GET /pulls/{n}：enrich 预算观测点
@@ -70,6 +74,16 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write(map[string]any{"token": "test-installation-token", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
 	case reIssues.MatchString(path):
 		f.issuesPages.Add(1)
+		if f.rateLimitIssuesRequests > 0 {
+			f.rateLimitIssuesRequests--
+			ra := f.issues429RetryAfter
+			if ra == "" {
+				ra = "60"
+			}
+			w.Header().Set("Retry-After", ra)
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
 		if f.issuesFn != nil {
 			write(f.issuesFn(page))
 			return
@@ -599,5 +613,92 @@ func TestReconcilePREnrichBudget(t *testing.T) {
 	}
 	if pageResult.Total != 30 {
 		t.Fatalf("30 个 PR 应全部落库，total=%d", pageResult.Total)
+	}
+}
+
+// addSecondRepo 在测试 Store 中追加同一 installation 下的第二个仓库。
+func addSecondRepo(t *testing.T, data store.Store, first store.Repository) store.Repository {
+	t.Helper()
+	second, err := data.Repositories().Upsert(t.Context(), store.Repository{
+		ID: ulid.Make().String(), Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: first.Owner, Name: first.Name + "2", FullName: first.FullName + "2",
+		InstallationID: first.InstallationID, HTMLURL: first.HTMLURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return second
+}
+
+// 限流（Retry-After 超出等待预算）必须立即停止本轮：
+// 不再对剩余候选仓库发起请求，避免逐个仓库连环请求放大次限流。
+// 回归：原先限流被当单仓故障记日志后继续打 API，几十个仓库各吃一次 429。
+func TestReconcileAllStopsRoundOnRateLimit(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	addSecondRepo(t, data, repo)
+
+	fake.rateLimitIssuesRequests = 1 << 30 // 持续限流
+	fake.issues429RetryAfter = "3600"      // 超过 maxRateLimitWait（2 分钟）→ 直接停止本轮
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileAll(ctx, 10); err != nil {
+		t.Fatalf("限流停止本轮不应视为失败: %v", err)
+	}
+	if got := fake.issuesPages.Load(); got != 1 {
+		t.Fatalf("限流后应只请求 1 个仓库，实际 %d 次", got)
+	}
+}
+
+// 限流等待时长在预算内：等待上游建议时长后继续处理剩余候选，整轮不因单仓限流夭折。
+func TestReconcileAllWaitsAndContinuesOnRateLimit(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	second := addSecondRepo(t, data, repo)
+
+	oldBudget := maxRateLimitWait
+	maxRateLimitWait = 2 * time.Second
+	t.Cleanup(func() { maxRateLimitWait = oldBudget })
+
+	fake.rateLimitIssuesRequests = 1 // 仅第一个请求限流
+	fake.issues429RetryAfter = "1"
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	start := time.Now()
+	if err := r.ReconcileAll(ctx, 10); err != nil {
+		t.Fatalf("等待后续航不应失败: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {
+		t.Fatalf("应等待上游建议的 1s 再继续，实际耗时 %v", elapsed)
+	}
+	if got := fake.issuesPages.Load(); got != 2 {
+		t.Fatalf("等待后应继续对账第二个仓库，实际请求 %d 次", got)
+	}
+	// 被限流的仓库不刷新同步时间，另一仓库正常落库。
+	synced := 0
+	for _, id := range []string{repo.ID, second.ID} {
+		got, err := data.Repositories().Get(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.LastSyncedAt != nil {
+			synced++
+		}
+	}
+	if synced != 1 {
+		t.Fatalf("限流仓不刷新、另一仓刷新，期望恰好 1 个仓库同步，实际 %d", synced)
+	}
+}
+
+// 告警对账路径的限流不能被软失败吞掉：必须向上传播终止本轮，
+// 否则 ReconcileAll 会继续对下一仓库发起请求（次限流是全安装级信号）。
+func TestReconcileAlertsRateLimitPropagates(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+
+	fake.alertHTTPStatus = map[string]int{"code_scanning": http.StatusTooManyRequests}
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); !githubx.IsRateLimited(err) {
+		t.Fatalf("告警路径限流应向上返回，got %v", err)
 	}
 }

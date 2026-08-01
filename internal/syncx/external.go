@@ -133,8 +133,17 @@ func (p *ExternalPoller) PollAll(ctx context.Context) error {
 		if !repo.MonitorEnabled {
 			continue
 		}
-		if err := p.PollOne(ctx, repo); err != nil && p.Logger != nil {
-			p.Logger.Error("external poll failed", "repo", repo.FullName, "error_code", "external_poll_failed")
+		if err := p.PollOne(ctx, repo); err != nil {
+			// 限流是令牌级信号（PAT 配额共享）：停止本轮，避免逐仓连环请求放大次限流。
+			if githubx.IsRateLimited(err) {
+				if p.Logger != nil {
+					p.Logger.Warn("external poll rate limited, stop round", "error_code", "rate_limited_round_stopped", "repo", repo.FullName, "retry_after", githubx.RetryAfterOf(err).String())
+				}
+				return nil
+			}
+			if p.Logger != nil {
+				p.Logger.Error("external poll failed", "repo", repo.FullName, "error_code", "external_poll_failed")
+			}
 		}
 	}
 	return nil
