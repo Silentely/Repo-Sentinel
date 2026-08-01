@@ -355,6 +355,31 @@ func TestReconcileRespectsCapabilityToggles(t *testing.T) {
 	}
 }
 
+// 全局 feature.actions 关闭：即使仓库级 Actions 开启也不请求 workflow runs。
+func TestReconcileRespectsGlobalFeatureActions(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+
+	raw, _ := json.Marshal(false)
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: "feat-actions-off", Key: store.SettingFeatureActions, ValueJSON: raw,
+		UpdatedAt: time.Now().UTC(), UpdatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !repo.ActionsEnabled {
+		t.Fatal("仓库级 Actions 应默认开启")
+	}
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+	if got := fake.actionsPages.Load(); got != 0 {
+		t.Fatalf("全局 Actions 关闭不应请求 actions runs，got %d", got)
+	}
+}
+
 // 监控总开关关闭的仓库：整仓跳过对账，不产生任何 GitHub 请求。
 func TestReconcileSkipsMonitorDisabledRepo(t *testing.T) {
 	data, fake, repo := newReconcileFixture(t)

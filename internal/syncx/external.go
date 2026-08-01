@@ -57,16 +57,17 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 	if remaining >= 0 && remaining < 20 && p.Logger != nil {
 		p.Logger.Warn("public api rate low", "remaining", remaining, "repo", repo.FullName)
 	}
+	features := store.LoadFeatureFlags(ctx, p.Store.Settings())
 	for _, it := range items {
 		kind := store.WorkItemKindIssue
 		if it.PullRequest != nil {
 			kind = store.WorkItemKindPR
 		}
-		// Issues API 混合返回 issue 与 PR：按各自开关决定采集谁。
-		if kind == store.WorkItemKindIssue && !repo.IssuesEnabled {
+		// Issues API 混合返回 issue 与 PR：按全局 + 仓库级开关决定采集谁。
+		if kind == store.WorkItemKindIssue && !(features.Issues && repo.IssuesEnabled) {
 			continue
 		}
-		if kind == store.WorkItemKindPR && !repo.PrEnabled {
+		if kind == store.WorkItemKindPR && !(features.PullRequests && repo.PrEnabled) {
 			continue
 		}
 		labels := make([]any, 0, len(it.Labels))

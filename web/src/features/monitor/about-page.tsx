@@ -220,7 +220,7 @@ export function AboutPage() {
 
       <section className="onboarding-card channel-form" aria-labelledby="about-features-title">
         <h2 id="about-features-title">功能模块开关</h2>
-        <p className="field-hint">关闭后对应模块在侧边栏和列表中将显示为禁用状态。不影响已有的 Webhook 数据入库。</p>
+        <p className="field-hint">关闭后：侧边栏与列表隐藏对应模块，并停止该类型的 Webhook 采集、对账同步与实时/摘要通知。仓库管理页的单项开关在全局关闭时也会禁用。重新开启后按各仓库已有配置恢复。</p>
         {featuresMsg ? <p className="success-banner" role="status">{featuresMsg}</p> : null}
         <label className="check-row"><input type="checkbox" checked={featureIssues} onChange={(e) => setFeatureIssues(e.target.checked)} /><span>Issues</span></label>
         <label className="check-row"><input type="checkbox" checked={featurePRs} onChange={(e) => setFeaturePRs(e.target.checked)} /><span>Pull Requests</span></label>
