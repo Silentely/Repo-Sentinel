@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 
 import { apiRequest } from "../../lib/api/client";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { toApiError } from "../../lib/api/errors";
-import { upsertChannel, testChannel, deleteChannel, toggleChannel } from "./api";
+import {
+  settingsQueryOptions,
+  upsertChannel,
+  testChannel,
+  deleteChannel,
+  toggleChannel,
+  type SystemSettings,
+} from "./api";
 import { SUBSCRIBABLE_KINDS, subscriptionSummary, uiCheckedKinds } from "./notify-subscription";
 
 interface ChannelRow {
@@ -22,12 +30,17 @@ interface ChannelRow {
   updated_at?: string;
 }
 
+function kindGloballyEnabled(settings: SystemSettings | undefined, featureKey: (typeof SUBSCRIBABLE_KINDS)[number]["featureKey"]) {
+  return settings?.[featureKey] !== false;
+}
+
 export function NotifyPage() {
   const queryClient = useQueryClient();
   const channels = useQuery({
     queryKey: ["channels"],
     queryFn: () => apiRequest<{ items: ChannelRow[] }>("/api/v1/notifications/channels"),
   });
+  const settings = useQuery(settingsQueryOptions);
 
   const [telegramTarget, setTelegramTarget] = useState("");
   const [telegramSecret, setTelegramSecret] = useState("");
@@ -47,10 +60,15 @@ export function NotifyPage() {
   const httpCh = channels.data?.items.find((ch) => ch.channel_type === "http_webhook");
   const telegramChId = telegramCh?.id;
   const httpChId = httpCh?.id;
+  const digestTime = String(settings.data?.["digest.local_time"] ?? "09:00");
+  const digestTz = String(settings.data?.["admin.timezone"] ?? "UTC");
+
   useEffect(() => {
     if (telegramCh) {
       setTelegramKinds(uiCheckedKinds(telegramCh.event_kinds));
       setTelegramDigest(telegramCh.digest_enabled);
+      // 预填 Chat ID，避免「只改订阅」时表单为空误清空。
+      if (telegramCh.target) setTelegramTarget(telegramCh.target);
     }
     // 仅在渠道记录就绪时回填一次，避免覆盖用户正在编辑的勾选。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -59,6 +77,7 @@ export function NotifyPage() {
     if (httpCh) {
       setHttpKinds(uiCheckedKinds(httpCh.event_kinds));
       setHttpDigest(httpCh.digest_enabled);
+      if (httpCh.target) setHttpTarget(httpCh.target);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [httpChId]);
@@ -69,15 +88,21 @@ export function NotifyPage() {
   };
 
   const saveTelegram = useMutation({
-    mutationFn: () =>
-      upsertChannel("telegram", {
+    mutationFn: () => {
+      const target = telegramTarget.trim();
+      // 已有渠道时允许留空 target（后端保留原值）；新建必须填写。
+      if (!telegramCh && !target) {
+        throw new Error("请填写 Telegram Chat ID。");
+      }
+      return upsertChannel("telegram", {
         name: "Telegram",
         enabled: true,
-        target: telegramTarget,
+        target,
         secret: telegramSecret || undefined,
         event_kinds: telegramKinds,
         digest_enabled: telegramDigest,
-      }),
+      });
+    },
     onSuccess: async () => {
       setMessage("Telegram 渠道已保存。");
       setError("");
@@ -85,20 +110,25 @@ export function NotifyPage() {
       await invalidateAll();
     },
     onError: (err) => {
-      setError(toApiError(err).message);
+      setError(toApiError(err).message || (err instanceof Error ? err.message : "保存失败"));
     },
   });
 
   const saveHTTP = useMutation({
-    mutationFn: () =>
-      upsertChannel("http_webhook", {
+    mutationFn: () => {
+      const target = httpTarget.trim();
+      if (!httpCh && !target) {
+        throw new Error("请填写 HTTPS URL。");
+      }
+      return upsertChannel("http_webhook", {
         name: "HTTP Webhook",
         enabled: true,
-        target: httpTarget,
+        target,
         secret: httpSecret || undefined,
         event_kinds: httpKinds,
         digest_enabled: httpDigest,
-      }),
+      });
+    },
     onSuccess: async () => {
       setMessage("HTTP Webhook 渠道已保存。");
       setError("");
@@ -106,7 +136,7 @@ export function NotifyPage() {
       await invalidateAll();
     },
     onError: (err) => {
-      setError(toApiError(err).message);
+      setError(toApiError(err).message || (err instanceof Error ? err.message : "保存失败"));
     },
   });
 
@@ -152,18 +182,58 @@ export function NotifyPage() {
     }
   };
 
+  function renderKindChecks(
+    kinds: string[],
+    setKinds: (next: string[]) => void,
+  ) {
+    return (
+      <div className="channel-kinds">
+        {SUBSCRIBABLE_KINDS.map((k) => {
+          const globalOn = kindGloballyEnabled(settings.data, k.featureKey);
+          return (
+            <label
+              key={k.value}
+              className={`channel-kinds__item${!globalOn ? " channel-kinds__item--disabled" : ""}`}
+              title={!globalOn ? "全局功能模块已关闭，此类型不会采集与通知" : undefined}
+            >
+              <input
+                type="checkbox"
+                checked={kinds.includes(k.value)}
+                disabled={!globalOn}
+                onChange={(e) =>
+                  setKinds(e.target.checked ? [...kinds, k.value] : kinds.filter((v) => v !== k.value))
+                }
+              />
+              {k.label}
+              {!globalOn ? <span className="muted"> · 全局关闭</span> : null}
+            </label>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <>
       <section className="page-intro">
         <div>
           <p className="eyebrow">通知</p>
           <h1>配置投递渠道</h1>
-          <p>每种渠道最多启用 1 个实例，通知按各渠道订阅的类型投递，可单独开关每日汇总。</p>
+          <p>每种渠道最多启用 1 个实例。订阅类型决定实时推送；每日汇总时刻在「关于与设置」配置。</p>
         </div>
       </section>
 
       {message ? <p className="success-banner" role="status">{message}</p> : null}
       {error ? <ErrorAlert title="操作失败" message={error} /> : null}
+
+      <section className="onboarding-card" aria-labelledby="notify-digest-title">
+        <h2 id="notify-digest-title">每日汇总调度</h2>
+        <p className="field-hint">
+          当前摘要时刻：<strong>{digestTime}</strong>（时区 <code>{digestTz}</code>）。
+          渠道勾选「接收每日汇总」后，到点会合并过去 24 小时事件发送。修改时刻请到{" "}
+          <Link to="/about">关于与设置 → 运行偏好</Link>。
+        </p>
+      </section>
 
       {/* 渠道状态概览：查询失败仅在本区块提示，下方表单仍可用。 */}
       <section className="onboarding-card">
@@ -222,16 +292,22 @@ export function NotifyPage() {
       <section className="onboarding-card channel-form">
         <h2>Telegram</h2>
         <p className="field-hint">
-          向 Bot 发消息的目标。Token 也可通过环境变量 <code>REPOSENTINEL_TELEGRAM_TOKEN</code> 在启动时初始化；页面保存会写入数据库并加密存储。
+          1）与 Bot 私聊或把 Bot 拉进群；2）Chat ID 可用 <code>@userinfobot</code> 或群组 API 获取（群 ID 常为负数）；
+          3）Token 也可通过环境变量 <code>REPOSENTINEL_TELEGRAM_TOKEN</code> 初始化。页面保存会加密入库。
         </p>
         {telegramCh && (
           <p className="field-hint">
             当前状态：<strong>{telegramCh.enabled ? "已启用" : "已禁用"}</strong>
-            {telegramCh.target && <> · Chat ID: <code>{telegramCh.target}</code></>}
+            {telegramCh.target && (
+              <>
+                {" "}
+                · Chat ID: <code>{telegramCh.target}</code>
+              </>
+            )}
           </p>
         )}
         <label className="field--plain">
-          <span>Chat ID</span>
+          <span>Chat ID{telegramCh ? "（留空保留原值）" : ""}</span>
           <input value={telegramTarget} onChange={(e) => setTelegramTarget(e.target.value)} placeholder="-100..." />
         </label>
         <label className="field--plain">
@@ -246,22 +322,7 @@ export function NotifyPage() {
         </label>
         <fieldset className="field--plain">
           <legend>订阅通知类型</legend>
-          <div className="channel-kinds">
-            {SUBSCRIBABLE_KINDS.map((k) => (
-              <label key={k.value} className="channel-kinds__item">
-                <input
-                  type="checkbox"
-                  checked={telegramKinds.includes(k.value)}
-                  onChange={(e) =>
-                    setTelegramKinds(
-                      e.target.checked ? [...telegramKinds, k.value] : telegramKinds.filter((v) => v !== k.value),
-                    )
-                  }
-                />
-                {k.label}
-              </label>
-            ))}
-          </div>
+          {renderKindChecks(telegramKinds, setTelegramKinds)}
         </fieldset>
         <div className="field--plain">
           <label className="channel-kinds__item">
@@ -270,11 +331,21 @@ export function NotifyPage() {
           </label>
         </div>
         <div className="channel-form__buttons">
-          <button className="primary-button primary-button--inline" type="button" disabled={saveTelegram.isPending} onClick={() => saveTelegram.mutate()}>
+          <button
+            className="primary-button primary-button--inline"
+            type="button"
+            disabled={saveTelegram.isPending}
+            onClick={() => saveTelegram.mutate()}
+          >
             {saveTelegram.isPending ? "保存中…" : "保存 Telegram"}
           </button>
           {telegramCh?.enabled && (
-            <button className="secondary-button" type="button" disabled={testMut.isPending} onClick={() => testMut.mutate("telegram")}>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={testMut.isPending}
+              onClick={() => testMut.mutate("telegram")}
+            >
               {testMut.isPending ? "发送中…" : "🔔 发送测试通知"}
             </button>
           )}
@@ -289,18 +360,27 @@ export function NotifyPage() {
           <code>X-GitHub-Monitor-Signature-256</code>，供接收端校验。
         </p>
         <p className="field-hint">
-          与 <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code> <strong>不是同一个</strong>：后者是 GitHub → 本服务的入站 Webhook 校验；本页 Secret 对应{" "}
-          <code>REPOSENTINEL_HTTP_WEBHOOK_SECRET</code>（启动时种子）或此处手填，二选一即可，不必重复配置。
+          与 <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code> <strong>不是同一个</strong>：后者是 GitHub → 本服务的入站 Webhook
+          校验；本页 Secret 对应 <code>REPOSENTINEL_HTTP_WEBHOOK_SECRET</code>（启动时种子）或此处手填。
         </p>
         {httpCh && (
           <p className="field-hint">
             当前状态：<strong>{httpCh.enabled ? "已启用" : "已禁用"}</strong>
-            {httpCh.target && <> · URL: <code>{httpCh.target}</code></>}
+            {httpCh.target && (
+              <>
+                {" "}
+                · URL: <code>{httpCh.target}</code>
+              </>
+            )}
           </p>
         )}
         <label className="field--plain">
-          <span>HTTPS URL</span>
-          <input value={httpTarget} onChange={(e) => setHttpTarget(e.target.value)} placeholder="https://hooks.example.com/notify" />
+          <span>HTTPS URL{httpCh ? "（留空保留原值）" : ""}</span>
+          <input
+            value={httpTarget}
+            onChange={(e) => setHttpTarget(e.target.value)}
+            placeholder="https://hooks.example.com/notify"
+          />
         </label>
         <label className="field--plain">
           <span>签名 Secret（可选）</span>
@@ -314,20 +394,7 @@ export function NotifyPage() {
         </label>
         <fieldset className="field--plain">
           <legend>订阅通知类型</legend>
-          <div className="channel-kinds">
-            {SUBSCRIBABLE_KINDS.map((k) => (
-              <label key={k.value} className="channel-kinds__item">
-                <input
-                  type="checkbox"
-                  checked={httpKinds.includes(k.value)}
-                  onChange={(e) =>
-                    setHttpKinds(e.target.checked ? [...httpKinds, k.value] : httpKinds.filter((v) => v !== k.value))
-                  }
-                />
-                {k.label}
-              </label>
-            ))}
-          </div>
+          {renderKindChecks(httpKinds, setHttpKinds)}
         </fieldset>
         <div className="field--plain">
           <label className="channel-kinds__item">
@@ -336,11 +403,21 @@ export function NotifyPage() {
           </label>
         </div>
         <div className="channel-form__buttons">
-          <button className="primary-button primary-button--inline" type="button" disabled={saveHTTP.isPending} onClick={() => saveHTTP.mutate()}>
+          <button
+            className="primary-button primary-button--inline"
+            type="button"
+            disabled={saveHTTP.isPending}
+            onClick={() => saveHTTP.mutate()}
+          >
             {saveHTTP.isPending ? "保存中…" : "保存 HTTP Webhook"}
           </button>
           {httpCh?.enabled && (
-            <button className="secondary-button" type="button" disabled={testMut.isPending} onClick={() => testMut.mutate("http_webhook")}>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={testMut.isPending}
+              onClick={() => testMut.mutate("http_webhook")}
+            >
               {testMut.isPending ? "发送中…" : "🔔 发送测试通知"}
             </button>
           )}

@@ -372,6 +372,10 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		// 请求未携带订阅配置时保留现值。
 		ch.EventKinds = existing.EventKinds
 		ch.DigestEnabled = existing.DigestEnabled
+		// 目标留空时保留已有 Chat ID / URL，避免「只改订阅」误清空。
+		if strings.TrimSpace(body.Target) == "" {
+			ch.Target = existing.Target
+		}
 	}
 	if body.EventKinds != nil {
 		ch.EventKinds = *body.EventKinds

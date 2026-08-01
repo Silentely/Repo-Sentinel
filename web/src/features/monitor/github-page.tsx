@@ -66,7 +66,7 @@ export function GitHubPage() {
     mutationFn: () => syncInstallationRepositories(),
     onSuccess: async (res) => {
       setSyncMessage(
-        `已从 GitHub 同步：${res.imported_or_updated} 个仓库（${res.installations} 个 Installation）。请到仪表盘查看基线状态并「完成基线」。`,
+        `已从 GitHub 同步：${res.imported_or_updated} 个仓库（${res.installations} 个 Installation）。请到仪表盘查看基线；对账成功会自动放行，也可点「立即放行」。`,
       );
       await queryClient.invalidateQueries({ queryKey: ["repositories"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -121,7 +121,8 @@ export function GitHubPage() {
     { ok: Boolean(cfg?.external_pat_configured), label: "外部仓 PAT（可选）", hint: "仅环境变量 REPOSENTINEL_EXTERNAL_PAT" },
   ];
   const readyCount = checklist.filter((c) => c.ok).length;
-  const coreReady = Boolean(cfg?.webhook_secret_configured);
+  const inboundReady = Boolean(cfg?.webhook_secret_configured);
+  const outboundReady = Boolean(cfg?.app_id_configured && cfg?.private_key_configured);
 
   async function copyWebhook() {
     try {
@@ -194,11 +195,20 @@ export function GitHubPage() {
             </li>
           ))}
         </ul>
-        {!coreReady ? (
-          <p className="callout callout--warn" role="status">尚未配置 Webhook Secret 时，GitHub 推送会被拒绝。</p>
-        ) : (
-          <p className="callout callout--ok" role="status">入站验签已就绪。</p>
-        )}
+        <div className="capability-lights" role="status">
+          <div className={`capability-light${inboundReady ? " is-ok" : " is-warn"}`}>
+            <strong>入站 Webhook</strong>
+            <span className="muted">
+              {inboundReady ? "验签就绪，可接收 GitHub 推送" : "需配置 Webhook Secret，否则推送会被拒绝"}
+            </span>
+          </div>
+          <div className={`capability-light${outboundReady ? " is-ok" : " is-warn"}`}>
+            <strong>出站 GitHub API</strong>
+            <span className="muted">
+              {outboundReady ? "App ID + 私钥就绪，可对账/同步仓库" : "需 App ID 与私钥，才能同步仓库与对账"}
+            </span>
+          </div>
+        </div>
       </section>
 
       <section className="onboarding-card" aria-labelledby="gh-webhook-title">
@@ -252,7 +262,7 @@ export function GitHubPage() {
               <li><strong>打开安装页</strong><span>点「去 GitHub 安装」→ 找到 App → Install</span></li>
               <li><strong>选择仓库</strong><span>All 或 Only select，保存后 GitHub 自动推送</span></li>
               <li><strong>回本页刷新</strong><span>Installation 列表出现账号，仪表盘出现仓库</span></li>
-              <li><strong>完成基线</strong><span>仪表盘点「完成基线」后开始发实时通知</span></li>
+              <li><strong>结束基线</strong><span>对账成功会自动放行；也可在仪表盘点「立即放行」</span></li>
             </ol>
           </div>
         </details>

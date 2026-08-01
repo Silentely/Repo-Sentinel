@@ -40,6 +40,7 @@ export function AboutPage() {
   const [digestEmpty, setDigestEmpty] = useState(false);
   const [aggregateSec, setAggregateSec] = useState(60);
   const [burstThreshold, setBurstThreshold] = useState(15);
+  const [burstWindowSec, setBurstWindowSec] = useState(300);
   const [closedDisplayLimit, setClosedDisplayLimit] = useState(20);
   const [retentionEventsDays, setRetentionEventsDays] = useState(90);
   const [retentionOutboxDays, setRetentionOutboxDays] = useState(30);
@@ -56,6 +57,7 @@ export function AboutPage() {
     setDigestEmpty(Boolean(settings.data["digest.send_empty"]));
     setAggregateSec(Number(settings.data["notify.aggregate_window_sec"] ?? 60));
     setBurstThreshold(Number(settings.data["notify.burst_threshold"] ?? 15));
+    setBurstWindowSec(Number(settings.data["notify.burst_window_sec"] ?? 300));
     setClosedDisplayLimit(Number(settings.data["display.closed_limit"] ?? 20));
     setRetentionEventsDays(Number(settings.data["retention.events_days"] ?? 90));
     setRetentionOutboxDays(Number(settings.data["retention.outbox_days"] ?? 30));
@@ -74,30 +76,32 @@ export function AboutPage() {
     },
   });
 
-  // 运行偏好与功能模块开关保存的是同一份键值，共用提交逻辑；
-  // 成功提示按区块分别落位，避免提示出现在用户看不到的位置。
+  // 分块提交：只 PUT 本区块字段，避免慢网时用另一区未同步的本地 state 覆盖服务端。
   function submitSettings(section: "prefs" | "features") {
     const setMsg = section === "prefs" ? setSettingsMsg : setFeaturesMsg;
     const successText = section === "prefs" ? "系统偏好已保存。" : "功能模块开关已保存。";
     setMsg("");
-    saveSettings.mutate(
-      {
-        "admin.timezone": timezone.trim() || "UTC",
-        "digest.local_time": digestTime.trim() || "09:00",
-        "digest.send_empty": digestEmpty,
-        "notify.aggregate_window_sec": aggregateSec,
-        "notify.burst_threshold": burstThreshold,
-        "display.closed_limit": closedDisplayLimit,
-        "retention.events_days": retentionEventsDays,
-        "retention.outbox_days": retentionOutboxDays,
-        "retention.webhook_deliveries_days": retentionDeliveriesDays,
-        "feature.issues": featureIssues,
-        "feature.pull_requests": featurePRs,
-        "feature.actions": featureActions,
-        "feature.security_alerts": featureAlerts,
-      },
-      { onSuccess: () => setMsg(successText) },
-    );
+    const body: SystemSettings =
+      section === "prefs"
+        ? {
+            "admin.timezone": timezone.trim() || "UTC",
+            "digest.local_time": digestTime.trim() || "09:00",
+            "digest.send_empty": digestEmpty,
+            "notify.aggregate_window_sec": aggregateSec,
+            "notify.burst_threshold": burstThreshold,
+            "notify.burst_window_sec": burstWindowSec,
+            "display.closed_limit": closedDisplayLimit,
+            "retention.events_days": retentionEventsDays,
+            "retention.outbox_days": retentionOutboxDays,
+            "retention.webhook_deliveries_days": retentionDeliveriesDays,
+          }
+        : {
+            "feature.issues": featureIssues,
+            "feature.pull_requests": featurePRs,
+            "feature.actions": featureActions,
+            "feature.security_alerts": featureAlerts,
+          };
+    saveSettings.mutate(body, { onSuccess: () => setMsg(successText) });
   }
   const savePassword = useMutation({
     mutationFn: () => changePassword({ current_password: currentPassword, new_password: newPassword }),
@@ -197,22 +201,23 @@ export function AboutPage() {
 
       <section className="onboarding-card channel-form" aria-labelledby="about-settings-title">
         <h2 id="about-settings-title">运行偏好</h2>
-        <p className="field-hint">时区与摘要时间影响本地展示与摘要调度；聚合窗口用于短时合并同类通知。保存后立即写入数据库。</p>
+        <p className="field-hint">时区与摘要时间影响本地展示与摘要调度；聚合/超频窗口用于短时合并与突发降级。保存后立即写入数据库。</p>
         {settingsMsg ? <p className="success-banner" role="status">{settingsMsg}</p> : null}
         {settings.isError ? <ErrorAlert title="无法加载设置" message={toApiError(settings.error).message} errorCode={toApiError(settings.error).errorCode} /> : null}
         <div className="form-grid">
           <label className="field--plain"><span>管理员时区</span><input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="UTC 或 Asia/Shanghai" /></label>
           <label className="field--plain"><span>每日摘要本地时间</span><input value={digestTime} onChange={(e) => setDigestTime(e.target.value)} placeholder="09:00" /></label>
-          <label className="field--plain"><span>通知聚合窗口（秒）</span><input type="number" min={0} value={aggregateSec} onChange={(e) => setAggregateSec(Number(e.target.value) || 0)} /></label>
+          <label className="field--plain"><span>通知聚合窗口（秒）</span><input type="number" min={1} max={86400} value={aggregateSec} onChange={(e) => setAggregateSec(Number(e.target.value) || 1)} /></label>
           <label className="field--plain"><span>超频阈值</span><input type="number" min={1} value={burstThreshold} onChange={(e) => setBurstThreshold(Number(e.target.value) || 1)} /></label>
+          <label className="field--plain"><span>超频窗口（秒）</span><input type="number" min={1} max={86400} value={burstWindowSec} onChange={(e) => setBurstWindowSec(Number(e.target.value) || 1)} /></label>
           <label className="field--plain"><span>已关闭/已忽略显示数量</span><input type="number" min={1} max={200} value={closedDisplayLimit} onChange={(e) => setClosedDisplayLimit(Math.min(200, Math.max(1, Number(e.target.value) || 1)))} /></label>
           <label className="field--plain"><span>事件保留天数</span><input type="number" min={0} max={3650} value={retentionEventsDays} onChange={(e) => setRetentionEventsDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
           <label className="field--plain"><span>投递记录保留天数</span><input type="number" min={0} max={3650} value={retentionOutboxDays} onChange={(e) => setRetentionOutboxDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
           <label className="field--plain"><span>Webhook Delivery 保留天数</span><input type="number" min={0} max={3650} value={retentionDeliveriesDays} onChange={(e) => setRetentionDeliveriesDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
         </div>
-        <p className="field-hint">Issues、PR、安全告警的 Closed/Dismissed 列表默认只显示最近指定数量的条目。保留天数用于后台定期清理历史数据（0 表示禁用该类清理）；默认事件 90 天、投递与 Delivery 各 30 天。</p>
+        <p className="field-hint">超频：在超频窗口内通知条数达到阈值时合并为摘要，避免刷屏。Closed/Dismissed 列表默认只显示最近指定数量条目。保留天数 0 表示禁用该类清理。</p>
         <label className="check-row"><input type="checkbox" checked={digestEmpty} onChange={(e) => setDigestEmpty(e.target.checked)} /><span>无事件时仍发送空摘要</span></label>
-        <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending} onClick={() => submitSettings("prefs")}>
+        <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("prefs")}>
           {saveSettings.isPending ? "保存中…" : "保存偏好"}
         </button>
         {saveSettings.isError ? <ErrorAlert title="保存失败" message={toApiError(saveSettings.error).message} errorCode={toApiError(saveSettings.error).errorCode} /> : null}
@@ -220,13 +225,13 @@ export function AboutPage() {
 
       <section className="onboarding-card channel-form" aria-labelledby="about-features-title">
         <h2 id="about-features-title">功能模块开关</h2>
-        <p className="field-hint">关闭后：侧边栏与列表隐藏对应模块，并停止该类型的 Webhook 采集、对账同步与实时/摘要通知。仓库管理页的单项开关在全局关闭时也会禁用。重新开启后按各仓库已有配置恢复。</p>
+        <p className="field-hint">关闭后：侧边栏隐藏对应入口、列表页显示已禁用；并停止该类型 Webhook 采集、对账与实时/摘要通知。仓库页对应开关会显示为关且不可改（仓级配置保留，重新开启全局后恢复）。渠道订阅勾选在全局关闭时也会灰显。</p>
         {featuresMsg ? <p className="success-banner" role="status">{featuresMsg}</p> : null}
         <label className="check-row"><input type="checkbox" checked={featureIssues} onChange={(e) => setFeatureIssues(e.target.checked)} /><span>Issues</span></label>
         <label className="check-row"><input type="checkbox" checked={featurePRs} onChange={(e) => setFeaturePRs(e.target.checked)} /><span>Pull Requests</span></label>
         <label className="check-row"><input type="checkbox" checked={featureActions} onChange={(e) => setFeatureActions(e.target.checked)} /><span>Actions</span></label>
         <label className="check-row"><input type="checkbox" checked={featureAlerts} onChange={(e) => setFeatureAlerts(e.target.checked)} /><span>安全告警</span></label>
-        <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending} onClick={() => submitSettings("features")}>
+        <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("features")}>
           {saveSettings.isPending ? "保存中…" : "保存开关"}
         </button>
         {saveSettings.isError ? <ErrorAlert title="保存失败" message={toApiError(saveSettings.error).message} errorCode={toApiError(saveSettings.error).errorCode} /> : null}

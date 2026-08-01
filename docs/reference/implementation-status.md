@@ -16,7 +16,7 @@
 | 管理员 / Session / CSRF | 已交付 | |
 | Webhook 双 Secret 验签、幂等 | 已交付 | |
 | 事件规范化与指纹 | 已交付 | |
-| 基线抑制通知 | 已交付 | 可手动「完成基线」或对账后自动 active |
+| 基线抑制通知 | 已交付 | 对账成功后自动 active；也可手动「立即放行」 |
 | Installation Token 缓存 | 已交付 | 需配置 App ID + 私钥路径 |
 | 自有仓 API 对账 | 已交付 | Scheduler 6h + 手动触发；页数预算 |
 | 外部仓 Issues 轮询 | 已交付 | 默认 10 分钟；可选 PAT |

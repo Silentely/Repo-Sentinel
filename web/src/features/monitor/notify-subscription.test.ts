@@ -25,6 +25,6 @@ describe("subscriptionSummary", () => {
   it("子集显示中文标签", () => {
     const text = subscriptionSummary(["issue", "workflow_run"], false);
     expect(text).toContain("Issue");
-    expect(text).toContain("工作流");
+    expect(text).toContain("Actions");
   });
 });

@@ -115,7 +115,7 @@ export function OutboxPage() {
                 {retryAllDead.isPending ? (
                   <><Loader2 size={14} className="spin" aria-hidden="true" /> 重试中…</>
                 ) : (
-                  `全部重试 (${deadCount})`
+                  `重试本页失败 (${deadCount})`
                 )}
               </button>
             )}
