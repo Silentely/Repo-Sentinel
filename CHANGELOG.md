@@ -19,6 +19,7 @@
 - GitHub API 剩余配额头缺失或解析失败时不再误报「配额低」日志（原先剩余 0 会误触发）
 - 仓库 / Actions / 事件 / 安全告警 / 投递记录列表排序补 ID 次级键，批量同步产生相同时间戳时分页不再错位
 - HTTP Webhook 通道解析 429/503 响应的 `Retry-After` 响应头（秒或 HTTP 日期），按上游指引退避而非固定阶梯
+- GitHub 429 / 配额耗尽 403 返回携带上游建议等待时长的限流错误（`Retry-After` / `X-RateLimit-Reset`），token 签发端点同样归类
 
 ### Changed
 

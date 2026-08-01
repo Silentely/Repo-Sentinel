@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -180,5 +181,137 @@ func TestAppClient内存PEM与Configure热更新(t *testing.T) {
 	}
 	if err := ValidatePrivateKeyPEM("not-a-key"); err == nil {
 		t.Fatal("expected invalid pem error")
+	}
+}
+
+// TestParseRetryAfterHeader 验证 Retry-After 响应头解析：整数秒 / HTTP 日期 / 非法 / 过期。
+func TestParseRetryAfterHeader(t *testing.T) {
+	future := time.Now().UTC().Add(90 * time.Second)
+	cases := []struct {
+		name string
+		head string
+		want time.Duration
+	}{
+		{"空头", "", 0},
+		{"整数秒", "60", 60 * time.Second},
+		{"零秒不采纳", "0", 0},
+		{"负秒不采纳", "-5", 0},
+		{"非法文本", "abc", 0},
+		{"HTTP 日期", future.Format(http.TimeFormat), 90 * time.Second},
+		{"已过期日期", time.Now().UTC().Add(-time.Minute).Format(http.TimeFormat), 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseRetryAfterHeader(tc.head)
+			// HTTP 日期按剩余秒数计算，允许少量执行偏差。
+			if tc.want == 0 {
+				if got != 0 {
+					t.Fatalf("期望 0，实际 %v", got)
+				}
+				return
+			}
+			if got < tc.want-2*time.Second || got > tc.want+2*time.Second {
+				t.Fatalf("期望约 %v，实际 %v", tc.want, got)
+			}
+		})
+	}
+}
+
+// TestResetDelta 验证 X-RateLimit-Reset（unix 秒）换算为剩余等待时长。
+func TestResetDelta(t *testing.T) {
+	if got := resetDelta(""); got != 0 {
+		t.Fatalf("空头应返回 0，实际 %v", got)
+	}
+	if got := resetDelta("abc"); got != 0 {
+		t.Fatalf("非法头应返回 0，实际 %v", got)
+	}
+	if got := resetDelta(strconv.FormatInt(time.Now().Unix()-60, 10)); got != 0 {
+		t.Fatalf("已过期 Reset 应返回 0，实际 %v", got)
+	}
+	delta := time.Until(time.Unix(time.Now().Unix()+300, 0))
+	if got := resetDelta(strconv.FormatInt(time.Now().Unix()+300, 10)); got < delta-2*time.Second || got > delta+2*time.Second {
+		t.Fatalf("期望约 %v，实际 %v", delta, got)
+	}
+}
+
+// TestDoJSONCarriesRetryAfter 验证限流错误携带上游建议的等待时长：
+// 429 Retry-After（秒或 HTTP 日期）、403 配额耗尽的 X-RateLimit-Reset 换算；
+// 非限流 403 仍为 HTTPStatusError。
+func TestDoJSONCarriesRetryAfter(t *testing.T) {
+	future := time.Now().UTC().Add(90 * time.Second)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/429-secs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	mux.HandleFunc("/429-date", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", future.Format(http.TimeFormat))
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	mux.HandleFunc("/429-nohdr", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	mux.HandleFunc("/403-reset", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(time.Now().Unix()+300, 10))
+		w.WriteHeader(http.StatusForbidden)
+	})
+	mux.HandleFunc("/403-perm", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"Advanced Security must be enabled"}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := &AppClient{HTTP: srv.Client(), BaseURL: srv.URL}
+	ctx := context.Background()
+
+	_, err := c.DoJSON(ctx, http.MethodGet, "/429-secs", "tok", nil)
+	if !IsRateLimited(err) || RetryAfterOf(err) != 60*time.Second {
+		t.Fatalf("429 秒数应携带 60s，got err=%v retry=%v", err, RetryAfterOf(err))
+	}
+	_, err = c.DoJSON(ctx, http.MethodGet, "/429-date", "tok", nil)
+	if ra := RetryAfterOf(err); !IsRateLimited(err) || ra < 88*time.Second || ra > 92*time.Second {
+		t.Fatalf("429 HTTP 日期应携带约 90s，got retry=%v", ra)
+	}
+	_, err = c.DoJSON(ctx, http.MethodGet, "/429-nohdr", "tok", nil)
+	if !IsRateLimited(err) || RetryAfterOf(err) != 0 {
+		t.Fatalf("429 无响应头应携带 0，got err=%v retry=%v", err, RetryAfterOf(err))
+	}
+	_, err = c.DoJSON(ctx, http.MethodGet, "/403-reset", "tok", nil)
+	if ra := RetryAfterOf(err); !IsRateLimited(err) || ra < 298*time.Second || ra > 302*time.Second {
+		t.Fatalf("403 配额耗尽应按 Reset 换算约 300s，got retry=%v", ra)
+	}
+	_, err = c.DoJSON(ctx, http.MethodGet, "/403-perm", "tok", nil)
+	if IsRateLimited(err) {
+		t.Fatalf("403 权限错误不应判为限流: %v", err)
+	}
+	if _, ok := err.(*HTTPStatusError); !ok {
+		t.Fatalf("403 权限错误应为 HTTPStatusError，got %T %v", err, err)
+	}
+}
+
+// TestInstallationTokenRateLimited 验证 token 签发端点 429 同样归类为限流错误并携带 Retry-After。
+func TestInstallationTokenRateLimited(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	c := NewAppClient(12345, "")
+	c.HTTP = srv.Client()
+	c.BaseURL = srv.URL
+	// 绕过 Configured 前置校验：注入私钥材料满足检查。
+	key, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	c.Configure(12345, "", string(pemBytes))
+
+	_, err = c.InstallationToken(context.Background(), 4242)
+	if !IsRateLimited(err) || RetryAfterOf(err) != 30*time.Second {
+		t.Fatalf("token 429 应携带 30s，got err=%v retry=%v", err, RetryAfterOf(err))
 	}
 }
