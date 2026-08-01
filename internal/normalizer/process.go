@@ -354,7 +354,7 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 		return Result{}, err
 	}
 	// 能力门禁：对应类型开关关闭或仓库已归档时不再采集（不更新数据、不创建事件）。
-	if !ingestGate(repo, kind) {
+	if !p.ingestGate(ctx, repo, kind) {
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	labels := make([]any, 0, len(env.Issue.Labels))
@@ -455,7 +455,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		return Result{}, fmt.Errorf("ensure repository: %w", err)
 	}
 	// 能力门禁：Actions 关闭或仓库已归档时不再采集。
-	if !ingestGate(repo, "workflow_run") {
+	if !p.ingestGate(ctx, repo, "workflow_run") {
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	run := env.WorkflowRun
@@ -574,7 +574,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 		return Result{}, err
 	}
 	// 能力门禁：告警关闭或仓库已归档时不再采集。
-	if !ingestGate(repo, kind) {
+	if !p.ingestGate(ctx, repo, kind) {
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	a := env.Alert
@@ -647,10 +647,17 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 }
 
 // ingestGate 判定该仓库是否应继续采集指定类型数据。
-// 监控总开关关闭、仓库已归档/不可用、或对应能力开关关闭时直接跳过
-// （不写领域数据、不创建事件），与设置页的开关语义一一对应；
-// 基线同步中的仓库保持采集（仅抑制通知），保证基线数据完整。
-func ingestGate(repo store.Repository, kind string) bool {
+// 顺序：全局功能开关 → 监控总开关 → 归档/不可用 → 仓库级能力开关。
+// 关闭时直接跳过（不写领域数据、不创建事件）；基线同步中的仓库仍可采集（仅抑制通知）。
+func (p *Processor) ingestGate(ctx context.Context, repo store.Repository, kind string) bool {
+	if p.Store != nil && !store.KindFeatureEnabled(ctx, p.Store.Settings(), kind) {
+		return false
+	}
+	return repoAllowsKind(repo, kind)
+}
+
+// repoAllowsKind 仅看仓库级开关（供对账等已读全局标志的调用方复用）。
+func repoAllowsKind(repo store.Repository, kind string) bool {
 	if !repo.MonitorEnabled {
 		return false
 	}

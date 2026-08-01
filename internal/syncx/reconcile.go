@@ -73,14 +73,21 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 		}
 	}
 
-	// Issues 与 PR 共用 GitHub Issues API：任一开启才需要拉取。
-	if repo.IssuesEnabled || repo.PrEnabled {
-		if err := r.syncIssues(ctx, token, repo, since, isBaseline); err != nil {
+	// 全局功能开关：与「关于与设置 → 功能模块」一致，关闭后整类停止对账。
+	features := store.LoadFeatureFlags(ctx, r.Store.Settings())
+	wantIssues := features.Issues && repo.IssuesEnabled
+	wantPRs := features.PullRequests && repo.PrEnabled
+	wantActions := features.Actions && repo.ActionsEnabled
+	wantAlerts := features.SecurityAlerts && repo.AlertsEnabled
+
+	// Issues 与 PR 共用 GitHub Issues API：任一仍开启才需要拉取。
+	if wantIssues || wantPRs {
+		if err := r.syncIssues(ctx, token, repo, since, isBaseline, wantIssues, wantPRs); err != nil {
 			return err
 		}
 	}
 	softFailed := false
-	if repo.ActionsEnabled {
+	if wantActions {
 		if err := r.syncWorkflows(ctx, token, repo, isBaseline); err != nil {
 			// Actions 权限不足时软失败
 			softFailed = true
@@ -89,7 +96,7 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 			}
 		}
 	}
-	if repo.AlertsEnabled {
+	if wantAlerts {
 		for _, kind := range []string{store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning} {
 			if err := r.syncAlerts(ctx, token, repo, kind, isBaseline); err != nil {
 				softFailed = true
@@ -123,7 +130,7 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 // PR 密集的仓库若无预算约束，一轮对账即可耗尽 installation token 的 5000 次/时配额。
 const prEnrichBudgetPerRound = 25
 
-func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Repository, since *time.Time, baseline bool) error {
+func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Repository, since *time.Time, baseline, wantIssues, wantPRs bool) error {
 	enrichBudget := prEnrichBudgetPerRound
 	for page := 1; page <= r.MaxPages; page++ {
 		items, remaining, err := r.GitHub.ListIssues(ctx, token, repo.Owner, repo.Name, since, page)
@@ -143,11 +150,11 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			if it.PullRequest != nil {
 				kind = store.WorkItemKindPR
 			}
-			// Issues API 混合返回 issue 与 PR：按各自开关决定采集谁。
-			if kind == store.WorkItemKindIssue && !repo.IssuesEnabled {
+			// Issues API 混合返回 issue 与 PR：按全局 + 仓库级开关决定采集谁。
+			if kind == store.WorkItemKindIssue && !wantIssues {
 				continue
 			}
-			if kind == store.WorkItemKindPR && !repo.PrEnabled {
+			if kind == store.WorkItemKindPR && !wantPRs {
 				continue
 			}
 			labels := make([]any, 0, len(it.Labels))

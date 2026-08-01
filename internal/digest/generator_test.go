@@ -110,6 +110,47 @@ func TestRunOnceSendsWhenEventsExist(t *testing.T) {
 	}
 }
 
+// 全局功能关闭后，对应 kind 的存量事件不进入每日摘要。
+func TestRunOnceFiltersDisabledFeatureEvents(t *testing.T) {
+	data := openDigestStore(t)
+	seedTelegram(t, data)
+	rawTZ, _ := json.Marshal("UTC")
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingTimezone, ValueJSON: rawTZ, UpdatedBy: "test",
+	})
+	rawTime, _ := json.Marshal("09:00")
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingLocalTime, ValueJSON: rawTime, UpdatedBy: "test",
+	})
+	rawOff, _ := json.Marshal(false)
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: store.SettingFeatureActions, ValueJSON: rawOff, UpdatedBy: "test",
+	})
+
+	// 仅有 workflow_run 事件：全局 Actions 关闭后应视为无事件、不发送。
+	_, err := data.Events().Create(t.Context(), store.Event{
+		ID: ulid.Make().String(), Source: "test", Kind: "workflow_run", Action: "completed",
+		Title: "质量守卫", WorkflowConclusion: "cancelled", OccurredAt: time.Now().UTC(),
+		DedupeFingerprint: ulid.Make().String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	g := &Generator{Store: data}
+	now := time.Date(2026, 7, 28, 9, 15, 0, 0, time.UTC)
+	if err := g.RunOnce(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("全局 Actions 关闭后仅有 workflow 事件不应发摘要，got %d", len(items))
+	}
+}
+
 func TestRunOnceEmptyDefaultNoSend(t *testing.T) {
 	data := openDigestStore(t)
 	seedTelegram(t, data)

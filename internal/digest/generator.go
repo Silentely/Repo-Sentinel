@@ -64,12 +64,20 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 		}
 	}
 
-	// 收集近 24h 事件并按类别分组
+	// 收集近 24h 事件并按类别分组；全局关闭的功能不进入摘要。
 	since := now.Add(-24 * time.Hour)
 	events, err := g.Store.Events().ListSince(ctx, since, 500)
 	if err != nil {
 		return err
 	}
+	features := store.LoadFeatureFlags(ctx, g.Store.Settings())
+	filtered := events[:0]
+	for _, ev := range events {
+		if features.AllowsKind(ev.Kind) {
+			filtered = append(filtered, ev)
+		}
+	}
+	events = filtered
 	sendEmpty := false
 	if s, err := g.Store.Settings().Get(ctx, settingSendEmpty); err == nil {
 		_ = json.Unmarshal(s.ValueJSON, &sendEmpty)

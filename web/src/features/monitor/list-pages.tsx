@@ -14,6 +14,7 @@ import {
   setSecurityAlertIgnored,
   setWorkItemIgnored,
   setWorkflowRunIgnored,
+  settingsQueryOptions,
   updateRepositorySettings,
   type Repository,
   type RepositorySettings,
@@ -303,9 +304,14 @@ export function PullRequestsPage() {
 export function ReposPage() {
   const queryClient = useQueryClient();
   const repos = useQuery(repositoriesQueryOptions);
+  const settings = useQuery(settingsQueryOptions);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const featureIssues = settings.data?.["feature.issues"] !== false;
+  const featurePRs = settings.data?.["feature.pull_requests"] !== false;
+  const featureActions = settings.data?.["feature.actions"] !== false;
+  const featureAlerts = settings.data?.["feature.security_alerts"] !== false;
 
   const updateSettings = useMutation({
     mutationFn: ({ id, settings }: { id: string; settings: RepositorySettings }) => {
@@ -365,7 +371,7 @@ export function ReposPage() {
   const displayed = showArchived ? archivedRepos : activeRepos;
 
   return (
-    <ListShell eyebrow="仓库" title="仓库管理" description="管理仓库监控开关、能力开关和归档状态。归档后其 Issue/PR/Actions/告警默认从列表与侧栏计数中隐藏。">
+    <ListShell eyebrow="仓库" title="仓库管理" description="管理仓库监控开关、能力开关和归档状态。全局功能模块关闭时，对应能力在此页会显示为关闭且不可改；重新开启全局后恢复各仓原有配置。">
       {errorMsg ? <ErrorAlert title="更新失败" message={errorMsg} /> : null}
       <div className="filter-bar">
         <button className={`quiet-button${!showArchived ? " active" : ""}`} type="button" onClick={() => setShowArchived(false)}>
@@ -394,6 +400,12 @@ export function ReposPage() {
               repo={repo}
               onToggle={(settings) => updateSettings.mutate({ id: repo.id, settings })}
               saving={savingId === repo.id}
+              features={{
+                issues: featureIssues,
+                prs: featurePRs,
+                actions: featureActions,
+                alerts: featureAlerts,
+              }}
             />
           ))}
         </ul>
@@ -406,10 +418,12 @@ function RepoCard({
   repo,
   onToggle,
   saving,
+  features,
 }: {
   repo: Repository;
   onToggle: (s: RepositorySettings) => void;
   saving: boolean;
+  features: { issues: boolean; prs: boolean; actions: boolean; alerts: boolean };
 }) {
   return (
     <li className="repo-card">
@@ -437,10 +451,30 @@ function RepoCard({
       </div>
       <div className="repo-card__toggles">
         <Toggle label="监控" checked={repo.monitor_enabled} disabled={saving} onChange={(v) => onToggle({ monitor_enabled: v })} />
-        <Toggle label="Issues" checked={repo.issues_enabled} disabled={saving} onChange={(v) => onToggle({ issues_enabled: v })} />
-        <Toggle label="PR" checked={repo.pr_enabled} disabled={saving} onChange={(v) => onToggle({ pr_enabled: v })} />
-        <Toggle label="Actions" checked={repo.actions_enabled} disabled={saving} onChange={(v) => onToggle({ actions_enabled: v })} />
-        <Toggle label="安全告警" checked={repo.alerts_enabled} disabled={saving} onChange={(v) => onToggle({ alerts_enabled: v })} />
+        <Toggle
+          label="Issues"
+          checked={features.issues && repo.issues_enabled}
+          disabled={saving || !features.issues}
+          onChange={(v) => onToggle({ issues_enabled: v })}
+        />
+        <Toggle
+          label="PR"
+          checked={features.prs && repo.pr_enabled}
+          disabled={saving || !features.prs}
+          onChange={(v) => onToggle({ pr_enabled: v })}
+        />
+        <Toggle
+          label="Actions"
+          checked={features.actions && repo.actions_enabled}
+          disabled={saving || !features.actions}
+          onChange={(v) => onToggle({ actions_enabled: v })}
+        />
+        <Toggle
+          label="安全告警"
+          checked={features.alerts && repo.alerts_enabled}
+          disabled={saving || !features.alerts}
+          onChange={(v) => onToggle({ alerts_enabled: v })}
+        />
         <Toggle label="归档" checked={repo.is_archived} disabled={saving} onChange={(v) => onToggle({ is_archived: v })} />
       </div>
     </li>

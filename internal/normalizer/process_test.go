@@ -141,6 +141,59 @@ func TestProcessWorkflowRunRespectsActionsToggle(t *testing.T) {
 	}
 }
 
+// 全局 feature.actions 关闭时：即使仓库级 Actions 仍开启，也不落库、不建事件。
+func TestProcessWorkflowRunRespectsGlobalFeatureActions(t *testing.T) {
+	data := openProcessStore(t)
+	repo := seedActiveDemoRepo(t, data)
+	raw, _ := json.Marshal(false)
+	if _, err := data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: "set-actions-off", Key: store.SettingFeatureActions, ValueJSON: raw,
+		UpdatedAt: time.Now().UTC(), UpdatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"action": "completed",
+		"workflow_run": map[string]any{
+			"id": 99901, "name": "质量守卫", "workflow_id": 88, "run_number": 3,
+			"event": "push", "status": "completed", "conclusion": "cancelled",
+			"html_url":    "https://github.com/acme/demo/actions/runs/99901",
+			"head_branch": "main", "head_sha": "def5678", "run_attempt": 1,
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"actor":      map[string]any{"login": "alice"},
+		},
+		"repository": demoRepoPayload(false),
+	})
+
+	proc := &normalizer.Processor{Store: data}
+	res, err := proc.Process(t.Context(), "workflow_run", "delivery-global-actions-off", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Event != nil {
+		t.Fatalf("全局 Actions 关闭不应产生事件: %+v", res.Event)
+	}
+	if !res.SuppressNotify {
+		t.Fatal("全局关闭必须抑制通知")
+	}
+	// 仓库级开关仍为 true，证明拦截来自全局而非仓级。
+	got, err := data.Repositories().Get(t.Context(), repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.ActionsEnabled {
+		t.Fatal("本用例要求仓库级 Actions 仍开启")
+	}
+	_, page, err := data.WorkflowRuns().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10, RepositoryID: repo.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 0 {
+		t.Fatalf("全局 Actions 关闭不应落库 WorkflowRun，got total=%d", page.Total)
+	}
+}
+
 // 已归档仓库的 PR 事件：不更新数据、不建事件。
 func TestProcessSkipsArchivedRepo(t *testing.T) {
 	data := openProcessStore(t)

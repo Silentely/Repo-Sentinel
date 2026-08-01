@@ -24,8 +24,8 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	if res.Event == nil || res.SuppressNotify || res.Event.SuppressNotification {
 		return nil
 	}
-	// 能力开关兜底：采集侧门禁之前的存量事件、以及开关刚关闭的间隙事件，不能外发。
-	if !repoAllowsKind(res.Repository, res.Event.Kind) {
+	// 能力开关兜底：全局功能 + 仓库级开关；存量/间隙事件也不能外发。
+	if !allowsEventKind(ctx, e.Store, res.Repository, res.Event.Kind) {
 		return nil
 	}
 	if !shouldNotifyRealtime(res.Event) {
@@ -56,9 +56,17 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	return nil
 }
 
-// repoAllowsKind 兜底判定仓库能力开关是否放行该类型事件的实时通知。
-// 与 normalizer 的采集门禁使用同一套语义，两道防线保证「关闭即生效」。
-// res.Repository 为 nil（例如聚合器 flush 的单事件回放）时不做拦截。
+// allowsEventKind 判定全局功能 + 仓库能力是否放行该类型事件。
+// 与 normalizer 采集门禁语义一致，两道防线保证「关闭即生效」。
+// res.Repository 为 nil（聚合器 flush 单事件回放）时仍检查全局功能开关。
+func allowsEventKind(ctx context.Context, st store.Store, repo *store.Repository, kind string) bool {
+	if st != nil && !store.KindFeatureEnabled(ctx, st.Settings(), kind) {
+		return false
+	}
+	return repoAllowsKind(repo, kind)
+}
+
+// repoAllowsKind 仅仓库级能力开关；repo 为 nil 时放行（全局已在 allowsEventKind 检查）。
 func repoAllowsKind(repo *store.Repository, kind string) bool {
 	if repo == nil {
 		return true

@@ -2,6 +2,7 @@ package rules
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -78,6 +79,54 @@ func TestEngine按仓库能力开关兜底(t *testing.T) {
 	}
 	if len(out2) != 0 {
 		t.Fatalf("监控关闭的仓库不应外发任何事件，got %d 条", len(out2))
+	}
+}
+
+// 全局 feature.actions 关闭：即使仓库级 Actions 开启且事件已在内存中，也不得外发。
+func TestEngine按全局功能开关兜底(t *testing.T) {
+	data := openTestStore(t)
+	ctx := context.Background()
+
+	_, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-all", ChannelType: store.ChannelTelegram, Name: "all", Enabled: true,
+		Target: "1", DigestEnabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-global", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "acme", Name: "demo", FullName: "acme/demo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(false)
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: ulid.Make().String(), Key: store.SettingFeatureActions, ValueJSON: raw,
+		UpdatedAt: time.Now().UTC(), UpdatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !repo.ActionsEnabled {
+		t.Fatal("仓库级 Actions 默认应开启，用于证明拦截来自全局")
+	}
+
+	eng := &Engine{Store: data}
+	runEvent := &store.Event{
+		ID: ulid.Make().String(), Kind: "workflow_run", Action: "completed",
+		Title: "质量守卫", WorkflowConclusion: "cancelled", OccurredAt: time.Now().UTC(),
+		RepositoryID: &repo.ID, DedupeFingerprint: ulid.Make().String(),
+	}
+	if err := eng.Evaluate(ctx, normalizer.Result{Event: runEvent, Repository: &repo}, "acme/demo"); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Fatalf("全局 Actions 关闭后不应外发 workflow_run，got %d 条", len(out))
 	}
 }
 
