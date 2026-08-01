@@ -7,12 +7,14 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -313,5 +315,74 @@ func TestInstallationTokenRateLimited(t *testing.T) {
 	_, err = c.InstallationToken(context.Background(), 4242)
 	if !IsRateLimited(err) || RetryAfterOf(err) != 30*time.Second {
 		t.Fatalf("token 429 应携带 30s，got err=%v retry=%v", err, RetryAfterOf(err))
+	}
+}
+
+// 并发获取同一 installation 的 token 应合并为一次签发请求（single-flight），
+// 其余调用者共享结果；缓存命中后不再请求签发端点。
+func TestInstallationTokenConcurrentSingleFlight(t *testing.T) {
+	var mu sync.Mutex
+	requests := 0
+	expires := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests++
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"token":"tok-123","expires_at":%q}`, expires)
+	}))
+	defer srv.Close()
+
+	c := NewAppClient(12345, "")
+	c.HTTP = srv.Client()
+	c.BaseURL = srv.URL
+	// 注入私钥材料以满足 Configured 前置校验。
+	key, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	c.Configure(12345, "", string(pemBytes))
+
+	const n = 10
+	start := make(chan struct{})
+	results := make([]string, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			results[i], errs[i] = c.InstallationToken(context.Background(), 4242)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	for i := 0; i < n; i++ {
+		if errs[i] != nil {
+			t.Fatalf("goroutine %d: %v", i, errs[i])
+		}
+		if results[i] != "tok-123" {
+			t.Fatalf("goroutine %d: 期望 tok-123，实际 %q", i, results[i])
+		}
+	}
+	mu.Lock()
+	got := requests
+	mu.Unlock()
+	if got != 1 {
+		t.Fatalf("并发获取应合并为 1 次签发请求，实际 %d", got)
+	}
+
+	// 缓存命中：再次调用不应新增签发请求。
+	if _, err := c.InstallationToken(context.Background(), 4242); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	got = requests
+	mu.Unlock()
+	if got != 1 {
+		t.Fatalf("缓存命中不应新增签发请求，实际 %d", got)
 	}
 }
