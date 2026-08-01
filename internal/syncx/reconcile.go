@@ -152,7 +152,7 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 		if err != nil {
 			return err
 		}
-		if remaining >= 0 && remaining < 50 {
+		if remaining > 0 && remaining < 50 {
 			if r.Logger != nil {
 				r.Logger.Info("github rate low", "remaining", remaining, "repo", repo.FullName)
 			}
