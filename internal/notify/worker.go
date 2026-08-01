@@ -9,9 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -223,6 +225,10 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 408 || resp.StatusCode == 425 || resp.StatusCode == 429 || resp.StatusCode >= 500 {
+		// 429/503 等响应携带 Retry-After 时优先遵循上游退避指引，否则按固定阶梯重试。
+		if ra := parseRetryAfter(resp); ra > 0 {
+			return &retryAfterError{seconds: ra, code: "http_webhook_retry_after"}
+		}
 		return fmt.Errorf("http_webhook_status_%d", resp.StatusCode)
 	}
 	if resp.StatusCode >= 400 {
@@ -271,6 +277,40 @@ type retryAfterError struct {
 }
 
 func (e *retryAfterError) Error() string { return e.code }
+
+// maxRetryAfter 采纳 Retry-After 的上限：外部端点可能返回异常大的值，
+// 上限 1 小时避免通知被长期搁置（重试次数仍受 maxAttempts 约束）。
+const maxRetryAfter = 3600
+
+// parseRetryAfter 解析 HTTP 响应的 Retry-After 响应头，支持整数秒与 HTTP 日期两种格式。
+// 头缺失、格式非法或日期已过期时返回 0，由调用方走固定退避阶梯。
+func parseRetryAfter(resp *http.Response) int {
+	h := strings.TrimSpace(resp.Header.Get("Retry-After"))
+	if h == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(h); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		if secs > maxRetryAfter {
+			return maxRetryAfter
+		}
+		return secs
+	}
+	if t, err := http.ParseTime(h); err == nil {
+		d := time.Until(t)
+		if d <= 0 {
+			return 0
+		}
+		secs := int(math.Ceil(d.Seconds()))
+		if secs > maxRetryAfter {
+			return maxRetryAfter
+		}
+		return secs
+	}
+	return 0
+}
 
 func validateWebhookURL(raw string, allowPrivate bool) error {
 	u, err := url.Parse(raw)
