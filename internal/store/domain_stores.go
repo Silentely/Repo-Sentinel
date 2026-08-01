@@ -247,7 +247,7 @@ func (s *repositoryStore) List(ctx context.Context, f ListFilter) ([]Repository,
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
 	}
-	rows, err := q.Order(entclient.Desc(repository.FieldUpdatedAt)).
+	rows, err := q.Order(entclient.Desc(repository.FieldUpdatedAt), entclient.Asc(repository.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
@@ -623,7 +623,7 @@ func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, Pag
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
 	}
-	rows, err := q.Order(entclient.Desc(workitem.FieldUpdatedAt)).
+	rows, err := q.Order(entclient.Desc(workitem.FieldUpdatedAt), entclient.Asc(workitem.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
@@ -833,7 +833,7 @@ func (s *workflowRunStore) List(ctx context.Context, f ListFilter) ([]WorkflowRu
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
 	}
-	rows, err := q.Order(entclient.Desc(workflowrun.FieldRunUpdatedAt)).
+	rows, err := q.Order(entclient.Desc(workflowrun.FieldRunUpdatedAt), entclient.Asc(workflowrun.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
@@ -995,7 +995,7 @@ func (s *securityAlertStore) List(ctx context.Context, f ListFilter) ([]Security
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
 	}
-	rows, err := q.Order(entclient.Desc(securityalert.FieldSourceUpdatedAt)).
+	rows, err := q.Order(entclient.Desc(securityalert.FieldSourceUpdatedAt), entclient.Asc(securityalert.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
@@ -1117,7 +1117,7 @@ func (s *eventStore) List(ctx context.Context, f ListFilter) ([]Event, PageResul
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
 	}
-	rows, err := q.Order(entclient.Desc(event.FieldOccurredAt)).
+	rows, err := q.Order(entclient.Desc(event.FieldOccurredAt), entclient.Asc(event.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
@@ -1157,7 +1157,7 @@ func (s *eventStore) ListSince(ctx context.Context, since time.Time, limit int) 
 		q = q.Where(event.Or(event.RepositoryIDIsNil(), event.RepositoryIDNotIn(ids...)))
 	}
 	entList, err := q.
-		Order(entclient.Desc(event.FieldOccurredAt)).
+		Order(entclient.Desc(event.FieldOccurredAt), entclient.Asc(event.FieldID)).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
@@ -1353,7 +1353,7 @@ func (s *outboxStore) ClaimDue(ctx context.Context, now time.Time, lockFor time.
 			notificationoutbox.StatusIn(OutboxPending, OutboxSending),
 			notificationoutbox.NextAttemptAtLTE(now),
 		).
-		Order(entclient.Asc(notificationoutbox.FieldNextAttemptAt)).
+		Order(entclient.Asc(notificationoutbox.FieldNextAttemptAt), entclient.Asc(notificationoutbox.FieldID)).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
@@ -1421,7 +1421,7 @@ func (s *outboxStore) List(ctx context.Context, f ListFilter) ([]NotificationOut
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
 	}
-	rows, err := q.Order(entclient.Desc(notificationoutbox.FieldCreatedAt)).
+	rows, err := q.Order(entclient.Desc(notificationoutbox.FieldCreatedAt), entclient.Asc(notificationoutbox.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
