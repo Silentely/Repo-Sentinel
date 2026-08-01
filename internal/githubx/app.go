@@ -1,6 +1,7 @@
 package githubx
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
@@ -224,6 +225,19 @@ func (c *AppClient) InstallationToken(ctx context.Context, installationID int64)
 
 // DoJSON 使用 bearer token 请求 GitHub API。
 func (c *AppClient) DoJSON(ctx context.Context, method, path, token string, out any) (rateRemaining int, err error) {
+	rateRemaining, _, err = c.doJSON(ctx, method, path, token, out)
+	return rateRemaining, err
+}
+
+// DoJSONPage 与 DoJSON 相同，额外返回响应的 Link header，供游标分页端点使用。
+func (c *AppClient) DoJSONPage(ctx context.Context, method, path, token string, out any) (rateRemaining int, link string, err error) {
+	return c.doJSON(ctx, method, path, token, out)
+}
+
+// doJSON 请求 GitHub API 并返回剩余配额与 Link header。
+// 错误分类：429 与 403（X-RateLimit-Remaining=0 或 body 含 rate limit）→ github_rate_limited；
+// 其余 403/4xx/5xx → HTTPStatusError（403 需区分限流与权限/功能未开启，不能一律当限流）。
+func (c *AppClient) doJSON(ctx context.Context, method, path, token string, out any) (rateRemaining int, link string, err error) {
 	if c.HTTP == nil {
 		c.HTTP = &http.Client{Timeout: 30 * time.Second}
 	}
@@ -236,7 +250,7 @@ func (c *AppClient) DoJSON(ctx context.Context, method, path, token string, out 
 	}
 	req, err := http.NewRequestWithContext(ctx, method, full, nil)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -245,28 +259,42 @@ func (c *AppClient) DoJSON(ctx context.Context, method, path, token string, out 
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	defer resp.Body.Close()
 	if v := resp.Header.Get("X-RateLimit-Remaining"); v != "" {
 		rateRemaining, _ = strconv.Atoi(v)
 	}
+	link = resp.Header.Get("Link")
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode == http.StatusNotModified {
-		return rateRemaining, errNotModified
+		return rateRemaining, link, errNotModified
 	}
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-		return rateRemaining, fmt.Errorf("github_rate_limited")
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// 429：次限流。
+		return rateRemaining, link, fmt.Errorf("github_rate_limited")
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		// 403 需区分限流与权限/功能未开启：主限流响应携带 X-RateLimit-Remaining: 0。
+		if resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")) {
+			return rateRemaining, link, fmt.Errorf("github_rate_limited")
+		}
+		return rateRemaining, link, statusError(resp.StatusCode, body)
 	}
 	if resp.StatusCode >= 300 {
-		return rateRemaining, &HTTPStatusError{StatusCode: resp.StatusCode}
+		return rateRemaining, link, statusError(resp.StatusCode, body)
 	}
 	if out != nil {
 		if err := json.Unmarshal(body, out); err != nil {
-			return rateRemaining, err
+			return rateRemaining, link, err
 		}
 	}
-	return rateRemaining, nil
+	return rateRemaining, link, nil
+}
+
+// statusError 构造 HTTPStatusError。
+func statusError(status int, _ []byte) error {
+	return &HTTPStatusError{StatusCode: status}
 }
 
 var errNotModified = fmt.Errorf("not_modified")
@@ -277,7 +305,7 @@ func IsNotModified(err error) bool {
 }
 
 // HTTPStatusError 携带 GitHub API 的 HTTP 状态码，便于调用方按状态分类
-// （如仅 404/410 判定仓库已转私有/删除，其余错误视为临时故障）。
+// （如 404/403 判定功能未开启或仓库不可见，其余错误视为临时故障）。
 type HTTPStatusError struct {
 	StatusCode int
 }
