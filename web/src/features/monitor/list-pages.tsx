@@ -127,7 +127,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
           全部
         </button>
         <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>
-          进行中
+          未关闭
         </button>
         <button className={`quiet-button${state === "closed" ? " active" : ""}`} type="button" onClick={() => setState("closed")}>
           已关闭
@@ -371,14 +371,14 @@ export function ReposPage() {
   const displayed = showArchived ? archivedRepos : activeRepos;
 
   return (
-    <ListShell eyebrow="仓库" title="仓库管理" description="管理仓库监控开关、能力开关和归档状态。全局功能模块关闭时，对应能力在此页会显示为关闭且不可改；重新开启全局后恢复各仓原有配置。">
+    <ListShell eyebrow="仓库" title="仓库管理" description="「监控」为总开关；子能力受全局功能模块约束。本系统归档会停采集（可撤销），与 GitHub 侧已归档是两回事。">
       {errorMsg ? <ErrorAlert title="更新失败" message={errorMsg} /> : null}
       <div className="filter-bar">
         <button className={`quiet-button${!showArchived ? " active" : ""}`} type="button" onClick={() => setShowArchived(false)}>
-          关注中 ({activeRepos.length})
+          未归档 ({activeRepos.length})
         </button>
         <button className={`quiet-button${showArchived ? " active" : ""}`} type="button" onClick={() => setShowArchived(true)}>
-          已归档 ({archivedRepos.length})
+          本系统已归档 ({archivedRepos.length})
         </button>
       </div>
       <QueryGate
@@ -387,9 +387,19 @@ export function ReposPage() {
         isEmpty={displayed.length === 0}
         emptyState={
           <EmptyState
-            title={showArchived ? "没有已归档的仓库" : "暂无关注的仓库"}
-            description={showArchived ? "归档的仓库会显示在这里。" : "安装 GitHub App 后仓库会自动出现。"}
-            action={showArchived ? undefined : <Link to="/github">打开 GitHub App 页</Link>}
+            title={showArchived ? "没有本系统归档的仓库" : "暂无关注的仓库"}
+            description={
+              showArchived
+                ? "在本系统归档的仓库会显示在这里。"
+                : "安装 GitHub App 后仓库会自动出现；也可在 GitHub 页登记外部公开仓。"
+            }
+            action={
+              showArchived ? undefined : (
+                <span className="link-row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+                  <Link to="/github">打开 GitHub App 页</Link>
+                </span>
+              )
+            }
           />
         }
       >
@@ -425,6 +435,20 @@ function RepoCard({
   saving: boolean;
   features: { issues: boolean; prs: boolean; actions: boolean; alerts: boolean };
 }) {
+  const monitorOn = repo.monitor_enabled;
+  function handleArchive(next: boolean) {
+    if (next) {
+      if (
+        !window.confirm(
+          `确定在本系统归档「${repo.full_name || repo.name}」？将关闭监控与全部能力开关，停止采集与通知（不修改 GitHub 侧归档状态）。`,
+        )
+      ) {
+        return;
+      }
+    }
+    onToggle({ is_archived: next });
+  }
+
   return (
     <li className="repo-card">
       <div className="repo-card__header">
@@ -443,41 +467,94 @@ function RepoCard({
                 : repo.sync_status === "baseline_sync"
                   ? "基线中"
                   : repo.sync_status}
-            {repo.is_archived ? " · GitHub 已归档" : ""}
+            {repo.is_archived ? " · 本系统已归档" : ""}
           </span>
           {repo.last_synced_at && <span className="last-synced">最后同步: {formatRelativeTime(repo.last_synced_at)}</span>}
           {repo.last_sync_error_code && <span className="sync-error">同步错误: {repo.last_sync_error_code}</span>}
         </div>
       </div>
       <div className="repo-card__toggles">
-        <Toggle label="监控" checked={repo.monitor_enabled} disabled={saving} onChange={(v) => onToggle({ monitor_enabled: v })} />
         <Toggle
-          label="Issues"
-          checked={features.issues && repo.issues_enabled}
-          disabled={saving || !features.issues}
-          onChange={(v) => onToggle({ issues_enabled: v })}
+          label="监控（总开关）"
+          checked={monitorOn}
+          disabled={saving}
+          onChange={(v) => onToggle({ monitor_enabled: v })}
         />
-        <Toggle
-          label="PR"
-          checked={features.prs && repo.pr_enabled}
-          disabled={saving || !features.prs}
-          onChange={(v) => onToggle({ pr_enabled: v })}
-        />
-        <Toggle
-          label="Actions"
-          checked={features.actions && repo.actions_enabled}
-          disabled={saving || !features.actions}
-          onChange={(v) => onToggle({ actions_enabled: v })}
-        />
-        <Toggle
-          label="安全告警"
-          checked={features.alerts && repo.alerts_enabled}
-          disabled={saving || !features.alerts}
-          onChange={(v) => onToggle({ alerts_enabled: v })}
-        />
-        <Toggle label="归档" checked={repo.is_archived} disabled={saving} onChange={(v) => onToggle({ is_archived: v })} />
+        <div className="repo-card__capability-group" aria-label="能力开关">
+          <CapabilityToggle
+            label="Issues"
+            repoEnabled={repo.issues_enabled}
+            globalOn={features.issues}
+            monitorOn={monitorOn}
+            saving={saving}
+            onChange={(v) => onToggle({ issues_enabled: v })}
+          />
+          <CapabilityToggle
+            label="PR"
+            repoEnabled={repo.pr_enabled}
+            globalOn={features.prs}
+            monitorOn={monitorOn}
+            saving={saving}
+            onChange={(v) => onToggle({ pr_enabled: v })}
+          />
+          <CapabilityToggle
+            label="Actions"
+            repoEnabled={repo.actions_enabled}
+            globalOn={features.actions}
+            monitorOn={monitorOn}
+            saving={saving}
+            onChange={(v) => onToggle({ actions_enabled: v })}
+          />
+          <CapabilityToggle
+            label="安全告警"
+            repoEnabled={repo.alerts_enabled}
+            globalOn={features.alerts}
+            monitorOn={monitorOn}
+            saving={saving}
+            onChange={(v) => onToggle({ alerts_enabled: v })}
+          />
+        </div>
+        <Toggle label="本系统归档" checked={repo.is_archived} disabled={saving} onChange={handleArchive} />
       </div>
     </li>
+  );
+}
+
+/** 能力开关：展示「有效开」与全局/仓级原因，不把仓级配置静默写成 false。 */
+function CapabilityToggle({
+  label,
+  repoEnabled,
+  globalOn,
+  monitorOn,
+  saving,
+  onChange,
+}: {
+  label: string;
+  repoEnabled: boolean;
+  globalOn: boolean;
+  monitorOn: boolean;
+  saving: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  const effective = globalOn && monitorOn && repoEnabled;
+  let hint = "";
+  if (!globalOn) hint = "全局关闭";
+  else if (!monitorOn) hint = "监控已关";
+  const disabled = saving || !globalOn || !monitorOn;
+  return (
+    <label className={`toggle-row${!globalOn ? " toggle-row--global-off" : ""}`} title={hint || undefined}>
+      <input
+        type="checkbox"
+        checked={effective}
+        disabled={disabled}
+        aria-label={hint ? `${label}（${hint}）` : label}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>
+        {label}
+        {hint ? <em className="toggle-hint"> · {hint}</em> : null}
+      </span>
+    </label>
   );
 }
 
@@ -498,6 +575,19 @@ function Toggle({
       <span>{label}</span>
     </label>
   );
+}
+
+function formatAlertKind(kind?: string): string {
+  switch (kind) {
+    case "dependabot":
+      return "依赖漏洞";
+    case "code_scanning":
+      return "代码扫描";
+    case "secret_scanning":
+      return "密钥泄露";
+    default:
+      return kind || "告警";
+  }
 }
 
 function ActionsList() {
@@ -697,30 +787,15 @@ function SecurityList() {
         </button>
         <IgnoredToggle mode={ignoredMode} onChange={setIgnoredMode} />
         <span className="filter-bar__sep" />
-        <button className={`quiet-button${alertKind === "" ? " active" : ""}`} type="button" onClick={() => setAlertKind("")}>
-          全部类型
-        </button>
-        <button
-          className={`quiet-button${alertKind === "dependabot" ? " active" : ""}`}
-          type="button"
-          onClick={() => setAlertKind("dependabot")}
-        >
-          依赖漏洞
-        </button>
-        <button
-          className={`quiet-button${alertKind === "code_scanning" ? " active" : ""}`}
-          type="button"
-          onClick={() => setAlertKind("code_scanning")}
-        >
-          代码扫描
-        </button>
-        <button
-          className={`quiet-button${alertKind === "secret_scanning" ? " active" : ""}`}
-          type="button"
-          onClick={() => setAlertKind("secret_scanning")}
-        >
-          密钥泄露
-        </button>
+        <label className="repo-filter">
+          <span className="sr-only">告警类型</span>
+          <select value={alertKind} onChange={(e) => setAlertKind(e.target.value)} aria-label="告警类型">
+            <option value="">全部类型</option>
+            <option value="dependabot">依赖漏洞</option>
+            <option value="code_scanning">代码扫描</option>
+            <option value="secret_scanning">密钥泄露</option>
+          </select>
+        </label>
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
       </div>
@@ -758,7 +833,7 @@ function SecurityList() {
               const label = (a.rule_or_dependency || a.severity || "").trim() || "告警";
               return (
                 <li key={a.id}>
-                  <span className={`event-kind state-${a.state || "open"}`}>{a.alert_kind || "alert"}</span>
+                  <span className={`event-kind state-${a.state || "open"}`}>{formatAlertKind(a.alert_kind)}</span>
                   {a.ignored && <span className="ignored-badge">已忽略</span>}
                   {a.repository_full_name ? <span className="event-repo">{a.repository_full_name}</span> : null}
                   <strong>

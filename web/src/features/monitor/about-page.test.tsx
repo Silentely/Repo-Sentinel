@@ -16,6 +16,7 @@ const settingsFixture = {
   "digest.send_empty": true,
   "notify.aggregate_window_sec": 120,
   "notify.burst_threshold": 30,
+  "notify.burst_window_sec": 300,
   "display.closed_limit": 50,
   "retention.events_days": 60,
   "retention.outbox_days": 15,
@@ -81,15 +82,13 @@ describe("关于与设置页", () => {
     const prefsSection = screen.getByRole("region", { name: "运行偏好" });
     expect(within(prefsSection).queryByText("功能模块开关已保存。")).toBeNull();
 
-    expect(saveSystemSettingsMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "admin.timezone": "Asia/Shanghai",
-        "feature.issues": false,
-        "feature.pull_requests": true,
-        "feature.actions": true,
-        "feature.security_alerts": true,
-      }),
-    );
+    // 功能区块只提交 feature.*，避免覆盖运行偏好。
+    expect(saveSystemSettingsMock).toHaveBeenCalledWith({
+      "feature.issues": false,
+      "feature.pull_requests": true,
+      "feature.actions": true,
+      "feature.security_alerts": true,
+    });
   });
 
   it("保存偏好成功后在运行偏好区块内展示提示", async () => {
@@ -102,8 +101,15 @@ describe("关于与设置页", () => {
     const prefsSection = screen.getByRole("region", { name: "运行偏好" });
     expect(await within(prefsSection).findByText("系统偏好已保存。")).toBeInTheDocument();
     expect(saveSystemSettingsMock).toHaveBeenCalledWith(
-      expect.objectContaining({ "admin.timezone": "Asia/Shanghai", "digest.local_time": "08:30" }),
+      expect.objectContaining({
+        "admin.timezone": "Asia/Shanghai",
+        "digest.local_time": "08:30",
+        "notify.burst_window_sec": 300,
+      }),
     );
+    const prefsPayload = saveSystemSettingsMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(prefsPayload).toBeDefined();
+    expect(prefsPayload).not.toHaveProperty("feature.issues");
   });
 
   it("保存失败时在功能模块区块内展示错误且不出现成功提示", async () => {

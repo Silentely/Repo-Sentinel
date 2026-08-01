@@ -126,7 +126,7 @@ export function RootLayout({ session }: RootLayoutProps) {
       : "ready";
   const healthLabel = healthState === "ready" ? "服务正常" : healthState === "warning" ? "检查中" : "需要关注";
 
-  // 功能模块开关
+  // 功能模块开关：关闭后侧栏隐藏对应入口（与 FeatureGuard / 采集门禁一致）。
   const featureIssues = settings.data?.["feature.issues"] !== false;
   const featurePRs = settings.data?.["feature.pull_requests"] !== false;
   const featureActions = settings.data?.["feature.actions"] !== false;
@@ -139,6 +139,7 @@ export function RootLayout({ session }: RootLayoutProps) {
   const failedActions = featureActions ? (stats?.failed_actions ?? 0) : 0;
   const openSecurity = featureAlerts ? (stats?.open_security ?? 0) : 0;
   const outboxDead = stats?.outbox_dead ?? 0;
+  const versionLabel = "RepoSentinel";
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -185,35 +186,43 @@ export function RootLayout({ session }: RootLayoutProps) {
             <Archive aria-hidden="true" size={17} />
             <span>仓库管理</span>
           </Link>
-          <Link to="/issues" activeProps={{ "aria-current": "page" }}>
-            <ListTodo aria-hidden="true" size={17} />
-            <span>Issues</span>
-            {openIssues > 0 && <span className="nav-badge nav-badge--info">{openIssues}</span>}
-          </Link>
-          <Link to="/pull-requests" activeProps={{ "aria-current": "page" }}>
-            <GitPullRequest aria-hidden="true" size={17} />
-            <span>Pull Requests</span>
-            {openPRs > 0 && <span className="nav-badge nav-badge--success">{openPRs}</span>}
-          </Link>
-          <Link to="/actions" activeProps={{ "aria-current": "page" }}>
-            <Workflow aria-hidden="true" size={17} />
-            <span>Actions</span>
-            {failedActions > 0 && <span className="nav-badge nav-badge--warning">{failedActions}</span>}
-          </Link>
-          <Link to="/security" activeProps={{ "aria-current": "page" }}>
-            <Shield aria-hidden="true" size={17} />
-            <span>安全告警</span>
-            {openSecurity > 0 && <span className="nav-badge nav-badge--danger">{openSecurity}</span>}
-          </Link>
+          {featureIssues ? (
+            <Link to="/issues" activeProps={{ "aria-current": "page" }}>
+              <ListTodo aria-hidden="true" size={17} />
+              <span>Issues</span>
+              {openIssues > 0 && <span className="nav-badge nav-badge--info">{openIssues}</span>}
+            </Link>
+          ) : null}
+          {featurePRs ? (
+            <Link to="/pull-requests" activeProps={{ "aria-current": "page" }}>
+              <GitPullRequest aria-hidden="true" size={17} />
+              <span>Pull Requests</span>
+              {openPRs > 0 && <span className="nav-badge nav-badge--success">{openPRs}</span>}
+            </Link>
+          ) : null}
+          {featureActions ? (
+            <Link to="/actions" activeProps={{ "aria-current": "page" }}>
+              <Workflow aria-hidden="true" size={17} />
+              <span>Actions</span>
+              {failedActions > 0 && <span className="nav-badge nav-badge--warning">{failedActions}</span>}
+            </Link>
+          ) : null}
+          {featureAlerts ? (
+            <Link to="/security" activeProps={{ "aria-current": "page" }}>
+              <Shield aria-hidden="true" size={17} />
+              <span>安全告警</span>
+              {openSecurity > 0 && <span className="nav-badge nav-badge--danger">{openSecurity}</span>}
+            </Link>
+          ) : null}
           <span className="app-nav__label">通知</span>
           <Link to="/notifications" activeProps={{ "aria-current": "page" }} activeOptions={{ exact: true }}>
             <Bell aria-hidden="true" size={17} />
             <span>渠道配置</span>
-            {outboxDead > 0 && <span className="nav-badge nav-badge--warning">{outboxDead}</span>}
           </Link>
           <Link to="/notifications/outbox" activeProps={{ "aria-current": "page" }}>
             <Send aria-hidden="true" size={17} />
             <span>投递记录</span>
+            {outboxDead > 0 && <span className="nav-badge nav-badge--warning">{outboxDead}</span>}
           </Link>
           <span className="app-nav__label">系统</span>
           <Link to="/github" activeProps={{ "aria-current": "page" }}>
@@ -225,7 +234,7 @@ export function RootLayout({ session }: RootLayoutProps) {
             <span>关于与设置</span>
           </Link>
         </nav>
-        <span className="app-sidebar__version">RepoSentinel</span>
+        <span className="app-sidebar__version">{versionLabel}</span>
       </aside>
 
       {navOpen && <div className="app-scrim" aria-hidden="true" onClick={closeNav} />}
@@ -254,8 +263,8 @@ export function RootLayout({ session }: RootLayoutProps) {
               <span className="health-pill__label">{healthLabel}</span>
             </span>
             <ThemeToggle />
-            <span className="sr-only" id="current-admin">
-              当前管理员 {session.admin.username}
+            <span className="topbar-admin" title={`管理员 ${session.admin.username}`}>
+              {session.admin.username}
             </span>
             <button
               className="quiet-button"

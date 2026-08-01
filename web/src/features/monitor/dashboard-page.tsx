@@ -12,11 +12,13 @@ import {
   activateRepository,
   dashboardQueryOptions,
   eventsQueryOptions,
+  githubConfigQueryOptions,
   outboxQueryOptions,
   reconcileAll,
   reconcileRepository,
   repositoriesQueryOptions,
   retryOutbox,
+  settingsQueryOptions,
 } from "./api";
 
 type PanelKey = "outbox" | "events" | "repos";
@@ -59,6 +61,8 @@ export function DashboardPage() {
   const repos = useQuery(repositoriesQueryOptions);
   const events = useQuery(eventsQueryOptions);
   const outbox = useQuery(outboxQueryOptions);
+  const settings = useQuery(settingsQueryOptions);
+  const githubConfig = useQuery(githubConfigQueryOptions);
 
   // 折叠状态从 localStorage 恢复，切换后写回。
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(readOpenPanels);
@@ -107,6 +111,11 @@ export function DashboardPage() {
   });
 
   const stats = dashboard.data;
+  const featureIssues = settings.data?.["feature.issues"] !== false;
+  const featurePRs = settings.data?.["feature.pull_requests"] !== false;
+  const featureActions = settings.data?.["feature.actions"] !== false;
+  const featureAlerts = settings.data?.["feature.security_alerts"] !== false;
+
   // 仓库与基线：排除已归档，避免归档仓继续占位。
   const visibleRepos = (repos.data?.items ?? []).filter(
     (r) => !r.is_archived && r.sync_status !== "archived",
@@ -118,6 +127,52 @@ export function DashboardPage() {
 
   const eventItems = events.data?.items ?? [];
   const outboxItems = outbox.data?.items ?? [];
+
+  const cfg = githubConfig.data;
+  const inboundReady = Boolean(cfg?.webhook_secret_configured);
+  const outboundReady = Boolean(cfg?.app_id_configured && cfg?.private_key_configured);
+  const hasRepos = visibleRepos.length > 0;
+  const hasActiveRepo = visibleRepos.some((r) => r.sync_status === "active");
+  const channelsEnabled = (stats?.channels_enabled ?? 0) > 0;
+  const setupSteps = [
+    {
+      id: "inbound",
+      ok: inboundReady,
+      label: "入站 Webhook Secret",
+      hint: "GitHub → 本服务验签",
+      to: "/github" as const,
+    },
+    {
+      id: "outbound",
+      ok: outboundReady,
+      label: "出站 App 凭据",
+      hint: "App ID + 私钥，用于对账/同步",
+      to: "/github" as const,
+    },
+    {
+      id: "repos",
+      ok: hasRepos,
+      label: "已关注仓库",
+      hint: "安装 App 后点「从 GitHub 同步仓库」",
+      to: "/github" as const,
+    },
+    {
+      id: "baseline",
+      ok: hasRepos && (hasActiveRepo || baselineRepos.length === 0),
+      label: "基线已放行",
+      hint: "对账成功会自动结束基线，也可手动「立即放行」",
+      to: "/" as const,
+    },
+    {
+      id: "channels",
+      ok: channelsEnabled,
+      label: "通知渠道",
+      hint: "Telegram 或 HTTP Webhook",
+      to: "/notifications" as const,
+    },
+  ];
+  const setupDone = setupSteps.filter((s) => s.ok).length;
+  const showSetup = setupDone < setupSteps.length;
 
   function togglePanel(key: PanelKey) {
     setOpenPanels((prev) => {
@@ -133,7 +188,7 @@ export function DashboardPage() {
         <div>
           <p className="eyebrow">值守概览</p>
           <h1>现在是否健康，今天发生了什么。</h1>
-          <p>Webhook 入库后会在此汇总。基线中的仓库不会发送历史通知洪流。</p>
+          <p>Webhook 入库后会在此汇总。对账完成后基线会自动放行；也可手动立即放行。</p>
         </div>
       </section>
 
@@ -145,19 +200,55 @@ export function DashboardPage() {
         />
       ) : null}
 
+      {showSetup ? (
+        <section className="onboarding-card setup-progress" aria-labelledby="setup-progress-title">
+          <div className="onboarding-card__header">
+            <h2 id="setup-progress-title">接入进度</h2>
+            <span className="muted">
+              {setupDone} / {setupSteps.length} 完成
+            </span>
+          </div>
+          <p className="field-hint">按步骤完成即可开始值守；已完成的步骤会打勾。</p>
+          <ol className="setup-progress__list">
+            {setupSteps.map((step, index) => (
+              <li key={step.id} className={`setup-progress__item${step.ok ? " is-done" : ""}`}>
+                <span className="setup-progress__index" aria-hidden="true">
+                  {step.ok ? "✓" : index + 1}
+                </span>
+                <div className="setup-progress__body">
+                  <strong>{step.label}</strong>
+                  <span className="muted">{step.hint}</span>
+                </div>
+                {!step.ok && step.to !== "/" ? (
+                  <Link className="quiet-button quiet-button--compact" to={step.to}>
+                    去配置
+                  </Link>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+
       <section className="status-card" aria-label="关键指标">
         <div className="status-grid">
-          <Metric label="开放 Issue" value={stats?.open_issues} />
-          <Metric label="开放 PR" value={stats?.open_pulls} />
-          <Metric label="失败 Actions" value={stats?.failed_actions} />
-          <Metric label="开放安全告警" value={stats?.open_security} />
+          {featureIssues ? (
+            <Metric label="开放 Issue" value={stats?.open_issues} to="/issues" />
+          ) : null}
+          {featurePRs ? <Metric label="开放 PR" value={stats?.open_pulls} to="/pull-requests" /> : null}
+          {featureActions ? (
+            <Metric label="失败 Actions" value={stats?.failed_actions} to="/actions" />
+          ) : null}
+          {featureAlerts ? (
+            <Metric label="开放安全告警" value={stats?.open_security} to="/security" />
+          ) : null}
           <Metric label="24h 事件" value={stats?.events_24h} />
-          <Metric label="投递失败" value={stats?.outbox_dead} />
+          <Metric label="投递失败" value={stats?.outbox_dead} to="/notifications/outbox" />
         </div>
         <div className="status-grid status-grid--secondary">
-          <Metric label="活跃仓库" value={stats?.repos_active} />
+          <Metric label="活跃仓库" value={stats?.repos_active} to="/repos" />
           <Metric label="基线中" value={stats?.repos_baseline} />
-          <Metric label="已启用渠道" value={stats?.channels_enabled} />
+          <Metric label="已启用渠道" value={stats?.channels_enabled} to="/notifications" />
         </div>
       </section>
 
@@ -350,7 +441,7 @@ export function DashboardPage() {
                         disabled={activate.isPending}
                         onClick={() => activate.mutate(repo.id)}
                       >
-                        完成基线
+                        立即放行
                       </button>
                     ) : (
                       <span className="repo-baseline-row__slot" aria-hidden="true" />
@@ -362,7 +453,9 @@ export function DashboardPage() {
           </ul>
         </QueryGate>
         {baselineRepos.length > 0 ? (
-          <p className="panel-footnote">基线中的仓库会抑制实时通知，避免首次同步洪流。确认快照就绪后点击「完成基线」。</p>
+          <p className="panel-footnote">
+            基线中抑制实时通知，避免首次同步洪流。对账成功后会自动结束基线；也可点「立即放行」跳过等待。
+          </p>
         ) : null}
       </CollapsiblePanel>
     </>
@@ -413,13 +506,21 @@ function CollapsiblePanel({
   );
 }
 
-function Metric({ label, value }: { label: string; value?: number }) {
-  return (
-    <div className="status-item">
+function Metric({ label, value, to }: { label: string; value?: number; to?: string }) {
+  const inner = (
+    <>
       <span className="status-item__label">{label}</span>
       <strong>{value === undefined ? "—" : value}</strong>
-    </div>
+    </>
   );
+  if (to) {
+    return (
+      <Link className="status-item status-item--link" to={to}>
+        {inner}
+      </Link>
+    );
+  }
+  return <div className="status-item">{inner}</div>;
 }
 
 function syncLabel(status: string): string {
