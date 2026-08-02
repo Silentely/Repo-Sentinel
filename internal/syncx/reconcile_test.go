@@ -451,6 +451,7 @@ func TestAlertUnavailableClassification(t *testing.T) {
 		want bool
 	}{
 		{"dependabot 400 不可用", store.AlertKindDependabot, httpErr(400), true},
+		{"dependabot 403 不可用", store.AlertKindDependabot, httpErr(403), true},
 		{"dependabot 500 临时故障", store.AlertKindDependabot, httpErr(500), false},
 		{"code_scanning 403 不可用", store.AlertKindCodeScanning, httpErr(403), true},
 		{"code_scanning 404 不可用", store.AlertKindCodeScanning, httpErr(404), true},
