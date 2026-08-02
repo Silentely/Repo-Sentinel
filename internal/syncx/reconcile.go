@@ -434,8 +434,9 @@ func alertUnavailable(kind string, err error) bool {
 	}
 	switch kind {
 	case store.AlertKindDependabot:
-		// 游标分页改完后若仍返回 400，说明仓库不支持 Dependabot alerts。
-		return httpErr.StatusCode == http.StatusBadRequest
+		// 游标分页改完后若仍返回 400，说明仓库不支持 Dependabot alerts；
+		// 公开仓库未开启 Dependabot 时 GitHub 也可能返回 403。
+		return httpErr.StatusCode == http.StatusBadRequest || httpErr.StatusCode == http.StatusForbidden
 	case store.AlertKindCodeScanning:
 		// 403（Advanced Security 未启用）或 404（仓库不存在/不可见）。
 		return httpErr.StatusCode == http.StatusForbidden || httpErr.StatusCode == http.StatusNotFound
