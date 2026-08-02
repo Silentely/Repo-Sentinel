@@ -254,6 +254,17 @@ type InstallationRepo struct {
 	DefaultBranch string `json:"default_branch"`
 }
 
+// repoSource 使 InstallationRepo 满足 normalizer.repoSource 接口，
+// 以便直接传给 NormalizeRepository 复用仓库规范化逻辑。
+func (r *InstallationRepo) GetFullName() string      { return r.FullName }
+func (r *InstallationRepo) GetID() int64             { return r.ID }
+func (r *InstallationRepo) GetName() string          { return r.Name }
+func (r *InstallationRepo) GetHTMLURL() string       { return r.HTMLURL }
+func (r *InstallationRepo) GetArchived() bool        { return r.Archived }
+func (r *InstallationRepo) GetPrivate() bool         { return r.Private }
+func (r *InstallationRepo) GetDefaultBranch() string { return r.DefaultBranch }
+func (r *InstallationRepo) GetOwnerLogin() string    { return r.Owner.Login }
+
 // ListInstallationRepositories 分页列出当前 Installation 可访问的仓库。
 func (c *AppClient) ListInstallationRepositories(ctx context.Context, token string, page int) ([]InstallationRepo, int, error) {
 	if page <= 0 {
