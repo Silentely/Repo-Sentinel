@@ -11,7 +11,7 @@ BUILD_LDFLAGS := \
 	-X github.com/Silentely/Repo-Sentinel/internal/buildinfo.buildTime=$(BUILD_TIME) \
 	-X github.com/Silentely/Repo-Sentinel/internal/buildinfo.buildChannel=$(BUILD_CHANNEL)
 
-.PHONY: fmt test vet build build-production verify test-frontend docs-dev docs-build
+.PHONY: fmt test vet lint build build-production verify test-frontend docs-dev docs-build
 
 fmt:
 	go fmt ./...
@@ -24,6 +24,9 @@ test-frontend:
 
 vet:
 	go vet ./...
+
+lint:
+	golangci-lint run ./...
 
 build:
 	go build -ldflags "$(BUILD_LDFLAGS)" -o "$(OUTPUT)" ./cmd/reposentinel
