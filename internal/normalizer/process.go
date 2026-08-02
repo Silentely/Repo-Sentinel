@@ -182,65 +182,7 @@ func (p *Processor) Process(ctx context.Context, eventType, deliveryID string, p
 }
 
 func (p *Processor) ensureRepository(ctx context.Context, gh *ghRepository, installationID *string) (store.Repository, error) {
-	if gh == nil || gh.FullName == "" {
-		return store.Repository{}, fmt.Errorf("missing repository")
-	}
-	parts := strings.SplitN(gh.FullName, "/", 2)
-	owner, name := gh.Owner.Login, gh.Name
-	if len(parts) == 2 {
-		if owner == "" {
-			owner = parts[0]
-		}
-		if name == "" {
-			name = parts[1]
-		}
-	}
-	repoID := gh.ID
-	htmlURL := strings.TrimSpace(gh.HTMLURL)
-	if htmlURL == "" && gh.FullName != "" {
-		htmlURL = "https://github.com/" + gh.FullName
-	}
-	in := store.Repository{
-		Type:           store.RepositoryTypeInstallation,
-		SyncStatus:     store.SyncStatusBaseline,
-		GitHubRepoID:   &repoID,
-		Owner:          owner,
-		Name:           name,
-		FullName:       gh.FullName,
-		InstallationID: installationID,
-		IsArchived:     gh.Archived,
-		IsPrivate:      gh.Private,
-		HTMLURL:        htmlURL,
-		DefaultBranch:  gh.DefaultBranch,
-	}
-	existing, err := p.Store.Repositories().GetByFullName(ctx, gh.FullName)
-	if err == nil {
-		in.ID = existing.ID
-		in.SyncStatus = existing.SyncStatus
-		if existing.SyncStatus == "" {
-			in.SyncStatus = store.SyncStatusBaseline
-		}
-		// payload 显示 GitHub 侧已归档而本地未归档：联动收口归档状态与能力开关
-		//（与设置页手动归档语义一致，均由 UpdateSettings 统一处理）。
-		if gh.Archived && existing.SyncStatus != store.SyncStatusArchived {
-			archived := true
-			if uerr := p.Store.Repositories().UpdateSettings(ctx, existing.ID, store.RepositorySettings{IsArchived: &archived}); uerr == nil {
-				in.SyncStatus = store.SyncStatusArchived
-			}
-		}
-		// 本地归档标记不被单条 payload 抹掉：取消归档仅经 unarchived 事件或设置页操作。
-		if existing.IsArchived && !gh.Archived {
-			in.IsArchived = true
-		}
-		// 已存在仓库保持状态，仅更新元数据
-		return p.Store.Repositories().Upsert(ctx, in)
-	}
-	if err != store.ErrNotFound {
-		return store.Repository{}, err
-	}
-	now := time.Now().UTC()
-	in.BaselineStartedAt = &now
-	return p.Store.Repositories().Upsert(ctx, in)
+	return NormalizeRepository(ctx, p.Store, gh, installationID)
 }
 
 func (p *Processor) processInstallation(ctx context.Context, eventType string, env envelope, payload []byte) (Result, error) {
