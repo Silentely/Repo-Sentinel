@@ -107,7 +107,7 @@ jobs:
       - name: Set up QEMU
         # 仅正式 tag 启用 QEMU（跨架构仿真，耗时主要来源）
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
