@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
-import { QueryGate } from "../../components/query-gate";
+import { QueryGate, type QueryGateQuery } from "../../components/query-gate";
 import { apiRequest } from "../../lib/api/client";
 import { toApiError } from "../../lib/api/errors";
 import { formatRelativeTime } from "../../lib/format";
@@ -87,6 +87,114 @@ interface SecurityAlert {
   ignored?: boolean;
 }
 
+// ---------- 分页列表共享构件 ----------
+
+/** 分页列表查询封装：统一 per_page=50 翻页、items/total 提取，三张列表页共用。 */
+function useInfiniteList<T>(opts: {
+  queryKey: unknown[];
+  endpoint: string;
+  buildParams?: (params: URLSearchParams) => void;
+}) {
+  const q = useInfiniteQuery({
+    queryKey: opts.queryKey,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ per_page: "50", page: String(pageParam) });
+      opts.buildParams?.(params);
+      return apiRequest<Page<T>>(`${opts.endpoint}?${params.toString()}`);
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page * lastPage.per_page < lastPage.total ? lastPage.page + 1 : undefined,
+  });
+  const items = q.data?.pages.flatMap((page) => page.items) ?? [];
+  const total = q.data?.pages[q.data.pages.length - 1]?.total ?? 0;
+  return { q, items, total };
+}
+
+/** 状态/结论筛选按钮组：当前选中项高亮。 */
+function StateFilterButtons({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <>
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          className={`quiet-button${value === opt.value ? " active" : ""}`}
+          type="button"
+          onClick={() => onChange(opt.value)}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </>
+  );
+}
+
+/** 条目操作区：GitHub 查看链接 + 忽略切换。 */
+function ItemActions({
+  htmlUrl,
+  ignored,
+  busy,
+  onToggleIgnore,
+}: {
+  htmlUrl?: string;
+  ignored?: boolean;
+  busy?: boolean;
+  onToggleIgnore: () => void;
+}) {
+  return (
+    <div className="item-actions">
+      {htmlUrl ? (
+        <a className="quiet-button" href={htmlUrl} target="_blank" rel="noreferrer">
+          在 GitHub 查看
+        </a>
+      ) : null}
+      <IgnoreButton ignored={ignored} busy={busy} onToggle={onToggleIgnore} />
+    </div>
+  );
+}
+
+/** 事件列表主体：QueryGate 三态守卫 + 事件列表 + 底部加载条。 */
+function EventListBody({
+  query,
+  items,
+  total,
+  emptyState,
+  children,
+}: {
+  query: QueryGateQuery & {
+    hasNextPage?: boolean;
+    isFetchingNextPage?: boolean;
+    fetchNextPage: () => void;
+  };
+  items: unknown[];
+  total: number;
+  emptyState: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <QueryGate query={query} isEmpty={items.length === 0} emptyState={emptyState}>
+      <>
+        <ul className="event-list">{children}</ul>
+        <ListFooter
+          shown={items.length}
+          total={total}
+          hasNextPage={query.hasNextPage ?? false}
+          fetchingNextPage={query.isFetchingNextPage ?? false}
+          onLoadMore={() => query.fetchNextPage()}
+        />
+      </>
+    </QueryGate>
+  );
+}
+
 function WorkItemsList({ kind, title, description }: { kind: string; title: string; description: string }) {
   const { active: activeRepos } = useActiveRepos();
   const [state, setState] = useState<string>("open");
@@ -97,41 +205,35 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
 
   // 审核/检查状态由后端按 review/check 参数过滤（total 为过滤后总数），客户端不再二次过滤；
   // 每页 50 条，超过时通过「加载更多」翻页拉取。
-  const q = useInfiniteQuery({
+  const { q, items, total } = useInfiniteList<WorkItem>({
     queryKey: ["work-items", kind, state, repoId, ignoredMode, reviewFilter, checkFilter],
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ per_page: "50", kind, page: String(pageParam) });
+    endpoint: "/api/v1/work-items",
+    buildParams: (params) => {
+      params.set("kind", kind);
       if (state) params.set("state", state);
       if (repoId) params.set("repository_id", repoId);
       if (ignoredMode === "ignored") params.set("ignored", "true");
       if (reviewFilter) params.set("review", reviewFilter);
       if (checkFilter) params.set("check", checkFilter);
-      return apiRequest<Page<WorkItem>>(`/api/v1/work-items?${params.toString()}`);
     },
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) =>
-      lastPage.page * lastPage.per_page < lastPage.total ? lastPage.page + 1 : undefined,
   });
 
   const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
-
-  const items = q.data?.pages.flatMap((page) => page.items) ?? [];
-  const total = q.data?.pages[q.data.pages.length - 1]?.total ?? 0;
   // 仓库/审核/检查筛选激活时，空态需区分「筛选后为空」与「真的没有」。
   const filtersActive = repoId !== "" || reviewFilter !== "" || checkFilter !== "";
 
   return (
     <ListShell eyebrow="仓库" title={title} description={description}>
       <div className="filter-bar filter-bar--wrap">
-        <button className={`quiet-button${state === "" ? " active" : ""}`} type="button" onClick={() => setState("")}>
-          全部
-        </button>
-        <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>
-          未关闭
-        </button>
-        <button className={`quiet-button${state === "closed" ? " active" : ""}`} type="button" onClick={() => setState("closed")}>
-          已关闭
-        </button>
+        <StateFilterButtons
+          options={[
+            { value: "", label: "全部" },
+            { value: "open", label: "未关闭" },
+            { value: "closed", label: "已关闭" },
+          ]}
+          value={state}
+          onChange={setState}
+        />
         <IgnoredToggle mode={ignoredMode} onChange={setIgnoredMode} />
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
@@ -159,9 +261,10 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
           </>
         )}
       </div>
-      <QueryGate
+      <EventListBody
         query={q}
-        isEmpty={items.length === 0}
+        items={items}
+        total={total}
         emptyState={
           <EmptyState
             title={
@@ -186,9 +289,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
           />
         }
       >
-        <>
-          <ul className="event-list">
-            {items.map((it) => {
+        {items.map((it) => {
               const num = it.number ?? 0;
               const itemTitle = (it.title || "").trim() || "（无标题）";
               return (
@@ -243,36 +344,21 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                       </span>
                     )}
                   </div>
-                  <div className="item-actions">
-                    {it.html_url ? (
-                      <a className="quiet-button" href={it.html_url} target="_blank" rel="noreferrer">
-                        在 GitHub 查看
-                      </a>
-                    ) : null}
-                    <IgnoreButton
-                      ignored={it.ignored || ignoredMode === "ignored"}
-                      busy={busyId === it.id}
-                      onToggle={() =>
-                        ignoreMutation.mutate({
-                          id: it.id,
-                          ignored: !(it.ignored || ignoredMode === "ignored"),
-                        })
-                      }
-                    />
-                  </div>
+                  <ItemActions
+                    htmlUrl={it.html_url}
+                    ignored={it.ignored || ignoredMode === "ignored"}
+                    busy={busyId === it.id}
+                    onToggleIgnore={() =>
+                      ignoreMutation.mutate({
+                        id: it.id,
+                        ignored: !(it.ignored || ignoredMode === "ignored"),
+                      })
+                    }
+                  />
                 </li>
               );
             })}
-          </ul>
-          <ListFooter
-            shown={items.length}
-            total={total}
-            hasNextPage={q.hasNextPage}
-            fetchingNextPage={q.isFetchingNextPage}
-            onLoadMore={() => q.fetchNextPage()}
-          />
-        </>
-      </QueryGate>
+      </EventListBody>
     </ListShell>
   );
 }
@@ -597,22 +683,15 @@ function ActionsList() {
   const [ignoredMode, setIgnoredMode] = useState<IgnoredMode>("active");
   const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkflowRunIgnored, ["workflow-runs"]);
 
-  const q = useInfiniteQuery({
+  const { q, items, total } = useInfiniteList<WorkflowRun>({
     queryKey: ["workflow-runs", repoId, conclusion, ignoredMode],
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ per_page: "50", page: String(pageParam) });
+    endpoint: "/api/v1/workflow-runs",
+    buildParams: (params) => {
       if (repoId) params.set("repository_id", repoId);
       if (conclusion) params.set("conclusion", conclusion);
       if (ignoredMode === "ignored") params.set("ignored", "true");
-      return apiRequest<Page<WorkflowRun>>(`/api/v1/workflow-runs?${params.toString()}`);
     },
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) =>
-      lastPage.page * lastPage.per_page < lastPage.total ? lastPage.page + 1 : undefined,
   });
-
-  const items = q.data?.pages.flatMap((page) => page.items) ?? [];
-  const total = q.data?.pages[q.data.pages.length - 1]?.total ?? 0;
   const filtersActive = repoId !== "" || conclusion !== "";
 
   return (
@@ -622,37 +701,24 @@ function ActionsList() {
       description="Workflow Run 结论与恢复状态。依赖 GitHub App 的 Actions 只读权限与 workflow_run 事件；也可在仪表盘触发对账补拉。"
     >
       <div className="filter-bar filter-bar--wrap">
-        <button className={`quiet-button${conclusion === "" ? " active" : ""}`} type="button" onClick={() => setConclusion("")}>
-          全部
-        </button>
-        <button
-          className={`quiet-button${conclusion === "failure" ? " active" : ""}`}
-          type="button"
-          onClick={() => setConclusion("failure")}
-        >
-          失败
-        </button>
-        <button
-          className={`quiet-button${conclusion === "success" ? " active" : ""}`}
-          type="button"
-          onClick={() => setConclusion("success")}
-        >
-          成功
-        </button>
-        <button
-          className={`quiet-button${conclusion === "cancelled" ? " active" : ""}`}
-          type="button"
-          onClick={() => setConclusion("cancelled")}
-        >
-          已取消
-        </button>
+        <StateFilterButtons
+          options={[
+            { value: "", label: "全部" },
+            { value: "failure", label: "失败" },
+            { value: "success", label: "成功" },
+            { value: "cancelled", label: "已取消" },
+          ]}
+          value={conclusion}
+          onChange={setConclusion}
+        />
         <IgnoredToggle mode={ignoredMode} onChange={setIgnoredMode} />
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
       </div>
-      <QueryGate
+      <EventListBody
         query={q}
-        isEmpty={items.length === 0}
+        items={items}
+        total={total}
         emptyState={
           <EmptyState
             title={
@@ -673,9 +739,7 @@ function ActionsList() {
           />
         }
       >
-        <>
-          <ul className="event-list">
-            {items.map((run) => {
+        {items.map((run) => {
               const name = (run.workflow_name || "").trim() || "workflow";
               const num = run.run_number ?? 0;
               const runConclusion = run.conclusion || run.status || "run";
@@ -696,36 +760,21 @@ function ActionsList() {
                     {run.actor && <span className="actor">by {run.actor}</span>}
                     {run.run_started_at && <span className="started-at">{formatRelativeTime(run.run_started_at)}</span>}
                   </div>
-                  <div className="item-actions">
-                    {run.html_url ? (
-                      <a className="quiet-button" href={run.html_url} target="_blank" rel="noreferrer">
-                        在 GitHub 查看
-                      </a>
-                    ) : null}
-                    <IgnoreButton
-                      ignored={run.ignored || ignoredMode === "ignored"}
-                      busy={busyId === run.id}
-                      onToggle={() =>
-                        ignoreMutation.mutate({
-                          id: run.id,
-                          ignored: !(run.ignored || ignoredMode === "ignored"),
-                        })
-                      }
-                    />
-                  </div>
+                  <ItemActions
+                    htmlUrl={run.html_url}
+                    ignored={run.ignored || ignoredMode === "ignored"}
+                    busy={busyId === run.id}
+                    onToggleIgnore={() =>
+                      ignoreMutation.mutate({
+                        id: run.id,
+                        ignored: !(run.ignored || ignoredMode === "ignored"),
+                      })
+                    }
+                  />
                 </li>
               );
             })}
-          </ul>
-          <ListFooter
-            shown={items.length}
-            total={total}
-            hasNextPage={q.hasNextPage}
-            fetchingNextPage={q.isFetchingNextPage}
-            onLoadMore={() => q.fetchNextPage()}
-          />
-        </>
-      </QueryGate>
+      </EventListBody>
     </ListShell>
   );
 }
@@ -750,41 +799,30 @@ function SecurityList() {
   const [ignoredMode, setIgnoredMode] = useState<IgnoredMode>("active");
   const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setSecurityAlertIgnored, ["security-alerts"]);
 
-  const q = useInfiniteQuery({
+  const { q, items, total } = useInfiniteList<SecurityAlert>({
     queryKey: ["security-alerts", state, alertKind, repoId, ignoredMode],
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ per_page: "50", page: String(pageParam) });
+    endpoint: "/api/v1/security-alerts",
+    buildParams: (params) => {
       if (state) params.set("state", state);
       if (alertKind) params.set("alert_kind", alertKind);
       if (repoId) params.set("repository_id", repoId);
       if (ignoredMode === "ignored") params.set("ignored", "true");
-      return apiRequest<Page<SecurityAlert>>(`/api/v1/security-alerts?${params.toString()}`);
     },
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) =>
-      lastPage.page * lastPage.per_page < lastPage.total ? lastPage.page + 1 : undefined,
   });
-
-  const items = q.data?.pages.flatMap((page) => page.items) ?? [];
-  const total = q.data?.pages[q.data.pages.length - 1]?.total ?? 0;
   const filtersActive = repoId !== "" || alertKind !== "";
 
   return (
     <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning 安全告警。">
       <div className="filter-bar filter-bar--wrap">
-        <button className={`quiet-button${state === "" ? " active" : ""}`} type="button" onClick={() => setState("")}>
-          全部
-        </button>
-        <button className={`quiet-button${state === "open" ? " active" : ""}`} type="button" onClick={() => setState("open")}>
-          待处理
-        </button>
-        <button
-          className={`quiet-button${state === "dismissed" ? " active" : ""}`}
-          type="button"
-          onClick={() => setState("dismissed")}
-        >
-          GitHub 已忽略
-        </button>
+        <StateFilterButtons
+          options={[
+            { value: "", label: "全部" },
+            { value: "open", label: "待处理" },
+            { value: "dismissed", label: "GitHub 已忽略" },
+          ]}
+          value={state}
+          onChange={setState}
+        />
         <IgnoredToggle mode={ignoredMode} onChange={setIgnoredMode} />
         <span className="filter-bar__sep" />
         <label className="repo-filter">
@@ -799,9 +837,10 @@ function SecurityList() {
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
       </div>
-      <QueryGate
+      <EventListBody
         query={q}
-        isEmpty={items.length === 0}
+        items={items}
+        total={total}
         emptyState={
           <EmptyState
             title={
@@ -826,9 +865,7 @@ function SecurityList() {
           />
         }
       >
-        <>
-          <ul className="event-list">
-            {items.map((a) => {
+        {items.map((a) => {
               const num = a.alert_number ?? 0;
               const label = (a.rule_or_dependency || a.severity || "").trim() || "告警";
               return (
@@ -843,36 +880,21 @@ function SecurityList() {
                     {a.state || "—"}
                     {a.severity ? ` · ${a.severity}` : ""}
                   </span>
-                  <div className="item-actions">
-                    {a.html_url ? (
-                      <a className="quiet-button" href={a.html_url} target="_blank" rel="noreferrer">
-                        在 GitHub 查看
-                      </a>
-                    ) : null}
-                    <IgnoreButton
-                      ignored={a.ignored || ignoredMode === "ignored"}
-                      busy={busyId === a.id}
-                      onToggle={() =>
-                        ignoreMutation.mutate({
-                          id: a.id,
-                          ignored: !(a.ignored || ignoredMode === "ignored"),
-                        })
-                      }
-                    />
-                  </div>
+                  <ItemActions
+                    htmlUrl={a.html_url}
+                    ignored={a.ignored || ignoredMode === "ignored"}
+                    busy={busyId === a.id}
+                    onToggleIgnore={() =>
+                      ignoreMutation.mutate({
+                        id: a.id,
+                        ignored: !(a.ignored || ignoredMode === "ignored"),
+                      })
+                    }
+                  />
                 </li>
               );
             })}
-          </ul>
-          <ListFooter
-            shown={items.length}
-            total={total}
-            hasNextPage={q.hasNextPage}
-            fetchingNextPage={q.isFetchingNextPage}
-            onLoadMore={() => q.fetchNextPage()}
-          />
-        </>
-      </QueryGate>
+      </EventListBody>
     </ListShell>
   );
 }
