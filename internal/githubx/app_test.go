@@ -196,10 +196,16 @@ func TestParseRetryAfterHeader(t *testing.T) {
 	}{
 		{"空头", "", 0},
 		{"整数秒", "60", 60 * time.Second},
+		{"最小有效秒", "1", time.Second},
+		{"空白填充整数", "  60  ", 60 * time.Second},
 		{"零秒不采纳", "0", 0},
 		{"负秒不采纳", "-5", 0},
+		{"非整数数字", "1.5", 0},
 		{"非法文本", "abc", 0},
+		// 超大整数无封顶：该解析器按上游原始时长返回，由调用方自行约束等待预算。
+		{"超大整数按原值返回", "99999999", 99999999 * time.Second},
 		{"HTTP 日期", future.Format(http.TimeFormat), 90 * time.Second},
+		{"空白填充日期", "  " + future.Format(http.TimeFormat) + " ", 90 * time.Second},
 		{"已过期日期", time.Now().UTC().Add(-time.Minute).Format(http.TimeFormat), 0},
 	}
 	for _, tc := range cases {
