@@ -76,7 +76,8 @@ func TestSendHTTPHonorsRetryAfterHeader(t *testing.T) {
 
 // Retry-After 为 HTTP 日期时按剩余秒数退避；日期已过期则回退固定阶梯。
 func TestSendHTTPHonorsRetryAfterHTTPDate(t *testing.T) {
-	future := time.Now().UTC().Add(90 * time.Second)
+	now := time.Now().UTC().Truncate(time.Second)
+	future := now.Add(90 * time.Second)
 	w, ch, item := newWebhookHarness(t, func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Retry-After", future.Format(http.TimeFormat))
 		rw.WriteHeader(http.StatusTooManyRequests)
@@ -90,7 +91,7 @@ func TestSendHTTPHonorsRetryAfterHTTPDate(t *testing.T) {
 		t.Fatalf("期望 seconds=90，实际 %d", ra.seconds)
 	}
 
-	past := time.Now().UTC().Add(-time.Minute)
+	past := now.Add(-time.Minute)
 	w2, ch2, item2 := newWebhookHarness(t, func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Retry-After", past.Format(http.TimeFormat))
 		rw.WriteHeader(http.StatusTooManyRequests)
