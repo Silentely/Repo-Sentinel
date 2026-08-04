@@ -7,6 +7,7 @@ import { EyeOff, RotateCcw } from "lucide-react";
 import { EmptyState } from "../../components/empty-state";
 import { ListShell } from "../../components/list-shell";
 import { ListSkeleton } from "../../components/list-skeleton";
+import { repoDisplayName } from "../../lib/format";
 import { repositoriesQueryOptions, settingsQueryOptions, type Repository, type SystemSettings } from "./api";
 
 export type IgnoredMode = "active" | "ignored";
@@ -72,7 +73,7 @@ export function RepoFilterSelect({
         <option value="">全部仓库</option>
         {repos.map((r) => (
           <option key={r.id} value={r.id}>
-            {r.full_name || `${r.owner}/${r.name}`}
+            {repoDisplayName(r)}
           </option>
         ))}
       </select>

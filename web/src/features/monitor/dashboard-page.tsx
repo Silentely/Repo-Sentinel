@@ -7,7 +7,7 @@ import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { toApiError } from "../../lib/api/errors";
-import { formatRelativeTime } from "../../lib/format";
+import { formatRelativeTime, syncStatusLabel } from "../../lib/format";
 import {
   activateRepository,
   dashboardQueryOptions,
@@ -60,7 +60,7 @@ export function DashboardPage() {
   const dashboard = useQuery(dashboardQueryOptions);
   const repos = useQuery(repositoriesQueryOptions);
   const events = useQuery(eventsQueryOptions);
-  const outbox = useQuery(outboxQueryOptions);
+  const outbox = useQuery(outboxQueryOptions());
   const settings = useQuery(settingsQueryOptions);
   const githubConfig = useQuery(githubConfigQueryOptions);
 
@@ -408,7 +408,7 @@ export function DashboardPage() {
                       {name}
                     </strong>
                     <span className="repo-baseline-row__meta">
-                      {syncLabel(repo.sync_status || "")}
+                      {syncStatusLabel(repo.sync_status || "")}
                       <span aria-hidden="true"> · </span>
                       {repo.type === "external_public" ? "外部" : "自有"}
                     </span>
@@ -521,21 +521,6 @@ function Metric({ label, value, to }: { label: string; value?: number; to?: stri
     );
   }
   return <div className="status-item">{inner}</div>;
-}
-
-function syncLabel(status: string): string {
-  switch (status) {
-    case "baseline_sync":
-      return "基线中";
-    case "active":
-      return "正常";
-    case "archived":
-      return "已归档";
-    case "unavailable":
-      return "不可用";
-    default:
-      return status;
-  }
 }
 
 function formatEventKind(kind: string): string {

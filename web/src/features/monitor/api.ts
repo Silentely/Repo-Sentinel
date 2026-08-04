@@ -95,11 +95,19 @@ export const eventsQueryOptions = queryOptions({
   refetchInterval: 30_000,
 });
 
-export const outboxQueryOptions = queryOptions({
-  queryKey: ["outbox"] as const,
-  queryFn: () => apiRequest<Page<OutboxItem>>("/api/v1/notifications/outbox?per_page=30"),
-  staleTime: 15_000,
-});
+/** Outbox 分页查询（参数化：status / channel_type 过滤），仪表盘与发件箱页共用单一实现。 */
+export const outboxQueryOptions = (status = "", channelType = "") =>
+  queryOptions({
+    queryKey: ["outbox", status, channelType] as const,
+    queryFn: () => {
+      const params = new URLSearchParams({ per_page: "50" });
+      if (status) params.set("status", status);
+      if (channelType) params.set("channel_type", channelType);
+      return apiRequest<Page<OutboxItem>>(`/api/v1/notifications/outbox?${params.toString()}`);
+    },
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+  });
 
 export async function activateRepository(id: string): Promise<Repository> {
   return apiRequest<Repository>(`/api/v1/repositories/${id}/activate`, {

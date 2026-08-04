@@ -18,10 +18,93 @@ const DOCS_CONFIG = "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/r
 const DOCS_FAQ = "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/faq.md";
 const DOCS_CHANGELOG = "https://github.com/Silentely/Repo-Sentinel/blob/main/CHANGELOG.md";
 
+// ---- 运行设置表单：单一受控表单对象，替代逐字段 useState + 同步 effect ----
+
+interface SettingsFormState {
+  timezone: string;
+  digestTime: string;
+  digestEmpty: boolean;
+  aggregateSec: number;
+  burstThreshold: number;
+  burstWindowSec: number;
+  closedDisplayLimit: number;
+  retentionEventsDays: number;
+  retentionOutboxDays: number;
+  retentionDeliveriesDays: number;
+  featureIssues: boolean;
+  featurePRs: boolean;
+  featureActions: boolean;
+  featureAlerts: boolean;
+}
+
+// 从服务端设置快照构造表单初值；查询未完成时返回默认值（与后端缺省一致）。
+function formFromSettings(data: SystemSettings | undefined): SettingsFormState {
+  return {
+    timezone: String(data?.["admin.timezone"] ?? "UTC"),
+    digestTime: String(data?.["digest.local_time"] ?? "09:00"),
+    digestEmpty: Boolean(data?.["digest.send_empty"]),
+    aggregateSec: Number(data?.["notify.aggregate_window_sec"] ?? 60),
+    burstThreshold: Number(data?.["notify.burst_threshold"] ?? 15),
+    burstWindowSec: Number(data?.["notify.burst_window_sec"] ?? 300),
+    closedDisplayLimit: Number(data?.["display.closed_limit"] ?? 20),
+    retentionEventsDays: Number(data?.["retention.events_days"] ?? 90),
+    retentionOutboxDays: Number(data?.["retention.outbox_days"] ?? 30),
+    retentionDeliveriesDays: Number(data?.["retention.webhook_deliveries_days"] ?? 30),
+    featureIssues: data?.["feature.issues"] !== false,
+    featurePRs: data?.["feature.pull_requests"] !== false,
+    featureActions: data?.["feature.actions"] !== false,
+    featureAlerts: data?.["feature.security_alerts"] !== false,
+  };
+}
+
+// 运行偏好区块提交负载：只含 prefs 键，避免覆盖另一区块字段。
+function prefsBody(form: SettingsFormState): SystemSettings {
+  return {
+    "admin.timezone": form.timezone.trim() || "UTC",
+    "digest.local_time": form.digestTime.trim() || "09:00",
+    "digest.send_empty": form.digestEmpty,
+    "notify.aggregate_window_sec": form.aggregateSec,
+    "notify.burst_threshold": form.burstThreshold,
+    "notify.burst_window_sec": form.burstWindowSec,
+    "display.closed_limit": form.closedDisplayLimit,
+    "retention.events_days": form.retentionEventsDays,
+    "retention.outbox_days": form.retentionOutboxDays,
+    "retention.webhook_deliveries_days": form.retentionDeliveriesDays,
+  };
+}
+
+// 功能模块区块提交负载：只含 feature 键。
+function featuresBody(form: SettingsFormState): SystemSettings {
+  return {
+    "feature.issues": form.featureIssues,
+    "feature.pull_requests": form.featurePRs,
+    "feature.actions": form.featureActions,
+    "feature.security_alerts": form.featureAlerts,
+  };
+}
+
+// useSettingsForm：初始值来自查询结果、编辑态独立维护、保存时合并为提交负载。
+// 查询快照首次到达 / 保存后回填时整体重置一次（单 effect），不做逐字段同步。
+function useSettingsForm(data: SystemSettings | undefined) {
+  const [form, setForm] = useState<SettingsFormState>(() => formFromSettings(undefined));
+
+  useEffect(() => {
+    if (!data) return;
+    setForm(formFromSettings(data));
+  }, [data]);
+
+  const set = <K extends keyof SettingsFormState>(key: K, value: SettingsFormState[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  return { form, set };
+}
+
 export function AboutPage() {
   const queryClient = useQueryClient();
   const version = useQuery(versionQueryOptions);
   const settings = useQuery(settingsQueryOptions);
+  const { form, set } = useSettingsForm(settings.data);
   const [checking, setChecking] = useState(false);
   const [banner, setBanner] = useState<{
     kind: "update" | "latest" | "error" | "info";
@@ -35,38 +118,6 @@ export function AboutPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [timezone, setTimezone] = useState("UTC");
-  const [digestTime, setDigestTime] = useState("09:00");
-  const [digestEmpty, setDigestEmpty] = useState(false);
-  const [aggregateSec, setAggregateSec] = useState(60);
-  const [burstThreshold, setBurstThreshold] = useState(15);
-  const [burstWindowSec, setBurstWindowSec] = useState(300);
-  const [closedDisplayLimit, setClosedDisplayLimit] = useState(20);
-  const [retentionEventsDays, setRetentionEventsDays] = useState(90);
-  const [retentionOutboxDays, setRetentionOutboxDays] = useState(30);
-  const [retentionDeliveriesDays, setRetentionDeliveriesDays] = useState(30);
-  const [featureIssues, setFeatureIssues] = useState(true);
-  const [featurePRs, setFeaturePRs] = useState(true);
-  const [featureActions, setFeatureActions] = useState(true);
-  const [featureAlerts, setFeatureAlerts] = useState(true);
-
-  useEffect(() => {
-    if (!settings.data) return;
-    setTimezone(String(settings.data["admin.timezone"] ?? "UTC"));
-    setDigestTime(String(settings.data["digest.local_time"] ?? "09:00"));
-    setDigestEmpty(Boolean(settings.data["digest.send_empty"]));
-    setAggregateSec(Number(settings.data["notify.aggregate_window_sec"] ?? 60));
-    setBurstThreshold(Number(settings.data["notify.burst_threshold"] ?? 15));
-    setBurstWindowSec(Number(settings.data["notify.burst_window_sec"] ?? 300));
-    setClosedDisplayLimit(Number(settings.data["display.closed_limit"] ?? 20));
-    setRetentionEventsDays(Number(settings.data["retention.events_days"] ?? 90));
-    setRetentionOutboxDays(Number(settings.data["retention.outbox_days"] ?? 30));
-    setRetentionDeliveriesDays(Number(settings.data["retention.webhook_deliveries_days"] ?? 30));
-    setFeatureIssues(settings.data["feature.issues"] !== false);
-    setFeaturePRs(settings.data["feature.pull_requests"] !== false);
-    setFeatureActions(settings.data["feature.actions"] !== false);
-    setFeatureAlerts(settings.data["feature.security_alerts"] !== false);
-  }, [settings.data]);
 
   const v = version.data || {};
   const saveSettings = useMutation({
@@ -81,26 +132,7 @@ export function AboutPage() {
     const setMsg = section === "prefs" ? setSettingsMsg : setFeaturesMsg;
     const successText = section === "prefs" ? "系统偏好已保存。" : "功能模块开关已保存。";
     setMsg("");
-    const body: SystemSettings =
-      section === "prefs"
-        ? {
-            "admin.timezone": timezone.trim() || "UTC",
-            "digest.local_time": digestTime.trim() || "09:00",
-            "digest.send_empty": digestEmpty,
-            "notify.aggregate_window_sec": aggregateSec,
-            "notify.burst_threshold": burstThreshold,
-            "notify.burst_window_sec": burstWindowSec,
-            "display.closed_limit": closedDisplayLimit,
-            "retention.events_days": retentionEventsDays,
-            "retention.outbox_days": retentionOutboxDays,
-            "retention.webhook_deliveries_days": retentionDeliveriesDays,
-          }
-        : {
-            "feature.issues": featureIssues,
-            "feature.pull_requests": featurePRs,
-            "feature.actions": featureActions,
-            "feature.security_alerts": featureAlerts,
-          };
+    const body: SystemSettings = section === "prefs" ? prefsBody(form) : featuresBody(form);
     saveSettings.mutate(body, { onSuccess: () => setMsg(successText) });
   }
   const savePassword = useMutation({
@@ -205,18 +237,18 @@ export function AboutPage() {
         {settingsMsg ? <p className="success-banner" role="status">{settingsMsg}</p> : null}
         {settings.isError ? <ErrorAlert title="无法加载设置" message={toApiError(settings.error).message} errorCode={toApiError(settings.error).errorCode} /> : null}
         <div className="form-grid">
-          <label className="field--plain"><span>管理员时区</span><input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="UTC 或 Asia/Shanghai" /></label>
-          <label className="field--plain"><span>每日摘要本地时间</span><input value={digestTime} onChange={(e) => setDigestTime(e.target.value)} placeholder="09:00" /></label>
-          <label className="field--plain"><span>通知聚合窗口（秒）</span><input type="number" min={1} max={86400} value={aggregateSec} onChange={(e) => setAggregateSec(Number(e.target.value) || 1)} /></label>
-          <label className="field--plain"><span>超频阈值</span><input type="number" min={1} value={burstThreshold} onChange={(e) => setBurstThreshold(Number(e.target.value) || 1)} /></label>
-          <label className="field--plain"><span>超频窗口（秒）</span><input type="number" min={1} max={86400} value={burstWindowSec} onChange={(e) => setBurstWindowSec(Number(e.target.value) || 1)} /></label>
-          <label className="field--plain"><span>已关闭/已忽略显示数量</span><input type="number" min={1} max={200} value={closedDisplayLimit} onChange={(e) => setClosedDisplayLimit(Math.min(200, Math.max(1, Number(e.target.value) || 1)))} /></label>
-          <label className="field--plain"><span>事件保留天数</span><input type="number" min={0} max={3650} value={retentionEventsDays} onChange={(e) => setRetentionEventsDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
-          <label className="field--plain"><span>投递记录保留天数</span><input type="number" min={0} max={3650} value={retentionOutboxDays} onChange={(e) => setRetentionOutboxDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
-          <label className="field--plain"><span>Webhook Delivery 保留天数</span><input type="number" min={0} max={3650} value={retentionDeliveriesDays} onChange={(e) => setRetentionDeliveriesDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
+          <label className="field--plain"><span>管理员时区</span><input value={form.timezone} onChange={(e) => set("timezone", e.target.value)} placeholder="UTC 或 Asia/Shanghai" /></label>
+          <label className="field--plain"><span>每日摘要本地时间</span><input value={form.digestTime} onChange={(e) => set("digestTime", e.target.value)} placeholder="09:00" /></label>
+          <label className="field--plain"><span>通知聚合窗口（秒）</span><input type="number" min={1} max={86400} value={form.aggregateSec} onChange={(e) => set("aggregateSec", Number(e.target.value) || 1)} /></label>
+          <label className="field--plain"><span>超频阈值</span><input type="number" min={1} value={form.burstThreshold} onChange={(e) => set("burstThreshold", Number(e.target.value) || 1)} /></label>
+          <label className="field--plain"><span>超频窗口（秒）</span><input type="number" min={1} max={86400} value={form.burstWindowSec} onChange={(e) => set("burstWindowSec", Number(e.target.value) || 1)} /></label>
+          <label className="field--plain"><span>已关闭/已忽略显示数量</span><input type="number" min={1} max={200} value={form.closedDisplayLimit} onChange={(e) => set("closedDisplayLimit", Math.min(200, Math.max(1, Number(e.target.value) || 1)))} /></label>
+          <label className="field--plain"><span>事件保留天数</span><input type="number" min={0} max={3650} value={form.retentionEventsDays} onChange={(e) => set("retentionEventsDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
+          <label className="field--plain"><span>投递记录保留天数</span><input type="number" min={0} max={3650} value={form.retentionOutboxDays} onChange={(e) => set("retentionOutboxDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
+          <label className="field--plain"><span>Webhook Delivery 保留天数</span><input type="number" min={0} max={3650} value={form.retentionDeliveriesDays} onChange={(e) => set("retentionDeliveriesDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
         </div>
         <p className="field-hint">超频：在超频窗口内通知条数达到阈值时合并为摘要，避免刷屏。Closed/Dismissed 列表默认只显示最近指定数量条目。保留天数 0 表示禁用该类清理。</p>
-        <label className="check-row"><input type="checkbox" checked={digestEmpty} onChange={(e) => setDigestEmpty(e.target.checked)} /><span>无事件时仍发送空摘要</span></label>
+        <label className="check-row"><input type="checkbox" checked={form.digestEmpty} onChange={(e) => set("digestEmpty", e.target.checked)} /><span>无事件时仍发送空摘要</span></label>
         <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("prefs")}>
           {saveSettings.isPending ? "保存中…" : "保存偏好"}
         </button>
@@ -227,10 +259,10 @@ export function AboutPage() {
         <h2 id="about-features-title">功能模块开关</h2>
         <p className="field-hint">关闭后：侧边栏隐藏对应入口、列表页显示已禁用；并停止该类型 Webhook 采集、对账与实时/摘要通知。仓库页对应开关会显示为关且不可改（仓级配置保留，重新开启全局后恢复）。渠道订阅勾选在全局关闭时也会灰显。</p>
         {featuresMsg ? <p className="success-banner" role="status">{featuresMsg}</p> : null}
-        <label className="check-row"><input type="checkbox" checked={featureIssues} onChange={(e) => setFeatureIssues(e.target.checked)} /><span>Issues</span></label>
-        <label className="check-row"><input type="checkbox" checked={featurePRs} onChange={(e) => setFeaturePRs(e.target.checked)} /><span>Pull Requests</span></label>
-        <label className="check-row"><input type="checkbox" checked={featureActions} onChange={(e) => setFeatureActions(e.target.checked)} /><span>Actions</span></label>
-        <label className="check-row"><input type="checkbox" checked={featureAlerts} onChange={(e) => setFeatureAlerts(e.target.checked)} /><span>安全告警</span></label>
+        <label className="check-row"><input type="checkbox" checked={form.featureIssues} onChange={(e) => set("featureIssues", e.target.checked)} /><span>Issues</span></label>
+        <label className="check-row"><input type="checkbox" checked={form.featurePRs} onChange={(e) => set("featurePRs", e.target.checked)} /><span>Pull Requests</span></label>
+        <label className="check-row"><input type="checkbox" checked={form.featureActions} onChange={(e) => set("featureActions", e.target.checked)} /><span>Actions</span></label>
+        <label className="check-row"><input type="checkbox" checked={form.featureAlerts} onChange={(e) => set("featureAlerts", e.target.checked)} /><span>安全告警</span></label>
         <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("features")}>
           {saveSettings.isPending ? "保存中…" : "保存开关"}
         </button>
