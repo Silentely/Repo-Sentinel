@@ -3,6 +3,7 @@ package normalizer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -67,6 +68,15 @@ type ghUser struct {
 	Login string `json:"login"`
 }
 
+// ghLabel / ghMilestone 为 issue 与 PR 载荷共用的内嵌结构（字段一致，类型唯一）。
+type ghLabel struct {
+	Name string `json:"name"`
+}
+
+type ghMilestone struct {
+	Title string `json:"title"`
+}
+
 type ghIssue struct {
 	Number      int       `json:"number"`
 	Title       string    `json:"title"`
@@ -78,31 +88,23 @@ type ghIssue struct {
 	PullRequest *struct {
 		URL string `json:"url"`
 	} `json:"pull_request"`
-	Labels []struct {
-		Name string `json:"name"`
-	} `json:"labels"`
-	Assignees []ghUser `json:"assignees"`
-	Milestone *struct {
-		Title string `json:"title"`
-	} `json:"milestone"`
+	Labels    []ghLabel    `json:"labels"`
+	Assignees []ghUser     `json:"assignees"`
+	Milestone *ghMilestone `json:"milestone"`
 }
 
 type ghPullRequest struct {
-	Number    int       `json:"number"`
-	Title     string    `json:"title"`
-	State     string    `json:"state"`
-	HTMLURL   string    `json:"html_url"`
-	User      ghUser    `json:"user"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Draft     bool      `json:"draft"`
-	Merged    bool      `json:"merged"`
-	Labels    []struct {
-		Name string `json:"name"`
-	} `json:"labels"`
-	Assignees []ghUser `json:"assignees"`
-	Milestone *struct {
-		Title string `json:"title"`
-	} `json:"milestone"`
+	Number    int          `json:"number"`
+	Title     string       `json:"title"`
+	State     string       `json:"state"`
+	HTMLURL   string       `json:"html_url"`
+	User      ghUser       `json:"user"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	Draft     bool         `json:"draft"`
+	Merged    bool         `json:"merged"`
+	Labels    []ghLabel    `json:"labels"`
+	Assignees []ghUser     `json:"assignees"`
+	Milestone *ghMilestone `json:"milestone"`
 }
 
 type ghWorkflowRun struct {
@@ -295,84 +297,53 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	// 能力门禁：对应类型开关关闭或仓库已归档时不再采集（不更新数据、不创建事件）。
-	if !p.ingestGate(ctx, repo, kind) {
-		return Result{Repository: &repo, SuppressNotify: true}, nil
-	}
-	labels := make([]any, 0, len(env.Issue.Labels))
-	for _, l := range env.Issue.Labels {
-		labels = append(labels, l.Name)
-	}
-	assignees := make([]any, 0, len(env.Issue.Assignees))
-	for _, a := range env.Issue.Assignees {
-		assignees = append(assignees, a.Login)
-	}
-	milestone := ""
-	if env.Issue.Milestone != nil {
-		milestone = env.Issue.Milestone.Title
-	}
-	hash := StateHash(kind, env.Issue.State, env.Issue.Title, env.Issue.User.Login, milestone, strconv.FormatBool(env.Issue.Draft))
+	issue := env.Issue
+	hash := StateHash(kind, issue.State, issue.Title, issue.User.Login, milestoneTitle(issue.Milestone), strconv.FormatBool(issue.Draft))
 	item := store.WorkItem{
 		RepositoryID:    repo.ID,
-		Number:          env.Issue.Number,
+		Number:          issue.Number,
 		Kind:            kind,
-		State:           env.Issue.State,
-		Title:           env.Issue.Title,
-		Author:          env.Issue.User.Login,
-		LabelsJSON:      labels,
-		AssigneesJSON:   assignees,
-		Milestone:       milestone,
-		Draft:           env.Issue.Draft,
-		HTMLURL:         env.Issue.HTMLURL,
-		SourceUpdatedAt: env.Issue.UpdatedAt,
+		State:           issue.State,
+		Title:           issue.Title,
+		Author:          issue.User.Login,
+		LabelsJSON:      labelsToAny(issue.Labels),
+		AssigneesJSON:   assigneesToAny(issue.Assignees),
+		Milestone:       milestoneTitle(issue.Milestone),
+		Draft:           issue.Draft,
+		HTMLURL:         issue.HTMLURL,
+		SourceUpdatedAt: issue.UpdatedAt,
 		StateHash:       hash,
 	}
-	saved, updated, err := p.Store.WorkItems().UpsertIfNewer(ctx, item)
-	if err != nil {
-		return Result{}, err
-	}
-	if !updated {
-		return Result{Repository: &repo, StaleDiscarded: true}, nil
-	}
-	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
-	fp := Fingerprint("webhook", repo.FullName, kind, ResourceIdentity(kind, saved.Number, 0), env.Action, saved.SourceUpdatedAt, hash)
-	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
-		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
-	}
-	num := saved.Number
-	srcUpdated := saved.SourceUpdatedAt
-	ev := store.Event{
-		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(env.Action),
-		RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
-		OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: saved.HTMLURL,
-		PayloadSummary:       map[string]any{"state": saved.State, "draft": saved.Draft, "labels": labels, "assignees": assignees, "milestone": milestone},
-		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
-	}
-	created, err := p.Store.Events().Create(ctx, ev)
-	if err != nil {
-		if err == store.ErrConflict {
-			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
-		}
-		return Result{}, err
-	}
-	return Result{Event: &created, Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
+	return p.processWorkItem(ctx, repo, kind, item, env.Action)
 }
 
 func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Result, error) {
 	if env.PullRequest == nil || env.Repository == nil {
 		return Result{}, fmt.Errorf("missing pull_request payload")
 	}
-	// 复用 issue 结构逻辑
-	env.Issue = &ghIssue{
-		Number: env.PullRequest.Number, Title: env.PullRequest.Title, State: env.PullRequest.State,
-		HTMLURL: env.PullRequest.HTMLURL, User: env.PullRequest.User, UpdatedAt: env.PullRequest.UpdatedAt,
-		Draft: env.PullRequest.Draft, Labels: env.PullRequest.Labels, Assignees: env.PullRequest.Assignees,
-		Milestone: env.PullRequest.Milestone,
-		PullRequest: &struct {
-			URL string `json:"url"`
-		}{URL: "pr"},
+	repo, err := p.ensureRepository(ctx, env.Repository, nil)
+	if err != nil {
+		return Result{}, err
 	}
-	res, err := p.processIssue(ctx, env)
+	pr := env.PullRequest
+	hash := StateHash(store.WorkItemKindPR, pr.State, pr.Title, pr.User.Login, milestoneTitle(pr.Milestone), strconv.FormatBool(pr.Draft))
+	item := store.WorkItem{
+		RepositoryID:    repo.ID,
+		Number:          pr.Number,
+		Kind:            store.WorkItemKindPR,
+		State:           pr.State,
+		Title:           pr.Title,
+		Author:          pr.User.Login,
+		LabelsJSON:      labelsToAny(pr.Labels),
+		AssigneesJSON:   assigneesToAny(pr.Assignees),
+		Milestone:       milestoneTitle(pr.Milestone),
+		Draft:           pr.Draft,
+		Merged:          pr.Merged,
+		HTMLURL:         pr.HTMLURL,
+		SourceUpdatedAt: pr.UpdatedAt,
+		StateHash:       hash,
+	}
+	res, err := p.processWorkItem(ctx, repo, store.WorkItemKindPR, item, env.Action)
 	if err != nil {
 		return res, err
 	}
@@ -383,6 +354,47 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 		}
 	}
 	return res, nil
+}
+
+// processWorkItem 处理 issue/PR 共用的落库与事件创建：
+// 能力门禁 → UpsertIfNewer → 指纹去重 → Event 落库。kind 由调用方按载荷形态判定。
+func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, kind string, item store.WorkItem, action string) (Result, error) {
+	// 能力门禁：对应类型开关关闭或仓库已归档时不再采集（不更新数据、不创建事件）。
+	if !p.ingestGate(ctx, repo, kind) {
+		return Result{Repository: &repo, SuppressNotify: true}, nil
+	}
+	saved, updated, err := p.Store.WorkItems().UpsertIfNewer(ctx, item)
+	if err != nil {
+		return Result{}, err
+	}
+	if !updated {
+		return Result{Repository: &repo, StaleDiscarded: true}, nil
+	}
+	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
+	fp := Fingerprint("webhook", repo.FullName, kind, ResourceIdentity(kind, saved.Number, 0), action, saved.SourceUpdatedAt, item.StateHash)
+	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
+	}
+	num := saved.Number
+	srcUpdated := saved.SourceUpdatedAt
+	ev := store.Event{
+		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(action),
+		RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
+		OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: saved.HTMLURL,
+		PayloadSummary: map[string]any{
+			"state": saved.State, "draft": saved.Draft,
+			"labels": item.LabelsJSON, "assignees": item.AssigneesJSON, "milestone": item.Milestone,
+		},
+		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: item.StateHash,
+	}
+	created, err := p.Store.Events().Create(ctx, ev)
+	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
+		}
+		return Result{}, err
+	}
+	return Result{Event: &created, Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
 }
 
 func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Result, error) {
@@ -497,13 +509,13 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}
 	// 恢复检测：上一次 completed 运行为失败结论时，本次成功视为恢复。
-	if prevRun != nil && prevRun.GitHubRunID != run.ID && prevRun.Conclusion != nil && isFailureConclusion(*prevRun.Conclusion) {
+	if prevRun != nil && prevRun.GitHubRunID != run.ID && prevRun.Conclusion != nil && store.IsFailureConclusion(*prevRun.Conclusion) {
 		ev.Action = "recovered"
 		ev.PayloadSummary["previous_conclusion"] = *prevRun.Conclusion
 	}
 	created, err := p.Store.Events().Create(ctx, ev)
 	if err != nil {
-		if err == store.ErrConflict {
+		if errors.Is(err, store.ErrConflict) {
 			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
 		}
 		return Result{}, err
@@ -584,7 +596,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 	}
 	created, err := p.Store.Events().Create(ctx, ev)
 	if err != nil {
-		if err == store.ErrConflict {
+		if errors.Is(err, store.ErrConflict) {
 			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
 		}
 		return Result{}, err
@@ -599,28 +611,7 @@ func (p *Processor) ingestGate(ctx context.Context, repo store.Repository, kind 
 	if p.Store != nil && !store.KindFeatureEnabled(ctx, p.Store.Settings(), kind) {
 		return false
 	}
-	return repoAllowsKind(repo, kind)
-}
-
-// repoAllowsKind 仅看仓库级开关（供对账等已读全局标志的调用方复用）。
-func repoAllowsKind(repo store.Repository, kind string) bool {
-	if !repo.MonitorEnabled {
-		return false
-	}
-	if repo.IsArchived || repo.SyncStatus == store.SyncStatusArchived || repo.SyncStatus == store.SyncStatusUnavailable {
-		return false
-	}
-	switch kind {
-	case store.WorkItemKindIssue:
-		return repo.IssuesEnabled
-	case store.WorkItemKindPR:
-		return repo.PrEnabled
-	case "workflow_run":
-		return repo.ActionsEnabled
-	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
-		return repo.AlertsEnabled
-	}
-	return true
+	return store.RepoAllowsKind(&repo, kind)
 }
 
 func normalizeAction(action string) string {
@@ -631,18 +622,35 @@ func normalizeAction(action string) string {
 	return action
 }
 
-func isFailureConclusion(c string) bool {
-	switch c {
-	case "failure", "timed_out", "cancelled", "action_required", "startup_failure":
-		return true
-	default:
-		return false
-	}
-}
-
 func shortSHA(sha string) string {
 	if len(sha) > 7 {
 		return sha[:7]
 	}
 	return sha
+}
+
+// 以下三个转换函数供 issue/PR 共用：两类载荷的标签、指派人与里程碑结构一致，
+// 避免各自重复转换逻辑。
+
+func labelsToAny(labels []ghLabel) []any {
+	out := make([]any, 0, len(labels))
+	for _, l := range labels {
+		out = append(out, l.Name)
+	}
+	return out
+}
+
+func assigneesToAny(assignees []ghUser) []any {
+	out := make([]any, 0, len(assignees))
+	for _, a := range assignees {
+		out = append(out, a.Login)
+	}
+	return out
+}
+
+func milestoneTitle(m *ghMilestone) string {
+	if m == nil {
+		return ""
+	}
+	return m.Title
 }

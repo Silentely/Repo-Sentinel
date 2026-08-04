@@ -2,6 +2,7 @@ package normalizer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -93,7 +94,7 @@ func NormalizeRepository(ctx context.Context, s store.Store, gh repoSource, inst
 		// 已存在仓库保持状态，仅更新元数据
 		return s.Repositories().Upsert(ctx, in)
 	}
-	if err != store.ErrNotFound {
+	if !errors.Is(err, store.ErrNotFound) {
 		return store.Repository{}, err
 	}
 

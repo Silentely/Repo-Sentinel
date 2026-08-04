@@ -3,6 +3,7 @@ package rules
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	htmlpkg "html"
 	"strings"
@@ -216,7 +217,7 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 			Title: title, BodyText: body, ParseMode: "HTML",
 			BodyJSON: map[string]any{"aggregate": true, "count": len(sub), "category": b.category, "bucket": bucket},
 		})
-		if err != nil && err != store.ErrConflict {
+		if err != nil && !errors.Is(err, store.ErrConflict) {
 			return err
 		}
 	}
@@ -275,7 +276,7 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: safeTitle, BodyText: body, ParseMode: "HTML",
 		})
-		if err != nil && err != store.ErrConflict {
+		if err != nil && !errors.Is(err, store.ErrConflict) {
 			return err
 		}
 	}

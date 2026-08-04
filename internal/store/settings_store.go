@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"math"
 
 	entclient "github.com/Silentely/Repo-Sentinel/internal/store/ent"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
@@ -78,4 +80,54 @@ func settingFromEntity(entity *entclient.SystemSetting) SystemSetting {
 		UpdatedAt: entity.UpdatedAt.UTC(),
 		UpdatedBy: entity.UpdatedBy,
 	}
+}
+
+// SettingInt 读取整数型设置：仅接受正整数（0/负值视为未配置），
+// 键不存在或 JSON 非法时返回 defaultVal。语义与 httpapi 旧 getIntSetting 一致，
+// 供各包复用，避免出现多套"读整数设置"实现。
+func SettingInt(ctx context.Context, settings SettingsStore, key string, defaultVal int) int {
+	if settings == nil {
+		return defaultVal
+	}
+	row, err := settings.Get(ctx, key)
+	if err != nil {
+		return defaultVal
+	}
+	var v float64
+	if err := json.Unmarshal(row.ValueJSON, &v); err != nil || v <= 0 || math.Trunc(v) != v {
+		return defaultVal
+	}
+	return int(v)
+}
+
+// SettingBool 读取布尔型设置；键不存在或 JSON 非法时返回 defaultVal。
+func SettingBool(ctx context.Context, settings SettingsStore, key string, defaultVal bool) bool {
+	if settings == nil {
+		return defaultVal
+	}
+	row, err := settings.Get(ctx, key)
+	if err != nil {
+		return defaultVal
+	}
+	var v bool
+	if err := json.Unmarshal(row.ValueJSON, &v); err != nil {
+		return defaultVal
+	}
+	return v
+}
+
+// SettingString 读取字符串型设置；键不存在、JSON 非法或值为空串时返回 defaultVal。
+func SettingString(ctx context.Context, settings SettingsStore, key, defaultVal string) string {
+	if settings == nil {
+		return defaultVal
+	}
+	row, err := settings.Get(ctx, key)
+	if err != nil {
+		return defaultVal
+	}
+	var v string
+	if err := json.Unmarshal(row.ValueJSON, &v); err != nil || v == "" {
+		return defaultVal
+	}
+	return v
 }
