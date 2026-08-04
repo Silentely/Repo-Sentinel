@@ -49,8 +49,11 @@ func TestRenderMessage_IssueOpened(t *testing.T) {
 	}
 	title, body, htmlURL := renderMessage(ev, "Silentely/xserver-vps-renew")
 
-	if !strings.Contains(title, "🐛") {
-		t.Errorf("期望 🐛 emoji，标题: %s", title)
+	if !strings.Contains(title, "已打开") {
+		t.Errorf("期望标题含「已打开」，标题: %s", title)
+	}
+	if !strings.Contains(body, "状态：已打开") {
+		t.Errorf("期望正文状态置顶，实际: %s", body)
 	}
 	if !strings.Contains(body, "Silentely/xserver-vps-renew") {
 		t.Error("期望包含仓库名")
@@ -87,8 +90,11 @@ func TestRenderMessage_PRMerged(t *testing.T) {
 	if !strings.Contains(title, "🟣") {
 		t.Errorf("期望 🟣 emoji 表示 merged，标题: %s", title)
 	}
-	if !strings.Contains(body, "已合并") {
-		t.Errorf("期望包含「已合并」状态，实际: %s", body)
+	if !strings.Contains(title, "已合并") {
+		t.Errorf("期望标题含「已合并」，标题: %s", title)
+	}
+	if !strings.Contains(body, "状态：已合并") {
+		t.Errorf("期望包含「状态：已合并」，实际: %s", body)
 	}
 }
 
@@ -104,8 +110,8 @@ func TestRenderMessage_PRDraft(t *testing.T) {
 	if !strings.Contains(title, "📝") {
 		t.Errorf("期望 📝 emoji 表示 draft，标题: %s", title)
 	}
-	if !strings.Contains(body, "草稿") {
-		t.Errorf("期望包含「草稿」状态，实际: %s", body)
+	if !strings.Contains(body, "状态：草稿") {
+		t.Errorf("期望包含「状态：草稿」，实际: %s", body)
 	}
 }
 
@@ -120,8 +126,11 @@ func TestRenderMessage_SecurityAlert_Critical(t *testing.T) {
 	if !strings.Contains(title, "🚨") {
 		t.Errorf("期望 🚨 emoji 表示 critical，标题: %s", title)
 	}
-	if !strings.Contains(body, "🚨 严重度：critical") {
-		t.Errorf("期望 🚨 严重度前缀，实际: %s", body)
+	if !strings.Contains(title, "新告警") {
+		t.Errorf("期望标题含「新告警」，标题: %s", title)
+	}
+	if !strings.Contains(body, "🚨 严重度：严重 (critical)") {
+		t.Errorf("期望中文严重度，实际: %s", body)
 	}
 	if !strings.Contains(body, "lodash") {
 		t.Errorf("期望包含规则名，实际: %s", body)
@@ -134,10 +143,13 @@ func TestRenderMessage_CodeScanning_Error(t *testing.T) {
 		Severity: "error", OccurredAt: time.Now().UTC(),
 		PayloadSummary: map[string]any{"state": "open", "severity": "error", "rule_or_dependency": "sql-injection"},
 	}
-	title, _, _ := renderMessage(ev, "test/repo")
+	title, body, _ := renderMessage(ev, "test/repo")
 
 	if !strings.Contains(title, "🔴") {
 		t.Errorf("期望 🔴 emoji 表示 error 级别 code_scanning，标题: %s", title)
+	}
+	if !strings.Contains(body, "状态：新告警") {
+		t.Errorf("期望状态新告警，实际: %s", body)
 	}
 }
 
@@ -151,6 +163,9 @@ func TestRenderMessage_WorkflowFailure(t *testing.T) {
 
 	if !strings.Contains(title, "❌") {
 		t.Errorf("期望 ❌ emoji 表示 failure，标题: %s", title)
+	}
+	if !strings.Contains(title, "失败") {
+		t.Errorf("期望标题含「失败」，标题: %s", title)
 	}
 	if !strings.Contains(body, "main") {
 		t.Errorf("期望包含分支名，实际: %s", body)
@@ -166,10 +181,16 @@ func TestRenderMessage_WorkflowRecovered(t *testing.T) {
 		WorkflowConclusion: "success", OccurredAt: time.Now().UTC(),
 		PayloadSummary: map[string]any{"head_branch": "main"},
 	}
-	title, _, _ := renderMessage(ev, "test/repo")
+	title, body, _ := renderMessage(ev, "test/repo")
 
 	if !strings.Contains(title, "🟢") {
 		t.Errorf("期望 🟢 emoji 表示 recovered，标题: %s", title)
+	}
+	if !strings.Contains(title, "已恢复") {
+		t.Errorf("期望标题含「已恢复」，标题: %s", title)
+	}
+	if !strings.Contains(body, "状态：已恢复") {
+		t.Errorf("期望正文状态已恢复，实际: %s", body)
 	}
 }
 
@@ -183,8 +204,36 @@ func TestRenderMessage_WorkflowCancelled(t *testing.T) {
 	if !strings.Contains(title, "⏹️") {
 		t.Errorf("期望 ⏹️ emoji 表示 cancelled，标题: %s", title)
 	}
-	if !strings.Contains(body, "⏹️ 结论：cancelled") {
-		t.Errorf("期望 ⏹️ 结论前缀，实际: %s", body)
+	if !strings.Contains(body, "状态：已取消") {
+		t.Errorf("期望状态已取消，实际: %s", body)
+	}
+	if strings.Contains(body, "结论：") {
+		t.Errorf("结论已并入状态行，不应再单独输出，实际: %s", body)
+	}
+}
+
+func TestStatusDisplay_Table(t *testing.T) {
+	cases := []struct {
+		name      string
+		ev        store.Event
+		wantEmoji string
+		wantLabel string
+	}{
+		{"issue opened", store.Event{Kind: store.WorkItemKindIssue, Action: "opened"}, "🟢", "已打开"},
+		{"issue closed", store.Event{Kind: store.WorkItemKindIssue, Action: "closed"}, "⚫", "已关闭"},
+		{"pr merged", store.Event{Kind: store.WorkItemKindPR, Action: "merged"}, "🟣", "已合并"},
+		{"pr draft", store.Event{Kind: store.WorkItemKindPR, Action: "opened", PayloadSummary: map[string]any{"draft": true}}, "📝", "草稿"},
+		{"workflow fail", store.Event{Kind: "workflow_run", Action: "completed", WorkflowConclusion: "failure"}, "❌", "失败"},
+		{"dependabot created", store.Event{Kind: store.AlertKindDependabot, Action: "created", Severity: "medium"}, "🟠", "新告警"},
+		{"dependabot fixed", store.Event{Kind: store.AlertKindDependabot, Action: "fixed"}, "✅", "已修复"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			emoji, label := statusDisplay(&tc.ev)
+			if emoji != tc.wantEmoji || label != tc.wantLabel {
+				t.Fatalf("statusDisplay = %s %s, want %s %s", emoji, label, tc.wantEmoji, tc.wantLabel)
+			}
+		})
 	}
 }
 

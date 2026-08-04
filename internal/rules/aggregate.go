@@ -237,16 +237,13 @@ func renderMergedMessage(repoName, category string, events []*store.Event) (stri
 			body.WriteString(fmt.Sprintf("…另有 %d 条\n", len(events)-maxSamples))
 			break
 		}
-		emoji := eventEmoji(ev)
+		statusEmoji, statusLabel := statusDisplay(ev)
 		numStr := ""
 		if ev.SubjectNumber != nil {
 			numStr = fmt.Sprintf(" #%d", *ev.SubjectNumber)
 		}
-		stateStr := ""
-		if ev.Action != "" {
-			stateStr = fmt.Sprintf("（%s）", htmlpkg.EscapeString(ev.Action))
-		}
-		body.WriteString(fmt.Sprintf("%s%s %s%s\n", emoji, numStr, htmlpkg.EscapeString(ev.Title), stateStr))
+		// 状态中文放标题前，合并列表同样一眼可读。
+		body.WriteString(fmt.Sprintf("%s [%s]%s %s\n", statusEmoji, htmlpkg.EscapeString(statusLabel), numStr, htmlpkg.EscapeString(ev.Title)))
 	}
 	return title, body.String()
 }
