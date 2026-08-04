@@ -545,23 +545,32 @@ function formatEventKind(kind: string): string {
 function formatEventAction(action: string): string {
   switch (action) {
     case "opened":
-      return "打开";
+      return "已打开";
     case "closed":
-      return "关闭";
+      return "已关闭";
     case "reopened":
       return "重新打开";
+    case "merged":
+      return "已合并";
     case "completed":
-      return "完成";
+      return "已完成";
     case "recovered":
-      return "恢复";
+      return "已恢复";
     case "updated":
-      return "更新";
+      return "已更新";
     case "created":
-      return "创建";
+      return "新告警";
     case "dismissed":
-      return "忽略";
+      return "已忽略";
     case "fixed":
-      return "修复";
+    case "resolved":
+      return "已修复";
+    case "ready_for_review":
+      return "待审核";
+    case "converted_to_draft":
+      return "转为草稿";
+    case "auto_dismissed":
+      return "自动忽略";
     default:
       return action;
   }

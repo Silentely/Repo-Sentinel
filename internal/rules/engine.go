@@ -93,46 +93,41 @@ func shouldNotifyRealtime(ev *store.Event) bool {
 }
 
 func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
-	emoji := eventEmoji(ev)
-	title = fmt.Sprintf("%s %s", emoji, htmlpkg.EscapeString(ev.Title))
+	statusEmoji, statusLabel := statusDisplay(ev)
+	// 标题把状态放最前，通知列表/推送预览第一眼就能看出打开还是关闭。
+	title = fmt.Sprintf("%s %s｜%s", statusEmoji, statusLabel, htmlpkg.EscapeString(ev.Title))
 
 	var b strings.Builder
-	// 标题行
 	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
 	b.WriteString("────────────────\n")
 
-	// 仓库
+	// 状态置顶：正文第二行再次强化，避免只看字段时漏掉。
+	b.WriteString(fmt.Sprintf("%s <b>状态：%s</b>\n", statusEmoji, htmlpkg.EscapeString(statusLabel)))
+
 	if repo != "" {
 		b.WriteString(fmt.Sprintf("📦 仓库：<code>%s</code>\n", htmlpkg.EscapeString(repo)))
 	}
 
-	// 编号
 	if ev.SubjectNumber != nil {
 		b.WriteString(fmt.Sprintf("🔢 编号：#%d\n", *ev.SubjectNumber))
 	}
 
-	// 类型 / 操作
-	b.WriteString(fmt.Sprintf("📋 类型：%s / %s\n", htmlpkg.EscapeString(ev.Kind), htmlpkg.EscapeString(ev.Action)))
+	b.WriteString(fmt.Sprintf("📋 类型：%s\n", htmlpkg.EscapeString(kindDisplayName(ev.Kind))))
 
-	// 操作者
 	if ev.Actor != "" {
 		b.WriteString(fmt.Sprintf("👤 操作者：%s\n", htmlpkg.EscapeString(ev.Actor)))
 	}
 
-	// 安全告警 — 严重度 + 规则/依赖
+	// 安全告警 — 严重度中文化 + 规则/依赖
 	if ev.Severity != "" {
 		sevEmoji := severityEmoji(ev.Severity)
-		b.WriteString(fmt.Sprintf("%s 严重度：%s\n", sevEmoji, htmlpkg.EscapeString(ev.Severity)))
+		b.WriteString(fmt.Sprintf("%s 严重度：%s\n", sevEmoji, htmlpkg.EscapeString(severityDisplayName(ev.Severity))))
 	}
 	if rule := payloadString(ev.PayloadSummary, "rule_or_dependency"); rule != "" {
 		b.WriteString(fmt.Sprintf("🛡️ 规则：%s\n", htmlpkg.EscapeString(rule)))
 	}
 
-	// Workflow 结论
-	if ev.WorkflowConclusion != "" {
-		conclusionEmoji := workflowConclusionEmoji(ev.WorkflowConclusion)
-		b.WriteString(fmt.Sprintf("%s 结论：%s\n", conclusionEmoji, htmlpkg.EscapeString(ev.WorkflowConclusion)))
-	}
+	// Workflow 结论已并入「状态」行，正文只补充分支与工作流名。
 	if branch := payloadString(ev.PayloadSummary, "head_branch"); branch != "" {
 		b.WriteString(fmt.Sprintf("🌿 分支：<code>%s</code>\n", htmlpkg.EscapeString(branch)))
 	}
@@ -140,42 +135,183 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		b.WriteString(fmt.Sprintf("⚙️ 工作流：%s\n", htmlpkg.EscapeString(wfName)))
 	}
 
-	// PR 草稿/合并状态
-	if ev.Kind == store.WorkItemKindPR {
-		if isDraft(ev) {
-			b.WriteString("📝 状态：草稿\n")
-		} else if ev.Action == "merged" {
-			b.WriteString("🟣 状态：已合并\n")
-		}
-	}
-
-	// Labels
 	if labels := payloadStringSlice(ev.PayloadSummary, "labels"); len(labels) > 0 {
 		b.WriteString(fmt.Sprintf("🏷️ 标签：%s\n", htmlpkg.EscapeString(strings.Join(labels, ", "))))
 	}
 
-	// Assignees
 	if assignees := payloadStringSlice(ev.PayloadSummary, "assignees"); len(assignees) > 0 {
 		b.WriteString(fmt.Sprintf("👥 指派：%s\n", htmlpkg.EscapeString(strings.Join(assignees, ", "))))
 	}
 
-	// Milestone
 	if ms := payloadString(ev.PayloadSummary, "milestone"); ms != "" {
 		b.WriteString(fmt.Sprintf("📅 里程碑：%s\n", htmlpkg.EscapeString(ms)))
 	}
 
-	// 事件时间
 	if !ev.OccurredAt.IsZero() {
 		b.WriteString(fmt.Sprintf("⏰ 时间：%s\n", ev.OccurredAt.UTC().Format("2006-01-02 15:04 UTC")))
 	}
 
-	// 分隔线 + 链接
 	if ev.HTMLURL != "" {
 		b.WriteString("────────────────\n")
 		b.WriteString(fmt.Sprintf("<a href=\"%s\">🔗 在 GitHub 中查看</a>", htmlpkg.EscapeString(ev.HTMLURL)))
 		htmlURL = ev.HTMLURL
 	}
 	return title, b.String(), htmlURL
+}
+
+// statusDisplay 返回事件的状态 emoji 与中文标签，供标题/正文一眼识别开闭与结论。
+func statusDisplay(ev *store.Event) (emoji, label string) {
+	switch ev.Kind {
+	case store.WorkItemKindIssue:
+		switch ev.Action {
+		case "opened":
+			return "🟢", "已打开"
+		case "reopened":
+			return "🔁", "重新打开"
+		case "closed":
+			return "⚫", "已关闭"
+		}
+	case store.WorkItemKindPR:
+		if isDraft(ev) && ev.Action != "ready_for_review" && ev.Action != "merged" && ev.Action != "closed" {
+			return "📝", "草稿"
+		}
+		switch ev.Action {
+		case "opened":
+			return "🟢", "已打开"
+		case "reopened":
+			return "🔁", "重新打开"
+		case "closed":
+			return "⚫", "已关闭"
+		case "merged":
+			return "🟣", "已合并"
+		case "ready_for_review":
+			return "👀", "待审核"
+		case "converted_to_draft":
+			return "📝", "转为草稿"
+		}
+	case "workflow_run":
+		if ev.Action == "recovered" {
+			return "🟢", "已恢复"
+		}
+		switch ev.WorkflowConclusion {
+		case "success":
+			return "✅", "成功"
+		case "failure", "startup_failure":
+			return "❌", "失败"
+		case "cancelled":
+			return "⏹️", "已取消"
+		case "timed_out":
+			return "⏱️", "超时"
+		case "action_required":
+			return "🔔", "需处理"
+		case "skipped":
+			return "⏭️", "已跳过"
+		default:
+			if store.IsFailureConclusion(ev.WorkflowConclusion) {
+				return "❌", "失败"
+			}
+			return "⚙️", "已完成"
+		}
+	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
+		switch ev.Action {
+		case "created", "opened", "reopened":
+			return severityEmoji(ev.Severity), "新告警"
+		case "fixed", "resolved":
+			return "✅", "已修复"
+		case "dismissed", "closed":
+			return "🔇", "已忽略"
+		case "auto_dismissed":
+			return "🔇", "自动忽略"
+		default:
+			if ev.Severity != "" {
+				return severityEmoji(ev.Severity), "告警更新"
+			}
+			return "🛡️", "告警更新"
+		}
+	}
+
+	// 通用回退：按 action 语义猜测
+	switch {
+	case strings.Contains(ev.Action, "reopen"):
+		return "🔁", "重新打开"
+	case ev.Action == "closed" || ev.Action == "fixed" || ev.Action == "dismissed" || ev.Action == "resolved":
+		return "⚫", "已关闭"
+	case ev.Action == "opened" || ev.Action == "created":
+		return "🟢", "已打开"
+	default:
+		if ev.Action != "" {
+			return eventEmoji(ev), actionDisplayName(ev.Action)
+		}
+		return eventEmoji(ev), "有更新"
+	}
+}
+
+// kindDisplayName 事件类型中文/友好名（推送正文用，避免 raw kind）。
+func kindDisplayName(kind string) string {
+	switch kind {
+	case store.WorkItemKindIssue:
+		return "Issue"
+	case store.WorkItemKindPR:
+		return "PR"
+	case store.AlertKindDependabot:
+		return "Dependabot 依赖告警"
+	case store.AlertKindCodeScanning:
+		return "Code Scanning 代码扫描"
+	case store.AlertKindSecretScanning:
+		return "Secret Scanning 密钥扫描"
+	case "workflow_run":
+		return "Actions 工作流"
+	default:
+		return kind
+	}
+}
+
+// actionDisplayName 将 GitHub action 转为简短中文（通用回退）。
+func actionDisplayName(action string) string {
+	switch action {
+	case "opened":
+		return "已打开"
+	case "closed":
+		return "已关闭"
+	case "reopened":
+		return "重新打开"
+	case "merged":
+		return "已合并"
+	case "created":
+		return "已创建"
+	case "updated", "edited":
+		return "已更新"
+	case "completed":
+		return "已完成"
+	case "recovered":
+		return "已恢复"
+	case "dismissed":
+		return "已忽略"
+	case "fixed", "resolved":
+		return "已修复"
+	case "ready_for_review":
+		return "待审核"
+	case "converted_to_draft":
+		return "转为草稿"
+	default:
+		return action
+	}
+}
+
+// severityDisplayName 严重度中文。
+func severityDisplayName(severity string) string {
+	switch strings.ToLower(severity) {
+	case "critical":
+		return "严重 (critical)"
+	case "high", "error":
+		return "高 (high)"
+	case "medium", "warning":
+		return "中 (medium)"
+	case "low", "note":
+		return "低 (low)"
+	default:
+		return severity
+	}
 }
 
 // eventEmoji 根据事件类型和状态返回对应的 emoji。

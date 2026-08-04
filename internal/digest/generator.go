@@ -133,7 +133,7 @@ func buildDigestBody(title string, events []store.Event) string {
 		b.WriteString(fmt.Sprintf("%s %s × %d\n", kindEmoji(g.kind), kindDisplayName(g.kind), g.count))
 	}
 
-	// 最近 5 条事件预览
+	// 最近 5 条事件预览（状态中文一眼可读）
 	maxPreview := 5
 	b.WriteString("────────────────\n")
 	b.WriteString("最近活动：\n")
@@ -141,12 +141,12 @@ func buildDigestBody(title string, events []store.Event) string {
 		if i >= maxPreview {
 			break
 		}
-		emoji := kindEmoji(ev.Kind)
+		status := digestStatusLabel(ev)
 		numStr := ""
 		if ev.SubjectNumber != nil {
 			numStr = fmt.Sprintf(" #%d", *ev.SubjectNumber)
 		}
-		b.WriteString(fmt.Sprintf("• %s%s %s\n", emoji, numStr, ev.Title))
+		b.WriteString(fmt.Sprintf("• [%s]%s %s\n", status, numStr, ev.Title))
 	}
 
 	return b.String()
@@ -190,4 +190,49 @@ func kindDisplayName(kind string) string {
 	default:
 		return kind
 	}
+}
+
+// digestStatusLabel 摘要预览用的短状态文案，避免 raw action 难读。
+func digestStatusLabel(ev store.Event) string {
+	switch ev.Kind {
+	case store.WorkItemKindIssue, store.WorkItemKindPR:
+		switch ev.Action {
+		case "opened":
+			return "已打开"
+		case "reopened":
+			return "重新打开"
+		case "closed":
+			return "已关闭"
+		case "merged":
+			return "已合并"
+		case "ready_for_review":
+			return "待审核"
+		}
+	case "workflow_run":
+		if ev.Action == "recovered" {
+			return "已恢复"
+		}
+		if store.IsFailureConclusion(ev.WorkflowConclusion) {
+			return "失败"
+		}
+		if ev.WorkflowConclusion == "success" {
+			return "成功"
+		}
+		return "已完成"
+	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
+		switch ev.Action {
+		case "created", "opened", "reopened":
+			return "新告警"
+		case "fixed", "resolved":
+			return "已修复"
+		case "dismissed", "closed", "auto_dismissed":
+			return "已忽略"
+		default:
+			return "告警更新"
+		}
+	}
+	if ev.Action != "" {
+		return ev.Action
+	}
+	return "更新"
 }

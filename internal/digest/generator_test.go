@@ -206,6 +206,15 @@ func TestBuildDigestBody_WithEvents(t *testing.T) {
 	if !strings.Contains(body, "#42") {
 		t.Errorf("期望包含 #42，实际: %s", body)
 	}
+	if !strings.Contains(body, "[已打开]") {
+		t.Errorf("期望预览含中文状态「已打开」，实际: %s", body)
+	}
+	if !strings.Contains(body, "[已合并]") {
+		t.Errorf("期望预览含中文状态「已合并」，实际: %s", body)
+	}
+	if !strings.Contains(body, "[已关闭]") {
+		t.Errorf("期望预览含中文状态「已关闭」，实际: %s", body)
+	}
 }
 
 func TestBuildDigestBody_Empty(t *testing.T) {
