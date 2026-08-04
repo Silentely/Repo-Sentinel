@@ -27,6 +27,9 @@ var defaultBackoff = []time.Duration{
 	10 * time.Minute,
 	30 * time.Minute,
 	2 * time.Hour,
+	4 * time.Hour,
+	8 * time.Hour,
+	12 * time.Hour,
 }
 
 const maxAttempts = 8

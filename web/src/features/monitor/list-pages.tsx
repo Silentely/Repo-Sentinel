@@ -290,10 +290,10 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
         }
       >
         {items.map((it) => {
-              const num = it.number ?? 0;
-              const itemTitle = (it.title || "").trim() || "（无标题）";
-              return (
-                <li key={it.id}>
+            const num = it.number ?? 0;
+            const itemTitle = (it.title || "").trim() || "（无标题）";
+            return (
+              <li key={it.id}>
                   <div className="pr-header">
                     <span className={`event-kind state-${it.state || "open"}`}>{it.state || "—"}</span>
                     {it.draft && <span className="draft-badge">Draft</span>}
@@ -355,8 +355,8 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                       })
                     }
                   />
-                </li>
-              );
+              </li>
+            );
             })}
       </EventListBody>
     </ListShell>
@@ -416,18 +416,18 @@ export function ReposPage() {
             if (r.id !== id) return r;
             const updated = { ...r, ...settings };
             if (settings.is_archived === true) {
-              updated.monitor_enabled = false;
-              updated.issues_enabled = false;
-              updated.pr_enabled = false;
-              updated.actions_enabled = false;
-              updated.alerts_enabled = false;
+            updated.monitor_enabled = false;
+            updated.issues_enabled = false;
+            updated.pr_enabled = false;
+            updated.actions_enabled = false;
+            updated.alerts_enabled = false;
             }
             if (settings.is_archived === false) {
-              updated.monitor_enabled = true;
-              updated.issues_enabled = true;
-              updated.pr_enabled = true;
-              updated.actions_enabled = true;
-              updated.alerts_enabled = true;
+            updated.monitor_enabled = true;
+            updated.issues_enabled = true;
+            updated.pr_enabled = true;
+            updated.actions_enabled = true;
+            updated.alerts_enabled = true;
             }
             return updated;
           }),
@@ -740,11 +740,11 @@ function ActionsList() {
         }
       >
         {items.map((run) => {
-              const name = (run.workflow_name || "").trim() || "workflow";
-              const num = run.run_number ?? 0;
-              const runConclusion = run.conclusion || run.status || "run";
-              return (
-                <li key={run.id}>
+            const name = (run.workflow_name || "").trim() || "workflow";
+            const num = run.run_number ?? 0;
+            const runConclusion = run.conclusion || run.status || "run";
+            return (
+              <li key={run.id}>
                   <div className="run-header">
                     <span className={`event-kind state-${runConclusion}`}>{runConclusion}</span>
                     {run.event && <span className="event-type">{run.event}</span>}
@@ -771,8 +771,8 @@ function ActionsList() {
                       })
                     }
                   />
-                </li>
-              );
+              </li>
+            );
             })}
       </EventListBody>
     </ListShell>
@@ -866,10 +866,10 @@ function SecurityList() {
         }
       >
         {items.map((a) => {
-              const num = a.alert_number ?? 0;
-              const label = (a.rule_or_dependency || a.severity || "").trim() || "告警";
-              return (
-                <li key={a.id}>
+            const num = a.alert_number ?? 0;
+            const label = (a.rule_or_dependency || a.severity || "").trim() || "告警";
+            return (
+              <li key={a.id}>
                   <span className={`event-kind state-${a.state || "open"}`}>{formatAlertKind(a.alert_kind)}</span>
                   {a.ignored && <span className="ignored-badge">已忽略</span>}
                   {a.repository_full_name ? <span className="event-repo">{a.repository_full_name}</span> : null}
@@ -891,8 +891,8 @@ function SecurityList() {
                       })
                     }
                   />
-                </li>
-              );
+              </li>
+            );
             })}
       </EventListBody>
     </ListShell>
