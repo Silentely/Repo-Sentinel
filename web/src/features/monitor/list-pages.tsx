@@ -7,7 +7,7 @@ import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate, type QueryGateQuery } from "../../components/query-gate";
 import { apiRequest } from "../../lib/api/client";
 import { toApiError } from "../../lib/api/errors";
-import { formatRelativeTime } from "../../lib/format";
+import { alertKindLabel, formatRelativeTime, repoDisplayName, syncStatusLabel } from "../../lib/format";
 import {
   type Page,
   repositoriesQueryOptions,
@@ -539,20 +539,14 @@ function RepoCard({
     <li className="repo-card">
       <div className="repo-card__header">
         <div className="repo-card__title">
-          <strong>{repo.full_name || `${repo.owner}/${repo.name}`}</strong>
+          <strong>{repoDisplayName(repo)}</strong>
           {repo.is_private && <span className="private-badge">🔒</span>}
           {repo.type === "external_public" && <span className="type-badge">外部</span>}
           {repo.default_branch && <span className="branch-badge">{repo.default_branch}</span>}
         </div>
         <div className="repo-card__status">
           <span className="muted">
-            {repo.sync_status === "active"
-              ? "正常"
-              : repo.sync_status === "archived"
-                ? "已归档"
-                : repo.sync_status === "baseline_sync"
-                  ? "基线中"
-                  : repo.sync_status}
+            {syncStatusLabel(repo.sync_status)}
             {repo.is_archived ? " · 本系统已归档" : ""}
           </span>
           {repo.last_synced_at && <span className="last-synced">最后同步: {formatRelativeTime(repo.last_synced_at)}</span>}
@@ -661,19 +655,6 @@ function Toggle({
       <span>{label}</span>
     </label>
   );
-}
-
-function formatAlertKind(kind?: string): string {
-  switch (kind) {
-    case "dependabot":
-      return "依赖漏洞";
-    case "code_scanning":
-      return "代码扫描";
-    case "secret_scanning":
-      return "密钥泄露";
-    default:
-      return kind || "告警";
-  }
 }
 
 function ActionsList() {
@@ -829,9 +810,11 @@ function SecurityList() {
           <span className="sr-only">告警类型</span>
           <select value={alertKind} onChange={(e) => setAlertKind(e.target.value)} aria-label="告警类型">
             <option value="">全部类型</option>
-            <option value="dependabot">依赖漏洞</option>
-            <option value="code_scanning">代码扫描</option>
-            <option value="secret_scanning">密钥泄露</option>
+            {(["dependabot", "code_scanning", "secret_scanning"] as const).map((k) => (
+              <option key={k} value={k}>
+                {alertKindLabel(k)}
+              </option>
+            ))}
           </select>
         </label>
         <span className="filter-bar__sep" />
@@ -870,7 +853,7 @@ function SecurityList() {
             const label = (a.rule_or_dependency || a.severity || "").trim() || "告警";
             return (
               <li key={a.id}>
-                  <span className={`event-kind state-${a.state || "open"}`}>{formatAlertKind(a.alert_kind)}</span>
+                  <span className={`event-kind state-${a.state || "open"}`}>{alertKindLabel(a.alert_kind)}</span>
                   {a.ignored && <span className="ignored-badge">已忽略</span>}
                   {a.repository_full_name ? <span className="event-repo">{a.repository_full_name}</span> : null}
                   <strong>

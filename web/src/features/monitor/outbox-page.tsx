@@ -2,11 +2,10 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 
-import { apiRequest } from "../../lib/api/client";
 import { EmptyState } from "../../components/empty-state";
 import { QueryGate } from "../../components/query-gate";
 import { formatRelativeTime } from "../../lib/format";
-import { retryOutbox, type OutboxItem, type Page } from "./api";
+import { outboxQueryOptions, retryOutbox, type OutboxItem } from "./api";
 
 const statusFilters = [
   { label: "全部", value: "" },
@@ -28,16 +27,7 @@ export function OutboxPage() {
   const [channelFilter, setChannelFilter] = useState<string>("");
   const [selectedItem, setSelectedItem] = useState<OutboxItem | null>(null);
 
-  const outbox = useQuery({
-    queryKey: ["outbox", statusFilter, channelFilter],
-    queryFn: () => {
-      const params = new URLSearchParams({ per_page: "50" });
-      if (statusFilter) params.set("status", statusFilter);
-      if (channelFilter) params.set("channel_type", channelFilter);
-      return apiRequest<Page<OutboxItem>>(`/api/v1/notifications/outbox?${params.toString()}`);
-    },
-    refetchInterval: 15_000,
-  });
+  const outbox = useQuery(outboxQueryOptions(statusFilter, channelFilter));
 
   // 行级忙碌：只让当前重试的记录转圈，避免整列禁用。
   const [retryBusyId, setRetryBusyId] = useState<string | null>(null);
