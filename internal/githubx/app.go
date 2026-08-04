@@ -347,11 +347,6 @@ func statusError(status int, _ []byte) error {
 
 var errNotModified = fmt.Errorf("not_modified")
 
-// IsNotModified 判断 304。
-func IsNotModified(err error) bool {
-	return err == errNotModified
-}
-
 // RateLimitError GitHub 限流错误：429 次限流或配额耗尽的 403。
 // RetryAfter 为上游建议的等待时长（0 表示未知），调用方按自身预算决定等待或放弃本轮。
 type RateLimitError struct {

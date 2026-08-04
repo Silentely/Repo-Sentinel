@@ -21,7 +21,8 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
-var defaultBackoff = []time.Duration{
+// defaultBackoff 固定退避阶梯（数组不可变：长度固定，避免误 append 打乱节奏）。
+var defaultBackoff = [...]time.Duration{
 	30 * time.Second,
 	2 * time.Minute,
 	10 * time.Minute,
@@ -33,6 +34,10 @@ var defaultBackoff = []time.Duration{
 }
 
 const maxAttempts = 8
+
+// AAD 通知密钥加密的附加认证数据。必须与写入端（app/bootstrap、httpapi 渠道管理）保持一致，
+// 否则历史加密的渠道密钥将无法解密，故收敛为单一来源。
+const AAD = "reposentinel:notify-secret:v1"
 
 // Worker 投递 Outbox。
 type Worker struct {
@@ -55,7 +60,7 @@ func (w *Worker) Run(ctx context.Context, interval time.Duration) {
 		w.Client = newSafeHTTPClient(15 * time.Second)
 	}
 	if w.AAD == "" {
-		w.AAD = "reposentinel:notify-secret:v1"
+		w.AAD = AAD
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -91,8 +96,18 @@ func (w *Worker) tick(ctx context.Context) {
 			w.handleFailure(ctx, item, err)
 			continue
 		}
-		_ = w.Store.Outbox().MarkSent(ctx, item.ID)
-		if w.Logger != nil {
+		if err := w.Store.Outbox().MarkSent(ctx, item.ID); err != nil {
+			// 标记失败会让条目下次 ClaimDue 被重新投递：记录日志便于排查重复通知来源。
+			if w.Logger != nil {
+				w.Logger.Error(
+					"notification delivered but mark failed",
+					"outbox_id", item.ID,
+					"channel_id", item.ChannelID,
+					"error_code", "outbox_mark_failed",
+					"error", err.Error(),
+				)
+			}
+		} else if w.Logger != nil {
 			w.Logger.Info(
 				"notification delivered",
 				"outbox_id", item.ID,
@@ -249,7 +264,10 @@ func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbo
 			w.markDead(ctx, item.ID, code)
 			return
 		}
-		_ = w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(time.Duration(ra.seconds)*time.Second), code)
+		if err := w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(time.Duration(ra.seconds)*time.Second), code); err != nil && w.Logger != nil {
+			// 重试时间写失败会让条目停留 sending 直到锁超时，记日志便于排查。
+			w.Logger.Error("outbox retry mark failed", "outbox_id", item.ID, "error_code", "outbox_mark_failed", "error", err.Error())
+		}
 		return
 	}
 	if item.AttemptCount >= maxAttempts {
@@ -263,12 +281,17 @@ func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbo
 	if idx >= len(defaultBackoff) {
 		idx = len(defaultBackoff) - 1
 	}
-	_ = w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(defaultBackoff[idx]), code)
+	if err := w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(defaultBackoff[idx]), code); err != nil && w.Logger != nil {
+		w.Logger.Error("outbox retry mark failed", "outbox_id", item.ID, "error_code", "outbox_mark_failed", "error", err.Error())
+	}
 }
 
 // markDead 将条目转入死信并触发指标回调。
 func (w *Worker) markDead(ctx context.Context, id, code string) {
-	_ = w.Store.Outbox().MarkDead(ctx, id, code)
+	if err := w.Store.Outbox().MarkDead(ctx, id, code); err != nil && w.Logger != nil {
+		// 死信写失败会让条目无限重投：必须记录，便于人工介入。
+		w.Logger.Error("outbox dead mark failed", "outbox_id", id, "error_code", "outbox_mark_failed", "error", err.Error())
+	}
 	if w.OnDead != nil {
 		w.OnDead()
 	}
