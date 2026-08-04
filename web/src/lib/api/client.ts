@@ -18,6 +18,7 @@ export interface ApiClientDependencies {
 }
 
 export type ApiRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
+export type ApiRequestNoContent = (path: string, init?: RequestInit) => Promise<void>;
 
 export function createApiClient(dependencies: ApiClientDependencies = {}): ApiRequest {
   const fetchImpl = dependencies.fetchImpl ?? ((input, init) => fetch(input, init));
@@ -58,6 +59,47 @@ export function createApiClient(dependencies: ApiClientDependencies = {}): ApiRe
       return undefined as T;
     }
     return (await response.json()) as T;
+  };
+}
+
+export function createApiNoContentClient(dependencies: ApiClientDependencies = {}): ApiRequestNoContent {
+  const fetchImpl = dependencies.fetchImpl ?? ((input, init) => fetch(input, init));
+  const readCookie = dependencies.readCookie ?? readBrowserCookie;
+
+  return async (path: string, init: RequestInit = {}): Promise<void> => {
+    const headers = new Headers(init.headers);
+    if (init.body !== undefined && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+
+    const method = (init.method ?? "GET").toUpperCase();
+    if (!isSafeMethod(method)) {
+      const csrfToken = readCookie(csrfCookieName);
+      if (csrfToken) {
+        headers.set(csrfHeaderName, csrfToken);
+      }
+    }
+
+    const response = await fetchImpl(path, {
+      ...init,
+      method,
+      headers,
+      credentials: init.credentials ?? "same-origin",
+      signal: init.signal ?? AbortSignal.timeout(defaultTimeoutMs),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        dependencies.queryClient?.clear();
+        dependencies.onUnauthorized?.();
+      }
+      throw await parseApiError(response);
+    }
+
+    if (response.status !== 204) {
+      // 非 204 响应体忽略，调用方只关心成功/失败
+      return;
+    }
   };
 }
 

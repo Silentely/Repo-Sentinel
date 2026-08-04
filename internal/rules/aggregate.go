@@ -172,7 +172,8 @@ func (a *Aggregator) flush(key string) {
 	delete(a.buckets, key)
 	a.mu.Unlock()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	if len(b.events) == 1 {
 		_ = (&Engine{Store: a.Store}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName)
 		return
