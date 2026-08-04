@@ -9,7 +9,7 @@
 - Go 1.26
 - Node.js 24 或更高版本
 - pnpm 10.34.5
-- Atlas CLI 1.2.3（迁移校验和生成）
+- Atlas CLI 1.3.0（迁移校验和生成）
 - Docker Engine 与 Compose v2（只在 PostgreSQL 契约需要）
 - Chromium（只在 Playwright 浏览器旅程需要）
 
@@ -59,13 +59,13 @@ REPOSENTINEL_TEST_POSTGRES_URL="postgres://reposentinel:reposentinel@127.0.0.1:5
   go test ./internal/store/... -run PostgreSQL -v
 ```
 
-仓库测试使用固定的 Atlas 1.2.3 Go 库同时校验两个迁移目录：
+仓库测试使用固定的 Atlas 1.3.0 Go 库同时校验两个迁移目录：
 
 ```bash
 go test ./migrations -run TestAtlasMigrationDirectories -v
 ```
 
-如果本机另外安装了 Atlas CLI，也可以运行 `atlas migrate validate --dir "file://migrations/sqlite"` 和对应的 PostgreSQL 命令。Atlas 1.2.3 的 Go 库模块不包含 `cmd/atlas` 可执行包，因此不要使用 `go run ariga.io/atlas/cmd/atlas@v1.2.3`。
+如果本机另外安装了 Atlas CLI，也可以运行 `atlas migrate validate --dir "file://migrations/sqlite"` 和对应的 PostgreSQL 命令。Atlas 1.3.0 的 Go 库模块不包含 `cmd/atlas` 可执行包，因此不要使用 `go run ariga.io/atlas/cmd/atlas@v1.3.0`。
 
 如果本机没有 Docker、`psql` 或 `REPOSENTINEL_TEST_POSTGRES_URL`，请输出明确的 `SKIP`，不要把未执行写成通过。
 
