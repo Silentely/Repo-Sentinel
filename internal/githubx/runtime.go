@@ -5,6 +5,9 @@ import (
 	"sync"
 )
 
+// WebhookPath GitHub Webhook 挂载路径（唯一事实来源）。
+const WebhookPath = "/webhooks/github"
+
 // RuntimeConfig 持有进程内可热更新的 GitHub 相关配置。
 // 环境变量在启动时写入后，管理台可在 env 未设置的字段上叠加数据库值。
 type RuntimeConfig struct {
@@ -68,6 +71,41 @@ func (r *RuntimeConfig) ApplyToClient() {
 	r.Client.Configure(appID, path, pem)
 }
 
+// sourceLabel 标记字段来源：有值记为 source，否则 unset。
+func sourceLabel(ok bool, source string) string {
+	if ok {
+		return source
+	}
+	return "unset"
+}
+
+// RuntimeFromEnv 从环境变量配置构建运行时基线并标记来源。
+// 供启动装配（app）与保存后的 env 重建（httpapi）复用，保证 env 优先语义唯一实现。
+func RuntimeFromEnv(
+	appID int64,
+	clientID, privateKeyPath, webhookSecret, webhookPreviousSecret, externalPAT, publicBaseURL string,
+	client *AppClient,
+) *RuntimeConfig {
+	rt := &RuntimeConfig{
+		AppID:                 appID,
+		ClientID:              strings.TrimSpace(clientID),
+		PrivateKeyPath:        strings.TrimSpace(privateKeyPath),
+		WebhookSecret:         webhookSecret,
+		WebhookPreviousSecret: webhookPreviousSecret,
+		ExternalPAT:           externalPAT,
+		PublicBaseURL:         strings.TrimSpace(publicBaseURL),
+		Client:                client,
+	}
+	rt.AppIDSource = sourceLabel(rt.AppID > 0, "env")
+	rt.ClientIDSource = sourceLabel(rt.ClientID != "", "env")
+	rt.PrivateKeySource = sourceLabel(rt.PrivateKeyPath != "", "env")
+	rt.WebhookSecretSource = sourceLabel(strings.TrimSpace(rt.WebhookSecret) != "", "env")
+	rt.PublicBaseURLSource = sourceLabel(rt.PublicBaseURL != "", "env")
+	rt.ExternalPATSource = sourceLabel(strings.TrimSpace(rt.ExternalPAT) != "", "env")
+	rt.ApplyToClient()
+	return rt
+}
+
 // Replace 用完整快照替换可变字段（保留 Client 指针）。
 func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	if r == nil || next == nil {
@@ -113,7 +151,7 @@ func (r *RuntimeConfig) WebhookSecrets() []string {
 // StatusFlags 供管理面展示，不包含秘密。
 func (r *RuntimeConfig) StatusFlags() (appID, clientID, privateKey, webhook, previous, externalPAT bool, publicBaseURL, webhookPath string) {
 	if r == nil {
-		return false, false, false, false, false, false, "", "/webhooks/github"
+		return false, false, false, false, false, false, "", WebhookPath
 	}
 	snap := r.Snapshot()
 	privateKeyOK := strings.TrimSpace(snap.PrivateKeyPEM) != ""
@@ -127,5 +165,5 @@ func (r *RuntimeConfig) StatusFlags() (appID, clientID, privateKey, webhook, pre
 		strings.TrimSpace(snap.WebhookPreviousSecret) != "",
 		strings.TrimSpace(snap.ExternalPAT) != "",
 		snap.PublicBaseURL,
-		"/webhooks/github"
+		WebhookPath
 }

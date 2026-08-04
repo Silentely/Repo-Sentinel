@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/oklog/ulid/v2"
@@ -31,9 +32,14 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": masked})
 }
 
+// validChannelType 校验渠道类型白名单（telegram / http_webhook）。
+func validChannelType(channelType string) bool {
+	return channelType == store.ChannelTelegram || channelType == store.ChannelHTTPWebhook
+}
+
 func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	channelType := chi.URLParam(r, "type")
-	if channelType != store.ChannelTelegram && channelType != store.ChannelHTTPWebhook {
+	if !validChannelType(channelType) {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
 	}
@@ -91,7 +97,7 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 			s.writeAPIError(w, r, http.StatusServiceUnavailable, "encryption_unavailable", nil)
 			return
 		}
-		env, err := s.dependencies.KeyRing.Encrypt(r.Context(), []byte(body.Secret), []byte("reposentinel:notify-secret:v1"))
+		env, err := s.dependencies.KeyRing.Encrypt(r.Context(), []byte(body.Secret), []byte(notify.AAD))
 		if err != nil {
 			s.writeMappedError(w, r, err)
 			return
@@ -102,7 +108,7 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	if channelType == store.ChannelTelegram && ch.SecretEnvelope == "" {
 		if tok := s.dependencies.Config.Notify.Telegram.Token.Reveal(); tok != "" {
 			if s.dependencies.KeyRing != nil {
-				if env, err := s.dependencies.KeyRing.Encrypt(r.Context(), []byte(tok), []byte("reposentinel:notify-secret:v1")); err == nil {
+				if env, err := s.dependencies.KeyRing.Encrypt(r.Context(), []byte(tok), []byte(notify.AAD)); err == nil {
 					ch.SecretEnvelope = env
 				}
 			}
@@ -136,7 +142,7 @@ func (s *server) handleRetryOutbox(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
 	channelType := chi.URLParam(r, "type")
-	if channelType != store.ChannelTelegram && channelType != store.ChannelHTTPWebhook {
+	if !validChannelType(channelType) {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
 	}
@@ -164,7 +170,7 @@ func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 	channelType := chi.URLParam(r, "type")
-	if channelType != store.ChannelTelegram && channelType != store.ChannelHTTPWebhook {
+	if !validChannelType(channelType) {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
 	}
@@ -182,7 +188,7 @@ func (s *server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleToggleChannel(w http.ResponseWriter, r *http.Request) {
 	channelType := chi.URLParam(r, "type")
-	if channelType != store.ChannelTelegram && channelType != store.ChannelHTTPWebhook {
+	if !validChannelType(channelType) {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
 	}

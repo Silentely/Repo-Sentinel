@@ -3,6 +3,7 @@ package githubx
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -35,7 +36,7 @@ func LoadStoredRuntime(ctx context.Context, data store.Store) (StoredRuntime, er
 	}
 	setting, err := data.Settings().Get(ctx, RuntimeSettingKey)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if errors.Is(err, store.ErrNotFound) {
 			return stored, nil
 		}
 		return stored, err

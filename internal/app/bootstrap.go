@@ -17,6 +17,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/digest"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/httpapi"
+	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
@@ -266,7 +267,7 @@ func bootstrapNotifyChannels(ctx context.Context, data store.Store, keyRing *cry
 	if keyRing == nil {
 		return nil
 	}
-	const aad = "reposentinel:notify-secret:v1"
+	const aad = notify.AAD
 	if tok := cfg.Notify.Telegram.Token.Reveal(); tok != "" && cfg.Notify.Telegram.ChatID != "" {
 		if _, err := data.Channels().GetEnabledByType(ctx, store.ChannelTelegram); errors.Is(err, store.ErrNotFound) {
 			env, err := keyRing.Encrypt(ctx, []byte(tok), []byte(aad))
