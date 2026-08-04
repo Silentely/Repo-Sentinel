@@ -19,6 +19,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
+	"github.com/Silentely/Repo-Sentinel/internal/webhooksvc"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -72,6 +73,8 @@ type Dependencies struct {
 type server struct {
 	dependencies  Dependencies
 	secureCookies bool
+	// webhookSvc 承担 Webhook 后台管线（规范化 → 通知 → 状态机），装配一次复用。
+	webhookSvc *webhooksvc.Service
 	// reconcileAllRunning 防止全量对账并发触发（对账会大量调用 GitHub API 并写库）。
 	reconcileAllRunning atomic.Bool
 }
@@ -112,6 +115,12 @@ func New(dependencies Dependencies) http.Handler {
 	s := &server{
 		dependencies:  dependencies,
 		secureCookies: usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
+		webhookSvc: &webhooksvc.Service{
+			Store:      dependencies.Store,
+			Logger:     dependencies.Logger,
+			Evaluator:  dependencies.Aggregator,
+			Background: dependencies.Background,
+		},
 	}
 	// 若运行时 Public Base URL 来自管理台，启动后仍以当前快照为准（见 cookiesSecure）。
 	router := chi.NewRouter()
@@ -126,7 +135,7 @@ func New(dependencies Dependencies) http.Handler {
 	if dependencies.Config.Metrics.Enabled {
 		router.Get("/metrics", s.handleMetrics)
 	}
-	router.Post("/webhooks/github", s.handleGitHubWebhook)
+	router.Post(githubx.WebhookPath, s.handleGitHubWebhook)
 	router.Route("/api/v1", func(api chi.Router) {
 		api.Get("/setup/status", s.handleSetupStatus)
 		api.Post("/setup", s.handleSetup)

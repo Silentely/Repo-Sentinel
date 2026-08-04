@@ -93,12 +93,15 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		}
 		num := saved.Number
 		src := saved.SourceUpdatedAt
-		_, _ = p.Store.Events().Create(ctx, store.Event{
+		if _, err := p.Store.Events().Create(ctx, store.Event{
 			ID: ulid.Make().String(), Source: "external_poll", Kind: kind, Action: "updated",
 			RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
 			OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &src, HTMLURL: saved.HTMLURL,
 			DedupeFingerprint: fp, StateHash: hash, PayloadSummary: map[string]any{"state": saved.State},
-		})
+		}); err != nil && p.Logger != nil {
+			// 事件落库失败意味着通知丢失，必须留痕。
+			p.Logger.Warn("external poll event create failed", "repo", repo.FullName, "kind", kind, "error_code", "event_create_failed", "error", err.Error())
+		}
 	}
 	now := time.Now().UTC()
 	repo.LastSyncedAt = &now
@@ -113,10 +116,10 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 	return nil
 }
 
-// PollAll 轮询全部外部仓（最多 20）。
+// PollAll 轮询全部外部仓（最多 MaxExternalRepositories 个）。
 func (p *ExternalPoller) PollAll(ctx context.Context) error {
 	// 按最后同步时间取候选，保证所有外部仓轮流被轮询。
-	repos, err := p.Store.Repositories().ListSyncCandidates(ctx, store.RepositoryTypeExternal, 20)
+	repos, err := p.Store.Repositories().ListSyncCandidates(ctx, store.RepositoryTypeExternal, store.MaxExternalRepositories)
 	if err != nil {
 		return err
 	}

@@ -230,13 +230,16 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			}
 			num := saved.Number
 			src := saved.SourceUpdatedAt
-			_, _ = r.Store.Events().Create(ctx, store.Event{
+			if _, err := r.Store.Events().Create(ctx, store.Event{
 				ID: ulid.Make().String(), Source: "reconcile", Kind: kind, Action: "updated",
 				RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
 				OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &src, HTMLURL: saved.HTMLURL,
 				SuppressNotification: false, DedupeFingerprint: fp, StateHash: hash,
 				PayloadSummary: map[string]any{"state": saved.State},
-			})
+			}); err != nil && r.Logger != nil {
+				// 事件落库失败意味着通知丢失，必须留痕。
+				r.Logger.Warn("reconcile event create failed", "repo", repo.FullName, "kind", kind, "error_code", "event_create_failed", "error", err.Error())
+			}
 		}
 		if len(items) < 100 {
 			break
@@ -457,6 +460,7 @@ func strPtr(p *string) string {
 // ReconcileAll 对账全部自有仓（受预算限制：每轮最多 N 个）。
 // maxRateLimitWait 限流后单轮等待预算上限：超出说明上游要求长时间冷却（如主配额耗尽），
 // 直接结束本轮等待下一调度周期，避免把对账轮拉得过长。
+// 保持 var 而非 const：测试会临时覆盖该值以覆盖"超出预算停止本轮"分支。
 var maxRateLimitWait = 2 * time.Minute
 
 func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {

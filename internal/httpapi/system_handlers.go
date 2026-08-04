@@ -3,8 +3,10 @@ package httpapi
 import (
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 )
 
@@ -49,7 +51,7 @@ func (s *server) handleVersion(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *server) handleVersionCheck(w http.ResponseWriter, r *http.Request) {
-	force := strings.EqualFold(r.URL.Query().Get("force"), "true") || r.URL.Query().Get("force") == "1"
+	force, _ := strconv.ParseBool(r.URL.Query().Get("force"))
 	local := s.localVersion()
 	checker := s.dependencies.UpdateChecker
 	if checker == nil {
@@ -76,7 +78,7 @@ func (s *server) localVersion() versionResponse {
 		enabled = s.dependencies.UpdateChecker.Enabled
 	}
 	publicBase := s.dependencies.Config.HTTP.PublicBaseURL
-	ghStatus := githubStatusPayload{WebhookPath: "/webhooks/github"}
+	ghStatus := githubStatusPayload{WebhookPath: githubx.WebhookPath}
 	if rt := s.dependencies.GitHubRuntime; rt != nil {
 		appID, clientID, privateKey, webhook, previous, externalPAT, base, path := rt.StatusFlags()
 		snap := rt.Snapshot()
@@ -112,7 +114,7 @@ func (s *server) localVersion() versionResponse {
 			WebhookSecretConfigured:   strings.TrimSpace(gh.WebhookSecret.Reveal()) != "",
 			WebhookPreviousConfigured: strings.TrimSpace(gh.WebhookPreviousSecret.Reveal()) != "",
 			ExternalPATConfigured:     strings.TrimSpace(gh.ExternalPAT.Reveal()) != "",
-			WebhookPath:               "/webhooks/github",
+			WebhookPath:               githubx.WebhookPath,
 		}
 	}
 	return versionResponse{
