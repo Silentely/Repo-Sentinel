@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	htmlpkg "html"
 	"strings"
@@ -49,7 +50,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 				"event_id": res.Event.ID, "kind": res.Event.Kind, "action": res.Event.Action,
 			},
 			ParseMode: "HTML",
-		}); err != nil && err != store.ErrConflict {
+		}); err != nil && !errors.Is(err, store.ErrConflict) {
 			return err
 		}
 	}
@@ -63,31 +64,7 @@ func allowsEventKind(ctx context.Context, st store.Store, repo *store.Repository
 	if st != nil && !store.KindFeatureEnabled(ctx, st.Settings(), kind) {
 		return false
 	}
-	return repoAllowsKind(repo, kind)
-}
-
-// repoAllowsKind 仅仓库级能力开关；repo 为 nil 时放行（全局已在 allowsEventKind 检查）。
-func repoAllowsKind(repo *store.Repository, kind string) bool {
-	if repo == nil {
-		return true
-	}
-	if !repo.MonitorEnabled {
-		return false
-	}
-	if repo.IsArchived || repo.SyncStatus == store.SyncStatusArchived || repo.SyncStatus == store.SyncStatusUnavailable {
-		return false
-	}
-	switch kind {
-	case store.WorkItemKindIssue:
-		return repo.IssuesEnabled
-	case store.WorkItemKindPR:
-		return repo.PrEnabled
-	case "workflow_run":
-		return repo.ActionsEnabled
-	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
-		return repo.AlertsEnabled
-	}
-	return true
+	return store.RepoAllowsKind(repo, kind)
 }
 
 func shouldNotifyRealtime(ev *store.Event) bool {
@@ -107,21 +84,12 @@ func shouldNotifyRealtime(ev *store.Event) bool {
 		if ev.Action == "recovered" {
 			return true
 		}
-		return normalizerIsFailure(ev.WorkflowConclusion)
+		return store.IsFailureConclusion(ev.WorkflowConclusion)
 	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
 		// 安全告警不论 action（创建/忽略/严重度变化等）一律实时通知，避免遗漏风险。
 		return true
 	}
 	return false
-}
-
-func normalizerIsFailure(c string) bool {
-	switch c {
-	case "failure", "timed_out", "cancelled", "action_required", "startup_failure":
-		return true
-	default:
-		return false
-	}
 }
 
 func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {

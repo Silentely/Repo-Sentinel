@@ -3,6 +3,7 @@ package digest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -26,25 +27,13 @@ type Generator struct {
 
 // RunOnce 若到达管理员本地发送时刻且当日未发送，则生成摘要通知。
 func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
-	tzName := "UTC"
-	if s, err := g.Store.Settings().Get(ctx, settingTimezone); err == nil {
-		var v string
-		if json.Unmarshal(s.ValueJSON, &v) == nil && v != "" {
-			tzName = v
-		}
-	}
+	tzName := store.SettingString(ctx, g.Store.Settings(), settingTimezone, "UTC")
 	loc, err := time.LoadLocation(tzName)
 	if err != nil {
 		loc = time.UTC
 	}
 	localNow := now.In(loc)
-	sendAt := "09:00"
-	if s, err := g.Store.Settings().Get(ctx, settingLocalTime); err == nil {
-		var v string
-		if json.Unmarshal(s.ValueJSON, &v) == nil && v != "" {
-			sendAt = v
-		}
-	}
+	sendAt := store.SettingString(ctx, g.Store.Settings(), settingLocalTime, "09:00")
 	var hour, minute int
 	if _, err := fmt.Sscanf(sendAt, "%d:%d", &hour, &minute); err != nil {
 		hour, minute = 9, 0
@@ -57,11 +46,8 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 		return nil
 	}
 	dateKey := localNow.Format("2006-01-02")
-	if s, err := g.Store.Settings().Get(ctx, settingLastDigest); err == nil {
-		var last string
-		if json.Unmarshal(s.ValueJSON, &last) == nil && last == dateKey {
-			return nil
-		}
+	if store.SettingString(ctx, g.Store.Settings(), settingLastDigest, "") == dateKey {
+		return nil
 	}
 
 	// 收集近 24h 事件并按类别分组；全局关闭的功能不进入摘要。
@@ -78,10 +64,7 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 		}
 	}
 	events = filtered
-	sendEmpty := false
-	if s, err := g.Store.Settings().Get(ctx, settingSendEmpty); err == nil {
-		_ = json.Unmarshal(s.ValueJSON, &sendEmpty)
-	}
+	sendEmpty := store.SettingBool(ctx, g.Store.Settings(), settingSendEmpty, false)
 	if len(events) == 0 && !sendEmpty {
 		return nil
 	}
@@ -105,7 +88,7 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 			Title: title, BodyText: body, ParseMode: "HTML",
 			BodyJSON: map[string]any{"digest": true, "date": dateKey, "count": len(events)},
 		})
-		if err != nil && err != store.ErrConflict {
+		if err != nil && !errors.Is(err, store.ErrConflict) {
 			return err
 		}
 	}

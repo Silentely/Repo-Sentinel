@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 )
 
@@ -75,6 +74,32 @@ type Repository struct {
 	LastSyncErrorCode  string     `json:"last_sync_error_code,omitempty"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
+}
+
+// RepoAllowsKind 判定仓库级能力开关是否放行该类型的采集/通知。
+// repo 为 nil 时放行（聚合器 flush 单事件回放等场景无仓库上下文，仅依赖全局开关）。
+// normalizer（采集门禁）与 rules（通知门禁）共用此实现，避免两份逐字重复后行为漂移。
+func RepoAllowsKind(repo *Repository, kind string) bool {
+	if repo == nil {
+		return true
+	}
+	if !repo.MonitorEnabled {
+		return false
+	}
+	if repo.IsArchived || repo.SyncStatus == SyncStatusArchived || repo.SyncStatus == SyncStatusUnavailable {
+		return false
+	}
+	switch kind {
+	case WorkItemKindIssue:
+		return repo.IssuesEnabled
+	case WorkItemKindPR:
+		return repo.PrEnabled
+	case "workflow_run":
+		return repo.ActionsEnabled
+	case AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning:
+		return repo.AlertsEnabled
+	}
+	return true
 }
 
 // WebhookDelivery 领域模型。
@@ -210,20 +235,20 @@ type NotificationChannel struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-// SubscribableEventKinds 渠道可订阅的实时通知类型白名单。
-var SubscribableEventKinds = []string{
-	WorkItemKindIssue, WorkItemKindPR, "workflow_run",
-	AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning,
+// subscribableKinds 渠道可订阅的实时通知类型白名单（不可变，禁止外部修改）。
+var subscribableKinds = map[string]struct{}{
+	WorkItemKindIssue:       {},
+	WorkItemKindPR:          {},
+	"workflow_run":          {},
+	AlertKindDependabot:     {},
+	AlertKindCodeScanning:   {},
+	AlertKindSecretScanning: {},
 }
 
 // IsSubscribableKind 判定 kind 是否在订阅白名单内。
 func IsSubscribableKind(kind string) bool {
-	for _, k := range SubscribableEventKinds {
-		if k == kind {
-			return true
-		}
-	}
-	return false
+	_, ok := subscribableKinds[kind]
+	return ok
 }
 
 // AcceptsKind 渠道是否接收该类型的实时通知；EventKinds 为 nil 表示全部订阅。
@@ -259,6 +284,9 @@ type NotificationOutbox struct {
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
+
+// MaxExternalRepositories 外部公开仓库上限（同一产品规则，写入与文案共用）。
+const MaxExternalRepositories = 20
 
 // SyncCursor 同步游标。
 type SyncCursor struct {
@@ -457,11 +485,28 @@ type DashboardStats struct {
 	ChannelsEnabled int `json:"channels_enabled"`
 }
 
-// MustJSON 将对象编码为 RawMessage（测试与设置辅助）。
-func MustJSON(v any) json.RawMessage {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return json.RawMessage(`{}`)
+// failedConclusionSet 视为失败的 Workflow 结论集合（不可变，禁止外部修改）。
+// 恢复检测（normalizer）、实时通知（rules）与仪表盘计数（Dashboard/CountFailed）共用此判定，
+// 任何一处漏改都会导致行为不一致，故收敛为单一来源。
+var failedConclusionSet = map[string]struct{}{
+	"failure":         {},
+	"timed_out":       {},
+	"cancelled":       {},
+	"action_required": {},
+	"startup_failure": {},
+}
+
+// IsFailureConclusion 判定 Workflow 结论是否属于失败类。
+func IsFailureConclusion(c string) bool {
+	_, ok := failedConclusionSet[c]
+	return ok
+}
+
+// FailedConclusions 返回失败结论列表，供 SQL IN 查询使用；每次返回新切片，外部修改不影响内部集合。
+func FailedConclusions() []string {
+	out := make([]string, 0, len(failedConclusionSet))
+	for k := range failedConclusionSet {
+		out = append(out, k)
 	}
-	return b
+	return out
 }

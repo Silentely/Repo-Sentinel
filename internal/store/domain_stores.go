@@ -862,7 +862,7 @@ func (s *workflowRunStore) CountFailed(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 	n, err := s.client.WorkflowRun.Query().Where(
-		workflowrun.ConclusionIn("failure", "timed_out", "cancelled", "action_required", "startup_failure"),
+		workflowrun.ConclusionIn(FailedConclusions()...),
 		workflowrun.IgnoredEQ(false),
 		workflowrun.RepositoryIDIn(ids...),
 	).Count(ctx)
@@ -1294,6 +1294,28 @@ func channelFromEntity(e *entclient.NotificationChannel) NotificationChannel {
 
 // --- outbox ---
 
+// outboxHTMLURLKey 是 HTMLURL 在 BodyJSON 中的存储键。
+// HTMLURL 为虚拟字段（未建列）：写入时合并进 BodyJSON，读取时反解，存取统一走下面两个 helper。
+const outboxHTMLURLKey = "html_url"
+
+func withOutboxHTMLURL(bodyJSON map[string]any, htmlURL string) map[string]any {
+	if htmlURL == "" {
+		return bodyJSON
+	}
+	if bodyJSON == nil {
+		bodyJSON = make(map[string]any)
+	}
+	bodyJSON[outboxHTMLURLKey] = htmlURL
+	return bodyJSON
+}
+
+func outboxHTMLURLOf(bodyJSON map[string]any) string {
+	if v, ok := bodyJSON[outboxHTMLURLKey].(string); ok {
+		return v
+	}
+	return ""
+}
+
 type outboxStore struct{ client *entclient.Client }
 
 func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (NotificationOutbox, error) {
@@ -1310,13 +1332,7 @@ func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (Notifi
 	if in.ParseMode == "" {
 		in.ParseMode = "HTML"
 	}
-	bodyJSON := in.BodyJSON
-	if in.HTMLURL != "" {
-		if bodyJSON == nil {
-			bodyJSON = make(map[string]any)
-		}
-		bodyJSON["html_url"] = in.HTMLURL
-	}
+	bodyJSON := withOutboxHTMLURL(in.BodyJSON, in.HTMLURL)
 	c := s.client.NotificationOutbox.Create().
 		SetID(in.ID).
 		SetChannelID(in.ChannelID).
@@ -1467,9 +1483,7 @@ func outboxFromEntity(e *entclient.NotificationOutbox) NotificationOutbox {
 		Title: e.Title, BodyText: e.BodyText, BodyJSON: e.BodyJSON, ParseMode: e.ParseMode,
 		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
-	if v, ok := e.BodyJSON["html_url"].(string); ok {
-		out.HTMLURL = v
-	}
+	out.HTMLURL = outboxHTMLURLOf(e.BodyJSON)
 	return out
 }
 
@@ -1491,20 +1505,17 @@ func (s *cursorStore) Upsert(ctx context.Context, in SyncCursor) (SyncCursor, er
 	now := time.Now().UTC()
 	existing, err := s.Get(ctx, in.RepositoryID, in.Resource)
 	if err == nil {
-		entity, err := s.client.SyncCursor.UpdateOneID(existing.ID).
+		upd := s.client.SyncCursor.UpdateOneID(existing.ID).
 			SetCursorValue(in.CursorValue).
 			SetEtag(in.ETag).
 			SetLastErrorCode(in.LastErrorCode).
-			SetUpdatedAt(now).
-			Save(ctx)
+			SetUpdatedAt(now)
+		if in.LastSuccessAt != nil {
+			upd.SetLastSuccessAt(*in.LastSuccessAt)
+		}
+		entity, err := upd.Save(ctx)
 		if err != nil {
 			return SyncCursor{}, mapStoreError(err)
-		}
-		if in.LastSuccessAt != nil {
-			entity, err = s.client.SyncCursor.UpdateOneID(existing.ID).SetLastSuccessAt(*in.LastSuccessAt).Save(ctx)
-			if err != nil {
-				return SyncCursor{}, mapStoreError(err)
-			}
 		}
 		return cursorFromEntity(entity), nil
 	}
@@ -1603,7 +1614,7 @@ func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
 			return stats, mapStoreError(err)
 		}
 		if stats.FailedActions, err = s.client.WorkflowRun.Query().Where(
-			workflowrun.ConclusionIn("failure", "timed_out", "cancelled", "action_required", "startup_failure"),
+			workflowrun.ConclusionIn(FailedConclusions()...),
 			workflowrun.IgnoredEQ(false),
 			workflowrun.RepositoryIDIn(activeIDs...),
 		).Count(ctx); err != nil {
