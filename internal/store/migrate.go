@@ -2,12 +2,13 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
-	"sync/atomic"
 	"time"
 
 	"ariga.io/atlas/sql/migrate"
@@ -21,11 +22,16 @@ const (
 	migrationLockName = "reposentinel_atlas_migrate"
 )
 
-// sqlite 驱动的 Lock 在进程内按名称互斥；并行单测会打开不同库文件却争用同一锁名。
-// 用序号隔离 SQLite 迁移锁；PostgreSQL 仍用固定名（库级 advisory lock）。
-var sqliteMigrationLockSeq atomic.Uint64
+// sqliteLockName 以库 URL 哈希派生迁移锁名。Atlas SQLite 锁是 os.TempDir() 下的锁文件，
+// 名称即身份：同库同锁名保持进程内互斥，不同库不同锁名互不干扰。
+// 不能按进程序号命名——go test ./... 每个包是独立进程、序号都从 1 起，
+// 并行包会争用同一锁文件而误报迁移失败。
+func sqliteLockName(url string) string {
+	sum := sha256.Sum256([]byte(url))
+	return fmt.Sprintf("%s_%s", migrationLockName, hex.EncodeToString(sum[:8]))
+}
 
-func applyMigrations(ctx context.Context, db *sql.DB, dialectName string) (err error) {
+func applyMigrations(ctx context.Context, db *sql.DB, dialectName, dsn string) (err error) {
 	dir, err := embeddedMigrationDir(dialectName)
 	if err != nil {
 		return err
@@ -44,7 +50,7 @@ func applyMigrations(ctx context.Context, db *sql.DB, dialectName string) (err e
 	}
 	lockName := migrationLockName
 	if dialectName == "sqlite" {
-		lockName = fmt.Sprintf("%s_%d", migrationLockName, sqliteMigrationLockSeq.Add(1))
+		lockName = sqliteLockName(dsn)
 	}
 	unlock, err := driver.Lock(ctx, lockName, 30*time.Second)
 	if err != nil {

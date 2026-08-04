@@ -37,7 +37,7 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (Store, error) {
 		_ = db.Close()
 		return nil, classifyConnectError(cfg.Driver, err)
 	}
-	if err := applyMigrations(ctx, db, migrationDialect); err != nil {
+	if err := applyMigrations(ctx, db, migrationDialect, cfg.URL); err != nil {
 		_ = db.Close()
 		return nil, classifyMigrationError(err)
 	}
