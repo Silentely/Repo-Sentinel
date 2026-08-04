@@ -1,15 +1,13 @@
 package httpapi
 
 import (
-	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
-	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
-	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
@@ -82,7 +80,7 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		Status: store.DeliveryAccepted, Payload: body, ReceivedAt: time.Now().UTC(),
 	})
 	if err != nil {
-		if err == store.ErrConflict {
+		if errors.Is(err, store.ErrConflict) {
 			MetricsIncWebhookDuplicate()
 			s.dependencies.Logger.Info(
 				"github webhook duplicate",
@@ -110,56 +108,6 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 
 	s.safeGo("webhook_process", func() {
-		s.processWebhookAsync(delivery.ID, eventType, deliveryID, body)
+		s.webhookSvc.Process(delivery.ID, eventType, deliveryID, body)
 	})
-}
-
-func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body []byte) {
-	ctx := s.dependencies.Background
-	if ctx == nil {
-		return
-	}
-	// 关闭期间 Background 已取消：状态标记必须脱离取消，否则行永久停留在 accepted。
-	markCtx, markCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer markCancel()
-	proc := &normalizer.Processor{Store: s.dependencies.Store}
-	res, err := proc.Process(ctx, eventType, deliveryID, body)
-	if err != nil {
-		_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, "normalize_failed")
-		s.dependencies.Logger.Error(
-			"webhook normalize failed",
-			"delivery_id", deliveryID,
-			"event_type", eventType,
-			"error_code", "normalize_failed",
-			"error", err.Error(),
-		)
-		return
-	}
-	repoName := ""
-	if res.Repository != nil {
-		repoName = res.Repository.FullName
-	}
-	if res.Event != nil && !res.SuppressNotify {
-		var err error
-		if s.dependencies.Aggregator != nil {
-			err = s.dependencies.Aggregator.Evaluate(ctx, res, repoName)
-		} else {
-			err = (&rules.Engine{Store: s.dependencies.Store}).Evaluate(ctx, res, repoName)
-		}
-		if err != nil {
-			// 通知已丢：状态必须可查，标记为失败而不是 processed。
-			s.dependencies.Logger.Error("rule evaluate failed", "delivery_id", deliveryID, "error_code", "rule_failed")
-			_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, "rule_failed")
-			return
-		}
-	}
-	_ = s.dependencies.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryProcessed, "")
-	s.dependencies.Logger.Info(
-		"github webhook processed",
-		"delivery_id", deliveryID,
-		"event_type", eventType,
-		"repo", repoName,
-		"updated", res.Updated,
-		"suppressed", res.SuppressNotify,
-	)
 }

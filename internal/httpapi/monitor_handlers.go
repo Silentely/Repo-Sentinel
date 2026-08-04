@@ -2,14 +2,14 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/go-chi/chi/v5"
 	"github.com/oklog/ulid/v2"
 )
@@ -27,6 +27,11 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+// writeListResponse 输出统一分页列表响应，五个列表端点共用同一结构。
+func writeListResponse[T any](w http.ResponseWriter, items []T, page store.PageResult) {
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+}
+
 func (s *server) handleListRepositories(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
 	f.Kind = r.URL.Query().Get("type")
@@ -35,7 +40,7 @@ func (s *server) handleListRepositories(w http.ResponseWriter, r *http.Request) 
 		s.writeMappedError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+	writeListResponse(w, items, page)
 }
 
 func (s *server) handleAddExternalRepository(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +61,7 @@ func (s *server) handleAddExternalRepository(w http.ResponseWriter, r *http.Requ
 		s.writeMappedError(w, r, err)
 		return
 	}
-	if count >= 20 {
+	if count >= store.MaxExternalRepositories {
 		s.writeAPIError(w, r, http.StatusConflict, "external_repo_limit", nil)
 		return
 	}
@@ -133,7 +138,7 @@ func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+	writeListResponse(w, items, page)
 }
 
 func (s *server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) {
@@ -146,7 +151,7 @@ func (s *server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) 
 		s.writeMappedError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+	writeListResponse(w, items, page)
 }
 
 func (s *server) handleListSecurityAlerts(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +171,7 @@ func (s *server) handleListSecurityAlerts(w http.ResponseWriter, r *http.Request
 		s.writeMappedError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+	writeListResponse(w, items, page)
 }
 
 // applyIgnoredFilter 解析 ignored 查询参数：
@@ -223,17 +228,9 @@ func (s *server) handleSetSecurityAlertIgnored(w http.ResponseWriter, r *http.Re
 	setResourceIgnored(s, w, r, s.dependencies.Store.SecurityAlerts().SetIgnored, s.dependencies.Store.SecurityAlerts().Get)
 }
 
-// getIntSetting 从数据库读取整数设置，失败时返回默认值。
+// getIntSetting 读取整数设置，失败时返回默认值（语义与 store.SettingInt 一致）。
 func (s *server) getIntSetting(ctx context.Context, key string, defaultVal int) int {
-	raw, err := s.dependencies.Store.Settings().Get(ctx, key)
-	if err != nil {
-		return defaultVal
-	}
-	var v int
-	if json.Unmarshal(raw.ValueJSON, &v) == nil && v > 0 {
-		return v
-	}
-	return defaultVal
+	return store.SettingInt(ctx, s.dependencies.Store.Settings(), key, defaultVal)
 }
 
 func (s *server) handleListEvents(w http.ResponseWriter, r *http.Request) {
@@ -245,7 +242,7 @@ func (s *server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+	writeListResponse(w, items, page)
 }
 
 func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
@@ -335,154 +332,46 @@ func (s *server) handleListInstallations(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-// handleSyncInstallationRepositories 用 Installation Token 拉取 GitHub 上已授权仓库并写入本地（基线状态）。
-// 用于补救「installation 事件已到但旧版本未解析 repositories」或主动刷新授权范围。
+// handleSyncInstallationRepositories 触发安装仓库清单同步（基线状态）。
+// 同步逻辑在 syncx.Reconciler.SyncInstallations，handler 仅做配置校验与结果映射。
 func (s *server) handleSyncInstallationRepositories(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil {
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
 		return
 	}
-	client := (*githubx.AppClient)(nil)
-	if s.dependencies.GitHubRuntime != nil && s.dependencies.GitHubRuntime.Client != nil {
-		client = s.dependencies.GitHubRuntime.Client
-	}
-	if client == nil || !client.Configured() {
+	// Reconciler 持有 GitHub App client；nil 视为未装配/未配置。
+	if s.dependencies.Reconciler == nil {
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, "github_app_not_configured", nil)
 		return
 	}
-	installations, err := s.dependencies.Store.Installations().List(r.Context())
+	result, err := s.dependencies.Reconciler.SyncInstallations(r.Context(), 20)
 	if err != nil {
-		s.writeMappedError(w, r, err)
+		switch {
+		case errors.Is(err, syncx.ErrAppNotConfigured):
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, "github_app_not_configured", nil)
+		case errors.Is(err, syncx.ErrNoInstallation):
+			s.writeAPIError(w, r, http.StatusConflict, "github_no_installation", nil)
+		default:
+			s.writeMappedError(w, r, err)
+		}
 		return
 	}
-	if len(installations) == 0 {
-		s.writeAPIError(w, r, http.StatusConflict, "github_no_installation", nil)
-		return
-	}
-
-	imported := 0
-	var lastErr string
-	for _, inst := range installations {
-		token, err := client.InstallationToken(r.Context(), inst.InstallationID)
-		if err != nil {
-			lastErr = err.Error()
-			s.dependencies.Logger.Warn(
-				"installation token failed",
-				"installation_id", inst.InstallationID,
-				"error", err.Error(),
-			)
-			continue
-		}
-		instID := inst.ID
-		for page := 1; page <= 20; page++ {
-			repos, _, err := client.ListInstallationRepositories(r.Context(), token, page)
-			if err != nil {
-				lastErr = err.Error()
-				s.dependencies.Logger.Warn(
-					"list installation repositories failed",
-					"installation_id", inst.InstallationID,
-					"page", page,
-					"error", err.Error(),
-				)
-				break
-			}
-			if len(repos) == 0 {
-				break
-			}
-			for _, gr := range repos {
-				fullName := strings.TrimSpace(gr.FullName)
-				if fullName == "" {
-					continue
-				}
-				owner, name := gr.Owner.Login, gr.Name
-				parts := strings.SplitN(fullName, "/", 2)
-				if len(parts) == 2 {
-					if owner == "" {
-						owner = parts[0]
-					}
-					if name == "" {
-						name = parts[1]
-					}
-				}
-				htmlURL := strings.TrimSpace(gr.HTMLURL)
-				if htmlURL == "" {
-					htmlURL = "https://github.com/" + fullName
-				}
-				repoID := gr.ID
-				in := store.Repository{
-					Type:           store.RepositoryTypeInstallation,
-					SyncStatus:     store.SyncStatusBaseline,
-					GitHubRepoID:   &repoID,
-					Owner:          owner,
-					Name:           name,
-					FullName:       fullName,
-					InstallationID: &instID,
-					IsArchived:     gr.Archived,
-					IsPrivate:      gr.Private,
-					HTMLURL:        htmlURL,
-					DefaultBranch:  gr.DefaultBranch,
-				}
-				existing, err := s.dependencies.Store.Repositories().GetByFullName(r.Context(), fullName)
-				if err == nil {
-					in.ID = existing.ID
-					in.SyncStatus = existing.SyncStatus
-					if existing.SyncStatus == "" {
-						in.SyncStatus = store.SyncStatusBaseline
-					}
-					// GitHub 侧已归档而本地未归档：联动收口归档状态与能力开关
-					//（与 normalizer 的 webhook 侧处理同一语义）。
-					if gr.Archived && existing.SyncStatus != store.SyncStatusArchived {
-						archived := true
-						if uerr := s.dependencies.Store.Repositories().UpdateSettings(r.Context(), existing.ID, store.RepositorySettings{IsArchived: &archived}); uerr == nil {
-							in.SyncStatus = store.SyncStatusArchived
-						}
-					}
-					// 本地归档标记不因清单数据抹掉：取消归档仅经 unarchived 事件或设置页操作。
-					if existing.IsArchived && !gr.Archived {
-						in.IsArchived = true
-					}
-					if _, err := s.dependencies.Store.Repositories().Upsert(r.Context(), in); err != nil {
-						lastErr = err.Error()
-						continue
-					}
-					imported++
-					continue
-				}
-				if err != store.ErrNotFound {
-					lastErr = err.Error()
-					continue
-				}
-				now := time.Now().UTC()
-				in.BaselineStartedAt = &now
-				if _, err := s.dependencies.Store.Repositories().Upsert(r.Context(), in); err != nil {
-					lastErr = err.Error()
-					continue
-				}
-				imported++
-			}
-			if len(repos) < 100 {
-				break
-			}
-		}
-	}
-
 	s.dependencies.Logger.Info(
 		"github installation repositories synced",
 		"request_id", requestIDFromContext(r.Context()),
-		"installations", len(installations),
-		"imported_or_updated", imported,
+		"installations", result.Installations,
+		"imported_or_updated", result.Imported,
 	)
 	out := map[string]any{
-		"installations":       len(installations),
-		"imported_or_updated": imported,
+		"installations":       result.Installations,
+		"imported_or_updated": result.Imported,
 	}
-	if lastErr != "" && imported == 0 {
-		out["last_error"] = lastErr
-		writeJSON(w, http.StatusBadGateway, out)
-		return
-	}
-	if lastErr != "" {
-		out["last_error"] = lastErr
+	if result.LastError != "" {
+		out["last_error"] = result.LastError
+		if result.Imported == 0 {
+			writeJSON(w, http.StatusBadGateway, out)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

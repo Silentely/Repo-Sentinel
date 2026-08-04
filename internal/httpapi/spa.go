@@ -95,7 +95,9 @@ func safeSPAPath(requestURL *url.URL) (string, bool) {
 func isReservedHTTPPath(name string) bool {
 	requestPath := "/" + name
 	return requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") ||
-		requestPath == "/health" || strings.HasPrefix(requestPath, "/health/")
+		requestPath == "/health" || strings.HasPrefix(requestPath, "/health/") ||
+		requestPath == "/webhooks" || strings.HasPrefix(requestPath, "/webhooks/") ||
+		requestPath == "/metrics"
 }
 
 func (h *spaHandler) serveFile(w http.ResponseWriter, r *http.Request, name, cacheControl string) bool {

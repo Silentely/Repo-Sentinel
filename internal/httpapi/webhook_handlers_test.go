@@ -23,6 +23,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/webhooksvc"
 )
 
 const webhookTestSecret = "webhook-单测密钥-0123456789"
@@ -32,7 +33,7 @@ type webhookTestOptions struct {
 	runtimeSecret string            // 经 GitHubRuntime 注入的当前 webhook secret
 	configSecret  string            // 经 Config.GitHub.WebhookSecret 注入（此时 GitHubRuntime 置 nil）
 	omitRuntime   bool              // 强制 GitHubRuntime 为 nil（验证 Config 分支且不配置 secret）
-	background    context.Context   // 异步规范化上下文；nil 时 processWebhookAsync 直接返回
+	background    context.Context   // 异步规范化上下文；nil 时 webhooksvc.Service 直接返回
 	aggregator    *rules.Aggregator // 注入的规则聚合器；nil 时走 rules.Engine 回退
 	logger        *slog.Logger      // 默认丢弃输出
 }
@@ -413,8 +414,8 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-// TestWebhook关闭期状态标记不受Background取消影响 回归验证 processWebhookAsync 内
-// markCtx（context.WithoutCancel(Background)+5s 超时，见 webhook_handlers.go）的修复：
+// TestWebhook关闭期状态标记不受Background取消影响 回归验证 webhooksvc.Service.Process 内
+// markCtx（context.WithoutCancel(Background)+5s 超时）的修复：
 // 优雅关闭瞬间 Background 已被 App 取消，delivery 行不得永久停留在 accepted。
 // 本用例让 Background 在处理开始前就已取消：规范化首个 DB 调用必然以
 // context.Canceled 失败走 normalize_failed 分支，但 MarkProcessed 必须脱离取消
@@ -444,7 +445,13 @@ func TestWebhook关闭期状态标记不受Background取消影响(t *testing.T) 
 	}
 
 	// 直接同步调用（不经 safeGo），调用返回即处理完毕，无需轮询。
-	fixture.srv.processWebhookAsync(row.ID, "issues", "delivery-shutdown-mark", body)
+	svc := &webhooksvc.Service{
+		Store:      fixture.store,
+		Logger:     fixture.srv.dependencies.Logger,
+		Evaluator:  fixture.srv.dependencies.Aggregator,
+		Background: fixture.srv.dependencies.Background,
+	}
+	svc.Process(row.ID, "issues", "delivery-shutdown-mark", body)
 
 	got, err := fixture.store.WebhookDeliveries().GetByDeliveryID(context.Background(), "delivery-shutdown-mark")
 	if err != nil {

@@ -46,6 +46,16 @@ type githubConfigPutRequest struct {
 	ClearWebhookSecret bool `json:"clear_webhook_secret"`
 }
 
+// rejectEnvLockedField 字段被环境变量锁定时拒绝写入并返回 true。
+// 六个可变字段共用同一锁定语义，避免逐个复制判断。
+func (s *server) rejectEnvLockedField(w http.ResponseWriter, r *http.Request, source, field string) bool {
+	if source == "env" {
+		s.writeAPIError(w, r, http.StatusConflict, "github_field_locked", map[string]any{"field": field})
+		return true
+	}
+	return false
+}
+
 func (s *server) handleGetGitHubConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.githubConfigView(r))
 }
@@ -74,8 +84,7 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 
 	// 仅更新「未被环境变量锁定」的字段。
 	if body.AppID != nil {
-		if snap.AppIDSource == "env" {
-			s.writeAPIError(w, r, http.StatusConflict, "github_field_locked", map[string]any{"field": "app_id"})
+		if s.rejectEnvLockedField(w, r, snap.AppIDSource, "app_id") {
 			return
 		}
 		if *body.AppID < 0 {
@@ -85,15 +94,13 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 		stored.AppID = *body.AppID
 	}
 	if body.ClientID != nil {
-		if snap.ClientIDSource == "env" {
-			s.writeAPIError(w, r, http.StatusConflict, "github_field_locked", map[string]any{"field": "client_id"})
+		if s.rejectEnvLockedField(w, r, snap.ClientIDSource, "client_id") {
 			return
 		}
 		stored.ClientID = strings.TrimSpace(*body.ClientID)
 	}
 	if body.PublicBaseURL != nil {
-		if snap.PublicBaseURLSource == "env" {
-			s.writeAPIError(w, r, http.StatusConflict, "github_field_locked", map[string]any{"field": "public_base_url"})
+		if s.rejectEnvLockedField(w, r, snap.PublicBaseURLSource, "public_base_url") {
 			return
 		}
 		base := strings.TrimSpace(*body.PublicBaseURL)
@@ -105,16 +112,14 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.ClearPrivateKey {
-		if snap.PrivateKeySource == "env" {
-			s.writeAPIError(w, r, http.StatusConflict, "github_field_locked", map[string]any{"field": "private_key"})
+		if s.rejectEnvLockedField(w, r, snap.PrivateKeySource, "private_key") {
 			return
 		}
 		stored.PrivateKeyPath = ""
 		stored.PrivateKeyPEMEnvelope = ""
 	}
 	if body.PrivateKeyPath != nil || body.PrivateKeyPEM != nil {
-		if snap.PrivateKeySource == "env" {
-			s.writeAPIError(w, r, http.StatusConflict, "github_field_locked", map[string]any{"field": "private_key"})
+		if s.rejectEnvLockedField(w, r, snap.PrivateKeySource, "private_key") {
 			return
 		}
 		if body.PrivateKeyPEM != nil && strings.TrimSpace(*body.PrivateKeyPEM) != "" {
@@ -145,15 +150,13 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.ClearWebhookSecret {
-		if snap.WebhookSecretSource == "env" {
-			s.writeAPIError(w, r, http.StatusConflict, "github_field_locked", map[string]any{"field": "webhook_secret"})
+		if s.rejectEnvLockedField(w, r, snap.WebhookSecretSource, "webhook_secret") {
 			return
 		}
 		stored.WebhookSecretEnvelope = ""
 	}
 	if body.WebhookSecret != nil && strings.TrimSpace(*body.WebhookSecret) != "" {
-		if snap.WebhookSecretSource == "env" {
-			s.writeAPIError(w, r, http.StatusConflict, "github_field_locked", map[string]any{"field": "webhook_secret"})
+		if s.rejectEnvLockedField(w, r, snap.WebhookSecretSource, "webhook_secret") {
 			return
 		}
 		if s.dependencies.KeyRing == nil {
@@ -174,23 +177,17 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 从 env 基线重建，再合并 DB，保证 env 始终优先。
-	base := githubx.RuntimeConfig{
-		AppID:                 s.dependencies.Config.GitHub.AppID,
-		ClientID:              strings.TrimSpace(s.dependencies.Config.GitHub.ClientID),
-		PrivateKeyPath:        strings.TrimSpace(s.dependencies.Config.GitHub.PrivateKeyPath),
-		WebhookSecret:         s.dependencies.Config.GitHub.WebhookSecret.Reveal(),
-		WebhookPreviousSecret: s.dependencies.Config.GitHub.WebhookPreviousSecret.Reveal(),
-		ExternalPAT:           s.dependencies.Config.GitHub.ExternalPAT.Reveal(),
-		PublicBaseURL:         strings.TrimSpace(s.dependencies.Config.HTTP.PublicBaseURL),
-		Client:                rt.Client,
-	}
-	base.AppIDSource = sourceLabel(base.AppID > 0, "env")
-	base.ClientIDSource = sourceLabel(base.ClientID != "", "env")
-	base.PrivateKeySource = sourceLabel(base.PrivateKeyPath != "", "env")
-	base.WebhookSecretSource = sourceLabel(strings.TrimSpace(base.WebhookSecret) != "", "env")
-	base.PublicBaseURLSource = sourceLabel(base.PublicBaseURL != "", "env")
-	base.ExternalPATSource = sourceLabel(strings.TrimSpace(base.ExternalPAT) != "", "env")
-	rt.Replace(&base)
+	base := githubx.RuntimeFromEnv(
+		s.dependencies.Config.GitHub.AppID,
+		s.dependencies.Config.GitHub.ClientID,
+		s.dependencies.Config.GitHub.PrivateKeyPath,
+		s.dependencies.Config.GitHub.WebhookSecret.Reveal(),
+		s.dependencies.Config.GitHub.WebhookPreviousSecret.Reveal(),
+		s.dependencies.Config.GitHub.ExternalPAT.Reveal(),
+		s.dependencies.Config.HTTP.PublicBaseURL,
+		rt.Client,
+	)
+	rt.Replace(base)
 	if err := githubx.MergeFromStore(r.Context(), s.dependencies.Store, s.dependencies.KeyRing, rt); err != nil {
 		s.writeMappedError(w, r, err)
 		return
@@ -208,7 +205,7 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 func (s *server) githubConfigView(r *http.Request) githubConfigResponse {
 	note := "环境变量优先；未用环境变量设置的字段可在此保存到数据库（私钥与 Webhook Secret 加密存储）。保存后立即生效，无需重启。"
 	out := githubConfigResponse{
-		WebhookPath: "/webhooks/github",
+		WebhookPath: githubx.WebhookPath,
 		Note:        note,
 		CanEditInUI: s.dependencies.GitHubRuntime != nil,
 	}
@@ -249,7 +246,7 @@ func (s *server) githubConfigView(r *http.Request) githubConfigResponse {
 func joinWebhookURL(publicBase, path string, r *http.Request) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		path = "/webhooks/github"
+		path = githubx.WebhookPath
 	}
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
@@ -288,11 +285,4 @@ func validOptionalPublicBaseURL(value string) bool {
 	default:
 		return false
 	}
-}
-
-func sourceLabel(ok bool, source string) string {
-	if ok {
-		return source
-	}
-	return "unset"
 }
