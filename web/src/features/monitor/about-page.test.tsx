@@ -37,7 +37,8 @@ const { saveSystemSettingsMock, saveAIConfigMock } = vi.hoisted(() => ({
 }));
 
 // AI 配置初始快照：全部字段可编辑（unset 来源）、密钥未配置。
-const aiConfigFixture = {
+// 用 let 以便单测覆盖「后端未设置标量字段（空串 / 0）」的回退场景。
+let aiConfigFixture = {
   enabled: false,
   base_url: "https://api.openai.com/v1",
   model: "gpt-4o-mini",
@@ -194,5 +195,30 @@ describe("关于与设置页", () => {
     // 全字段可编辑时提交完整配置（timeout/max_tokens 为数值）。
     expect(payload?.timeout_sec).toBe(20);
     expect(payload?.max_tokens).toBe(800);
+  });
+
+  it("后端未设置标量字段（空串 / 0）时表单回退显示默认值", async () => {
+    const original = aiConfigFixture;
+    // 模拟修复后的后端：未显式配置的字段返回空串 / 0（此前因默认值被误锁，永远返回默认值）。
+    aiConfigFixture = { ...original, base_url: "", model: "", timeout_sec: 0, max_tokens: 0 };
+    try {
+      const user = userEvent.setup();
+      renderPage();
+
+      const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+      expect(within(aiSection).getByLabelText("API Base URL")).toHaveValue("https://api.openai.com/v1");
+      expect(within(aiSection).getByLabelText("模型")).toHaveValue("gpt-4o-mini");
+      expect(within(aiSection).getByLabelText("请求超时（秒）")).toHaveValue(20);
+      expect(within(aiSection).getByLabelText("输出 token 上限")).toHaveValue(800);
+
+      // 未修改直接保存时，不得把 0/空串提交给后端（会触发 400 校验失败）。
+      await user.click(within(aiSection).getByRole("button", { name: "保存 AI 配置" }));
+      await within(aiSection).findByText("AI 配置已保存。");
+      const payload = saveAIConfigMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+      expect(payload?.timeout_sec).toBe(20);
+      expect(payload?.max_tokens).toBe(800);
+    } finally {
+      aiConfigFixture = original;
+    }
   });
 });

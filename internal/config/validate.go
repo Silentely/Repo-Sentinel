@@ -104,8 +104,9 @@ func (cfg Config) Validate() error {
 		if cfg.AI.Timeout < 0 {
 			return newValidationError("ai.timeout", "must be >= 0")
 		}
-		if cfg.AI.MaxTokens <= 0 {
-			return newValidationError("ai.max_tokens", "must be > 0")
+		// max_tokens 为 0 表示使用默认 800（客户端在使用点回退），仅拒绝负值。
+		if cfg.AI.MaxTokens < 0 {
+			return newValidationError("ai.max_tokens", "must be >= 0")
 		}
 		base := strings.TrimSpace(cfg.AI.BaseURL)
 		if base != "" {

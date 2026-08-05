@@ -2,6 +2,12 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 SemVer。
 
+## [Unreleased]
+
+### Fixed
+
+- AI 集成配置：API Base URL / 模型 / 请求超时 / 输出 token 上限此前因配置层注入默认值而被误判为环境变量锁定，管理台无法编辑且保存返回 `ai_field_locked`；现仅当通过 `REPOSENTINEL_AI_*` 或 YAML 显式设置时锁定，未设置字段可在管理台编辑并持久化（实际取值仍由 AI 客户端在使用点回退默认）
+
 ## [0.3.8] - 2026-08-05
 
 ### Added
