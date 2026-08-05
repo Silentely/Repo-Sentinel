@@ -103,19 +103,24 @@ export const repositoriesQueryOptions = queryOptions({
   staleTime: 15_000,
 });
 
-export const eventsQueryOptions = queryOptions({
-  queryKey: ["events"] as const,
-  queryFn: () => apiRequest<Page<MonitorEvent>>("/api/v1/events?per_page=30"),
-  staleTime: 15_000,
-  refetchInterval: 30_000,
-});
+/** 仪表盘「通知投递」与「最近事件」面板的展示上限：只取最近 N 条，避免长列表拖垮首屏。 */
+export const DASHBOARD_FEED_LIMIT = 15;
 
-/** Outbox 分页查询（参数化：status / channel_type 过滤），仪表盘与发件箱页共用单一实现。 */
-export const outboxQueryOptions = (status = "", channelType = "") =>
+/** 事件列表查询（perPage 可调）：仪表盘取最近 15 条，列表页可放大。 */
+export const eventsQueryOptions = (perPage = 30) =>
   queryOptions({
-    queryKey: ["outbox", status, channelType] as const,
+    queryKey: ["events", perPage] as const,
+    queryFn: () => apiRequest<Page<MonitorEvent>>(`/api/v1/events?per_page=${perPage}`),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
+/** Outbox 分页查询（参数化：status / channel_type / per_page），仪表盘与发件箱页共用单一实现。 */
+export const outboxQueryOptions = (status = "", channelType = "", perPage = 50) =>
+  queryOptions({
+    queryKey: ["outbox", status, channelType, perPage] as const,
     queryFn: () => {
-      const params = new URLSearchParams({ per_page: "50" });
+      const params = new URLSearchParams({ per_page: String(perPage) });
       if (status) params.set("status", status);
       if (channelType) params.set("channel_type", channelType);
       return apiRequest<Page<OutboxItem>>(`/api/v1/notifications/outbox?${params.toString()}`);

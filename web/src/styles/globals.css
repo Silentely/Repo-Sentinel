@@ -887,9 +887,10 @@ a.status-item--link:focus-visible {
   text-align: left;
 }
 
-.collapsible-panel__toggle h2 {
+.collapsible-panel__title {
   margin: 0;
   font-size: 1.05rem;
+  font-weight: 700;
 }
 
 .collapsible-panel__chevron {
