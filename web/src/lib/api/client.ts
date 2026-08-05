@@ -88,19 +88,32 @@ function readBrowserCookie(name: string): string | undefined {
 }
 
 async function parseApiError(response: Response): Promise<ApiError> {
+  const raw = await response.text();
   let payload: unknown;
   try {
-    payload = await response.json();
+    payload = JSON.parse(raw);
   } catch {
     payload = undefined;
   }
 
   const record = isRecord(payload) ? payload : {};
   const errorCode = typeof record.error_code === "string" ? record.error_code : "http_error";
-  const message =
+  let message =
     typeof record.message === "string" && record.message.trim() !== ""
       ? record.message
-      : "服务器暂时无法完成请求，请稍后重试。";
+      : "";
+
+  if (message === "") {
+    const text = raw.trim();
+    // 非标准 JSON 错误（反代 / 网关返回的纯文本或 HTML 错误页）：回退展示截断原文，
+    // 避免通用文案吞掉真实原因（如 Envoy 的 upstream connect error）。
+    if (text !== "" && !text.startsWith("{")) {
+      message = text.length > 300 ? `${text.slice(0, 300)}…` : text;
+    } else {
+      message = "服务器暂时无法完成请求，请稍后重试。";
+    }
+  }
+
   const details = isRecord(record.details) ? record.details : undefined;
 
   return new ApiError({ status: response.status, errorCode, message, details });

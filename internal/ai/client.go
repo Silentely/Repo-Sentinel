@@ -212,7 +212,7 @@ func (c *Client) Complete(ctx context.Context, system, user string) (string, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ai: http %d", resp.StatusCode)
+		return "", fmt.Errorf("ai: http %d: %s", resp.StatusCode, errorDetail(resp))
 	}
 
 	var out chatResponse
@@ -227,6 +227,24 @@ func (c *Client) Complete(ctx context.Context, system, user string) (string, err
 
 // maxResponseBytes AI 响应体大小上限：防御异常大响应消耗内存。
 const maxResponseBytes = 1 << 20 // 1 MiB
+
+// errorDetail 提取非 2xx 响应体前 200 字符作为错误明细（如网关 502/503 附带的说明），
+// 帮助连通性测试与降级日志定位真实原因；正文缺失或不可读时返回稳定占位。
+func errorDetail(resp *http.Response) string {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 512))
+	if err != nil {
+		return "unreadable response"
+	}
+	detail := strings.TrimSpace(string(raw))
+	if detail == "" {
+		return "empty response"
+	}
+	const maxDetailRunes = 200
+	if r := []rune(detail); len(r) > maxDetailRunes {
+		detail = string(r[:maxDetailRunes]) + "…"
+	}
+	return detail
+}
 
 // maxOutputRunes AI 输出截断上限：Telegram 单条消息上限 4096 字符，
 // 预留模板头部与 HTML 转义余量，防止超长输出导致投递失败。

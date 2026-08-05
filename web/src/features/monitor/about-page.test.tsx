@@ -288,4 +288,14 @@ describe("关于与设置页", () => {
       aiConfigQueryError = null;
     }
   });
+
+  it("AI 区块操作按钮使用与通知渠道一致的按钮容器布局", async () => {
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    const container = aiSection.querySelector(".channel-form__buttons");
+    expect(container).not.toBeNull();
+    expect(within(container as HTMLElement).getByRole("button", { name: "保存 AI 配置" })).toBeInTheDocument();
+    expect(within(container as HTMLElement).getByRole("button", { name: /测试连通性/ })).toBeInTheDocument();
+  });
 });
