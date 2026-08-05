@@ -106,15 +106,15 @@
 - 已关闭/已忽略项目显示数量限制：系统设置可配置（默认 20 条），避免历史数据无限增长
 - 仓库管理页面：集中管理所有仓库的能力开关与归档状态
 - GitHub App 页面精简：表单指南和安装步骤改为折叠面板，默认收起
-- 修复侧边栏随主内容滚动，改为固定定位
 - `PATCH /api/v1/repositories/{id}/settings` API 端点
 - 数据库迁移 `20260729000100_repo_capability_toggles`（PostgreSQL + SQLite）
 
 ### Fixed
 
-- 修复 `workflow_run` Webhook 处理时 GitHub 偶发缺字段导致数据库写入失败
-- 修复 `mapStoreError` 吞掉原始错误信息，现在保留完整错误链便于排障
-- 修复 `handleActivateRepository` 未检查 Upsert 返回错误
+- `workflow_run` Webhook 处理时 GitHub 偶发缺字段导致数据库写入失败
+- `mapStoreError` 吞掉原始错误信息，现在保留完整错误链便于排障
+- `handleActivateRepository` 未检查 Upsert 返回错误
+- 侧边栏随主内容滚动，改为固定定位
 
 ### Changed
 
@@ -122,14 +122,14 @@
 
 ## [0.3.4] - 2026-07-28
 
+### Fixed
+
+- 文档与工作流描述与上述标签规则一致
+
 ### Changed
 
 - GHCR 标签：`main` → `main` + `main-<sha>`；`dev` → `dev` + `dev-<sha>`；正式 `v*` → `vX.Y.Z` + `latest`（双架构）
 - 补充项目协作文档：CONTRIBUTING、SECURITY、PR / Issue 模板、Dependabot、发布说明
-
-### Fixed
-
-- 文档与工作流描述与上述标签规则一致
 
 ## [0.3.3] - 2026-07-28
 
