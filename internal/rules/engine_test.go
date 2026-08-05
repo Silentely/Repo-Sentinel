@@ -1,11 +1,19 @@
 package rules
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
 
 // TestShouldNotifyRealtime 表驱动守护实时通知判定：Issue/PR 按 action 白名单，
@@ -95,6 +103,189 @@ func TestRenderMessage_PRMerged(t *testing.T) {
 	}
 	if !strings.Contains(body, "状态：已合并") {
 		t.Errorf("期望包含「状态：已合并」，实际: %s", body)
+	}
+}
+
+// aiStub 返回指向桩服务器的 AI 客户端，reply 为完整 HTTP 响应体。
+func aiStub(t *testing.T, reply string) *ai.Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(reply))
+	}))
+	t.Cleanup(srv.Close)
+	return &ai.Client{BaseURL: srv.URL, APIKey: "sk-test", Enabled: true, DigestEnabled: true, TriageEnabled: true}
+}
+
+func openEngineStore(t *testing.T) store.Store {
+	t.Helper()
+	data, err := store.Open(t.Context(), config.DatabaseConfig{
+		Driver: "sqlite",
+		URL:    "file:" + filepath.Join(t.TempDir(), "rules.db"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+	return data
+}
+
+func TestIsNewSecurityAlert(t *testing.T) {
+	cases := []struct {
+		name string
+		ev   store.Event
+		want bool
+	}{
+		{"dependabot 创建", store.Event{Kind: store.AlertKindDependabot, Action: "created"}, true},
+		{"code_scanning 打开", store.Event{Kind: store.AlertKindCodeScanning, Action: "opened"}, true},
+		{"secret_scanning 重新打开", store.Event{Kind: store.AlertKindSecretScanning, Action: "reopened"}, true},
+		{"dependabot 修复", store.Event{Kind: store.AlertKindDependabot, Action: "fixed"}, false},
+		{"dependabot 忽略", store.Event{Kind: store.AlertKindDependabot, Action: "dismissed"}, false},
+		{"issue 打开不分诊", store.Event{Kind: store.WorkItemKindIssue, Action: "opened"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isNewSecurityAlert(&tc.ev); got != tc.want {
+				t.Fatalf("isNewSecurityAlert(%+v) = %v, want %v", tc.ev, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTriageAnalysis(t *testing.T) {
+	ev := &store.Event{
+		Kind: store.AlertKindDependabot, Action: "created", Title: "lodash 漏洞", Severity: "high",
+		HTMLURL:        "https://github.com/acme/web/security/dependabot/3",
+		PayloadSummary: map[string]any{"rule_or_dependency": "lodash"},
+	}
+	t.Run("新告警返回分析", func(t *testing.T) {
+		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"影响：攻击面扩大。\n建议：升级依赖。"}}]}`)}
+		got := e.triageAnalysis(t.Context(), ev, "acme/web")
+		if !strings.Contains(got, "影响：") {
+			t.Fatalf("期望包含分析，实际: %q", got)
+		}
+	})
+	t.Run("非新告警返回空", func(t *testing.T) {
+		closed := &store.Event{Kind: store.AlertKindDependabot, Action: "fixed", Title: "x"}
+		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"ignored"}}]}`)}
+		if got := e.triageAnalysis(t.Context(), closed, "acme/web"); got != "" {
+			t.Fatalf("终态告警不应分诊，实际: %q", got)
+		}
+	})
+	t.Run("AI 失败返回空", func(t *testing.T) {
+		e := &Engine{AI: aiStub(t, `internal error`)}
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web"); got != "" {
+			t.Fatalf("AI 失败应返回空串，实际: %q", got)
+		}
+	})
+	t.Run("未配置 AI 返回空", func(t *testing.T) {
+		if got := (&Engine{}).triageAnalysis(t.Context(), ev, "acme/web"); got != "" {
+			t.Fatalf("未配置 AI 应返回空串，实际: %q", got)
+		}
+	})
+	t.Run("分诊开关关闭返回空", func(t *testing.T) {
+		e := &Engine{AI: &ai.Client{APIKey: "k", Enabled: true, TriageEnabled: false}}
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web"); got != "" {
+			t.Fatalf("分诊关闭应返回空串，实际: %q", got)
+		}
+	})
+}
+
+// Evaluate 级测试：新安全告警通知正文附带 AI 分析；Issue 不受影响。
+func TestEvaluateWithAITriage(t *testing.T) {
+	data := openEngineStore(t)
+	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg",
+		Enabled: true, Target: "1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &Engine{Store: data, AI: aiStub(t, `{"choices":[{"message":{"content":"影响：<b>高危</b>依赖。\n建议：升级。"}}]}`)}
+
+	alert := normalizer.Result{Event: &store.Event{
+		Kind: store.AlertKindDependabot, Action: "created", Title: "lodash 漏洞", Severity: "high",
+		HTMLURL:        "https://github.com/acme/web/security/dependabot/3",
+		PayloadSummary: map[string]any{"rule_or_dependency": "lodash"},
+	}}
+	if err := e.Evaluate(t.Context(), alert, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("应生成 1 条通知，got %d", len(items))
+	}
+	if !strings.Contains(items[0].BodyText, "🤖 AI 分析") {
+		t.Fatalf("正文应含 AI 分析段，实际: %s", items[0].BodyText)
+	}
+	// AI 输出必须转义，避免破坏 Telegram HTML。
+	if strings.Contains(items[0].BodyText, "<b>高危</b>") {
+		t.Fatalf("AI 输出必须转义，实际: %s", items[0].BodyText)
+	}
+	if !strings.Contains(items[0].BodyText, "&lt;b&gt;高危&lt;/b&gt;") {
+		t.Fatalf("期望转义后的 HTML，实际: %s", items[0].BodyText)
+	}
+}
+
+// Issue 通知不应触发分诊。
+func TestEvaluateSkipsTriageForIssue(t *testing.T) {
+	data := openEngineStore(t)
+	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg",
+		Enabled: true, Target: "1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &Engine{Store: data, AI: aiStub(t, `{"choices":[{"message":{"content":"不应出现"}}]}`)}
+	res := normalizer.Result{Event: &store.Event{
+		Kind: store.WorkItemKindIssue, Action: "opened", Title: "普通问题",
+	}}
+	if err := e.Evaluate(t.Context(), res, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("应生成 1 条通知，got %d", len(items))
+	}
+	if strings.Contains(items[0].BodyText, "AI 分析") {
+		t.Fatalf("Issue 通知不应含 AI 分析，实际: %s", items[0].BodyText)
+	}
+}
+
+// 无渠道订阅该告警类型时，AI 分诊不应被调用（避免无效的外部调用）。
+func TestEvaluateSkipsTriageWithoutSubscriber(t *testing.T) {
+	data := openEngineStore(t)
+	// 渠道存在但显式不订阅实时通知（EventKinds 空数组）。
+	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg",
+		Enabled: true, Target: "1", EventKinds: []string{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"不应调用"}}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	e := &Engine{Store: data, AI: &ai.Client{BaseURL: srv.URL, APIKey: "sk-test", Enabled: true, TriageEnabled: true}}
+	res := normalizer.Result{Event: &store.Event{
+		Kind: store.AlertKindDependabot, Action: "created", Title: "lodash 漏洞", Severity: "high",
+		PayloadSummary: map[string]any{"rule_or_dependency": "lodash"},
+	}}
+	if err := e.Evaluate(t.Context(), res, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("无订阅渠道时不应调用 AI 分诊，实际调用 %d 次", calls.Load())
 	}
 }
 
@@ -301,18 +492,19 @@ func TestWorkflowConclusionEmoji_All(t *testing.T) {
 	}
 }
 
-func TestPayloadString(t *testing.T) {
+// TestStorePayloadString 验证共享的 PayloadSummary 字符串读取辅助（rules 与 ai 共用）。
+func TestStorePayloadString(t *testing.T) {
 	m := map[string]any{"key": "value", "num": 42}
-	if got := payloadString(m, "key"); got != "value" {
+	if got := store.PayloadString(m, "key"); got != "value" {
 		t.Errorf("期望 value，实际: %s", got)
 	}
-	if got := payloadString(m, "num"); got != "" {
+	if got := store.PayloadString(m, "num"); got != "" {
 		t.Errorf("非字符串应返回空，实际: %s", got)
 	}
-	if got := payloadString(nil, "key"); got != "" {
+	if got := store.PayloadString(nil, "key"); got != "" {
 		t.Errorf("nil map 应返回空，实际: %s", got)
 	}
-	if got := payloadString(m, "missing"); got != "" {
+	if got := store.PayloadString(m, "missing"); got != "" {
 		t.Errorf("缺失 key 应返回空，实际: %s", got)
 	}
 }

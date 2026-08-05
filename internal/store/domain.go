@@ -102,6 +102,37 @@ func RepoAllowsKind(repo *Repository, kind string) bool {
 	return true
 }
 
+// KindDisplayName 事件类型中文/友好名（推送正文与 AI 分诊输入用，避免 raw kind）。
+func KindDisplayName(kind string) string {
+	switch kind {
+	case WorkItemKindIssue:
+		return "Issue"
+	case WorkItemKindPR:
+		return "PR"
+	case AlertKindDependabot:
+		return "Dependabot 依赖告警"
+	case AlertKindCodeScanning:
+		return "Code Scanning 代码扫描"
+	case AlertKindSecretScanning:
+		return "Secret Scanning 密钥扫描"
+	case "workflow_run":
+		return "Actions 工作流"
+	default:
+		return kind
+	}
+}
+
+// PayloadString 从 PayloadSummary 安全读取字符串字段。
+func PayloadString(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
 // WebhookDelivery 领域模型。
 type WebhookDelivery struct {
 	ID                 string     `json:"id"`

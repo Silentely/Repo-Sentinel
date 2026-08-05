@@ -313,6 +313,10 @@ export interface SystemSettings {
   "feature.pull_requests"?: boolean;
   "feature.actions"?: boolean;
   "feature.security_alerts"?: boolean;
+  "report.weekly_enabled"?: boolean;
+  "report.weekly_day"?: string;
+  "report.monthly_enabled"?: boolean;
+  "report.monthly_day"?: number;
 }
 
 export interface Installation {
@@ -370,6 +374,62 @@ export const githubConfigQueryOptions = queryOptions({
 
 export async function saveGitHubConfig(body: GitHubRuntimeConfigInput): Promise<GitHubRuntimeConfig> {
   return apiRequest<GitHubRuntimeConfig>("/api/v1/github/config", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+// ---- AI 集成配置（管理台可编辑；API Key 加密存储，不回显明文）----
+
+export interface AIConfig {
+  enabled: boolean;
+  base_url: string;
+  model: string;
+  timeout_sec: number;
+  max_tokens: number;
+  digest_enabled: boolean;
+  triage_enabled: boolean;
+  api_key_configured: boolean;
+  enabled_source: string;
+  base_url_source: string;
+  model_source: string;
+  timeout_source: string;
+  max_tokens_source: string;
+  api_key_source: string;
+  digest_enabled_source: string;
+  triage_enabled_source: string;
+  enabled_locked: boolean;
+  base_url_locked: boolean;
+  model_locked: boolean;
+  timeout_locked: boolean;
+  max_tokens_locked: boolean;
+  api_key_locked: boolean;
+  digest_enabled_locked: boolean;
+  triage_enabled_locked: boolean;
+  can_edit_in_ui: boolean;
+  note: string;
+}
+
+export interface AIConfigInput {
+  enabled?: boolean;
+  base_url?: string;
+  model?: string;
+  timeout_sec?: number;
+  max_tokens?: number;
+  digest_enabled?: boolean;
+  triage_enabled?: boolean;
+  api_key?: string;
+  clear_api_key?: boolean;
+}
+
+export const aiConfigQueryOptions = queryOptions({
+  queryKey: ["ai-config"] as const,
+  queryFn: () => apiRequest<AIConfig>("/api/v1/ai/config"),
+  staleTime: 10_000,
+});
+
+export async function saveAIConfig(body: AIConfigInput): Promise<AIConfig> {
+  return apiRequest<AIConfig>("/api/v1/ai/config", {
     method: "PUT",
     body: JSON.stringify(body),
   });

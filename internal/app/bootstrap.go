@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
@@ -130,7 +131,15 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		aggBurstW = 5 * time.Minute
 	}
 	aggregator := rules.NewAggregator(data, aggWindow, aggBurstN, aggBurstW)
-	digestGen := &digest.Generator{Store: data}
+	// AI 运行时：env 基线 + 数据库补缺（管理台可编辑），物化为客户端注入各服务。
+	aiRuntime := ai.RuntimeFromEnv(cfg.AI)
+	if err := ai.MergeFromStore(ctx, data, keyRing, aiRuntime); err != nil {
+		return nil, newPublicError("database_unavailable", "无法加载 AI 运行时配置。", err)
+	}
+	aiClient := aiRuntime.Client()
+	aiClient.Logger = logger
+	aggregator.AI = aiClient
+	digestGen := &digest.Generator{Store: data, AI: aiClient}
 	scheduler := &syncx.Scheduler{
 		Reconciler: reconciler, External: external, Digest: digestGen, Logger: logger,
 	}
@@ -161,6 +170,8 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		UpdateChecker:  updateChecker,
 		GitHubRuntime:  ghRuntime,
 		Background:     workerCtx,
+		AI:             aiClient,
+		AIRuntime:      aiRuntime,
 	})
 	if err := bootstrapNotifyChannels(ctx, data, keyRing, cfg); err != nil {
 		return nil, err

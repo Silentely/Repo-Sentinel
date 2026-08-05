@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
@@ -21,6 +22,8 @@ type Aggregator struct {
 	Window         time.Duration
 	BurstThreshold int
 	BurstWindow    time.Duration
+	// AI 可选；flush 单事件回放时透传给 Engine 供安全告警分诊。
+	AI *ai.Client
 
 	mu sync.Mutex
 	// key: repoID|category
@@ -176,7 +179,7 @@ func (a *Aggregator) flush(key string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if len(b.events) == 1 {
-		_ = (&Engine{Store: a.Store}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName)
+		_ = (&Engine{Store: a.Store, AI: a.AI}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName)
 		return
 	}
 	_ = a.enqueueMerged(ctx, b)

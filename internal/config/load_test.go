@@ -551,3 +551,89 @@ func lookupFromMap(values map[string]string) func(string) (string, bool) {
 		return value, ok
 	}
 }
+
+func TestAI环境变量解析与默认值(t *testing.T) {
+	cfg, err := Load(context.Background(), LoadOptions{
+		LookupEnv: lookupFromMap(map[string]string{
+			"REPOSENTINEL_AI_ENABLED":        "true",
+			"REPOSENTINEL_AI_BASE_URL":       "http://127.0.0.1:11434/v1",
+			"REPOSENTINEL_AI_API_KEY":        "sk-test-key",
+			"REPOSENTINEL_AI_MODEL":          "llama3.1",
+			"REPOSENTINEL_AI_TIMEOUT":        "45s",
+			"REPOSENTINEL_AI_MAX_TOKENS":     "1024",
+			"REPOSENTINEL_AI_DIGEST_ENABLED": "false",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("加载 AI 配置失败: %v", err)
+	}
+	if !cfg.AI.Enabled {
+		t.Fatal("期望 ai.enabled=true")
+	}
+	if cfg.AI.BaseURL != "http://127.0.0.1:11434/v1" {
+		t.Fatalf("BaseURL=%q", cfg.AI.BaseURL)
+	}
+	if cfg.AI.APIKey.Reveal() != "sk-test-key" {
+		t.Fatal("API Key 未从环境变量注入")
+	}
+	if cfg.AI.Model != "llama3.1" {
+		t.Fatalf("Model=%q", cfg.AI.Model)
+	}
+	if cfg.AI.Timeout != 45*time.Second {
+		t.Fatalf("Timeout=%s", cfg.AI.Timeout)
+	}
+	if cfg.AI.MaxTokens != 1024 {
+		t.Fatalf("MaxTokens=%d", cfg.AI.MaxTokens)
+	}
+	if cfg.AI.DigestEnabled {
+		t.Fatal("期望 digest_enabled=false")
+	}
+	if !cfg.AI.TriageEnabled {
+		t.Fatal("期望 triage_enabled 默认 true")
+	}
+}
+
+func TestAI默认关闭(t *testing.T) {
+	cfg, err := Load(context.Background(), LoadOptions{
+		LookupEnv: func(string) (string, bool) { return "", false },
+	})
+	if err != nil {
+		t.Fatalf("加载默认配置失败: %v", err)
+	}
+	if cfg.AI.Enabled {
+		t.Fatal("AI 默认必须关闭")
+	}
+	if cfg.AI.BaseURL != "https://api.openai.com/v1" {
+		t.Fatalf("默认 BaseURL=%q", cfg.AI.BaseURL)
+	}
+	if cfg.AI.Model != "gpt-4o-mini" {
+		t.Fatalf("默认 Model=%q", cfg.AI.Model)
+	}
+	if cfg.AI.Timeout != 20*time.Second {
+		t.Fatalf("默认 Timeout=%s", cfg.AI.Timeout)
+	}
+}
+
+func TestAIYAML解析(t *testing.T) {
+	cfg, err := Load(context.Background(), LoadOptions{
+		FileSystem: fstest.MapFS{
+			"config.yaml": {Data: []byte("ai:\n  enabled: true\n  model: local-model\n  max_tokens: 512\n")},
+		},
+		ConfigPath: "config.yaml",
+		LookupEnv: func(name string) (string, bool) {
+			if name == "REPOSENTINEL_AI_API_KEY" {
+				return "sk-yaml", true
+			}
+			return "", false
+		},
+	})
+	if err != nil {
+		t.Fatalf("加载 YAML AI 配置失败: %v", err)
+	}
+	if !cfg.AI.Enabled || cfg.AI.Model != "local-model" || cfg.AI.MaxTokens != 512 {
+		t.Fatalf("YAML AI 配置=(%v,%q,%d)", cfg.AI.Enabled, cfg.AI.Model, cfg.AI.MaxTokens)
+	}
+	if cfg.AI.APIKey.Reveal() != "sk-yaml" {
+		t.Fatal("API Key 应从环境变量注入")
+	}
+}

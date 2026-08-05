@@ -61,8 +61,15 @@ func (s *Scheduler) Run(ctx context.Context) {
 		if s.Digest == nil {
 			return
 		}
-		if err := s.Digest.RunOnce(ctx, time.Now()); err != nil && s.Logger != nil {
+		now := time.Now()
+		if err := s.Digest.RunOnce(ctx, now); err != nil && s.Logger != nil {
 			s.Logger.Error("scheduled digest failed", "error_code", "digest_failed")
+		}
+		if err := s.Digest.RunWeekly(ctx, now); err != nil && s.Logger != nil {
+			s.Logger.Error("scheduled weekly report failed", "error_code", "weekly_report_failed")
+		}
+		if err := s.Digest.RunMonthly(ctx, now); err != nil && s.Logger != nil {
+			s.Logger.Error("scheduled monthly report failed", "error_code", "monthly_report_failed")
 		}
 	}
 

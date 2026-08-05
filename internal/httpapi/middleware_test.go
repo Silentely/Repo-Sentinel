@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
@@ -125,6 +126,9 @@ type httpTestOptions struct {
 	// decorateStore 包装装配到 Dependencies.Store 的实现；AdminStore、认证与会话
 	// 仍持有原始 Store，用于"只让指定子存储故障"的错误分支注入。
 	decorateStore func(store.Store) store.Store
+	// aiRuntime / aiClient 装配到 Dependencies，供 AI 配置 API 测试。
+	aiRuntime *ai.RuntimeConfig
+	aiClient  *ai.Client
 }
 
 type httpTestFixture struct {
@@ -218,6 +222,8 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		KeyRing:       options.keyRing,
 		GitHubRuntime: ghRuntime,
 		UpdateChecker: options.updateChecker,
+		AI:            options.aiClient,
+		AIRuntime:     options.aiRuntime,
 	}
 	return &httpTestFixture{
 		handler:        New(dependencies),

@@ -17,7 +17,7 @@ describe("uiCheckedKinds", () => {
 describe("subscriptionSummary", () => {
   it("null 显示全部类型并标注汇总", () => {
     expect(subscriptionSummary(null, true)).toContain("全部类型");
-    expect(subscriptionSummary(null, true)).toContain("每日汇总");
+    expect(subscriptionSummary(null, true)).toContain("定期汇总");
   });
   it("空数组显示不接收实时通知", () => {
     expect(subscriptionSummary([], false)).toContain("不接收实时通知");

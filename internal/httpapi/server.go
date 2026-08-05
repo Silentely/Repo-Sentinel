@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
@@ -68,6 +69,10 @@ type Dependencies struct {
 	GitHubRuntime *githubx.RuntimeConfig
 	// Background 用于 Webhook 异步规范化；关闭时由 App 取消。
 	Background context.Context
+	// AI 可选；默认 rules.Engine 的安全告警分诊客户端（webhooksvc 透传）。
+	AI *ai.Client
+	// AIRuntime 可选；管理台可编辑的 AI 配置（env 优先，DB 补缺）。
+	AIRuntime *ai.RuntimeConfig
 }
 
 type server struct {
@@ -119,6 +124,7 @@ func New(dependencies Dependencies) http.Handler {
 			Store:      dependencies.Store,
 			Logger:     dependencies.Logger,
 			Evaluator:  dependencies.Aggregator,
+			AI:         dependencies.AI,
 			Background: dependencies.Background,
 		},
 	}
@@ -156,6 +162,7 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/notifications/channels", s.handleListChannels)
 			protected.Get("/github/installations", s.handleListInstallations)
 			protected.Get("/github/config", s.handleGetGitHubConfig)
+			protected.Get("/ai/config", s.handleGetAIConfig)
 			protected.Get("/system/settings", s.handleGetSettings)
 			protected.Group(func(mutating chi.Router) {
 				mutating.Use(s.csrfMiddleware)
@@ -175,6 +182,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/sync/reconcile", s.handleReconcileAll)
 				mutating.Put("/system/settings", s.handlePutSettings)
 				mutating.Put("/github/config", s.handlePutGitHubConfig)
+				mutating.Put("/ai/config", s.handlePutAIConfig)
 				mutating.Post("/github/sync-repositories", s.handleSyncInstallationRepositories)
 				mutating.Post("/system/version/check", s.handleVersionCheck)
 			})

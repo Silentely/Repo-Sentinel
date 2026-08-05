@@ -14,6 +14,10 @@ const settingsFixture = {
   "admin.timezone": "Asia/Shanghai",
   "digest.local_time": "08:30",
   "digest.send_empty": true,
+  "report.weekly_enabled": true,
+  "report.weekly_day": "friday",
+  "report.monthly_enabled": false,
+  "report.monthly_day": 1,
   "notify.aggregate_window_sec": 120,
   "notify.burst_threshold": 30,
   "notify.burst_window_sec": 300,
@@ -27,14 +31,49 @@ const settingsFixture = {
   "feature.security_alerts": true,
 };
 
-const { saveSystemSettingsMock } = vi.hoisted(() => ({
+const { saveSystemSettingsMock, saveAIConfigMock } = vi.hoisted(() => ({
   saveSystemSettingsMock: vi.fn(async (body: Record<string, unknown>) => body),
+  saveAIConfigMock: vi.fn(async (body: Record<string, unknown>) => body),
 }));
+
+// AI 配置初始快照：全部字段可编辑（unset 来源）、密钥未配置。
+const aiConfigFixture = {
+  enabled: false,
+  base_url: "https://api.openai.com/v1",
+  model: "gpt-4o-mini",
+  timeout_sec: 20,
+  max_tokens: 800,
+  digest_enabled: true,
+  triage_enabled: true,
+  api_key_configured: false,
+  enabled_source: "unset",
+  base_url_source: "unset",
+  model_source: "unset",
+  timeout_source: "unset",
+  max_tokens_source: "unset",
+  api_key_source: "unset",
+  digest_enabled_source: "unset",
+  triage_enabled_source: "unset",
+  enabled_locked: false,
+  base_url_locked: false,
+  model_locked: false,
+  timeout_locked: false,
+  max_tokens_locked: false,
+  api_key_locked: false,
+  digest_enabled_locked: false,
+  triage_enabled_locked: false,
+  can_edit_in_ui: true,
+  note: "",
+};
 
 vi.mock("./api", () => ({
   settingsQueryOptions: {
     queryKey: ["test", "settings"],
     queryFn: async () => settingsFixture,
+  },
+  aiConfigQueryOptions: {
+    queryKey: ["test", "ai-config"],
+    queryFn: async () => aiConfigFixture,
   },
   // 版本查询保持 pending：测试聚焦保存反馈，避免无关请求干扰。
   versionQueryOptions: {
@@ -43,6 +82,7 @@ vi.mock("./api", () => ({
   },
   checkForUpdates: vi.fn(async () => ({})),
   saveSystemSettings: saveSystemSettingsMock,
+  saveAIConfig: saveAIConfigMock,
 }));
 
 vi.mock("../auth/api", () => ({
@@ -105,6 +145,9 @@ describe("关于与设置页", () => {
         "admin.timezone": "Asia/Shanghai",
         "digest.local_time": "08:30",
         "notify.burst_window_sec": 300,
+        "report.weekly_enabled": true,
+        "report.weekly_day": "friday",
+        "report.monthly_enabled": false,
       }),
     );
     const prefsPayload = saveSystemSettingsMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
@@ -123,5 +166,33 @@ describe("关于与设置页", () => {
     const featuresSection = screen.getByRole("region", { name: "功能模块开关" });
     expect(await within(featuresSection).findByText("保存失败")).toBeInTheDocument();
     expect(within(featuresSection).queryByText("功能模块开关已保存。")).toBeNull();
+  });
+
+  it("保存 AI 配置时提交表单字段且不回显密钥", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    await user.click(within(aiSection).getByRole("checkbox", { name: /启用 AI/ }));
+    const modelInput = within(aiSection).getByLabelText("模型");
+    await user.clear(modelInput);
+    await user.type(modelInput, "llama3.1");
+    const keyInput = within(aiSection).getByLabelText(/留空保持不变/);
+    await user.type(keyInput, "sk-ui-key");
+    await user.click(within(aiSection).getByRole("button", { name: "保存 AI 配置" }));
+
+    expect(await within(aiSection).findByText("AI 配置已保存。")).toBeInTheDocument();
+    expect(saveAIConfigMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true,
+        model: "llama3.1",
+        api_key: "sk-ui-key",
+      }),
+    );
+    const payload = saveAIConfigMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(payload).toBeDefined();
+    // 全字段可编辑时提交完整配置（timeout/max_tokens 为数值）。
+    expect(payload?.timeout_sec).toBe(20);
+    expect(payload?.max_tokens).toBe(800);
   });
 });
