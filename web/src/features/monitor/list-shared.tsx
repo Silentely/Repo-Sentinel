@@ -54,7 +54,7 @@ export function useActiveRepos() {
     () => (repos.data?.items ?? []).filter((r) => !r.is_archived && r.sync_status !== "archived"),
     [repos.data?.items],
   );
-  return { active, isLoading: repos.isLoading };
+  return { active };
 }
 
 export function RepoFilterSelect({

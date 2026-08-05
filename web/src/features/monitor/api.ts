@@ -30,12 +30,9 @@ export interface Repository {
   alerts_enabled: boolean;
   html_url: string;
   updated_at: string;
-  // 新增字段：展示后端已有但前端未展示的数据
   default_branch?: string;
   last_synced_at?: string;
   last_sync_error_code?: string;
-  baseline_started_at?: string;
-  baseline_finished_at?: string;
 }
 
 export interface MonitorEvent {
@@ -47,11 +44,7 @@ export interface MonitorEvent {
   actor: string;
   html_url: string;
   occurred_at: string;
-  suppress_notification: boolean;
-  // 新增字段
   repository_id?: string;
-  subject_number?: number;
-  workflow_conclusion?: string;
 }
 
 export interface OutboxItem {
@@ -66,6 +59,28 @@ export interface OutboxItem {
   created_at: string;
   updated_at: string;
 }
+
+/** 通知渠道类型字面量（后端仅两种，收窄后无需再断言）。 */
+export type ChannelType = "telegram" | "http_webhook";
+
+export interface NotificationChannelRow {
+  id: string;
+  channel_type: ChannelType;
+  name: string;
+  enabled: boolean;
+  target: string;
+  secret_configured: boolean;
+  // 订阅的实时通知类型；null 表示全部订阅。
+  event_kinds: string[] | null;
+  digest_enabled: boolean;
+  updated_at?: string;
+}
+
+export const channelsQueryOptions = queryOptions({
+  queryKey: ["channels"] as const,
+  queryFn: () => apiRequest<{ items: NotificationChannelRow[] }>("/api/v1/notifications/channels"),
+  staleTime: 15_000,
+});
 
 export interface Page<T> {
   items: T[];

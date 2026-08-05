@@ -170,7 +170,7 @@ func (p *Processor) Process(ctx context.Context, eventType, deliveryID string, p
 		return p.processIssue(ctx, env)
 	case "pull_request":
 		return p.processPullRequest(ctx, env)
-	case "workflow_run":
+	case store.WorkflowRunKind:
 		return p.processWorkflowRun(ctx, env)
 	case "dependabot_alert":
 		return p.processSecurityAlert(ctx, store.AlertKindDependabot, env)
@@ -409,7 +409,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		return Result{}, fmt.Errorf("ensure repository: %w", err)
 	}
 	// 能力门禁：Actions 关闭或仓库已归档时不再采集。
-	if !p.ingestGate(ctx, repo, "workflow_run") {
+	if !p.ingestGate(ctx, repo, store.WorkflowRunKind) {
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	run := env.WorkflowRun
@@ -491,14 +491,14 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		return Result{Repository: &repo, Updated: true, SuppressNotify: true}, nil
 	}
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
-	fp := Fingerprint("webhook", repo.FullName, "workflow_run", ResourceIdentity("workflow_run", 0, run.ID), *run.Conclusion, run.UpdatedAt, hash)
+	fp := Fingerprint("webhook", repo.FullName, store.WorkflowRunKind, ResourceIdentity("workflow_run", 0, run.ID), *run.Conclusion, run.UpdatedAt, hash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
 	}
 	runID := run.ID
 	srcUpdated := run.UpdatedAt
 	ev := store.Event{
-		ID: ulid.Make().String(), Source: "webhook", Kind: "workflow_run", Action: "completed",
+		ID: ulid.Make().String(), Source: "webhook", Kind: store.WorkflowRunKind, Action: "completed",
 		RepositoryID: &repo.ID, Title: run.Name, Actor: actor, WorkflowRunID: &runID,
 		WorkflowConclusion: *run.Conclusion, OccurredAt: run.UpdatedAt, SourceUpdatedAt: &srcUpdated,
 		HTMLURL: run.HTMLURL,

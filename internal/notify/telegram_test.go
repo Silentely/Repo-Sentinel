@@ -21,7 +21,7 @@ func TestSendTelegramIncludesReplyMarkup(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	w := &Worker{Client: srv.Client()}
-	err := w.sendTelegramDirect(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", "test message", "https://github.com/test/repo")
+	err := w.sendTelegramDirect(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", "test message", "https://github.com/test/repo", "HTML")
 	if err != nil {
 		t.Fatalf("不期望错误: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestSendTelegramWithoutURLNoReplyMarkup(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	w := &Worker{Client: srv.Client()}
-	err := w.sendTelegramDirect(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", "test message", "")
+	err := w.sendTelegramDirect(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", "test message", "", "HTML")
 	if err != nil {
 		t.Fatalf("不期望错误: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestSendTelegramParses429RetryAfter(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	w := &Worker{Client: srv.Client()}
-	err := w.sendTelegramDirect(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", "test", "")
+	err := w.sendTelegramDirect(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", "test", "", "HTML")
 	if err == nil {
 		t.Fatal("期望 429 返回错误")
 	}
@@ -97,7 +97,7 @@ func TestSendTelegramParses429WithoutRetryAfter(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	w := &Worker{Client: srv.Client()}
-	err := w.sendTelegramDirect(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", "test", "")
+	err := w.sendTelegramDirect(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", "test", "", "HTML")
 	if err == nil {
 		t.Fatal("期望 429 返回错误")
 	}
@@ -112,7 +112,7 @@ func TestSendTelegramParses429WithoutRetryAfter(t *testing.T) {
 
 func TestSendTelegramNotConfigured(t *testing.T) {
 	w := &Worker{Client: http.DefaultClient}
-	err := w.sendTelegramDirect(t.Context(), "http://unused", "", "token", "text", "")
+	err := w.sendTelegramDirect(t.Context(), "http://unused", "", "token", "text", "", "HTML")
 	if err == nil {
 		t.Fatal("期望空 chatID 返回错误")
 	}

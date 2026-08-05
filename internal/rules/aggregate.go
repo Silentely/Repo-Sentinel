@@ -90,8 +90,8 @@ func readPositiveIntSetting(ctx context.Context, st store.Store, key string) (in
 	if err := json.Unmarshal(row.ValueJSON, &v); err != nil {
 		return 0, err
 	}
-	n := int(v)
-	if float64(n) != v || n <= 0 {
+	n, ok := store.CoerceInt(v)
+	if !ok || n <= 0 {
 		return 0, nil
 	}
 	return n, nil
@@ -101,7 +101,7 @@ func categoryOf(ev *store.Event) string {
 	switch ev.Kind {
 	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
 		return "security"
-	case "workflow_run":
+	case store.WorkflowRunKind:
 		return "actions"
 	case store.WorkItemKindIssue:
 		return "issue"

@@ -2,33 +2,21 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
-import { apiRequest } from "../../lib/api/client";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { toApiError } from "../../lib/api/errors";
 import {
+  channelsQueryOptions,
   settingsQueryOptions,
   upsertChannel,
   testChannel,
   deleteChannel,
   toggleChannel,
+  type NotificationChannelRow,
   type SystemSettings,
 } from "./api";
 import { SUBSCRIBABLE_KINDS, subscriptionSummary, uiCheckedKinds } from "./notify-subscription";
-
-interface ChannelRow {
-  id: string;
-  channel_type: string;
-  name: string;
-  enabled: boolean;
-  target: string;
-  secret_configured: boolean;
-  // 订阅的实时通知类型；null 表示全部订阅。
-  event_kinds: string[] | null;
-  digest_enabled: boolean;
-  updated_at?: string;
-}
 
 function kindGloballyEnabled(settings: SystemSettings | undefined, featureKey: (typeof SUBSCRIBABLE_KINDS)[number]["featureKey"]) {
   return settings?.[featureKey] !== false;
@@ -46,7 +34,7 @@ interface ChannelFormProps {
   // 区块顶部说明文案。
   hint: ReactNode;
   // 当前服务端渠道记录；未配置时为空。
-  channel?: ChannelRow;
+  channel?: NotificationChannelRow;
   // 全局设置，用于功能模块关闭时灰显订阅勾选。
   settings?: SystemSettings;
   // 目标字段文案与占位符。
@@ -232,10 +220,7 @@ function ChannelForm({
 
 export function NotifyPage() {
   const queryClient = useQueryClient();
-  const channels = useQuery({
-    queryKey: ["channels"],
-    queryFn: () => apiRequest<{ items: ChannelRow[] }>("/api/v1/notifications/channels"),
-  });
+  const channels = useQuery(channelsQueryOptions);
   const settings = useQuery(settingsQueryOptions);
 
   const [message, setMessage] = useState("");
@@ -340,7 +325,7 @@ export function NotifyPage() {
                     className="quiet-button"
                     type="button"
                     onClick={() =>
-                      toggleMut.mutate({ type: ch.channel_type as "telegram" | "http_webhook", enabled: !ch.enabled })
+                      toggleMut.mutate({ type: ch.channel_type, enabled: !ch.enabled })
                     }
                     disabled={toggleMut.isPending}
                   >
@@ -349,7 +334,7 @@ export function NotifyPage() {
                   <button
                     className="quiet-button"
                     type="button"
-                    onClick={() => testMut.mutate(ch.channel_type as "telegram" | "http_webhook")}
+                    onClick={() => testMut.mutate(ch.channel_type)}
                     disabled={testMut.isPending || !ch.enabled}
                   >
                     {testMut.isPending ? "发送中…" : "测试"}
@@ -357,7 +342,7 @@ export function NotifyPage() {
                   <button
                     className="quiet-button quiet-button--danger"
                     type="button"
-                    onClick={() => handleDelete(ch.channel_type as "telegram" | "http_webhook")}
+                    onClick={() => handleDelete(ch.channel_type)}
                     disabled={deleteMut.isPending}
                   >
                     删除

@@ -196,22 +196,12 @@ func (a *App) readRetentionDays(ctx context.Context, key string, fallback int) i
 }
 
 func intFromAny(v any) int {
-	switch n := v.(type) {
-	case float64:
-		return int(n)
-	case int:
-		return n
-	case int64:
-		return int(n)
-	case json.Number:
-		i, err := n.Int64()
-		if err != nil {
-			return -1
-		}
-		return int(i)
-	default:
+	// 收敛逻辑与设置解析（CoerceInt）共用，非法值统一回退 -1。
+	n, ok := store.CoerceInt(v)
+	if !ok {
 		return -1
 	}
+	return n
 }
 
 // ResetAdminPassword 打开本地依赖、校验主密钥并执行审计化密码恢复。

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -107,7 +108,10 @@ func (w *Worker) tick(ctx context.Context) {
 					"error", err.Error(),
 				)
 			}
-		} else if w.Logger != nil {
+			// 标记未落库不算投递成功，不触发 sent 指标。
+			continue
+		}
+		if w.Logger != nil {
 			w.Logger.Info(
 				"notification delivered",
 				"outbox_id", item.ID,
@@ -132,7 +136,7 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox) err
 	}
 	switch ch.ChannelType {
 	case store.ChannelTelegram:
-		return w.sendTelegram(ctx, ch.Target, secret, item.BodyText, item.HTMLURL)
+		return w.sendTelegram(ctx, ch.Target, secret, item.BodyText, item.HTMLURL, item.ParseMode)
 	case store.ChannelHTTPWebhook:
 		return w.sendHTTP(ctx, ch, secret, item)
 	default:
@@ -154,20 +158,24 @@ func (w *Worker) decryptSecret(ctx context.Context, envelope string) (string, er
 	return string(res.Plaintext), nil
 }
 
-func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text, htmlURL string) error {
+func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text, htmlURL, parseMode string) error {
 	if token == "" || chatID == "" {
 		return fmt.Errorf("telegram_not_configured")
 	}
 	api := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
-	return w.sendTelegramDirect(ctx, api, chatID, token, text, htmlURL)
+	return w.sendTelegramDirect(ctx, api, chatID, token, text, htmlURL, parseMode)
 }
 
 // sendTelegramDirect 发送 Telegram 消息，api 参数为完整 URL，便于测试时替换端点。
-func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, text, htmlURL string) error {
+// parseMode 为空时回退 HTML（既有正文均按 HTML 生成）。
+func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, text, htmlURL, parseMode string) error {
+	if parseMode == "" {
+		parseMode = "HTML"
+	}
 	payload := map[string]any{
 		"chat_id":                  chatID,
 		"text":                     text,
-		"parse_mode":               "HTML",
+		"parse_mode":               parseMode,
 		"disable_web_page_preview": true,
 	}
 	// 有 GitHub 链接时附加 inline keyboard 按钮
@@ -257,7 +265,8 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 
 func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbox, err error) {
 	code := "delivery_failed"
-	if ra, ok := err.(*retryAfterError); ok {
+	var ra *retryAfterError
+	if errors.As(err, &ra) {
 		code = ra.code
 		// 限流退避同样受重试上限约束，否则目标长期 429 时条目会无限重投。
 		if item.AttemptCount >= maxAttempts {

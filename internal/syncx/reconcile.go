@@ -136,14 +136,20 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 		repo.SyncStatus = store.SyncStatusActive
 		repo.BaselineFinishedAt = &now
 	}
-	_, _ = r.Store.Repositories().Upsert(ctx, repo)
+	if _, err := r.Store.Repositories().Upsert(ctx, repo); err != nil && r.Logger != nil {
+		// 状态推进失败会留下陈旧 sync_status，影响后续调度判断，必须留痕。
+		r.Logger.Warn("repo sync status advance failed", "repo", repo.FullName, "error_code", "repo_upsert_failed", "error", err.Error())
+	}
 	// issues 游标只在真正执行过 Issues 同步时推进：全局/仓库级开关全关时保留旧值，
 	// 重新开启后增量同步的 since 仍从上次成功位置回退 30 秒，可拉回关窗期内的变更。
 	if issuesSynced {
-		_, _ = r.Store.Cursors().Upsert(ctx, store.SyncCursor{
+		if _, err := r.Store.Cursors().Upsert(ctx, store.SyncCursor{
 			RepositoryID: repo.ID, Resource: "issues", CursorValue: now.Format(time.RFC3339),
 			LastSuccessAt: &now,
-		})
+		}); err != nil && r.Logger != nil {
+			// 游标推进失败会让下次对账重拉本轮数据（幂等键兜底），记录日志便于排查重复。
+			r.Logger.Warn("issues cursor advance failed", "repo", repo.FullName, "error_code", "cursor_upsert_failed", "error", err.Error())
+		}
 	}
 	return nil
 }
@@ -324,7 +330,10 @@ func (r *Reconciler) syncWorkflows(ctx context.Context, token string, repo store
 				HeadSHA: run.HeadSHA, Status: run.Status, Conclusion: run.Conclusion, Actor: run.Actor.Login,
 				RunAttempt: run.RunAttempt, HTMLURL: run.HTMLURL, RunUpdatedAt: run.UpdatedAt, StateHash: hash,
 			}
-			_, _, _ = r.Store.WorkflowRuns().UpsertIfNewer(ctx, in)
+			if _, _, err := r.Store.WorkflowRuns().UpsertIfNewer(ctx, in); err != nil && r.Logger != nil {
+				// 运行落库失败会导致后续轮询重复拉取并重复产生事件，必须留痕。
+				r.Logger.Warn("workflow run upsert failed", "repo", repo.FullName, "run_id", run.ID, "error_code", "workflow_run_upsert_failed", "error", err.Error())
+			}
 		}
 		if len(items) < 50 {
 			break
@@ -417,11 +426,14 @@ func (r *Reconciler) saveAlerts(ctx context.Context, repo store.Repository, kind
 			updated = a.CreatedAt
 		}
 		hash := normalizer.StateHash(kind, a.State, severity, rule, a.DismissedReason)
-		_, _, _ = r.Store.SecurityAlerts().UpsertIfNewer(ctx, store.SecurityAlert{
+		if _, _, err := r.Store.SecurityAlerts().UpsertIfNewer(ctx, store.SecurityAlert{
 			RepositoryID: repo.ID, AlertKind: kind, AlertNumber: a.Number, State: a.State,
 			Severity: severity, RuleOrDependency: rule, DismissedReason: a.DismissedReason,
 			HTMLURL: a.HTMLURL, SourceUpdatedAt: updated, StateHash: hash,
-		})
+		}); err != nil && r.Logger != nil {
+			// 告警落库失败会导致下次对账重复拉取并重复产生事件，必须留痕。
+			r.Logger.Warn("security alert upsert failed", "repo", repo.FullName, "alert_number", a.Number, "kind", kind, "error_code", "alert_upsert_failed", "error", err.Error())
+		}
 	}
 }
 

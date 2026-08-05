@@ -762,11 +762,7 @@ function ActionsList() {
 
 export function ActionsPage() {
   return (
-    <FeatureGuard
-      featureKey="feature.actions"
-      featureName="Actions"
-      description="Workflow Run 结论与恢复状态。依赖 GitHub App 的 Actions 只读权限与 workflow_run 事件；也可在仪表盘触发对账补拉。"
-    >
+    <FeatureGuard featureKey="feature.actions" featureName="Actions">
       <ActionsList />
     </FeatureGuard>
   );
@@ -884,11 +880,7 @@ function SecurityList() {
 
 export function SecurityPage() {
   return (
-    <FeatureGuard
-      featureKey="feature.security_alerts"
-      featureName="安全告警"
-      description="Dependabot / Code Scanning / Secret Scanning 安全告警。"
-    >
+    <FeatureGuard featureKey="feature.security_alerts" featureName="安全告警">
       <SecurityList />
     </FeatureGuard>
   );

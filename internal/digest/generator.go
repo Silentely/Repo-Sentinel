@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	htmlpkg "html"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -40,6 +41,8 @@ type Generator struct {
 	Store store.Store
 	// AI 可选；nil 或未启用时不使用 AI 总结，回退模板正文。
 	AI *ai.Client
+	// Logger 可选；记账等尽力而为操作的失败留痕。
+	Logger *slog.Logger
 }
 
 // RunOnce 每日摘要：到达管理员本地发送时刻且当日未发送时生成。
@@ -249,10 +252,13 @@ func (g *Generator) enqueue(
 	}
 	// 记账与渠道无关：即使暂无可投递渠道也落账，避免之后开启订阅时当日补发。
 	raw, _ := json.Marshal(dateKey)
-	_, _ = g.Store.Settings().Upsert(ctx, store.SystemSetting{
+	if _, err := g.Store.Settings().Upsert(ctx, store.SystemSetting{
 		ID: ulid.Make().String(), Key: lastKey, ValueJSON: raw,
 		UpdatedAt: time.Now().UTC(), UpdatedBy: "system",
-	})
+	}); err != nil && g.Logger != nil {
+		// 记账失败会让下次调度重跑本轮生成（幂等键挡重复投递，但白跑一轮），留痕便于排查。
+		g.Logger.Warn("digest ledger upsert failed", "key", lastKey, "error_code", "ledger_upsert_failed", "error", err.Error())
+	}
 	return nil
 }
 
@@ -348,7 +354,7 @@ func kindEmoji(kind string) string {
 		return "🔎"
 	case store.AlertKindSecretScanning:
 		return "🔑"
-	case "workflow_run":
+	case store.WorkflowRunKind:
 		return "⚙️"
 	default:
 		return "📋"
@@ -368,7 +374,7 @@ func kindDisplayName(kind string) string {
 		return "Code Scanning"
 	case store.AlertKindSecretScanning:
 		return "Secret Scanning"
-	case "workflow_run":
+	case store.WorkflowRunKind:
 		return "Actions"
 	default:
 		return kind
@@ -391,7 +397,7 @@ func digestStatusLabel(ev store.Event) string {
 		case "ready_for_review":
 			return "待审核"
 		}
-	case "workflow_run":
+	case store.WorkflowRunKind:
 		if ev.Action == "recovered" {
 			return "已恢复"
 		}

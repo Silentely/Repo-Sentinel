@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -22,16 +23,7 @@ import (
 func newID() string { return ulid.Make().String() }
 
 func normalizePage(f ListFilter) ListFilter {
-	if f.Page < 1 {
-		f.Page = 1
-	}
-	if f.PerPage < 1 {
-		f.PerPage = 20
-	}
-	if f.PerPage > 100 {
-		f.PerPage = 100
-	}
-	return f
+	return NormalizeListFilter(f)
 }
 
 // --- installations ---
@@ -462,7 +454,7 @@ func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem) (WorkIte
 		}
 		return workItemFromEntity(entity), true, nil
 	}
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		return WorkItem{}, false, err
 	}
 	if in.ID == "" {
@@ -734,7 +726,7 @@ func (s *workflowRunStore) UpsertIfNewer(ctx context.Context, in WorkflowRun) (W
 		}
 		return workflowRunFromEntity(entity), true, nil
 	}
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		return WorkflowRun{}, false, err
 	}
 	if in.ID == "" {
@@ -922,7 +914,7 @@ func (s *securityAlertStore) UpsertIfNewer(ctx context.Context, in SecurityAlert
 		}
 		return securityAlertFromEntity(entity), true, nil
 	}
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		return SecurityAlert{}, false, err
 	}
 	if in.ID == "" {
@@ -1519,7 +1511,7 @@ func (s *cursorStore) Upsert(ctx context.Context, in SyncCursor) (SyncCursor, er
 		}
 		return cursorFromEntity(entity), nil
 	}
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		return SyncCursor{}, err
 	}
 	if in.ID == "" {

@@ -55,3 +55,86 @@ export function alertKindLabel(kind?: string): string {
       return kind || "告警";
   }
 }
+
+/** Outbox 投递状态 → 中文展示文案（仪表盘与投递记录页共用，消除同枚举中英文并存）。 */
+export function outboxStatusLabel(status: string): string {
+  switch (status) {
+    case "pending":
+      return "待发送";
+    case "sending":
+      return "发送中";
+    case "sent":
+      return "已发送";
+    case "dead":
+      return "投递失败";
+    default:
+      return status;
+  }
+}
+
+/** 通知渠道类型 → 展示名。 */
+export function channelLabel(channelType?: string): string {
+  switch (channelType) {
+    case "telegram":
+      return "Telegram";
+    case "http_webhook":
+      return "HTTP Webhook";
+    default:
+      return channelType || "";
+  }
+}
+
+/** 事件类型 → 英文短名（仪表盘事件行用）。 */
+export function eventKindLabel(kind: string): string {
+  switch (kind) {
+    case "issue":
+      return "Issue";
+    case "pull_request":
+      return "PR";
+    case "workflow_run":
+      return "Actions";
+    case "dependabot":
+      return "Dependabot";
+    case "code_scanning":
+      return "Code Scan";
+    case "secret_scanning":
+      return "Secret";
+    default:
+      return kind;
+  }
+}
+
+/** 事件动作 → 中文文案（仪表盘事件行用）。 */
+export function eventActionLabel(action: string): string {
+  switch (action) {
+    case "opened":
+      return "已打开";
+    case "closed":
+      return "已关闭";
+    case "reopened":
+      return "重新打开";
+    case "merged":
+      return "已合并";
+    case "completed":
+      return "已完成";
+    case "recovered":
+      return "已恢复";
+    case "updated":
+      return "已更新";
+    case "created":
+      return "新告警";
+    case "dismissed":
+      return "已忽略";
+    case "fixed":
+    case "resolved":
+      return "已修复";
+    case "ready_for_review":
+      return "待审核";
+    case "converted_to_draft":
+      return "转为草稿";
+    case "auto_dismissed":
+      return "自动忽略";
+    default:
+      return action;
+  }
+}
