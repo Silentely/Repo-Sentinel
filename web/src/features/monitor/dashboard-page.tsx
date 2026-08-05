@@ -8,6 +8,7 @@ import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { toApiError } from "../../lib/api/errors";
 import {
+  channelLabel,
   eventActionLabel,
   eventKindLabel,
   formatRelativeTime,
@@ -16,6 +17,7 @@ import {
 } from "../../lib/format";
 import {
   activateRepository,
+  DASHBOARD_FEED_LIMIT,
   dashboardQueryOptions,
   eventsQueryOptions,
   githubConfigQueryOptions,
@@ -65,8 +67,8 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const dashboard = useQuery(dashboardQueryOptions);
   const repos = useQuery(repositoriesQueryOptions);
-  const events = useQuery(eventsQueryOptions);
-  const outbox = useQuery(outboxQueryOptions());
+  const events = useQuery(eventsQueryOptions(DASHBOARD_FEED_LIMIT));
+  const outbox = useQuery(outboxQueryOptions("", "", DASHBOARD_FEED_LIMIT));
   const settings = useQuery(settingsQueryOptions);
   const githubConfig = useQuery(githubConfigQueryOptions);
 
@@ -137,6 +139,9 @@ export function DashboardPage() {
 
   const eventItems = events.data?.items ?? [];
   const outboxItems = outbox.data?.items ?? [];
+  // 面板脚注用总数判断是否被截断（total > 展示上限时提示「仅显示最近 N 条」）。
+  const eventTotal = events.data?.total ?? 0;
+  const outboxTotal = outbox.data?.total ?? 0;
 
   const cfg = githubConfig.data;
   const inboundReady = Boolean(cfg?.webhook_secret_configured);
@@ -266,7 +271,9 @@ export function DashboardPage() {
       <CollapsiblePanel
         id="outbox"
         title="通知投递"
-        count={outboxItems.length}
+        count={
+          outboxTotal > DASHBOARD_FEED_LIMIT ? `${DASHBOARD_FEED_LIMIT}+` : outboxItems.length
+        }
         open={openPanels.outbox}
         onToggle={() => togglePanel("outbox")}
       >
@@ -284,6 +291,9 @@ export function DashboardPage() {
                 <div className="feed-row__main">
                   <div className="feed-row__meta">
                     <span className={`event-kind status-${item.status}`}>{outboxStatusLabel(item.status)}</span>
+                    {item.channel_type ? (
+                      <span className="muted channel-tag">{channelLabel(item.channel_type)}</span>
+                    ) : null}
                     {item.created_at ? <span className="event-time">{formatRelativeTime(item.created_at)}</span> : null}
                     <span className="muted">尝试 {item.attempt_count} 次</span>
                     {item.last_error_code ? <span className="error-code">{item.last_error_code}</span> : null}
@@ -307,13 +317,21 @@ export function DashboardPage() {
               </li>
             ))}
           </ul>
+          {outboxTotal > DASHBOARD_FEED_LIMIT ? (
+            <p className="panel-footnote">
+              共 {outboxTotal} 条投递记录，仅显示最近 {DASHBOARD_FEED_LIMIT} 条。
+              <Link to="/notifications/outbox">查看全部</Link>
+            </p>
+          ) : null}
         </QueryGate>
       </CollapsiblePanel>
 
       <CollapsiblePanel
         id="events"
         title="最近事件"
-        count={eventItems.length}
+        count={
+          eventTotal > DASHBOARD_FEED_LIMIT ? `${DASHBOARD_FEED_LIMIT}+` : eventItems.length
+        }
         open={openPanels.events}
         onToggle={() => togglePanel("events")}
       >
@@ -362,6 +380,9 @@ export function DashboardPage() {
               );
             })}
           </ul>
+          {eventTotal > DASHBOARD_FEED_LIMIT ? (
+            <p className="panel-footnote">共 {eventTotal} 条事件，仅显示最近 {DASHBOARD_FEED_LIMIT} 条。</p>
+          ) : null}
         </QueryGate>
       </CollapsiblePanel>
 
@@ -483,7 +504,7 @@ function CollapsiblePanel({
 }: {
   id: string;
   title: string;
-  count?: number;
+  count?: ReactNode;
   open: boolean;
   onToggle: () => void;
   headerExtra?: ReactNode;
@@ -494,16 +515,21 @@ function CollapsiblePanel({
   return (
     <section className={`onboarding-card collapsible-panel${open ? " is-open" : ""}`} aria-labelledby={headingId}>
       <div className="collapsible-panel__header">
+        {/* 标题以 sr-only 承载语义与可访问名称；视觉标题由按钮内 span 呈现（button 内容模型不允许 h2）。 */}
+        <h2 id={headingId} className="sr-only">
+          {title}
+        </h2>
         <button
           type="button"
           className="collapsible-panel__toggle"
           aria-expanded={open}
           aria-controls={panelId}
+          aria-labelledby={headingId}
           onClick={onToggle}
         >
           <ChevronDown className="collapsible-panel__chevron" size={18} aria-hidden="true" />
-          <h2 id={headingId}>{title}</h2>
-          {typeof count === "number" ? <span className="collapsible-panel__count">{count}</span> : null}
+          <span className="collapsible-panel__title">{title}</span>
+          {count != null ? <span className="collapsible-panel__count">{count}</span> : null}
         </button>
         {headerExtra ? <div className="collapsible-panel__extra">{headerExtra}</div> : null}
       </div>
