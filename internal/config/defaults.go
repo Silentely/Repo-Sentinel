@@ -45,12 +45,11 @@ func defaultConfig() Config {
 			BurstThreshold: 15,
 			BurstWindow:    5 * time.Minute,
 		},
+		// AI 标量字段（BaseURL/Model/Timeout/MaxTokens）不注入默认值：
+		// 空值表示「未显式设置」，管理台可编辑；实际取值由 ai.Client 在使用点回退默认。
+		// 仅 bool 开关保留默认，避免 RuntimeFromEnv 将其误判为 env 显式设置而锁定。
 		AI: AIConfig{
 			Enabled:       false,
-			BaseURL:       "https://api.openai.com/v1",
-			Model:         "gpt-4o-mini",
-			Timeout:       20 * time.Second,
-			MaxTokens:     800,
 			DigestEnabled: true,
 			TriageEnabled: true,
 		},

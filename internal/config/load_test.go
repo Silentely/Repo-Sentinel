@@ -603,14 +603,18 @@ func TestAI默认关闭(t *testing.T) {
 	if cfg.AI.Enabled {
 		t.Fatal("AI 默认必须关闭")
 	}
-	if cfg.AI.BaseURL != "https://api.openai.com/v1" {
-		t.Fatalf("默认 BaseURL=%q", cfg.AI.BaseURL)
+	// 标量字段默认留空（管理台可编辑），实际默认值由 ai.Client 在使用点回退。
+	if cfg.AI.BaseURL != "" {
+		t.Fatalf("默认 BaseURL 应留空（管理台可编辑），实际 %q", cfg.AI.BaseURL)
 	}
-	if cfg.AI.Model != "gpt-4o-mini" {
-		t.Fatalf("默认 Model=%q", cfg.AI.Model)
+	if cfg.AI.Model != "" {
+		t.Fatalf("默认 Model 应留空，实际 %q", cfg.AI.Model)
 	}
-	if cfg.AI.Timeout != 20*time.Second {
-		t.Fatalf("默认 Timeout=%s", cfg.AI.Timeout)
+	if cfg.AI.Timeout != 0 {
+		t.Fatalf("默认 Timeout 应留空，实际 %s", cfg.AI.Timeout)
+	}
+	if cfg.AI.MaxTokens != 0 {
+		t.Fatalf("默认 MaxTokens 应留空，实际 %d", cfg.AI.MaxTokens)
 	}
 }
 

@@ -123,14 +123,15 @@ interface AIFormState {
   apiKey: string;
 }
 
-// 从服务端 AI 配置快照构造表单初值；查询未完成时返回默认值（与后端缺省一致）。
+// 从服务端 AI 配置快照构造表单初值；查询未完成或字段未设置（空串 / 0）时
+// 回退到与后端 ai.Client 一致的显示默认值，避免把 0/空提交给后端触发校验失败。
 function aiFormFromConfig(data: AIConfig | undefined): AIFormState {
   return {
     enabled: Boolean(data?.enabled),
-    baseURL: String(data?.base_url ?? "https://api.openai.com/v1"),
-    model: String(data?.model ?? "gpt-4o-mini"),
-    timeoutSec: Number(data?.timeout_sec ?? 20),
-    maxTokens: Number(data?.max_tokens ?? 800),
+    baseURL: data?.base_url || "https://api.openai.com/v1",
+    model: data?.model || "gpt-4o-mini",
+    timeoutSec: Number(data?.timeout_sec || 20),
+    maxTokens: Number(data?.max_tokens || 800),
     digest: data?.digest_enabled !== false,
     triage: data?.triage_enabled !== false,
     apiKey: "",

@@ -217,9 +217,18 @@ func TestAI校验规则(t *testing.T) {
 		cfg := defaultConfig()
 		cfg.AI.Enabled = true
 		cfg.AI.APIKey = NewSecret("sk-test")
-		cfg.AI.MaxTokens = 0
+		cfg.AI.MaxTokens = -1
 		if err := cfg.Validate(); err == nil {
-			t.Fatal("max_tokens<=0 应校验失败")
+			t.Fatal("负 max_tokens 应校验失败")
+		}
+	})
+	t.Run("max_tokens 为 0 允许（使用默认 800）", func(t *testing.T) {
+		cfg := defaultConfig()
+		cfg.AI.Enabled = true
+		cfg.AI.APIKey = NewSecret("sk-test")
+		cfg.AI.MaxTokens = 0
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("max_tokens=0 应允许（默认值）：%v", err)
 		}
 	})
 	t.Run("非法 base_url 拒绝", func(t *testing.T) {

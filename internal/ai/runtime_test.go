@@ -62,6 +62,66 @@ func TestRuntimeFromEnvSources(t *testing.T) {
 	}
 }
 
+// 生产路径回归：配置加载器不再注入 AI 标量默认值后，RuntimeFromEnv 应把
+// base_url/model/timeout/max_tokens 标记为 unset（管理台可编辑），
+// 而非误判为 env 锁定导致四个字段永远无法在管理台修改。
+func TestRuntimeFromLoadedDefaults(t *testing.T) {
+	cfg, err := config.Load(t.Context(), config.LoadOptions{
+		LookupEnv: func(string) (string, bool) { return "", false },
+	})
+	if err != nil {
+		t.Fatalf("加载默认配置失败: %v", err)
+	}
+	rt := RuntimeFromEnv(cfg.AI)
+	snap := rt.Snapshot()
+	checks := []struct {
+		name   string
+		source string
+	}{
+		{"base_url", snap.BaseURLSource},
+		{"model", snap.ModelSource},
+		{"timeout", snap.TimeoutSource},
+		{"max_tokens", snap.MaxTokensSource},
+	}
+	for _, c := range checks {
+		if c.source != "unset" {
+			t.Fatalf("%s 默认来源应 unset（管理台可编辑），实际 %s", c.name, c.source)
+		}
+	}
+
+	// 显式设置环境变量时，这四个字段仍应标记 env（锁定，不可在管理台覆盖）。
+	envCfg, err := config.Load(t.Context(), config.LoadOptions{
+		LookupEnv: func(name string) (string, bool) {
+			switch name {
+			case "REPOSENTINEL_AI_BASE_URL":
+				return "http://env.example/v1", true
+			case "REPOSENTINEL_AI_MODEL":
+				return "env-model", true
+			case "REPOSENTINEL_AI_TIMEOUT":
+				return "45s", true
+			case "REPOSENTINEL_AI_MAX_TOKENS":
+				return "1024", true
+			}
+			return "", false
+		},
+	})
+	if err != nil {
+		t.Fatalf("加载 env 配置失败: %v", err)
+	}
+	envSnap := RuntimeFromEnv(envCfg.AI).Snapshot()
+	for _, c := range checks {
+		source := map[string]string{
+			"base_url":   envSnap.BaseURLSource,
+			"model":      envSnap.ModelSource,
+			"timeout":    envSnap.TimeoutSource,
+			"max_tokens": envSnap.MaxTokensSource,
+		}[c.name]
+		if source != "env" {
+			t.Fatalf("%s 显式 env 设置应标记 env（锁定），实际 %s", c.name, source)
+		}
+	}
+}
+
 // MergeFromStore：env 未设置的字段用 DB 补缺，env 已设置的字段不被 DB 覆盖。
 func TestMergeFromStore(t *testing.T) {
 	data := openRuntimeStore(t)
