@@ -17,6 +17,15 @@ import (
 // ErrNotConfigured 表示未配置 API Key；调用方应视为功能不可用并降级，不视为故障。
 var ErrNotConfigured = errors.New("ai: not configured")
 
+// 未显式配置时的使用点回退默认值：管理台/环境变量均未设置时生效，
+// 供客户端方法与连通性测试（httpapi）共用，保持单一来源。
+const (
+	DefaultBaseURL   = "https://api.openai.com/v1"
+	DefaultModel     = "gpt-4o-mini"
+	DefaultTimeout   = 20 * time.Second
+	DefaultMaxTokens = 800
+)
+
 // Client 是 OpenAI 兼容 Chat Completions 客户端（BYOK）。
 // 通过可配置的 BaseURL 可接入任意 OpenAI 兼容网关（含 Ollama / vLLM 等本地模型）。
 // 字段经 mu 保护：构造后通过 Replace 热更新，读侧一律走 Snapshot。
@@ -120,28 +129,28 @@ func (c *Client) httpClient() *http.Client {
 
 func (c *Client) baseURL() string {
 	if c.BaseURL == "" {
-		return "https://api.openai.com/v1"
+		return DefaultBaseURL
 	}
 	return strings.TrimRight(c.BaseURL, "/")
 }
 
 func (c *Client) model() string {
 	if c.Model == "" {
-		return "gpt-4o-mini"
+		return DefaultModel
 	}
 	return c.Model
 }
 
 func (c *Client) maxTokens() int {
 	if c.MaxTokens <= 0 {
-		return 800
+		return DefaultMaxTokens
 	}
 	return c.MaxTokens
 }
 
 func (c *Client) timeout() time.Duration {
 	if c.Timeout <= 0 {
-		return 20 * time.Second
+		return DefaultTimeout
 	}
 	return c.Timeout
 }
@@ -236,4 +245,19 @@ func (c *Client) logError(msg string, err error) {
 	if s := c.Snapshot(); s.Logger != nil {
 		s.Logger.Warn(msg, "error", err.Error())
 	}
+}
+
+// Ping 发送一次最小对话验证连通性，返回端到端耗时。
+// 未配置（无 API Key）返回 ErrNotConfigured；网络失败、HTTP 非 2xx、空响应返回错误。
+func (c *Client) Ping(ctx context.Context) (time.Duration, error) {
+	s := c.Snapshot()
+	if !s.Enabled || s.APIKey == "" {
+		return 0, ErrNotConfigured
+	}
+	start := time.Now()
+	_, err := c.Complete(ctx, "你是连通性测试助手，请只回复 OK。", "连通性测试：请回复 OK。")
+	if err != nil {
+		return time.Since(start), err
+	}
+	return time.Since(start), nil
 }

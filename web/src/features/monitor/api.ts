@@ -450,6 +450,24 @@ export async function saveAIConfig(body: AIConfigInput): Promise<AIConfig> {
   });
 }
 
+export interface AIConnectivityTestResult {
+  ok: boolean;
+  message: string;
+  model: string;
+  base_url: string;
+  latency_ms: number;
+}
+
+/** 连通性测试：以当前生效配置（未锁定字段可临时覆盖）发送一次最小对话，返回可达性与耗时。
+ *  连通性测试允许等待较长时间（默认 60s），避免应用级 20s 请求超时把慢端点的正常响应误判为失败。 */
+export async function testAIConnectivity(body: AIConfigInput, timeoutMs = 60_000): Promise<AIConnectivityTestResult> {
+  return apiRequest<AIConnectivityTestResult>("/api/v1/ai/test", {
+    method: "POST",
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
 export interface SyncInstallationReposResult {
   installations: number;
   imported_or_updated: number;

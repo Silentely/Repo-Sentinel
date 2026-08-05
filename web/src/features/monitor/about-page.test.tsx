@@ -31,9 +31,18 @@ const settingsFixture = {
   "feature.security_alerts": true,
 };
 
-const { saveSystemSettingsMock, saveAIConfigMock } = vi.hoisted(() => ({
+const { saveSystemSettingsMock, saveAIConfigMock, testAIConnectivityMock } = vi.hoisted(() => ({
   saveSystemSettingsMock: vi.fn(async (body: Record<string, unknown>) => body),
   saveAIConfigMock: vi.fn(async (body: Record<string, unknown>) => body),
+  testAIConnectivityMock: vi.fn(
+    async (body: Record<string, unknown>): Promise<{ ok: boolean; message: string; model: string; base_url: string; latency_ms: number }> => ({
+      ok: true,
+      message: "连通性测试成功：模型 gpt-4o-mini 正常回复（42 ms）",
+      model: "gpt-4o-mini",
+      base_url: "https://api.openai.com/v1",
+      latency_ms: 42,
+    }),
+  ),
 }));
 
 // AI 配置初始快照：全部字段可编辑（unset 来源）、密钥未配置。
@@ -67,6 +76,9 @@ let aiConfigFixture = {
   note: "",
 };
 
+// 供单个用例模拟 AI 配置查询失败（如反代瞬时故障），验证保存/测试按钮被禁用。
+let aiConfigQueryError: Error | null = null;
+
 vi.mock("./api", () => ({
   settingsQueryOptions: {
     queryKey: ["test", "settings"],
@@ -74,7 +86,12 @@ vi.mock("./api", () => ({
   },
   aiConfigQueryOptions: {
     queryKey: ["test", "ai-config"],
-    queryFn: async () => aiConfigFixture,
+    queryFn: async () => {
+      if (aiConfigQueryError) {
+        throw aiConfigQueryError;
+      }
+      return aiConfigFixture;
+    },
   },
   // 版本查询保持 pending：测试聚焦保存反馈，避免无关请求干扰。
   versionQueryOptions: {
@@ -84,6 +101,7 @@ vi.mock("./api", () => ({
   checkForUpdates: vi.fn(async () => ({})),
   saveSystemSettings: saveSystemSettingsMock,
   saveAIConfig: saveAIConfigMock,
+  testAIConnectivity: testAIConnectivityMock,
 }));
 
 vi.mock("../auth/api", () => ({
@@ -93,7 +111,9 @@ vi.mock("../auth/api", () => ({
 import { AboutPage } from "./about-page";
 
 function renderPage() {
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
     <QueryClientProvider client={queryClient}>
       <AboutPage />
@@ -104,6 +124,7 @@ function renderPage() {
 describe("关于与设置页", () => {
   beforeEach(() => {
     saveSystemSettingsMock.mockClear();
+    testAIConnectivityMock.mockClear();
   });
 
   it("保存开关成功后在功能模块区块内展示提示", async () => {
@@ -219,6 +240,52 @@ describe("关于与设置页", () => {
       expect(payload?.max_tokens).toBe(800);
     } finally {
       aiConfigFixture = original;
+    }
+  });
+
+  it("点击测试连通性成功时展示成功提示并携带表单值", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    await user.click(within(aiSection).getByRole("button", { name: /测试连通性/ }));
+
+    expect(await within(aiSection).findByText(/连通性测试成功/)).toBeInTheDocument();
+    expect(testAIConnectivityMock).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gpt-4o-mini", timeout_sec: 20, max_tokens: 800 }),
+    );
+  });
+
+  it("连通性测试失败（ok=false）时展示错误提示", async () => {
+    testAIConnectivityMock.mockResolvedValueOnce({
+      ok: false,
+      message: "连通性测试失败：ai: http 401",
+      model: "gpt-4o-mini",
+      base_url: "https://api.openai.com/v1",
+      latency_ms: 0,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    await user.click(within(aiSection).getByRole("button", { name: /测试连通性/ }));
+
+    expect(await within(aiSection).findByText("连通性测试失败")).toBeInTheDocument();
+    expect(within(aiSection).getByText(/ai: http 401/)).toBeInTheDocument();
+  });
+
+  it("AI 配置加载失败时禁用保存与测试按钮，避免覆盖已有配置", async () => {
+    aiConfigQueryError = new Error("boom");
+    try {
+      renderPage();
+
+      const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+      // 查询失败后表单持有默认回退值，此时保存/测试必须禁用，防止用默认值覆盖 DB 有效配置。
+      expect(await within(aiSection).findByText("无法加载 AI 配置")).toBeInTheDocument();
+      expect(within(aiSection).getByRole("button", { name: "保存 AI 配置" })).toBeDisabled();
+      expect(within(aiSection).getByRole("button", { name: /测试连通性/ })).toBeDisabled();
+    } finally {
+      aiConfigQueryError = null;
     }
   });
 });

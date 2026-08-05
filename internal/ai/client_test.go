@@ -211,3 +211,41 @@ func TestCompleteContextCanceled(t *testing.T) {
 		t.Fatal("期望 context 取消错误")
 	}
 }
+
+// TestClientPing 验证连通性探测：正常回复返回耗时，未配置与远端错误返回错误。
+func TestClientPing(t *testing.T) {
+	srv := captureServer(t, http.StatusOK, `{"choices":[{"message":{"role":"assistant","content":"OK"}}]}`, nil)
+	defer srv.Close()
+
+	c := &Client{Enabled: true, APIKey: "k", BaseURL: srv.URL, Model: "probe-model", Timeout: time.Second, MaxTokens: 100}
+	latency, err := c.Ping(t.Context())
+	if err != nil {
+		t.Fatalf("Ping 应成功：%v", err)
+	}
+	if latency <= 0 {
+		t.Fatalf("耗时应为正数：%s", latency)
+	}
+
+	// 无 API Key / 未启用 / nil 客户端：ErrNotConfigured。
+	if _, err := (&Client{}).Ping(t.Context()); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("无 Key 应返回 ErrNotConfigured：%v", err)
+	}
+	if _, err := (&Client{APIKey: "k"}).Ping(t.Context()); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("总开关关闭应返回 ErrNotConfigured：%v", err)
+	}
+	if _, err := (*Client)(nil).Ping(t.Context()); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("nil 客户端应返回 ErrNotConfigured：%v", err)
+	}
+
+	// 远端 401 / 空响应：返回错误。
+	bad := captureServer(t, http.StatusUnauthorized, "unauthorized", nil)
+	defer bad.Close()
+	if _, err := (&Client{Enabled: true, APIKey: "k", BaseURL: bad.URL}).Ping(t.Context()); err == nil {
+		t.Fatal("HTTP 401 应返回错误")
+	}
+	empty := captureServer(t, http.StatusOK, `{"choices":[]}`, nil)
+	defer empty.Close()
+	if _, err := (&Client{Enabled: true, APIKey: "k", BaseURL: empty.URL}).Ping(t.Context()); err == nil {
+		t.Fatal("空响应应返回错误")
+	}
+}

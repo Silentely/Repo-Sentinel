@@ -183,6 +183,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Put("/system/settings", s.handlePutSettings)
 				mutating.Put("/github/config", s.handlePutGitHubConfig)
 				mutating.Put("/ai/config", s.handlePutAIConfig)
+				mutating.Post("/ai/test", s.handleTestAIConfig)
 				mutating.Post("/github/sync-repositories", s.handleSyncInstallationRepositories)
 				mutating.Post("/system/version/check", s.handleVersionCheck)
 			})

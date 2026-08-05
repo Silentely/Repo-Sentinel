@@ -12,6 +12,7 @@ import {
   saveAIConfig,
   saveSystemSettings,
   settingsQueryOptions,
+  testAIConnectivity,
   versionQueryOptions,
   type AIConfig,
   type AIConfigInput,
@@ -217,6 +218,19 @@ export function AboutPage() {
     saveAIConfigMut.mutate({ clear_api_key: true }, { onError: () => setAIMsg("") });
   }
 
+  // AI 连通性测试：复用 aiBody（跳过 env 锁定字段）把当前表单值作为临时覆盖提交，
+  // 不写库、不改变运行时；成功/失败结果以 ok 区分展示。
+  const [aiTest, setAITest] = useState<{ ok: boolean; message: string } | null>(null);
+  const testAIMut = useMutation({
+    mutationFn: (body: AIConfigInput) => testAIConnectivity(body),
+    onSuccess: (res) => setAITest({ ok: res.ok, message: res.message }),
+    onError: (err) => setAITest({ ok: false, message: toApiError(err).message }),
+  });
+  function runAITest() {
+    setAITest(null);
+    testAIMut.mutate(aiBody(aiForm, aiConfig.data));
+  }
+
   const v = version.data || {};
   const saveSettings = useMutation({
     mutationFn: (body: SystemSettings) => saveSystemSettings(body),
@@ -411,13 +425,23 @@ export function AboutPage() {
           <input type="checkbox" checked={aiForm.triage} disabled={aiConfig.data?.triage_enabled_locked} onChange={(e) => setAI("triage", e.target.checked)} />
           <span>安全告警分诊</span>
         </label>
-        <button className="primary-button primary-button--inline" type="button" disabled={saveAIConfigMut.isPending || aiConfig.isLoading} onClick={submitAIConfig}>
+        <button className="primary-button primary-button--inline" type="button" disabled={saveAIConfigMut.isPending || aiConfig.isLoading || aiConfig.isError} onClick={submitAIConfig}>
           {saveAIConfigMut.isPending ? "保存中…" : "保存 AI 配置"}
         </button>
+        <button className="secondary-button" type="button" disabled={testAIMut.isPending || aiConfig.isLoading || aiConfig.isError} onClick={runAITest}>
+          {testAIMut.isPending ? "测试中…" : "🔌 测试连通性"}
+        </button>
         {!aiConfig.data?.api_key_locked && aiConfig.data?.api_key_configured ? (
-          <button className="quiet-button" type="button" disabled={saveAIConfigMut.isPending} onClick={clearAPIKey}>
+          <button className="quiet-button" type="button" disabled={saveAIConfigMut.isPending || aiConfig.isError} onClick={clearAPIKey}>
             清除 API Key
           </button>
+        ) : null}
+        {aiTest ? (
+          aiTest.ok ? (
+            <p className="success-banner" role="status">{aiTest.message}</p>
+          ) : (
+            <ErrorAlert title="连通性测试失败" message={aiTest.message} />
+          )
         ) : null}
         {saveAIConfigMut.isError ? <ErrorAlert title="保存失败" message={toApiError(saveAIConfigMut.error).message} errorCode={toApiError(saveAIConfigMut.error).errorCode} /> : null}
       </section>

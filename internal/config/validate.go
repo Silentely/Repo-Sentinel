@@ -111,7 +111,8 @@ func (cfg Config) Validate() error {
 		base := strings.TrimSpace(cfg.AI.BaseURL)
 		if base != "" {
 			parsed, err := url.Parse(base)
-			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			// 与 httpapi 校验一致：拒绝 userinfo（URL 内嵌凭据为坏实践）。
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
 				return newValidationError("ai.base_url", "must be an http(s) URL")
 			}
 		}
