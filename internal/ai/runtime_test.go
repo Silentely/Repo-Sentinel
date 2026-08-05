@@ -90,25 +90,25 @@ func TestMergeFromStore(t *testing.T) {
 	}
 	snap := rt.Snapshot()
 	if snap.BaseURL != "http://env.example/v1" || snap.BaseURLSource != "env" {
-		t.Fatalf("env 已设置的 BaseURL 不应被 DB 覆盖：%+v", snap)
+		t.Fatalf("env 已设置的 BaseURL 不应被 DB 覆盖：%+v", &snap)
 	}
 	if snap.Model != "env-model" || snap.ModelSource != "env" {
-		t.Fatalf("env 已设置的 Model 不应被 DB 覆盖：%+v", snap)
+		t.Fatalf("env 已设置的 Model 不应被 DB 覆盖：%+v", &snap)
 	}
 	if !snap.Enabled || snap.EnabledSource != "database" {
-		t.Fatalf("enabled 应由 DB 补缺：%+v", snap)
+		t.Fatalf("enabled 应由 DB 补缺：%+v", &snap)
 	}
 	if snap.APIKey != "sk-db" || snap.APIKeySource != "database" {
-		t.Fatalf("API Key 应解密自 DB：%+v", snap)
+		t.Fatalf("API Key 应解密自 DB：%+v", &snap)
 	}
 	if snap.Timeout != 45*time.Second || snap.MaxTokens != 512 {
-		t.Fatalf("timeout/max_tokens 应由 DB 补缺：%+v", snap)
+		t.Fatalf("timeout/max_tokens 应由 DB 补缺：%+v", &snap)
 	}
 	if snap.DigestEnabled || !snap.TriageEnabled {
-		t.Fatalf("digest/triage 布尔应由 DB 补缺：%+v", snap)
+		t.Fatalf("digest/triage 布尔应由 DB 补缺：%+v", &snap)
 	}
 	if snap.DigestEnabledSource != "database" || snap.TriageEnabledSource != "database" {
-		t.Fatalf("digest/triage 来源应为 database：%+v", snap)
+		t.Fatalf("digest/triage 来源应为 database：%+v", &snap)
 	}
 }
 
