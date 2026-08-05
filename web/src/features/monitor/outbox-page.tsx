@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
 import { QueryGate } from "../../components/query-gate";
-import { formatRelativeTime } from "../../lib/format";
+import { channelLabel, formatRelativeTime, outboxStatusLabel } from "../../lib/format";
 import { outboxQueryOptions, retryOutbox, type OutboxItem } from "./api";
 
 const statusFilters = [
@@ -57,6 +57,10 @@ export function OutboxPage() {
 
   const items = outbox.data?.items ?? [];
   const deadCount = items.filter((it) => it.status === "dead").length;
+
+  function toggleDetail(item: OutboxItem) {
+    setSelectedItem(selectedItem?.id === item.id ? null : item);
+  }
 
   return (
     <>
@@ -132,9 +136,18 @@ export function OutboxPage() {
               <li
                 key={item.id}
                 className={selectedItem?.id === item.id ? "event-list__item--selected" : ""}
-                onClick={() => setSelectedItem(selectedItem?.id === item.id ? null : item)}
+                role="button"
+                tabIndex={0}
+                aria-expanded={selectedItem?.id === item.id}
+                onClick={() => toggleDetail(item)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggleDetail(item);
+                  }
+                }}
               >
-                <span className={`event-kind status-${item.status}`}>{statusLabel(item.status)}</span>
+                <span className={`event-kind status-${item.status}`}>{outboxStatusLabel(item.status)}</span>
                 {item.channel_type && (
                   <span className="muted channel-tag">{channelLabel(item.channel_type)}</span>
                 )}
@@ -166,13 +179,40 @@ export function OutboxPage() {
 }
 
 function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () => void }) {
+  const panelRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
+  // 抽屉生命周期：记录触发焦点、锁定背景滚动、支持 Escape 关闭，
+  // 关闭后归还焦点给触发元素（与移动端导航抽屉行为一致）。
+  useEffect(() => {
+    triggerRef.current = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      triggerRef.current?.focus();
+    };
+  }, [onClose]);
+
   return (
     <div className="drawer-overlay" onClick={onClose} role="presentation">
       <aside
+        ref={panelRef}
         className="drawer-panel"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
+        aria-modal="true"
         aria-label="投递详情"
+        tabIndex={-1}
       >
         <div className="drawer-panel__header">
           <h2>投递详情</h2>
@@ -187,7 +227,7 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
           </div>
           <div className="drawer-field">
             <dt>状态</dt>
-            <dd><span className={`event-kind status-${item.status}`}>{statusLabel(item.status)}</span></dd>
+            <dd><span className={`event-kind status-${item.status}`}>{outboxStatusLabel(item.status)}</span></dd>
           </div>
           <div className="drawer-field">
             <dt>渠道类型</dt>
@@ -225,22 +265,4 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
       </aside>
     </div>
   );
-}
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case "pending": return "待发送";
-    case "sending": return "发送中";
-    case "sent": return "已发送";
-    case "dead": return "投递失败";
-    default: return status;
-  }
-}
-
-function channelLabel(channelType: string): string {
-  switch (channelType) {
-    case "telegram": return "Telegram";
-    case "http_webhook": return "HTTP Webhook";
-    default: return channelType;
-  }
 }

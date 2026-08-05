@@ -172,33 +172,10 @@ func normalizeLocalTime(s string) (string, bool) {
 	return fmt.Sprintf("%02d:%02d", hh, mm), true
 }
 
-func coerceRetentionDays(v any) (int, bool) {
-	return coerceIntInRange(v, 0, 3650)
-}
-
 // coerceIntInRange 将 JSON 数值收敛为 [min, max] 内的整数。
 func coerceIntInRange(v any, min, max int) (int, bool) {
-	var n int
-	switch num := v.(type) {
-	case float64:
-		if num != float64(int(num)) {
-			return 0, false
-		}
-		n = int(num)
-	case int:
-		n = num
-	case int64:
-		n = int(num)
-	case json.Number:
-		i, err := num.Int64()
-		if err != nil {
-			return 0, false
-		}
-		n = int(i)
-	default:
-		return 0, false
-	}
-	if n < min || n > max {
+	n, ok := store.CoerceInt(v)
+	if !ok || n < min || n > max {
 		return 0, false
 	}
 	return n, true

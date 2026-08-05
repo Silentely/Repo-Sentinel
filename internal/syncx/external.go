@@ -109,10 +109,16 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		repo.SyncStatus = store.SyncStatusActive
 		repo.BaselineFinishedAt = &now
 	}
-	_, _ = p.Store.Repositories().Upsert(ctx, repo)
-	_, _ = p.Store.Cursors().Upsert(ctx, store.SyncCursor{
+	if _, err := p.Store.Repositories().Upsert(ctx, repo); err != nil && p.Logger != nil {
+		// 状态推进失败会留下陈旧 sync_status，影响后续调度判断，必须留痕。
+		p.Logger.Warn("external repo sync status advance failed", "repo", repo.FullName, "error_code", "repo_upsert_failed", "error", err.Error())
+	}
+	if _, err := p.Store.Cursors().Upsert(ctx, store.SyncCursor{
 		RepositoryID: repo.ID, Resource: "issues", CursorValue: now.Format(time.RFC3339), LastSuccessAt: &now,
-	})
+	}); err != nil && p.Logger != nil {
+		// 游标推进失败会让下次轮询重拉本轮数据（幂等键兜底），记录日志便于排查重复。
+		p.Logger.Warn("external issues cursor advance failed", "repo", repo.FullName, "error_code", "cursor_upsert_failed", "error", err.Error())
+	}
 	return nil
 }
 

@@ -279,23 +279,30 @@ export function GitHubPage() {
           </div>
         </div>
         {installations.isError ? <ErrorAlert title="无法加载 Installation" message={toApiError(installations.error).message} errorCode={toApiError(installations.error).errorCode} /> : null}
-        {(installations.data?.items ?? []).length ? (
-          <ul className="event-list">
-            {installations.data!.items.map((inst) => (
-              <li key={inst.id}>
-                <span className="event-kind">{inst.account_type || "account"}</span>
-                <strong>{inst.account_login || "（未知账号）"}</strong>
-                <span className="muted">installation {inst.installation_id > 0 ? inst.installation_id : "—"}</span>
-                <span className="muted">{inst.suspended === "true" ? "已挂起" : "正常"}</span>
-                {inst.installation_id > 0 ? (
-                  <a className="quiet-button" href={`https://github.com/settings/installations/${inst.installation_id}`} target="_blank" rel="noreferrer">配置</a>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyState eyebrow="等待事件" title="尚未收到 Installation" description="请先在 GitHub 安装 App。" action={<a href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer">去 GitHub 安装 App</a>} />
-        )}
+        {(() => {
+          // 查询成功才渲染列表：避免非空断言，条件渲染与数据解耦。
+          const items = installations.data?.items;
+          if (!items || items.length === 0) {
+            return (
+              <EmptyState eyebrow="等待事件" title="尚未收到 Installation" description="请先在 GitHub 安装 App。" action={<a href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer">去 GitHub 安装 App</a>} />
+            );
+          }
+          return (
+            <ul className="event-list">
+              {items.map((inst) => (
+                <li key={inst.id}>
+                  <span className="event-kind">{inst.account_type || "account"}</span>
+                  <strong>{inst.account_login || "（未知账号）"}</strong>
+                  <span className="muted">installation {inst.installation_id > 0 ? inst.installation_id : "—"}</span>
+                  <span className="muted">{inst.suspended === "true" ? "已挂起" : "正常"}</span>
+                  {inst.installation_id > 0 ? (
+                    <a className="quiet-button" href={`https://github.com/settings/installations/${inst.installation_id}`} target="_blank" rel="noreferrer">配置</a>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          );
+        })()}
       </section>
 
       <section className="onboarding-card channel-form" aria-labelledby="gh-external-title">

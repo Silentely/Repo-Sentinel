@@ -48,6 +48,7 @@ func (s *server) writeMappedError(w http.ResponseWriter, r *http.Request, err er
 			"method", r.Method,
 			"path", r.URL.Path,
 			"error_code", errorCodeInternal,
+			"error", err.Error(),
 		)
 		s.writeAPIError(w, r, http.StatusInternalServerError, errorCodeInternal, nil)
 	}

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
-	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
@@ -38,7 +37,6 @@ type httpRuntime interface {
 
 // App 保存完成装配的运行时及其生命周期资源。
 type App struct {
-	config          config.Config
 	data            store.Store
 	keyRing         *cryptox.KeyRing
 	adminService    *auth.AdminService

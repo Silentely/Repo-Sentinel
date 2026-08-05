@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CheckCircle2, ChevronDown, CircleDashed, ExternalLink } from "lucide-react";
@@ -7,7 +7,13 @@ import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { toApiError } from "../../lib/api/errors";
-import { formatRelativeTime, syncStatusLabel } from "../../lib/format";
+import {
+  eventActionLabel,
+  eventKindLabel,
+  formatRelativeTime,
+  outboxStatusLabel,
+  syncStatusLabel,
+} from "../../lib/format";
 import {
   activateRepository,
   dashboardQueryOptions,
@@ -71,12 +77,19 @@ export function DashboardPage() {
   const [reconcileBusyId, setReconcileBusyId] = useState<string | null>(null);
   const [reconcileError, setReconcileError] = useState<string | null>(null);
 
+  // 仓库与仪表盘数据联动失效：对账/放行/重试成功后统一刷新。
+  const invalidateReposAndDashboard = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["repositories"] });
+    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+  const invalidateOutboxAndDashboard = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["outbox"] });
+    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+
   const activate = useMutation({
     mutationFn: activateRepository,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
+    onSuccess: invalidateReposAndDashboard,
   });
   const reconcileOne = useMutation({
     mutationFn: reconcileRepository,
@@ -85,29 +98,20 @@ export function DashboardPage() {
       setReconcileError(null);
     },
     onSettled: () => setReconcileBusyId(null),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
+    onSuccess: invalidateReposAndDashboard,
     onError: (error) => setReconcileError(toApiError(error).message || "对账请求失败"),
   });
   const reconcileEverything = useMutation({
     mutationFn: reconcileAll,
     onMutate: () => setReconcileError(null),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
+    onSuccess: invalidateReposAndDashboard,
     onError: (error) => setReconcileError(toApiError(error).message || "对账请求失败"),
   });
   const retry = useMutation({
     mutationFn: retryOutbox,
     onMutate: (id) => setRetryBusyId(id),
     onSettled: () => setRetryBusyId(null),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["outbox"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
+    onSuccess: invalidateOutboxAndDashboard,
   });
 
   const stats = dashboard.data;
@@ -116,13 +120,19 @@ export function DashboardPage() {
   const featureActions = settings.data?.["feature.actions"] !== false;
   const featureAlerts = settings.data?.["feature.security_alerts"] !== false;
 
-  // 仓库与基线：排除已归档，避免归档仓继续占位。
-  const visibleRepos = (repos.data?.items ?? []).filter(
-    (r) => !r.is_archived && r.sync_status !== "archived",
+  const repoItems = repos.data?.items ?? [];
+  // 仓库与基线：排除已归档，避免归档仓继续占位；派生数据缓存避免每渲染重建。
+  const visibleRepos = useMemo(
+    () => repoItems.filter((r) => !r.is_archived && r.sync_status !== "archived"),
+    [repoItems],
   );
-  const baselineRepos = visibleRepos.filter((r) => r.sync_status === "baseline_sync");
-  const repoNameMap = Object.fromEntries(
-    (repos.data?.items ?? []).map((r) => [r.id, r.full_name || `${r.owner}/${r.name}`]),
+  const baselineRepos = useMemo(
+    () => visibleRepos.filter((r) => r.sync_status === "baseline_sync"),
+    [visibleRepos],
+  );
+  const repoNameMap = useMemo(
+    () => Object.fromEntries(repoItems.map((r) => [r.id, r.full_name || `${r.owner}/${r.name}`])),
+    [repoItems],
   );
 
   const eventItems = events.data?.items ?? [];
@@ -273,7 +283,7 @@ export function DashboardPage() {
               <li key={item.id} className="feed-row">
                 <div className="feed-row__main">
                   <div className="feed-row__meta">
-                    <span className={`event-kind status-${item.status}`}>{item.status}</span>
+                    <span className={`event-kind status-${item.status}`}>{outboxStatusLabel(item.status)}</span>
                     {item.created_at ? <span className="event-time">{formatRelativeTime(item.created_at)}</span> : null}
                     <span className="muted">尝试 {item.attempt_count} 次</span>
                     {item.last_error_code ? <span className="error-code">{item.last_error_code}</span> : null}
@@ -326,8 +336,8 @@ export function DashboardPage() {
                 <li key={ev.id} className="feed-row">
                   <div className="feed-row__main">
                     <div className="feed-row__meta">
-                      <span className={`event-kind kind-${ev.kind}`}>{formatEventKind(ev.kind)}</span>
-                      <span className="event-action">{formatEventAction(ev.action)}</span>
+                      <span className={`event-kind kind-${ev.kind}`}>{eventKindLabel(ev.kind)}</span>
+                      <span className="event-action">{eventActionLabel(ev.action)}</span>
                       {repoName ? (
                         <span className="event-repo" title={repoName}>
                           {repoName}
@@ -521,58 +531,5 @@ function Metric({ label, value, to }: { label: string; value?: number; to?: stri
     );
   }
   return <div className="status-item">{inner}</div>;
-}
-
-function formatEventKind(kind: string): string {
-  switch (kind) {
-    case "issue":
-      return "Issue";
-    case "pull_request":
-      return "PR";
-    case "workflow_run":
-      return "Actions";
-    case "dependabot":
-      return "Dependabot";
-    case "code_scanning":
-      return "Code Scan";
-    case "secret_scanning":
-      return "Secret";
-    default:
-      return kind;
-  }
-}
-
-function formatEventAction(action: string): string {
-  switch (action) {
-    case "opened":
-      return "已打开";
-    case "closed":
-      return "已关闭";
-    case "reopened":
-      return "重新打开";
-    case "merged":
-      return "已合并";
-    case "completed":
-      return "已完成";
-    case "recovered":
-      return "已恢复";
-    case "updated":
-      return "已更新";
-    case "created":
-      return "新告警";
-    case "dismissed":
-      return "已忽略";
-    case "fixed":
-    case "resolved":
-      return "已修复";
-    case "ready_for_review":
-      return "待审核";
-    case "converted_to_draft":
-      return "转为草稿";
-    case "auto_dismissed":
-      return "自动忽略";
-    default:
-      return action;
-  }
 }
 

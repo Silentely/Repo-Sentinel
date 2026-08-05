@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -17,6 +18,8 @@ const (
 
 	WorkItemKindIssue = "issue"
 	WorkItemKindPR    = "pull_request"
+	// WorkflowRunKind Actions 工作流运行的事件类型（此前全项目散落裸字符串，收敛为常量防拼写漂移）。
+	WorkflowRunKind = "workflow_run"
 
 	AlertKindDependabot     = "dependabot"
 	AlertKindCodeScanning   = "code_scanning"
@@ -94,7 +97,7 @@ func RepoAllowsKind(repo *Repository, kind string) bool {
 		return repo.IssuesEnabled
 	case WorkItemKindPR:
 		return repo.PrEnabled
-	case "workflow_run":
+	case WorkflowRunKind:
 		return repo.ActionsEnabled
 	case AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning:
 		return repo.AlertsEnabled
@@ -115,7 +118,7 @@ func KindDisplayName(kind string) string {
 		return "Code Scanning 代码扫描"
 	case AlertKindSecretScanning:
 		return "Secret Scanning 密钥扫描"
-	case "workflow_run":
+	case WorkflowRunKind:
 		return "Actions 工作流"
 	default:
 		return kind
@@ -131,6 +134,46 @@ func PayloadString(m map[string]any, key string) string {
 		return v
 	}
 	return ""
+}
+
+// CoerceInt 将 JSON 数值（float64/int/int64/json.Number）收敛为整数；
+// 非数值或小数（如 3.5）返回 false。保留天数、聚合窗口等设置解析共用此实现，
+// 避免各包自行转换导致边界行为漂移。
+func CoerceInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case float64:
+		if n != float64(int(n)) {
+			return 0, false
+		}
+		return int(n), true
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case json.Number:
+		i, err := n.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(i), true
+	default:
+		return 0, false
+	}
+}
+
+// NormalizeListFilter 归一化分页参数：缺省页号 1、每页 20，上限 100。
+// 列表查询与 HTTP 早退分支共用，保证两处分页语义一致。
+func NormalizeListFilter(f ListFilter) ListFilter {
+	if f.Page < 1 {
+		f.Page = 1
+	}
+	if f.PerPage < 1 {
+		f.PerPage = 20
+	}
+	if f.PerPage > 100 {
+		f.PerPage = 100
+	}
+	return f
 }
 
 // WebhookDelivery 领域模型。
@@ -270,7 +313,7 @@ type NotificationChannel struct {
 var subscribableKinds = map[string]struct{}{
 	WorkItemKindIssue:       {},
 	WorkItemKindPR:          {},
-	"workflow_run":          {},
+	WorkflowRunKind:         {},
 	AlertKindDependabot:     {},
 	AlertKindCodeScanning:   {},
 	AlertKindSecretScanning: {},

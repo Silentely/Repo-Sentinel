@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { ErrorAlert } from "../../components/error-alert";
 import { ThemeToggle } from "../../components/theme-toggle";
 import { ApiError, toApiError } from "../../lib/api/errors";
+import { AuthCardHeader, AuthField, applyZodErrors } from "./auth-card";
 import { login } from "./api";
 import { loginSchema, type LoginCredentials } from "./schemas";
 
@@ -35,14 +36,7 @@ export function LoginPage({
     clearErrors();
     const parsed = loginSchema.safeParse(values);
     if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
-        if (issue.path[0] === "username") {
-          setError("username", { message: issue.message });
-        }
-        if (issue.path[0] === "password") {
-          setError("password", { message: issue.message });
-        }
-      }
+      applyZodErrors(parsed.error.issues, setError, ["username", "password"]);
       return;
     }
     try {
@@ -61,16 +55,13 @@ export function LoginPage({
         <ThemeToggle />
       </div>
       <section className="auth-card" aria-labelledby="login-title">
-        <header className="auth-card__header">
-          <span className="product-mark" aria-hidden="true">
-            <ShieldCheck size={22} strokeWidth={1.8} />
-          </span>
-          <div>
-            <p className="eyebrow">仓库值守台</p>
-            <h1 id="login-title">RepoSentinel</h1>
-            <p>自托管的 GitHub 仓库监控</p>
-          </div>
-        </header>
+        <AuthCardHeader
+          titleId="login-title"
+          eyebrow="仓库值守台"
+          title="RepoSentinel"
+          subtitle="自托管的 GitHub 仓库监控"
+          productMark={<ShieldCheck size={22} strokeWidth={1.8} />}
+        />
 
         {requestError ? (
           <ErrorAlert
@@ -85,42 +76,24 @@ export function LoginPage({
         ) : null}
 
         <form className="auth-form" onSubmit={submit} noValidate>
-          <label className="field">
-            <span>用户名</span>
-            <span className="field__control">
-              <UserRound aria-hidden="true" size={17} />
-              <input
-                autoComplete="username"
-                aria-invalid={Boolean(errors.username)}
-                aria-describedby={errors.username ? "login-username-error" : undefined}
-                {...register("username")}
-              />
-            </span>
-            {errors.username ? (
-              <small id="login-username-error" className="field__error">
-                {errors.username.message}
-              </small>
-            ) : null}
-          </label>
+          <AuthField
+            id="login-username"
+            label="用户名"
+            icon={<UserRound aria-hidden="true" size={17} />}
+            autoComplete="username"
+            error={errors.username?.message}
+            registration={register("username")}
+          />
 
-          <label className="field">
-            <span>密码</span>
-            <span className="field__control">
-              <KeyRound aria-hidden="true" size={17} />
-              <input
-                type="password"
-                autoComplete="current-password"
-                aria-invalid={Boolean(errors.password)}
-                aria-describedby={errors.password ? "login-password-error" : undefined}
-                {...register("password")}
-              />
-            </span>
-            {errors.password ? (
-              <small id="login-password-error" className="field__error">
-                {errors.password.message}
-              </small>
-            ) : null}
-          </label>
+          <AuthField
+            id="login-password"
+            label="密码"
+            icon={<KeyRound aria-hidden="true" size={17} />}
+            type="password"
+            autoComplete="current-password"
+            error={errors.password?.message}
+            registration={register("password")}
+          />
 
           <button className="primary-button" type="submit" disabled={isSubmitting}>
             {isSubmitting ? "正在登录…" : "登录"}

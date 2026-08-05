@@ -139,7 +139,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	aiClient := aiRuntime.Client()
 	aiClient.Logger = logger
 	aggregator.AI = aiClient
-	digestGen := &digest.Generator{Store: data, AI: aiClient}
+	digestGen := &digest.Generator{Store: data, AI: aiClient, Logger: logger}
 	scheduler := &syncx.Scheduler{
 		Reconciler: reconciler, External: external, Digest: digestGen, Logger: logger,
 	}
@@ -177,7 +177,6 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		return nil, err
 	}
 	built := &App{
-		config:          cfg,
 		data:            data,
 		keyRing:         keyRing,
 		workerCancel:    workerCancel,

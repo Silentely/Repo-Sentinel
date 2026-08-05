@@ -265,17 +265,8 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(ids) == 0 {
 			// 早退分支同样归一化分页参数，保持与其他列表端点响应一致。
-			pageNo, perPage := f.Page, f.PerPage
-			if pageNo < 1 {
-				pageNo = 1
-			}
-			if perPage < 1 {
-				perPage = 20
-			}
-			if perPage > 100 {
-				perPage = 100
-			}
-			writeJSON(w, http.StatusOK, map[string]any{"items": []any{}, "page": pageNo, "per_page": perPage, "total": 0})
+			normalized := store.NormalizeListFilter(f)
+			writeJSON(w, http.StatusOK, map[string]any{"items": []any{}, "page": normalized.Page, "per_page": normalized.PerPage, "total": 0})
 			return
 		}
 		f.ChannelIDs = ids

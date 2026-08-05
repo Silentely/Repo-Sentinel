@@ -93,7 +93,7 @@ func shouldNotifyRealtime(ev *store.Event) bool {
 			// draft 变化进摘要；ready_for_review 实时
 			return ev.Action != "converted_to_draft"
 		}
-	case "workflow_run":
+	case store.WorkflowRunKind:
 		if ev.Action == "recovered" {
 			return true
 		}
@@ -241,7 +241,7 @@ func statusDisplay(ev *store.Event) (emoji, label string) {
 		case "converted_to_draft":
 			return "📝", "转为草稿"
 		}
-	case "workflow_run":
+	case store.WorkflowRunKind:
 		if ev.Action == "recovered" {
 			return "🟢", "已恢复"
 		}
@@ -378,15 +378,15 @@ func eventEmoji(ev *store.Event) string {
 		return "📋"
 
 	// WorkflowRun 结论细分
-	case ev.Kind == "workflow_run" && ev.Action == "recovered":
+	case ev.Kind == store.WorkflowRunKind && ev.Action == "recovered":
 		return "🟢"
-	case ev.Kind == "workflow_run" && ev.WorkflowConclusion == "success":
+	case ev.Kind == store.WorkflowRunKind && ev.WorkflowConclusion == "success":
 		return "✅"
-	case ev.Kind == "workflow_run" && ev.WorkflowConclusion == "cancelled":
+	case ev.Kind == store.WorkflowRunKind && ev.WorkflowConclusion == "cancelled":
 		return "⏹️"
-	case ev.Kind == "workflow_run" && ev.WorkflowConclusion == "timed_out":
+	case ev.Kind == store.WorkflowRunKind && ev.WorkflowConclusion == "timed_out":
 		return "⏱️"
-	case ev.Kind == "workflow_run":
+	case ev.Kind == store.WorkflowRunKind:
 		return "❌"
 
 	// 通用回退

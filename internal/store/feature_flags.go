@@ -39,7 +39,7 @@ func KindFeatureKey(kind string) string {
 		return SettingFeatureIssues
 	case WorkItemKindPR:
 		return SettingFeaturePullRequests
-	case "workflow_run":
+	case WorkflowRunKind:
 		return SettingFeatureActions
 	case AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning:
 		return SettingFeatureSecurityAlerts
@@ -82,7 +82,7 @@ func (f FeatureFlags) AllowsKind(kind string) bool {
 		return f.Issues
 	case WorkItemKindPR:
 		return f.PullRequests
-	case "workflow_run":
+	case WorkflowRunKind:
 		return f.Actions
 	case AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning:
 		return f.SecurityAlerts
