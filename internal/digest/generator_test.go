@@ -2,11 +2,14 @@ package digest
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
@@ -335,5 +338,331 @@ func TestRunOnce渠道关闭汇总时不投递(t *testing.T) {
 	// 发送日期仍应落账，避免之后开启订阅时当日补发。
 	if _, err := data.Settings().Get(t.Context(), settingLastDigest); err != nil {
 		t.Fatalf("last_sent_date 应已落账: %v", err)
+	}
+}
+
+// aiStub 返回指向桩服务器的 AI 客户端，reply 为完整 HTTP 响应体。
+func aiStub(t *testing.T, reply string) *ai.Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(reply))
+	}))
+	t.Cleanup(srv.Close)
+	return &ai.Client{BaseURL: srv.URL, APIKey: "sk-test", Enabled: true, DigestEnabled: true, TriageEnabled: true}
+}
+
+func seedUTCSettings(t *testing.T, data store.Store) {
+	t.Helper()
+	rawTZ, _ := json.Marshal("UTC")
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingTimezone, ValueJSON: rawTZ, UpdatedBy: "test",
+	})
+	rawTime, _ := json.Marshal("09:00")
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingLocalTime, ValueJSON: rawTime, UpdatedBy: "test",
+	})
+}
+
+func createIssueEvent(t *testing.T, data store.Store, title string) {
+	t.Helper()
+	_, err := data.Events().Create(t.Context(), store.Event{
+		ID: ulid.Make().String(), Source: "test", Kind: store.WorkItemKindIssue, Action: "opened",
+		Title: title, OccurredAt: time.Now().UTC(), DedupeFingerprint: ulid.Make().String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// AI 摘要成功时正文替换为 AI 总结，且 BodyJSON 标记 ai=true。
+func TestRunOnceAISummary(t *testing.T) {
+	data := openDigestStore(t)
+	seedTelegram(t, data)
+	seedUTCSettings(t, data)
+	createIssueEvent(t, data, "hello")
+
+	g := &Generator{Store: data, AI: aiStub(t, `{"choices":[{"message":{"content":"今日共 1 条事件：- 新 Issue hello"}}]}`)}
+	now := time.Date(2026, 7, 28, 9, 15, 0, 0, time.UTC)
+	if err := g.RunOnce(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("应发送 1 条摘要，got %d", len(items))
+	}
+	if !strings.Contains(items[0].BodyText, "今日共 1 条事件") {
+		t.Fatalf("正文应为 AI 总结，实际: %s", items[0].BodyText)
+	}
+	if items[0].BodyJSON["ai"] != true {
+		t.Fatalf("BodyJSON.ai 应为 true，实际: %v", items[0].BodyJSON["ai"])
+	}
+}
+
+// AI 失败时回退模板正文，BodyJSON 标记 ai=false。
+func TestRunOnceAIFallback(t *testing.T) {
+	data := openDigestStore(t)
+	seedTelegram(t, data)
+	seedUTCSettings(t, data)
+	createIssueEvent(t, data, "hello")
+
+	g := &Generator{Store: data, AI: aiStub(t, `internal error`)}
+	now := time.Date(2026, 7, 28, 9, 15, 0, 0, time.UTC)
+	if err := g.RunOnce(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("应发送 1 条摘要，got %d", len(items))
+	}
+	if !strings.Contains(items[0].BodyText, "共 1 条事件") {
+		t.Fatalf("AI 失败应回退模板，实际: %s", items[0].BodyText)
+	}
+	if items[0].BodyJSON["ai"] != false {
+		t.Fatalf("BodyJSON.ai 应为 false，实际: %v", items[0].BodyJSON["ai"])
+	}
+}
+
+// AI 输出含 HTML 特殊字符时必须被转义，避免破坏 Telegram HTML 解析。
+func TestRunOnceAIEscapesHTML(t *testing.T) {
+	data := openDigestStore(t)
+	seedTelegram(t, data)
+	seedUTCSettings(t, data)
+	createIssueEvent(t, data, "hello")
+
+	g := &Generator{Store: data, AI: aiStub(t, `{"choices":[{"message":{"content":"<b>bold</b> & <i>italic</i>"}}]}`)}
+	now := time.Date(2026, 7, 28, 9, 15, 0, 0, time.UTC)
+	if err := g.RunOnce(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("应发送 1 条摘要，got %d", len(items))
+	}
+	if strings.Contains(items[0].BodyText, "<b>bold</b>") {
+		t.Fatalf("AI 输出必须转义，实际: %s", items[0].BodyText)
+	}
+	if !strings.Contains(items[0].BodyText, "&lt;b&gt;bold&lt;/b&gt;") {
+		t.Fatalf("期望转义后的 HTML，实际: %s", items[0].BodyText)
+	}
+}
+
+// 周报：周一发送、幂等、AI 回退。
+func TestRunWeekly(t *testing.T) {
+	data := openDigestStore(t)
+	seedTelegram(t, data)
+	seedUTCSettings(t, data)
+	createIssueEvent(t, data, "weekly item")
+	rawOn, _ := json.Marshal(true)
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingWeeklyEnabled, ValueJSON: rawOn, UpdatedBy: "test",
+	})
+
+	g := &Generator{Store: data, AI: aiStub(t, `{"choices":[{"message":{"content":"本周共 1 条事件：- weekly item"}}]}`)}
+	// 2026-07-27 是周一。
+	now := time.Date(2026, 7, 27, 9, 15, 0, 0, time.UTC)
+	if err := g.RunWeekly(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("周一应发送周报，got %d", len(items))
+	}
+	if !strings.HasPrefix(items[0].IdempotencyKey, "report|weekly|") {
+		t.Fatalf("幂等键前缀应为 report|weekly，实际: %s", items[0].IdempotencyKey)
+	}
+	if !strings.Contains(items[0].BodyText, "本周共 1 条事件") {
+		t.Fatalf("正文应为 AI 总结，实际: %s", items[0].BodyText)
+	}
+
+	// 同日再次调用幂等跳过。
+	if err := g.RunWeekly(t.Context(), now.Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	items2, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items2) != 1 {
+		t.Fatalf("同日不应重复发送周报，got %d", len(items2))
+	}
+}
+
+// 周报：非发送日不发送；未启用不发送。
+func TestRunWeeklySkips(t *testing.T) {
+	data := openDigestStore(t)
+	seedTelegram(t, data)
+	seedUTCSettings(t, data)
+	createIssueEvent(t, data, "weekly item")
+	rawOn, _ := json.Marshal(true)
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingWeeklyEnabled, ValueJSON: rawOn, UpdatedBy: "test",
+	})
+
+	g := &Generator{Store: data}
+	// 2026-07-28 是周二，不应发送。
+	now := time.Date(2026, 7, 28, 9, 15, 0, 0, time.UTC)
+	if err := g.RunWeekly(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("非发送日不应发送周报，got %d", len(items))
+	}
+
+	// 未启用时同样不发送。
+	rawOff, _ := json.Marshal(false)
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingWeeklyEnabled, ValueJSON: rawOff, UpdatedBy: "test",
+	})
+	monday := time.Date(2026, 7, 27, 9, 15, 0, 0, time.UTC)
+	if err := g.RunWeekly(t.Context(), monday); err != nil {
+		t.Fatal(err)
+	}
+	items2, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items2) != 0 {
+		t.Fatalf("未启用时不应发送周报，got %d", len(items2))
+	}
+}
+
+// 月报：每月 1 日发送且幂等。
+func TestRunMonthly(t *testing.T) {
+	data := openDigestStore(t)
+	seedTelegram(t, data)
+	seedUTCSettings(t, data)
+	createIssueEvent(t, data, "monthly item")
+	rawOn, _ := json.Marshal(true)
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingMonthlyEnabled, ValueJSON: rawOn, UpdatedBy: "test",
+	})
+
+	g := &Generator{Store: data}
+	// 2026-08-01 是每月发送日。
+	now := time.Date(2026, 8, 1, 9, 15, 0, 0, time.UTC)
+	if err := g.RunMonthly(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("每月 1 日应发送月报，got %d", len(items))
+	}
+	if !strings.HasPrefix(items[0].IdempotencyKey, "report|monthly|") {
+		t.Fatalf("幂等键前缀应为 report|monthly，实际: %s", items[0].IdempotencyKey)
+	}
+
+	if err := g.RunMonthly(t.Context(), now.Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	items2, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items2) != 1 {
+		t.Fatalf("同月不应重复发送月报，got %d", len(items2))
+	}
+}
+
+// 月报：非发送日不发送。
+func TestRunMonthlySkipsWrongDay(t *testing.T) {
+	data := openDigestStore(t)
+	seedTelegram(t, data)
+	seedUTCSettings(t, data)
+	createIssueEvent(t, data, "monthly item")
+	rawOn, _ := json.Marshal(true)
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingMonthlyEnabled, ValueJSON: rawOn, UpdatedBy: "test",
+	})
+
+	g := &Generator{Store: data}
+	now := time.Date(2026, 8, 2, 9, 15, 0, 0, time.UTC)
+	if err := g.RunMonthly(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("非发送日不应发送月报，got %d", len(items))
+	}
+}
+
+// 周报自定义发送日解析。
+func TestParseWeekday(t *testing.T) {
+	cases := []struct {
+		in   string
+		want time.Weekday
+		ok   bool
+	}{
+		{"monday", time.Monday, true},
+		{"sunday", time.Sunday, true},
+		{"friday", time.Friday, true},
+		{"MONDAY", 0, false}, // 调用方已统一转小写
+		{"funday", 0, false},
+		{"", 0, false},
+	}
+	for _, tc := range cases {
+		got, ok := parseWeekday(tc.in)
+		if ok != tc.ok || (ok && got != tc.want) {
+			t.Errorf("parseWeekday(%q) = (%v,%v), want (%v,%v)", tc.in, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+// buildReportBody 时段文案参数化。
+func TestBuildReportBody_PeriodLabel(t *testing.T) {
+	num := 1
+	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "t", SubjectNumber: &num}}
+	body := buildReportBody("📊 每周报告", events, "过去 7 天")
+	if !strings.Contains(body, "过去 7 天共 1 条事件") {
+		t.Errorf("期望时段文案参数化，实际: %s", body)
+	}
+}
+
+// 非法时区应回退 UTC 而非报错，且窗口判定不受影响。
+func TestSendWindowInvalidTimezoneFallsBackToUTC(t *testing.T) {
+	data := openDigestStore(t)
+	rawTZ, _ := json.Marshal("Mars/Olympus")
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingTimezone, ValueJSON: rawTZ, UpdatedBy: "test",
+	})
+	rawTime, _ := json.Marshal("09:00")
+	_, _ = data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: settingLocalTime, ValueJSON: rawTime, UpdatedBy: "test",
+	})
+	g := &Generator{Store: data}
+	loc, ok := g.sendWindow(t.Context(), time.Date(2026, 7, 28, 9, 15, 0, 0, time.UTC))
+	if !ok {
+		t.Fatal("09:15 应在 09:00 发送窗口内")
+	}
+	if loc != time.UTC {
+		t.Fatalf("非法时区应回退 UTC，实际: %v", loc)
+	}
+	// 窗口为 [09:00, 11:00)：10:30 仍在窗口内，11:30 超出。
+	if _, ok := g.sendWindow(t.Context(), time.Date(2026, 7, 28, 10, 30, 0, 0, time.UTC)); !ok {
+		t.Fatal("10:30 应在发送窗口内")
+	}
+	if _, ok := g.sendWindow(t.Context(), time.Date(2026, 7, 28, 11, 30, 0, 0, time.UTC)); ok {
+		t.Fatal("11:30 超出发送窗口")
 	}
 }

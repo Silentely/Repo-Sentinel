@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
@@ -18,7 +19,12 @@ import (
 // Engine 决定是否实时通知并写入 Outbox。
 type Engine struct {
 	Store store.Store
+	// AI 可选；nil 或未启用时不进行安全告警分诊。
+	AI *ai.Client
 }
+
+// aiTriageTimeout 分诊调用预算上限：告警通知应尽快入库，AI 慢则放弃分诊。
+const aiTriageTimeout = 15 * time.Second
 
 // Evaluate 根据规范化结果创建通知。
 func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullName string) error {
@@ -37,6 +43,13 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		return err
 	}
 	title, body, htmlURL := renderMessage(res.Event, repoFullName)
+	// 安全告警分诊：新告警附带 AI 影响分析与处理建议；失败保持原文，不阻塞入库。
+	// 仅当存在订阅该告警类型的渠道时才调用，避免无接收方时产生无效的 AI 费用。
+	if hasSubscribedChannel(channels, res.Event.Kind) {
+		if analysis := e.triageAnalysis(ctx, res.Event, repoFullName); analysis != "" {
+			body = body + "\n────────────────\n🤖 AI 分析\n" + htmlpkg.EscapeString(analysis)
+		}
+	}
 	for _, ch := range channels {
 		// 渠道未订阅该事件类型时跳过。
 		if !ch.Enabled || !ch.AcceptsKind(res.Event.Kind) {
@@ -92,6 +105,45 @@ func shouldNotifyRealtime(ev *store.Event) bool {
 	return false
 }
 
+// hasSubscribedChannel 判定是否存在启用且订阅该事件类型的渠道。
+// 用于 AI 分诊等有外部成本的前置判断：无接收方时不调用。
+func hasSubscribedChannel(channels []store.NotificationChannel, kind string) bool {
+	for _, ch := range channels {
+		if ch.Enabled && ch.AcceptsKind(kind) {
+			return true
+		}
+	}
+	return false
+}
+
+// triageAnalysis 生成新安全告警的 AI 分析；未启用、非新告警或调用失败时返回空串。
+// 返回空串时调用方保持原通知正文，AI 慢或不可用绝不影响通知入库。
+func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo string) string {
+	if e.AI == nil || !e.AI.IsTriageEnabled() || !isNewSecurityAlert(ev) {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, aiTriageTimeout)
+	defer cancel()
+	analysis, err := e.AI.TriageAlert(ctx, *ev, repo)
+	if err != nil || strings.TrimSpace(analysis) == "" {
+		return ""
+	}
+	return analysis
+}
+
+// isNewSecurityAlert 判定是否为「新产生」的安全告警（创建/打开/重新打开）。
+// 忽略与修复等终态事件无需 AI 分诊。
+func isNewSecurityAlert(ev *store.Event) bool {
+	switch ev.Kind {
+	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
+		switch ev.Action {
+		case "created", "opened", "reopened":
+			return true
+		}
+	}
+	return false
+}
+
 func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 	statusEmoji, statusLabel := statusDisplay(ev)
 	// 标题把状态放最前，通知列表/推送预览第一眼就能看出打开还是关闭。
@@ -112,7 +164,7 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		b.WriteString(fmt.Sprintf("🔢 编号：#%d\n", *ev.SubjectNumber))
 	}
 
-	b.WriteString(fmt.Sprintf("📋 类型：%s\n", htmlpkg.EscapeString(kindDisplayName(ev.Kind))))
+	b.WriteString(fmt.Sprintf("📋 类型：%s\n", htmlpkg.EscapeString(store.KindDisplayName(ev.Kind))))
 
 	if ev.Actor != "" {
 		b.WriteString(fmt.Sprintf("👤 操作者：%s\n", htmlpkg.EscapeString(ev.Actor)))
@@ -123,15 +175,15 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		sevEmoji := severityEmoji(ev.Severity)
 		b.WriteString(fmt.Sprintf("%s 严重度：%s\n", sevEmoji, htmlpkg.EscapeString(severityDisplayName(ev.Severity))))
 	}
-	if rule := payloadString(ev.PayloadSummary, "rule_or_dependency"); rule != "" {
+	if rule := store.PayloadString(ev.PayloadSummary, "rule_or_dependency"); rule != "" {
 		b.WriteString(fmt.Sprintf("🛡️ 规则：%s\n", htmlpkg.EscapeString(rule)))
 	}
 
 	// Workflow 结论已并入「状态」行，正文只补充分支与工作流名。
-	if branch := payloadString(ev.PayloadSummary, "head_branch"); branch != "" {
+	if branch := store.PayloadString(ev.PayloadSummary, "head_branch"); branch != "" {
 		b.WriteString(fmt.Sprintf("🌿 分支：<code>%s</code>\n", htmlpkg.EscapeString(branch)))
 	}
-	if wfName := payloadString(ev.PayloadSummary, "workflow_name"); wfName != "" {
+	if wfName := store.PayloadString(ev.PayloadSummary, "workflow_name"); wfName != "" {
 		b.WriteString(fmt.Sprintf("⚙️ 工作流：%s\n", htmlpkg.EscapeString(wfName)))
 	}
 
@@ -143,7 +195,7 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		b.WriteString(fmt.Sprintf("👥 指派：%s\n", htmlpkg.EscapeString(strings.Join(assignees, ", "))))
 	}
 
-	if ms := payloadString(ev.PayloadSummary, "milestone"); ms != "" {
+	if ms := store.PayloadString(ev.PayloadSummary, "milestone"); ms != "" {
 		b.WriteString(fmt.Sprintf("📅 里程碑：%s\n", htmlpkg.EscapeString(ms)))
 	}
 
@@ -243,26 +295,6 @@ func statusDisplay(ev *store.Event) (emoji, label string) {
 			return eventEmoji(ev), actionDisplayName(ev.Action)
 		}
 		return eventEmoji(ev), "有更新"
-	}
-}
-
-// kindDisplayName 事件类型中文/友好名（推送正文用，避免 raw kind）。
-func kindDisplayName(kind string) string {
-	switch kind {
-	case store.WorkItemKindIssue:
-		return "Issue"
-	case store.WorkItemKindPR:
-		return "PR"
-	case store.AlertKindDependabot:
-		return "Dependabot 依赖告警"
-	case store.AlertKindCodeScanning:
-		return "Code Scanning 代码扫描"
-	case store.AlertKindSecretScanning:
-		return "Secret Scanning 密钥扫描"
-	case "workflow_run":
-		return "Actions 工作流"
-	default:
-		return kind
 	}
 }
 
@@ -414,17 +446,6 @@ func isDraft(ev *store.Event) bool {
 		return v
 	}
 	return false
-}
-
-// payloadString 从 PayloadSummary 安全读取字符串字段。
-func payloadString(m map[string]any, key string) string {
-	if m == nil {
-		return ""
-	}
-	if v, ok := m[key].(string); ok {
-		return v
-	}
-	return ""
 }
 
 // payloadStringSlice 从 PayloadSummary 安全读取字符串切片字段。

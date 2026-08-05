@@ -33,5 +33,5 @@ export function subscriptionSummary(eventKinds: string[] | null, digestEnabled: 
       .map((k) => k.label)
       .join("、");
   }
-  return `订阅：${kindsText} · 每日汇总：${digestEnabled ? "开" : "关"}`;
+  return `订阅：${kindsText} · 定期汇总：${digestEnabled ? "开" : "关"}`;
 }

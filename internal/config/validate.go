@@ -97,6 +97,24 @@ func (cfg Config) Validate() error {
 	if cfg.Aggregation.BurstWindow < 0 {
 		return newValidationError("aggregation.burst_window", "must be >= 0")
 	}
+	if cfg.AI.Enabled {
+		if strings.TrimSpace(cfg.AI.APIKey.Reveal()) == "" {
+			return newValidationError("ai.api_key", "is required when ai.enabled is true")
+		}
+		if cfg.AI.Timeout < 0 {
+			return newValidationError("ai.timeout", "must be >= 0")
+		}
+		if cfg.AI.MaxTokens <= 0 {
+			return newValidationError("ai.max_tokens", "must be > 0")
+		}
+		base := strings.TrimSpace(cfg.AI.BaseURL)
+		if base != "" {
+			parsed, err := url.Parse(base)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+				return newValidationError("ai.base_url", "must be an http(s) URL")
+			}
+		}
+	}
 	return nil
 }
 

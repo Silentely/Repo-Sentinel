@@ -81,3 +81,20 @@ aggregation:
   # 超频统计窗口，使用 Go duration 格式。
   burst_window: "5m"
   # 多实例时合并与摘要依赖 Outbox 幂等键去重，进程内合并仍为 best-effort。
+
+ai:
+  # 可选 LLM 集成（每日摘要 / 周报月报 / 安全告警分诊），默认关闭。
+  enabled: false
+  # OpenAI 兼容端点；可指向本地模型网关（如 Ollama http://127.0.0.1:11434/v1）。
+  base_url: "https://api.openai.com/v1"
+  # 模型名。
+  model: "gpt-4o-mini"
+  # 单次请求超时，使用 Go duration 格式。
+  timeout: "20s"
+  # 输出 token 上限。
+  max_tokens: 800
+  # 是否启用 AI 摘要（每日/周报/月报）。
+  digest_enabled: true
+  # 是否启用实时安全告警 AI 分诊。
+  triage_enabled: true
+  # API Key 通过 REPOSENTINEL_AI_API_KEY 注入；enabled=true 时必须提供。

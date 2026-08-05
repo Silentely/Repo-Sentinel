@@ -45,5 +45,14 @@ func defaultConfig() Config {
 			BurstThreshold: 15,
 			BurstWindow:    5 * time.Minute,
 		},
+		AI: AIConfig{
+			Enabled:       false,
+			BaseURL:       "https://api.openai.com/v1",
+			Model:         "gpt-4o-mini",
+			Timeout:       20 * time.Second,
+			MaxTokens:     800,
+			DigestEnabled: true,
+			TriageEnabled: true,
+		},
 	}
 }

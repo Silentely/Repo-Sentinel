@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func Test管理员用户名与密码必须成对(t *testing.T) {
@@ -185,6 +186,51 @@ func TestValidationError稳定且不泄漏敏感配置(t *testing.T) {
 			t.Fatal("ValidationError 泄漏了敏感配置")
 		}
 	}
+}
+
+func TestAI校验规则(t *testing.T) {
+	t.Run("开启但缺 Key 拒绝", func(t *testing.T) {
+		cfg := defaultConfig()
+		cfg.AI.Enabled = true
+		cfg.AI.APIKey = NewSecret("")
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("ai.enabled=true 且无 API Key 应校验失败")
+		}
+	})
+	t.Run("关闭时缺 Key 允许", func(t *testing.T) {
+		cfg := defaultConfig()
+		cfg.AI.Enabled = false
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("AI 关闭时不应校验失败: %v", err)
+		}
+	})
+	t.Run("非法超时拒绝", func(t *testing.T) {
+		cfg := defaultConfig()
+		cfg.AI.Enabled = true
+		cfg.AI.APIKey = NewSecret("sk-test")
+		cfg.AI.Timeout = -time.Second
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("负超时应校验失败")
+		}
+	})
+	t.Run("非法 max_tokens 拒绝", func(t *testing.T) {
+		cfg := defaultConfig()
+		cfg.AI.Enabled = true
+		cfg.AI.APIKey = NewSecret("sk-test")
+		cfg.AI.MaxTokens = 0
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("max_tokens<=0 应校验失败")
+		}
+	})
+	t.Run("非法 base_url 拒绝", func(t *testing.T) {
+		cfg := defaultConfig()
+		cfg.AI.Enabled = true
+		cfg.AI.APIKey = NewSecret("sk-test")
+		cfg.AI.BaseURL = "ftp://invalid"
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("非 http(s) base_url 应校验失败")
+		}
+	})
 }
 
 func requireValidationError(t *testing.T, err error) *ValidationError {

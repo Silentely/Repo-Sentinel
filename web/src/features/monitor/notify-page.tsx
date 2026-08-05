@@ -92,7 +92,7 @@ function ChannelForm({
   onFail,
   onSaved,
 }: ChannelFormProps) {
-  // 订阅配置：默认全订阅 + 收每日汇总；渠道加载后按服务端数据回填一次。
+  // 订阅配置：默认全订阅 + 收定期汇总；渠道加载后按服务端数据回填一次。
   const [target, setTarget] = useState("");
   const [secret, setSecret] = useState("");
   const [kinds, setKinds] = useState<string[]>(() => SUBSCRIBABLE_KINDS.map((k) => k.value));
@@ -203,7 +203,7 @@ function ChannelForm({
       <div className="field--plain">
         <label className="channel-kinds__item">
           <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} />
-          接收每日汇总
+          接收定期汇总（日/周/月）
         </label>
       </div>
       <div className="channel-form__buttons">
@@ -299,7 +299,7 @@ export function NotifyPage() {
         <div>
           <p className="eyebrow">通知</p>
           <h1>配置投递渠道</h1>
-          <p>每种渠道最多启用 1 个实例。订阅类型决定实时推送；每日汇总时刻在「关于与设置」配置。</p>
+          <p>每种渠道最多启用 1 个实例。订阅类型决定实时推送；定期汇总时刻在「关于与设置」配置。</p>
         </div>
       </section>
 
@@ -307,10 +307,11 @@ export function NotifyPage() {
       {error ? <ErrorAlert title="操作失败" message={error} /> : null}
 
       <section className="onboarding-card" aria-labelledby="notify-digest-title">
-        <h2 id="notify-digest-title">每日汇总调度</h2>
+        <h2 id="notify-digest-title">定期汇总调度</h2>
         <p className="field-hint">
-          当前摘要时刻：<strong>{digestTime}</strong>（时区 <code>{digestTz}</code>）。
-          渠道勾选「接收每日汇总」后，到点会合并过去 24 小时事件发送。修改时刻请到{" "}
+          当前汇总时刻：<strong>{digestTime}</strong>（时区 <code>{digestTz}</code>）。
+          渠道勾选「接收定期汇总」后，每日到点合并过去 24 小时事件发送，周报/月报在「关于与设置 → 运行偏好」启用。
+          修改时刻请到{" "}
           <Link to="/about">关于与设置 → 运行偏好</Link>。
         </p>
       </section>

@@ -171,6 +171,27 @@ openssl rand -hex 32
 | `REPOSENTINEL_AGGREGATION_BURST_THRESHOLD` | 突发条数阈值 |
 | `REPOSENTINEL_AGGREGATION_BURST_WINDOW` | 突发统计窗口，如 `5m` |
 
+### AI 集成（可选）
+
+AI 用于三处：每日摘要 / 周报 / 月报正文生成（`digest_enabled`），以及实时安全告警的影响分析与处理建议（`triage_enabled`）。默认关闭；开启时须提供 API Key，支持任意 OpenAI 兼容端点（可接 Ollama 等本地模型）。
+
+| 变量 | 说明 |
+|------|------|
+| `REPOSENTINEL_AI_ENABLED` | AI 总开关，默认 `false` |
+| `REPOSENTINEL_AI_API_KEY` | API Key，`enabled=true` 时必填 |
+| `REPOSENTINEL_AI_BASE_URL` | OpenAI 兼容端点，默认 `https://api.openai.com/v1` |
+| `REPOSENTINEL_AI_MODEL` | 模型名，默认 `gpt-4o-mini` |
+| `REPOSENTINEL_AI_TIMEOUT` | 单次请求超时，默认 `20s` |
+| `REPOSENTINEL_AI_MAX_TOKENS` | 输出 token 上限，默认 `800` |
+| `REPOSENTINEL_AI_DIGEST_ENABLED` | 是否启用 AI 摘要，默认 `true` |
+| `REPOSENTINEL_AI_TRIAGE_ENABLED` | 是否启用安全告警分诊，默认 `true` |
+
+AI 不可用（未配置、超时、服务端错误）时自动降级：摘要回退模板正文、告警保持原文，不影响通知投递。接入本地模型的 YAML 示例见下节。
+
+除环境变量外，AI 配置也可在管理台「关于与设置 → AI 集成」编辑：环境变量已设置的字段在管理台锁定（写入返回 `ai_field_locked`），未设置的字段由数据库补充；API Key 经主密钥 AES-GCM 加密存库，管理台不回显明文。修改保存后热生效，无需重启。
+
+> 隐私提示：启用 AI 后，事件标题、仓库名与告警信息会发送至所配置的模型服务（第三方云端或本地网关）。敏感环境建议接入本地模型（如 Ollama），避免仓库信息外泄。
+
 配置错误返回稳定 `validation_failed`，不会回显密码、连接串或主密钥原文。
 
 ---
@@ -184,3 +205,13 @@ reposentinel serve --config configs/reposentinel.example.yaml
 ```
 
 密码、主密钥、Secret、Token 仍用环境变量覆盖。
+
+接入本地 Ollama 的示例（API Key 可任意占位，本地网关不校验）：
+
+```yaml
+ai:
+  enabled: true
+  base_url: "http://127.0.0.1:11434/v1"
+  model: "llama3.1"
+  timeout: "60s"
+```

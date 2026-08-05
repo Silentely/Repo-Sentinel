@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	htmlpkg "html"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
@@ -18,15 +20,131 @@ const (
 	settingLocalTime  = "digest.local_time"
 	settingSendEmpty  = "digest.send_empty"
 	settingLastDigest = "digest.last_sent_date"
+	// 周报/月报设置键。
+	settingWeeklyEnabled  = "report.weekly_enabled"
+	settingWeeklyDay      = "report.weekly_day"
+	settingLastWeekly     = "report.last_weekly_date"
+	settingMonthlyEnabled = "report.monthly_enabled"
+	settingMonthlyDay     = "report.monthly_day"
+	settingLastMonthly    = "report.last_monthly_date"
 )
 
-// Generator 每日摘要。
+// 默认发送参数：周一发送周报、每月 1 日发送月报。
+const (
+	defaultWeeklyDay  = "monday"
+	defaultMonthlyDay = 1
+)
+
+// Generator 定期报告生成器：每日摘要 / 每周报告 / 每月报告。
 type Generator struct {
 	Store store.Store
+	// AI 可选；nil 或未启用时不使用 AI 总结，回退模板正文。
+	AI *ai.Client
 }
 
-// RunOnce 若到达管理员本地发送时刻且当日未发送，则生成摘要通知。
+// RunOnce 每日摘要：到达管理员本地发送时刻且当日未发送时生成。
 func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
+	loc, ok := g.sendWindow(ctx, now)
+	if !ok {
+		return nil
+	}
+	localNow := now.In(loc)
+	dateKey := localNow.Format("2006-01-02")
+	if store.SettingString(ctx, g.Store.Settings(), settingLastDigest, "") == dateKey {
+		return nil
+	}
+
+	since := now.Add(-24 * time.Hour)
+	events, err := g.filteredEvents(ctx, since, 500)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 && !store.SettingBool(ctx, g.Store.Settings(), settingSendEmpty, false) {
+		return nil
+	}
+
+	title := fmt.Sprintf("📊 每日摘要 %s", dateKey)
+	body, aiUsed := g.reportBody(ctx, title, events, "过去 24 小时")
+	return g.enqueue(ctx, settingLastDigest, "digest", dateKey, title, body, map[string]any{
+		"digest": true, "date": dateKey, "count": len(events), "ai": aiUsed,
+	})
+}
+
+// RunWeekly 每周报告：在配置的发送日到达发送时刻且本周未发送时生成。
+// 周期为发送日起的最近 7 天，幂等键按发送日日期稳定。
+func (g *Generator) RunWeekly(ctx context.Context, now time.Time) error {
+	if !store.SettingBool(ctx, g.Store.Settings(), settingWeeklyEnabled, false) {
+		return nil
+	}
+	loc, ok := g.sendWindow(ctx, now)
+	if !ok {
+		return nil
+	}
+	localNow := now.In(loc)
+	wd, valid := parseWeekday(strings.ToLower(store.SettingString(ctx, g.Store.Settings(), settingWeeklyDay, defaultWeeklyDay)))
+	if !valid || localNow.Weekday() != wd {
+		return nil
+	}
+	// 周期起始 = 发送日 00:00（本地时区），保证同一天内幂等。
+	periodStart := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, loc)
+	dateKey := periodStart.Format("2006-01-02")
+	if store.SettingString(ctx, g.Store.Settings(), settingLastWeekly, "") == dateKey {
+		return nil
+	}
+
+	events, err := g.filteredEvents(ctx, periodStart.UTC(), 1000)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 && !store.SettingBool(ctx, g.Store.Settings(), settingSendEmpty, false) {
+		return nil
+	}
+
+	title := fmt.Sprintf("📊 每周报告 %s 起", dateKey)
+	body, aiUsed := g.reportBody(ctx, title, events, "过去 7 天")
+	return g.enqueue(ctx, settingLastWeekly, "report|weekly", dateKey, title, body, map[string]any{
+		"report": "weekly", "period_start": dateKey, "count": len(events), "ai": aiUsed,
+	})
+}
+
+// RunMonthly 每月报告：在配置的发送日到达发送时刻且当月未发送时生成。
+// 周期为滚动 30 天，幂等键按月稳定。
+func (g *Generator) RunMonthly(ctx context.Context, now time.Time) error {
+	if !store.SettingBool(ctx, g.Store.Settings(), settingMonthlyEnabled, false) {
+		return nil
+	}
+	loc, ok := g.sendWindow(ctx, now)
+	if !ok {
+		return nil
+	}
+	localNow := now.In(loc)
+	day := store.SettingInt(ctx, g.Store.Settings(), settingMonthlyDay, defaultMonthlyDay)
+	if localNow.Day() != day {
+		return nil
+	}
+	dateKey := localNow.Format("2006-01")
+	if store.SettingString(ctx, g.Store.Settings(), settingLastMonthly, "") == dateKey {
+		return nil
+	}
+
+	events, err := g.filteredEvents(ctx, now.AddDate(0, 0, -30), 1000)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 && !store.SettingBool(ctx, g.Store.Settings(), settingSendEmpty, false) {
+		return nil
+	}
+
+	title := fmt.Sprintf("📊 月度报告 %s", dateKey)
+	body, aiUsed := g.reportBody(ctx, title, events, "过去 30 天")
+	return g.enqueue(ctx, settingLastMonthly, "report|monthly", dateKey, title, body, map[string]any{
+		"report": "monthly", "period": dateKey, "count": len(events), "ai": aiUsed,
+	})
+}
+
+// sendWindow 计算本地时区并判定是否处于发送时刻后的一小时窗口内。
+// 返回时区与是否在窗口内。
+func (g *Generator) sendWindow(ctx context.Context, now time.Time) (*time.Location, bool) {
 	tzName := store.SettingString(ctx, g.Store.Settings(), settingTimezone, "UTC")
 	loc, err := time.LoadLocation(tzName)
 	if err != nil {
@@ -38,23 +156,21 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 	if _, err := fmt.Sscanf(sendAt, "%d:%d", &hour, &minute); err != nil {
 		hour, minute = 9, 0
 	}
-	// 仅在本地时刻到达后的一小时窗口内尝试，避免整点错过
+	// 仅在本地时刻到达后的一小时窗口内尝试，避免整点错过。
 	if localNow.Hour() < hour || (localNow.Hour() == hour && localNow.Minute() < minute) {
-		return nil
+		return loc, false
 	}
 	if localNow.Hour() > hour+1 {
-		return nil
+		return loc, false
 	}
-	dateKey := localNow.Format("2006-01-02")
-	if store.SettingString(ctx, g.Store.Settings(), settingLastDigest, "") == dateKey {
-		return nil
-	}
+	return loc, true
+}
 
-	// 收集近 24h 事件并按类别分组；全局关闭的功能不进入摘要。
-	since := now.Add(-24 * time.Hour)
-	events, err := g.Store.Events().ListSince(ctx, since, 500)
+// filteredEvents 读取某时间窗内的事件并按全局功能开关过滤。
+func (g *Generator) filteredEvents(ctx context.Context, since time.Time, limit int) ([]store.Event, error) {
+	events, err := g.Store.Events().ListSince(ctx, since, limit)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	features := store.LoadFeatureFlags(ctx, g.Store.Settings())
 	filtered := events[:0]
@@ -63,55 +179,100 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 			filtered = append(filtered, ev)
 		}
 	}
-	events = filtered
-	sendEmpty := store.SettingBool(ctx, g.Store.Settings(), settingSendEmpty, false)
-	if len(events) == 0 && !sendEmpty {
-		return nil
+	return filtered, nil
+}
+
+// reportBody 生成定期报告正文：AI 可用时优先使用 AI 总结，失败回退模板。
+// 返回正文与是否使用了 AI。
+func (g *Generator) reportBody(ctx context.Context, title string, events []store.Event, period string) (string, bool) {
+	template := buildReportBody(title, events, period)
+	if g.AI == nil || !g.AI.IsDigestEnabled() || len(events) == 0 {
+		return template, false
 	}
+	summary, err := g.AI.SummarizeEvents(ctx, events, g.repoNames(ctx, events), period)
+	if err != nil || strings.TrimSpace(summary) == "" {
+		return template, false
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
+	b.WriteString("────────────────\n")
+	// AI 输出为模型生成文本，嵌入 HTML 正文前必须转义，避免破坏 parse_mode=HTML。
+	b.WriteString(htmlpkg.EscapeString(summary))
+	return b.String(), true
+}
 
-	title := fmt.Sprintf("📊 每日摘要 %s", dateKey)
-	body := buildDigestBody(title, events)
+// repoNames 解析事件涉及的仓库 ID → full_name 映射（供 AI 总结引用仓库名）。
+// 查询失败或仓库不存在时跳过，不阻断总结。
+func (g *Generator) repoNames(ctx context.Context, events []store.Event) map[string]string {
+	out := make(map[string]string)
+	for _, ev := range events {
+		if ev.RepositoryID == nil {
+			continue
+		}
+		id := *ev.RepositoryID
+		if _, seen := out[id]; seen {
+			continue
+		}
+		repo, err := g.Store.Repositories().Get(ctx, id)
+		if err != nil {
+			continue
+		}
+		out[id] = repo.FullName
+	}
+	return out
+}
 
+// enqueue 向启用定期汇总的渠道写入 outbox，并记录 last-sent 记账键。
+func (g *Generator) enqueue(
+	ctx context.Context,
+	lastKey, prefix, dateKey, title, body string,
+	bodyJSON map[string]any,
+) error {
 	channels, err := g.Store.Channels().List(ctx)
 	if err != nil {
 		return err
 	}
 	for _, ch := range channels {
-		// 渠道关闭每日汇总时跳过。
 		if !ch.Enabled || !ch.DigestEnabled {
 			continue
 		}
-		idem := fmt.Sprintf("digest|%s|%s", ch.ID, dateKey)
+		idem := fmt.Sprintf("%s|%s|%s", prefix, ch.ID, dateKey)
 		_, err := g.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: title, BodyText: body, ParseMode: "HTML",
-			BodyJSON: map[string]any{"digest": true, "date": dateKey, "count": len(events)},
+			BodyJSON: bodyJSON,
 		})
 		if err != nil && !errors.Is(err, store.ErrConflict) {
 			return err
 		}
 	}
+	// 记账与渠道无关：即使暂无可投递渠道也落账，避免之后开启订阅时当日补发。
 	raw, _ := json.Marshal(dateKey)
 	_, _ = g.Store.Settings().Upsert(ctx, store.SystemSetting{
-		ID: ulid.Make().String(), Key: settingLastDigest, ValueJSON: raw,
+		ID: ulid.Make().String(), Key: lastKey, ValueJSON: raw,
 		UpdatedAt: time.Now().UTC(), UpdatedBy: "system",
 	})
 	return nil
 }
 
-// buildDigestBody 构建分组格式的每日摘要正文。
+// buildDigestBody 保留兼容入口：每日摘要模板正文（「过去 24 小时」时段文案）。
 func buildDigestBody(title string, events []store.Event) string {
+	return buildReportBody(title, events, "过去 24 小时")
+}
+
+// buildReportBody 构建分组格式的定期报告正文。
+func buildReportBody(title string, events []store.Event, period string) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
 	b.WriteString("────────────────\n")
 
 	if len(events) == 0 {
-		b.WriteString("🎉 过去 24 小时无新事件\n")
+		b.WriteString("🎉 期间无新事件\n")
 		return b.String()
 	}
 
-	b.WriteString(fmt.Sprintf("过去 24 小时共 %d 条事件\n", len(events)))
+	b.WriteString(fmt.Sprintf("%s共 %d 条事件\n", period, len(events)))
 	b.WriteString("────────────────\n")
 
 	// 按 kind 分组计数
@@ -150,6 +311,28 @@ func buildDigestBody(title string, events []store.Event) string {
 	}
 
 	return b.String()
+}
+
+// parseWeekday 将英文周名解析为 time.Weekday；非法返回 false。
+func parseWeekday(s string) (time.Weekday, bool) {
+	switch s {
+	case "sunday":
+		return time.Sunday, true
+	case "monday":
+		return time.Monday, true
+	case "tuesday":
+		return time.Tuesday, true
+	case "wednesday":
+		return time.Wednesday, true
+	case "thursday":
+		return time.Thursday, true
+	case "friday":
+		return time.Friday, true
+	case "saturday":
+		return time.Saturday, true
+	default:
+		return 0, false
+	}
 }
 
 // kindEmoji 根据事件类别返回 emoji。

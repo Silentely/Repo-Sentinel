@@ -2,6 +2,21 @@
 
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 SemVer。
 
+## [0.3.8] - 2026-08-05
+
+### Added
+
+- 可选 AI 集成（默认关闭）：OpenAI 兼容 Chat Completions 客户端，可通过 `REPOSENTINEL_AI_*` 配置，支持接入本地模型（Ollama 等）；AI 不可用时自动降级，不影响通知投递
+- 每日摘要 / 周报 / 月报正文由 LLM 生成自然语言总结（`ai.digest_enabled`），失败回退原模板
+- 实时安全告警（Dependabot / Code Scanning / Secret Scanning 新告警）通知附带 AI 影响分析与处理建议（`ai.triage_enabled`）
+- 每周 / 每月定期报告（默认关闭）：发送日与发送时刻经 `report.*` 系统设置配置，正文复用汇总模板并支持 AI 总结
+- settings API 新增 `report.weekly_enabled` / `report.weekly_day` / `report.monthly_enabled` / `report.monthly_day` 键
+- AI 配置可在管理台「关于与设置 → AI 集成」编辑：环境变量已设置字段在管理台锁定，API Key 经主密钥加密存库且不回显，保存后热生效无需重启
+
+### Changed
+
+- 通知渠道「接收每日汇总」文案更新为「接收定期汇总（日/周/月）」，勾选后同时接收每日、每周、每月报告
+
 ## [0.3.7] - 2026-07-30
 
 ### Added

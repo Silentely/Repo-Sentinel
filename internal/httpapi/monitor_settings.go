@@ -29,6 +29,10 @@ func (s *server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"feature.pull_requests":             true,
 		"feature.actions":                   true,
 		"feature.security_alerts":           true,
+		"report.weekly_enabled":             false,
+		"report.weekly_day":                 "monday",
+		"report.monthly_enabled":            false,
+		"report.monthly_day":                1,
 	}
 	for key := range out {
 		if s, err := s.dependencies.Store.Settings().Get(r.Context(), key); err == nil {
@@ -52,6 +56,8 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		"display.closed_limit":  true,
 		"retention.events_days": true, "retention.outbox_days": true, "retention.webhook_deliveries_days": true,
 		"feature.issues": true, "feature.pull_requests": true, "feature.actions": true, "feature.security_alerts": true,
+		"report.weekly_enabled": true, "report.weekly_day": true,
+		"report.monthly_enabled": true, "report.monthly_day": true,
 	}
 	// 先全量校验再写入：map 遍历顺序随机，边校验边写会导致部分生效——
 	// 用户看到 400 却已有键被落库。
@@ -121,12 +127,35 @@ func validateSettingValue(key string, v any) (any, string, bool) {
 		}
 		return s, "", true
 	case "digest.send_empty",
-		"feature.issues", "feature.pull_requests", "feature.actions", "feature.security_alerts":
+		"feature.issues", "feature.pull_requests", "feature.actions", "feature.security_alerts",
+		"report.weekly_enabled", "report.monthly_enabled":
 		b, ok := v.(bool)
 		return b, "开关值须为布尔类型。", ok
+	case "report.weekly_day":
+		s, ok := v.(string)
+		if !ok {
+			return nil, "发送日须为英文周名（monday–sunday）。", false
+		}
+		normalized := strings.ToLower(s)
+		if !validWeekdayName(normalized) {
+			return nil, "发送日须为英文周名（monday–sunday）。", false
+		}
+		return normalized, "", true
+	case "report.monthly_day":
+		n, ok := coerceIntInRange(v, 1, 28)
+		return n, "每月发送日须为 1–28 的整数。", ok
 	default:
 		return v, "", true
 	}
+}
+
+// validWeekdayName 判定是否合法英文周名（小写）。
+func validWeekdayName(s string) bool {
+	switch s {
+	case "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday":
+		return true
+	}
+	return false
 }
 
 // normalizeLocalTime 校验并归一化 HH:MM（允许 9:00，统一输出 09:00）。

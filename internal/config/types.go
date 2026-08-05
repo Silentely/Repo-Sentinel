@@ -18,6 +18,28 @@ type Config struct {
 	Metrics     MetricsConfig        `yaml:"metrics"`
 	UpdateCheck UpdateCheckConfig    `yaml:"update_check"`
 	Aggregation AggregationConfig    `yaml:"aggregation"`
+	AI          AIConfig             `yaml:"ai"`
+}
+
+// AIConfig 描述可选的 LLM 集成（OpenAI 兼容 Chat Completions）。
+// 默认关闭；开启时须提供 API Key，可通过 BaseURL 接入任意 OpenAI 兼容网关（含本地模型）。
+type AIConfig struct {
+	// Enabled 总开关；false 时不发起任何 AI 请求。
+	Enabled bool `yaml:"enabled"`
+	// BaseURL OpenAI 兼容端点，形如 https://api.openai.com/v1。
+	BaseURL string `yaml:"base_url"`
+	// APIKey 通过 REPOSENTINEL_AI_API_KEY 注入，不写入配置文件。
+	APIKey Secret `yaml:"api_key"`
+	// Model 模型名，默认 gpt-4o-mini。
+	Model string `yaml:"model"`
+	// Timeout 单次请求超时，默认 20s。
+	Timeout time.Duration `yaml:"timeout"`
+	// MaxTokens 输出 token 上限，默认 800。
+	MaxTokens int `yaml:"max_tokens"`
+	// DigestEnabled 是否启用 AI 摘要（每日/周报/月报），默认 true。
+	DigestEnabled bool `yaml:"digest_enabled"`
+	// TriageEnabled 是否启用实时安全告警 AI 分诊，默认 true。
+	TriageEnabled bool `yaml:"triage_enabled"`
 }
 
 // MetricsConfig 描述 Prometheus /metrics 暴露策略。

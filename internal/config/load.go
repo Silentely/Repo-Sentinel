@@ -343,6 +343,50 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 		}
 		cfg.Aggregation.BurstWindow = d
 	}
+	if value, ok := lookup("REPOSENTINEL_AI_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_AI_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.AI.Enabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_AI_BASE_URL"); ok {
+		cfg.AI.BaseURL = value
+	}
+	if value, ok := lookup("REPOSENTINEL_AI_API_KEY"); ok {
+		cfg.AI.APIKey = NewSecret(value)
+	}
+	if value, ok := lookup("REPOSENTINEL_AI_MODEL"); ok {
+		cfg.AI.Model = value
+	}
+	if value, ok := lookup("REPOSENTINEL_AI_TIMEOUT"); ok {
+		d, err := time.ParseDuration(value)
+		if err != nil {
+			return poolExplicitFlags{}, newValidationError("REPOSENTINEL_AI_TIMEOUT", "must be a duration")
+		}
+		cfg.AI.Timeout = d
+	}
+	if value, ok := lookup("REPOSENTINEL_AI_MAX_TOKENS"); ok {
+		n, err := parseIntEnvironment("REPOSENTINEL_AI_MAX_TOKENS", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.AI.MaxTokens = n
+	}
+	if value, ok := lookup("REPOSENTINEL_AI_DIGEST_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_AI_DIGEST_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.AI.DigestEnabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_AI_TRIAGE_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_AI_TRIAGE_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.AI.TriageEnabled = parsed
+	}
 	return explicit, nil
 }
 

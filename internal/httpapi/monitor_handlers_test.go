@@ -381,6 +381,17 @@ func TestSettingsPutValidatesAllBeforeWriting(t *testing.T) {
 	if out["notify.burst_window_sec"] != float64(300) {
 		t.Fatalf("GET 应返回 burst_window_sec 默认 300，got %v", out["notify.burst_window_sec"])
 	}
+	// 新增 report.* 定期报告键必须有默认值返回，且不随 PUT 丢失。
+	for key, want := range map[string]any{
+		"report.weekly_enabled":  false,
+		"report.weekly_day":      "monday",
+		"report.monthly_enabled": false,
+		"report.monthly_day":     float64(1),
+	} {
+		if out[key] != want {
+			t.Fatalf("GET 应返回 %s 默认 %v，got %v", key, want, out[key])
+		}
+	}
 }
 
 func TestValidateSettingValueRules(t *testing.T) {
@@ -406,6 +417,15 @@ func TestValidateSettingValueRules(t *testing.T) {
 		{"feature.issues", "yes", false, nil},
 		{"retention.events_days", float64(0), true, 0},
 		{"retention.events_days", float64(3651), false, nil},
+		{"report.weekly_enabled", true, true, true},
+		{"report.weekly_enabled", "yes", false, nil},
+		{"report.weekly_day", "Friday", true, "friday"},
+		{"report.weekly_day", "funday", false, nil},
+		{"report.weekly_day", 3, false, nil},
+		{"report.monthly_enabled", true, true, true},
+		{"report.monthly_day", float64(28), true, 28},
+		{"report.monthly_day", float64(29), false, nil},
+		{"report.monthly_day", float64(0), false, nil},
 	}
 	for _, tc := range cases {
 		got, _, ok := validateSettingValue(tc.key, tc.value)
