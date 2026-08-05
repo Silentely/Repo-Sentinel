@@ -42,3 +42,38 @@ describe("api client 请求超时", () => {
     expect(init.signal).toBe(controller.signal);
   });
 });
+
+describe("api client 错误解析", () => {
+  it("非 JSON 错误响应时回退展示响应原文而非通用文案", async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response("upstream connect error or disconnect/reset before headers. reset reason: connection termination", {
+        status: 503,
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    const request = createApiClient({ fetchImpl });
+
+    await expect(request("/api/v1/ai/test", { method: "POST", body: "{}" })).rejects.toMatchObject({
+      message: expect.stringContaining("upstream connect error"),
+    });
+  });
+
+  it("标准 JSON 错误无 message 时保持通用文案", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ error_code: "boom" }, 500));
+    const request = createApiClient({ fetchImpl });
+
+    await expect(request("/api/v1/ping")).rejects.toMatchObject({
+      message: "服务器暂时无法完成请求，请稍后重试。",
+    });
+  });
+
+  it("标准 JSON 错误优先使用后端 message", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ error_code: "ai_field_locked", message: "字段已锁定" }, 409));
+    const request = createApiClient({ fetchImpl });
+
+    await expect(request("/api/v1/ai/config", { method: "PUT", body: "{}" })).rejects.toMatchObject({
+      message: "字段已锁定",
+      errorCode: "ai_field_locked",
+    });
+  });
+});

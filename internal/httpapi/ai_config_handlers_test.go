@@ -314,3 +314,40 @@ func TestAIConnectivityEnvLocked(t *testing.T) {
 		t.Fatalf("env 锁定字段应忽略覆盖值：%+v", res)
 	}
 }
+
+// 探测超时：端点无响应时在探测上限内返回 ok=false 与友好超时提示，
+// 而不是把 handler 拖过 HTTP Server WriteTimeout 导致连接被反代掐断。
+func TestAIConnectivityProbeTimeout(t *testing.T) {
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+	}))
+	defer slow.Close()
+
+	oldMax := aiTestProbeMax
+	aiTestProbeMax = 200 * time.Millisecond
+	defer func() { aiTestProbeMax = oldMax }()
+
+	fixture, _, _ := aiTestFixture(t)
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	start := time.Now()
+	resp := fixture.request(t, http.MethodPost, "/api/v1/ai/test",
+		fmt.Sprintf(`{"base_url":%q,"api_key":"sk-probe"}`, slow.URL),
+		"127.0.0.1:45306", cookies, headers)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var res aiTestResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.OK || !strings.Contains(res.Message, "超时") {
+		t.Fatalf("挂起端点应返回超时提示：%+v", res)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("探测应在上限内返回，实际耗时 %s", elapsed)
+	}
+}

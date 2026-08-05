@@ -174,6 +174,28 @@ func TestCompleteBadResponse(t *testing.T) {
 	}
 }
 
+// TestCompleteNon2xxDetail 验证非 2xx 响应体被纳入错误信息（连通性测试可展示网关真实原因）。
+func TestCompleteNon2xxDetail(t *testing.T) {
+	srv := captureServer(t, http.StatusBadGateway,
+		`upstream connect error or disconnect/reset before headers. reset reason: connection termination`, nil)
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true}
+	_, err := c.Complete(t.Context(), "s", "u")
+	if err == nil {
+		t.Fatal("502 应返回错误")
+	}
+	if !strings.Contains(err.Error(), "upstream connect error") {
+		t.Fatalf("错误应包含响应体明细：%v", err)
+	}
+	// 无正文时返回稳定占位，不 panic。
+	empty := captureServer(t, http.StatusInternalServerError, "", nil)
+	defer empty.Close()
+	if _, err := (&Client{BaseURL: empty.URL, APIKey: "k", Enabled: true}).Complete(t.Context(), "s", "u"); err == nil ||
+		!strings.Contains(err.Error(), "empty response") {
+		t.Fatalf("空正文应返回稳定占位：%v", err)
+	}
+}
+
 func TestCompleteTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)

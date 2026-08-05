@@ -425,17 +425,19 @@ export function AboutPage() {
           <input type="checkbox" checked={aiForm.triage} disabled={aiConfig.data?.triage_enabled_locked} onChange={(e) => setAI("triage", e.target.checked)} />
           <span>安全告警分诊</span>
         </label>
-        <button className="primary-button primary-button--inline" type="button" disabled={saveAIConfigMut.isPending || aiConfig.isLoading || aiConfig.isError} onClick={submitAIConfig}>
-          {saveAIConfigMut.isPending ? "保存中…" : "保存 AI 配置"}
-        </button>
-        <button className="secondary-button" type="button" disabled={testAIMut.isPending || aiConfig.isLoading || aiConfig.isError} onClick={runAITest}>
-          {testAIMut.isPending ? "测试中…" : "🔌 测试连通性"}
-        </button>
-        {!aiConfig.data?.api_key_locked && aiConfig.data?.api_key_configured ? (
-          <button className="quiet-button" type="button" disabled={saveAIConfigMut.isPending || aiConfig.isError} onClick={clearAPIKey}>
-            清除 API Key
+        <div className="channel-form__buttons">
+          <button className="primary-button primary-button--inline" type="button" disabled={saveAIConfigMut.isPending || aiConfig.isLoading || aiConfig.isError} onClick={submitAIConfig}>
+            {saveAIConfigMut.isPending ? "保存中…" : "保存 AI 配置"}
           </button>
-        ) : null}
+          <button className="secondary-button" type="button" disabled={testAIMut.isPending || aiConfig.isLoading || aiConfig.isError} onClick={runAITest}>
+            {testAIMut.isPending ? "测试中…" : "🔌 测试连通性"}
+          </button>
+          {!aiConfig.data?.api_key_locked && aiConfig.data?.api_key_configured ? (
+            <button className="quiet-button" type="button" disabled={saveAIConfigMut.isPending || aiConfig.isError} onClick={clearAPIKey}>
+              清除 API Key
+            </button>
+          ) : null}
+        </div>
         {aiTest ? (
           aiTest.ok ? (
             <p className="success-banner" role="status">{aiTest.message}</p>

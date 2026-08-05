@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -62,6 +64,11 @@ const (
 	minAIMaxTokens  int   = 100
 	maxAIMaxTokens  int   = 8000
 )
+
+// aiTestProbeMax 连通性测试探测时长上限。探测是同步阻塞 HTTP handler 的，必须远小于
+// HTTP Server WriteTimeout（30s）与常见反代超时，否则连接会在写响应前被掐断，
+// 前端只能看到反代的「connection termination」而非真实错误。设为 var 便于测试缩短。
+var aiTestProbeMax = 15 * time.Second
 
 // aiTestResponse AI 连通性测试结果：一律 200，ok 区分可达性，message 为人话描述。
 type aiTestResponse struct {
@@ -313,8 +320,8 @@ func (s *server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
 	// probe 使用按配置超时的专用 HTTP 客户端：包级默认客户端 30s 硬顶会截断
 	// 高于 30s 的超时配置，导致测试与真实运行时行为不一致。
 	probeTimeout := timeout
-	if probeTimeout <= 0 {
-		probeTimeout = ai.DefaultTimeout
+	if probeTimeout <= 0 || probeTimeout > aiTestProbeMax {
+		probeTimeout = aiTestProbeMax
 	}
 	probe := &ai.Client{
 		Enabled: true, BaseURL: baseURL, APIKey: apiKey, Model: model,
@@ -324,9 +331,13 @@ func (s *server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
 	latency, err := probe.Ping(r.Context())
 	effectiveModel, effectiveBase := effectiveAIModel(model), effectiveAIBaseURL(baseURL)
 	if err != nil {
+		message := fmt.Sprintf("连通性测试失败：%v", err)
+		if isProbeTimeout(err) {
+			message = fmt.Sprintf("连通性测试超时：模型端点 %d 秒内未响应，请检查网络连通性或稍后重试。", int(probeTimeout/time.Second))
+		}
 		writeJSON(w, http.StatusOK, aiTestResponse{
 			OK:      false,
-			Message: fmt.Sprintf("连通性测试失败：%v", err),
+			Message: message,
 			Model:   effectiveModel,
 			BaseURL: effectiveBase,
 		})
@@ -354,4 +365,9 @@ func effectiveAIBaseURL(base string) string {
 		return ai.DefaultBaseURL
 	}
 	return base
+}
+
+// isProbeTimeout 识别探测超时（context 截止或 http.Client.Timeout 到期）。
+func isProbeTimeout(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "Client.Timeout exceeded")
 }
