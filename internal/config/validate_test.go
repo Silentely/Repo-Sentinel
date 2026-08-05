@@ -240,6 +240,15 @@ func TestAI校验规则(t *testing.T) {
 			t.Fatal("非 http(s) base_url 应校验失败")
 		}
 	})
+	t.Run("base_url 含 userinfo 拒绝", func(t *testing.T) {
+		cfg := defaultConfig()
+		cfg.AI.Enabled = true
+		cfg.AI.APIKey = NewSecret("sk-test")
+		cfg.AI.BaseURL = "https://user:pass@api.example.com/v1"
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("URL 内嵌凭据的 base_url 应校验失败（与 httpapi 校验一致）")
+		}
+	})
 }
 
 func requireValidationError(t *testing.T, err error) *ValidationError {

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -52,6 +53,23 @@ type aiConfigPutRequest struct {
 	TriageEnabled *bool   `json:"triage_enabled"`
 	APIKey        *string `json:"api_key"`
 	ClearAPIKey   bool    `json:"clear_api_key"`
+}
+
+// aiConfigPutRequest 可写标量字段的取值范围（PUT 保存与连通性测试共用）。
+const (
+	minAITimeoutSec int64 = 1
+	maxAITimeoutSec int64 = 3600
+	minAIMaxTokens  int   = 100
+	maxAIMaxTokens  int   = 8000
+)
+
+// aiTestResponse AI 连通性测试结果：一律 200，ok 区分可达性，message 为人话描述。
+type aiTestResponse struct {
+	OK        bool   `json:"ok"`
+	Message   string `json:"message"`
+	Model     string `json:"model"`
+	BaseURL   string `json:"base_url"`
+	LatencyMS int64  `json:"latency_ms"`
 }
 
 func (s *server) aiRuntime() *ai.RuntimeConfig {
@@ -153,7 +171,7 @@ func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 		if s.rejectAILockedField(w, r, snap.TimeoutSource, "timeout_sec") {
 			return
 		}
-		if *body.TimeoutSec < 1 || *body.TimeoutSec > 3600 {
+		if *body.TimeoutSec < minAITimeoutSec || *body.TimeoutSec > maxAITimeoutSec {
 			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "timeout_sec"})
 			return
 		}
@@ -163,7 +181,7 @@ func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 		if s.rejectAILockedField(w, r, snap.MaxTokensSource, "max_tokens") {
 			return
 		}
-		if *body.MaxTokens < 100 || *body.MaxTokens > 8000 {
+		if *body.MaxTokens < minAIMaxTokens || *body.MaxTokens > maxAIMaxTokens {
 			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "max_tokens"})
 			return
 		}
@@ -229,4 +247,111 @@ func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 func validAIBaseURL(value string) bool {
 	parsed, err := url.Parse(value)
 	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" && parsed.User == nil
+}
+
+// handleTestAIConfig 用当前生效配置执行一次最小对话，验证端点 / 模型 / API Key 连通性。
+// 请求体可携带未锁定字段的临时覆盖值（便于保存前先验证），env 锁定字段不可覆盖；
+// 测试只读不改：不写库、不改变运行时。结果一律 200，ok 区分可达性。
+func (s *server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
+	rt := s.aiRuntime()
+	if rt == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		return
+	}
+	var body aiConfigPutRequest
+	if !s.decodeRequestJSON(w, r, &body) {
+		return
+	}
+	snap := rt.Snapshot()
+
+	baseURL := snap.BaseURL
+	if body.BaseURL != nil && snap.BaseURLSource != "env" {
+		base := strings.TrimSpace(*body.BaseURL)
+		if base != "" && !validAIBaseURL(base) {
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "base_url"})
+			return
+		}
+		baseURL = base
+	}
+	model := snap.Model
+	if body.Model != nil && snap.ModelSource != "env" {
+		model = strings.TrimSpace(*body.Model)
+	}
+	timeout := snap.Timeout
+	if body.TimeoutSec != nil && snap.TimeoutSource != "env" {
+		if *body.TimeoutSec < minAITimeoutSec || *body.TimeoutSec > maxAITimeoutSec {
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "timeout_sec"})
+			return
+		}
+		timeout = time.Duration(*body.TimeoutSec) * time.Second
+	}
+	maxTokens := snap.MaxTokens
+	if body.MaxTokens != nil && snap.MaxTokensSource != "env" {
+		if *body.MaxTokens < minAIMaxTokens || *body.MaxTokens > maxAIMaxTokens {
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "max_tokens"})
+			return
+		}
+		maxTokens = *body.MaxTokens
+	}
+	apiKey := snap.APIKey
+	if body.APIKey != nil && snap.APIKeySource != "env" {
+		if key := strings.TrimSpace(*body.APIKey); key != "" {
+			apiKey = key
+		}
+	}
+
+	if apiKey == "" {
+		writeJSON(w, http.StatusOK, aiTestResponse{
+			OK:      false,
+			Message: "未配置 API Key，无法测试；请先保存 API Key 或在环境变量中设置。",
+			Model:   effectiveAIModel(model),
+			BaseURL: effectiveAIBaseURL(baseURL),
+		})
+		return
+	}
+
+	// probe 使用按配置超时的专用 HTTP 客户端：包级默认客户端 30s 硬顶会截断
+	// 高于 30s 的超时配置，导致测试与真实运行时行为不一致。
+	probeTimeout := timeout
+	if probeTimeout <= 0 {
+		probeTimeout = ai.DefaultTimeout
+	}
+	probe := &ai.Client{
+		Enabled: true, BaseURL: baseURL, APIKey: apiKey, Model: model,
+		Timeout: timeout, MaxTokens: maxTokens,
+		HTTP: &http.Client{Timeout: probeTimeout},
+	}
+	latency, err := probe.Ping(r.Context())
+	effectiveModel, effectiveBase := effectiveAIModel(model), effectiveAIBaseURL(baseURL)
+	if err != nil {
+		writeJSON(w, http.StatusOK, aiTestResponse{
+			OK:      false,
+			Message: fmt.Sprintf("连通性测试失败：%v", err),
+			Model:   effectiveModel,
+			BaseURL: effectiveBase,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, aiTestResponse{
+		OK:        true,
+		Message:   fmt.Sprintf("连通性测试成功：模型 %s 正常回复（%d ms）", effectiveModel, latency.Milliseconds()),
+		Model:     effectiveModel,
+		BaseURL:   effectiveBase,
+		LatencyMS: latency.Milliseconds(),
+	})
+}
+
+// effectiveAIModel / effectiveAIBaseURL 回显实际生效值（空值表示使用客户端回退默认）。
+func effectiveAIModel(model string) string {
+	if model == "" {
+		return ai.DefaultModel
+	}
+	return model
+}
+
+func effectiveAIBaseURL(base string) string {
+	if base == "" {
+		return ai.DefaultBaseURL
+	}
+	return base
 }

@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -170,6 +173,10 @@ func TestAIConfigUnavailable(t *testing.T) {
 	put := fixture.request(t, http.MethodPut, "/api/v1/ai/config", `{"enabled":true}`,
 		"127.0.0.1:45202", cookies, map[string]string{CSRFHeaderName: csrf.Value})
 	assertAPIError(t, put, http.StatusServiceUnavailable, errorCodeInternal)
+
+	test := fixture.request(t, http.MethodPost, "/api/v1/ai/test", `{}`,
+		"127.0.0.1:45203", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	assertAPIError(t, test, http.StatusServiceUnavailable, errorCodeInternal)
 }
 
 // 视图的 timeout_sec 应与运行时时长一致（秒为单位往返）。
@@ -191,5 +198,119 @@ func TestAIConfigTimeoutRoundTrip(t *testing.T) {
 	}
 	if view.TimeoutSec != 90 || view.TimeoutSource != "database" {
 		t.Fatalf("timeout 视图异常：%+v", view)
+	}
+}
+
+// 连通性测试：可达端点返回 ok=true，未配置 Key / 远端错误返回 ok=false，非法覆盖值 400。
+func TestAIConnectivityTest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"OK"}}]}`))
+	}))
+	defer srv.Close()
+
+	fixture, _, _ := aiTestFixture(t)
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	// 未配置 Key：200 ok=false，提示需先配置。
+	noKey := fixture.request(t, http.MethodPost, "/api/v1/ai/test", `{}`, "127.0.0.1:45301", cookies, headers)
+	if noKey.Code != http.StatusOK {
+		t.Fatalf("noKey status=%d body=%s", noKey.Code, noKey.Body.String())
+	}
+	var res aiTestResponse
+	if err := json.Unmarshal(noKey.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.OK || !strings.Contains(res.Message, "API Key") {
+		t.Fatalf("未配置 Key 应返回 ok=false 与提示：%+v", res)
+	}
+
+	// 携带覆盖值命中本地桩端点：ok=true，回显实际测试的 model/base_url。
+	okReq := fixture.request(t, http.MethodPost, "/api/v1/ai/test",
+		fmt.Sprintf(`{"base_url":%q,"model":"probe-model","api_key":"sk-probe","timeout_sec":10,"max_tokens":100}`, srv.URL),
+		"127.0.0.1:45302", cookies, headers)
+	if okReq.Code != http.StatusOK {
+		t.Fatalf("okReq status=%d body=%s", okReq.Code, okReq.Body.String())
+	}
+	if err := json.Unmarshal(okReq.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK || res.Model != "probe-model" || res.BaseURL != srv.URL || res.LatencyMS < 0 {
+		t.Fatalf("覆盖值应命中测试端点并返回 ok=true：%+v", res)
+	}
+
+	// 远端 401：200 ok=false。
+	badSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}))
+	defer badSrv.Close()
+	failReq := fixture.request(t, http.MethodPost, "/api/v1/ai/test",
+		fmt.Sprintf(`{"base_url":%q,"api_key":"sk-bad"}`, badSrv.URL),
+		"127.0.0.1:45303", cookies, headers)
+	if failReq.Code != http.StatusOK {
+		t.Fatalf("failReq status=%d body=%s", failReq.Code, failReq.Body.String())
+	}
+	if err := json.Unmarshal(failReq.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.OK || !strings.Contains(res.Message, "失败") {
+		t.Fatalf("远端错误应返回 ok=false：%+v", res)
+	}
+
+	// 非法覆盖值：400。
+	invalidCases := []struct {
+		name string
+		body string
+	}{
+		{"base_url 非 http(s)", `{"base_url":"ftp://bad"}`},
+		{"timeout 越界", `{"timeout_sec":0}`},
+		{"max_tokens 过小", `{"max_tokens":10}`},
+	}
+	for _, tc := range invalidCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := fixture.request(t, http.MethodPost, "/api/v1/ai/test", tc.body, "127.0.0.1:45304", cookies, headers)
+			assertAPIError(t, resp, http.StatusBadRequest, errorCodeValidationFailed)
+		})
+	}
+}
+
+// env 锁定的字段不可被测试请求覆盖：仍以环境变量值探测。
+func TestAIConnectivityEnvLocked(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"OK"}}]}`))
+	}))
+	defer srv.Close()
+
+	rt := ai.RuntimeFromEnv(config.AIConfig{
+		Enabled: true, BaseURL: srv.URL, APIKey: config.NewSecret("sk-env"),
+		DigestEnabled: true, TriageEnabled: true,
+	})
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		keyRing:   testHTTPKeyRing(t),
+		aiRuntime: rt,
+		aiClient:  rt.Client(),
+	})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	// 尝试覆盖 base_url/api_key 应被忽略：仍命中 env 端点并返回 ok=true。
+	resp := fixture.request(t, http.MethodPost, "/api/v1/ai/test",
+		`{"base_url":"http://evil.example/v1","api_key":"sk-override"}`,
+		"127.0.0.1:45305", cookies, headers)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var res aiTestResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK || res.BaseURL != srv.URL {
+		t.Fatalf("env 锁定字段应忽略覆盖值：%+v", res)
 	}
 }
