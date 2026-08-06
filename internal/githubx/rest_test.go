@@ -1,6 +1,9 @@
 package githubx
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -50,5 +53,28 @@ func TestInstallationRepoGetMethods(t *testing.T) {
 	}
 	if r.GetOwnerLogin() != "acme" {
 		t.Fatalf("GetOwnerLogin: %s", r.GetOwnerLogin())
+	}
+}
+
+// TestGetRepositoryParsesStargazers 验证 GET /repos/{owner}/{repo} 的元数据解析与剩余配额透传。
+func TestGetRepositoryParsesStargazers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/o/r" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("X-RateLimit-Remaining", "4999")
+		w.Write([]byte(`{"full_name":"o/r","stargazers_count":123,"forks_count":4,"open_issues_count":2}`))
+	}))
+	defer srv.Close()
+	c := &AppClient{HTTP: srv.Client(), BaseURL: srv.URL}
+	meta, remaining, err := c.GetRepository(context.Background(), "tok", "o", "r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.StargazersCount != 123 || meta.ForksCount != 4 || meta.OpenIssuesCount != 2 {
+		t.Fatalf("unexpected meta: %+v", meta)
+	}
+	if remaining != 4999 {
+		t.Fatalf("remaining = %d", remaining)
 	}
 }

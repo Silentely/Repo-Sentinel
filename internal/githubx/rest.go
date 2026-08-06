@@ -80,6 +80,13 @@ type AlertItem struct {
 	SecretTypeDisplayName string `json:"secret_type_display_name"`
 }
 
+// RepositoryMeta 仓库元数据（star 快照等用途）。
+type RepositoryMeta struct {
+	StargazersCount int64 `json:"stargazers_count"`
+	ForksCount      int64 `json:"forks_count"`
+	OpenIssuesCount int   `json:"open_issues_count"`
+}
+
 // ListIssues 分页拉取 issues（含 PR）。
 func (c *AppClient) ListIssues(ctx context.Context, token, owner, repo string, since *time.Time, page int) ([]IssueItem, int, error) {
 	q := url.Values{}
@@ -105,6 +112,14 @@ func (c *AppClient) ListWorkflowRuns(ctx context.Context, token, owner, repo str
 	}
 	remaining, err := c.DoJSON(ctx, "GET", path, token, &payload)
 	return payload.WorkflowRuns, remaining, err
+}
+
+// GetRepository 拉取仓库元数据（含 stargazers_count）。
+func (c *AppClient) GetRepository(ctx context.Context, token, owner, repo string) (RepositoryMeta, int, error) {
+	path := fmt.Sprintf("/repos/%s/%s", owner, repo)
+	var meta RepositoryMeta
+	remaining, err := c.DoJSON(ctx, "GET", path, token, &meta)
+	return meta, remaining, err
 }
 
 // ListDependabotAlerts 拉取 dependabot alerts（游标分页）。
@@ -298,4 +313,19 @@ func (c *PublicClient) ListPublicIssues(ctx context.Context, owner, repo string,
 		app.BaseURL = "https://api.github.com"
 	}
 	return app.ListIssues(ctx, c.PAT, owner, repo, since, page)
+}
+
+// GetRepository 拉取公开仓元数据（可选 PAT）。
+func (c *PublicClient) GetRepository(ctx context.Context, owner, repo string) (RepositoryMeta, int, error) {
+	app := &AppClient{
+		HTTP:    c.HTTP,
+		BaseURL: c.BaseURL,
+	}
+	if app.HTTP == nil {
+		app.HTTP = &http.Client{Timeout: 30 * time.Second}
+	}
+	if app.BaseURL == "" {
+		app.BaseURL = "https://api.github.com"
+	}
+	return app.GetRepository(ctx, c.PAT, owner, repo)
 }

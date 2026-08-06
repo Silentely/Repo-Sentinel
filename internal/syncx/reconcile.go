@@ -77,6 +77,23 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 
 	// 全局功能开关：与「关于与设置 → 功能模块」一致，关闭后整类停止对账。
 	features := store.LoadFeatureFlags(ctx, r.Store.Settings())
+
+	// star 计数快照：独立于各资源同步，失败不阻断主流程（软失败）。
+	if features.Stars && repo.StarsEnabled {
+		if meta, _, err := r.GitHub.GetRepository(ctx, token, repo.Owner, repo.Name); err != nil {
+			if r.Logger != nil {
+				r.Logger.Warn("star snapshot reconcile failed", "repo", repo.FullName, "error_code", "star_snapshot_failed", "error", err.Error())
+			}
+		} else if meta.StargazersCount > 0 {
+			if _, err := r.Store.RepoStatSnapshots().Upsert(ctx, store.RepoStatSnapshot{
+				RepositoryID: repo.ID, Metric: "stargazers", Value: meta.StargazersCount,
+				SampleDate: time.Now().UTC().Format("2006-01-02"),
+			}); err != nil && r.Logger != nil {
+				r.Logger.Warn("star snapshot upsert failed", "repo", repo.FullName, "error_code", "star_snapshot_upsert_failed", "error", err.Error())
+			}
+		}
+	}
+
 	wantIssues := features.Issues && repo.IssuesEnabled
 	wantPRs := features.PullRequests && repo.PrEnabled
 	wantActions := features.Actions && repo.ActionsEnabled
