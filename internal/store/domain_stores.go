@@ -22,10 +22,6 @@ import (
 
 func newID() string { return ulid.Make().String() }
 
-func normalizePage(f ListFilter) ListFilter {
-	return NormalizeListFilter(f)
-}
-
 // --- installations ---
 
 type installationStore struct{ client *entclient.Client }
@@ -227,7 +223,7 @@ func (s *repositoryStore) GetByGitHubRepoID(ctx context.Context, githubID int64)
 }
 
 func (s *repositoryStore) List(ctx context.Context, f ListFilter) ([]Repository, PageResult, error) {
-	f = normalizePage(f)
+	f = NormalizeListFilter(f)
 	q := s.client.Repository.Query()
 	if f.Kind != "" {
 		q = q.Where(repository.TypeEQ(f.Kind))
@@ -569,7 +565,7 @@ func (s *workItemStore) MarkMerged(ctx context.Context, repoID string, number in
 }
 
 func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, PageResult, error) {
-	f = normalizePage(f)
+	f = NormalizeListFilter(f)
 	q := s.client.WorkItem.Query()
 	if f.RepositoryID != "" {
 		q = q.Where(workitem.RepositoryIDEQ(f.RepositoryID))
@@ -799,7 +795,7 @@ func (s *workflowRunStore) SetIgnored(ctx context.Context, id string, ignored bo
 }
 
 func (s *workflowRunStore) List(ctx context.Context, f ListFilter) ([]WorkflowRun, PageResult, error) {
-	f = normalizePage(f)
+	f = NormalizeListFilter(f)
 	q := s.client.WorkflowRun.Query()
 	if f.RepositoryID != "" {
 		q = q.Where(workflowrun.RepositoryIDEQ(f.RepositoryID))
@@ -958,7 +954,7 @@ func (s *securityAlertStore) SetIgnored(ctx context.Context, id string, ignored 
 }
 
 func (s *securityAlertStore) List(ctx context.Context, f ListFilter) ([]SecurityAlert, PageResult, error) {
-	f = normalizePage(f)
+	f = NormalizeListFilter(f)
 	q := s.client.SecurityAlert.Query()
 	if f.RepositoryID != "" {
 		q = q.Where(securityalert.RepositoryIDEQ(f.RepositoryID))
@@ -1087,7 +1083,7 @@ func (s *eventStore) GetByFingerprint(ctx context.Context, fp string) (Event, er
 }
 
 func (s *eventStore) List(ctx context.Context, f ListFilter) ([]Event, PageResult, error) {
-	f = normalizePage(f)
+	f = NormalizeListFilter(f)
 	q := s.client.Event.Query()
 	if f.RepositoryID != "" {
 		q = q.Where(event.RepositoryIDEQ(f.RepositoryID))
@@ -1417,7 +1413,7 @@ func (s *outboxStore) MarkDead(ctx context.Context, id, errorCode string) error 
 }
 
 func (s *outboxStore) List(ctx context.Context, f ListFilter) ([]NotificationOutbox, PageResult, error) {
-	f = normalizePage(f)
+	f = NormalizeListFilter(f)
 	q := s.client.NotificationOutbox.Query()
 	if f.Status != "" {
 		q = q.Where(notificationoutbox.StatusEQ(f.Status))
