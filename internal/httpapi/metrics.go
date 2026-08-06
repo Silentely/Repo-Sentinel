@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"sync/atomic"
+
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
 )
 
 // 进程内计数器（单实例 Prometheus 文本暴露；多副本各自独立）。
@@ -68,6 +70,19 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	writeMetric("reposentinel_outbox_sent_total", "Successfully delivered notifications", "counter", metricOutboxSent.Load())
 	writeMetric("reposentinel_outbox_dead_total", "Notifications moved to dead letter", "counter", metricOutboxDead.Load())
 	writeMetric("reposentinel_reconcile_runs_total", "Reconcile job executions", "counter", metricReconcileRuns.Load())
+
+	// AI 调用指标：成功率/延迟/成本可观测（与日志同源，出口统一计数）。
+	aiRequests, aiFailures, aiDurMS, aiPromptTok, aiCompTok, aiFailByCode := ai.MetricsSnapshot()
+	writeMetric("reposentinel_ai_requests_total", "LLM calls issued (success + failure)", "counter", aiRequests)
+	writeMetric("reposentinel_ai_requests_failed_total", "Failed LLM calls", "counter", aiFailures)
+	if aiRequests > 0 {
+		writeMetric("reposentinel_ai_request_duration_avg_ms", "Average LLM call duration in ms", "gauge", aiDurMS/aiRequests)
+	}
+	writeMetric("reposentinel_ai_prompt_tokens_total", "Prompt tokens consumed", "counter", aiPromptTok)
+	writeMetric("reposentinel_ai_completion_tokens_total", "Completion tokens consumed", "counter", aiCompTok)
+	for _, code := range ai.SortedFailCodes(aiFailByCode) {
+		writeMetric("reposentinel_ai_requests_failed_"+code+"_total", "Failed LLM calls by error code", "counter", aiFailByCode[code])
+	}
 
 	// 实时库内仪表（若 Store 可用）
 	if s.dependencies.Store != nil {

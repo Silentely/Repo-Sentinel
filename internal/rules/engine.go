@@ -129,8 +129,9 @@ func hasSubscribedChannel(channels []store.NotificationChannel, kind string) boo
 // triageAnalysis 生成新安全告警的 AI 分析；未启用、非新告警、无订阅渠道或调用失败时返回空串。
 // 返回空串时调用方保持原通知正文，AI 慢或不可用绝不影响通知入库。
 // 参与度留痕（Logger 注入时）：skipped 记录未参与原因（triage_not_enabled / not_new_alert /
-// no_subscribed_channel），used 记录分诊成功，fallback 记录失败或空输出（reason=ai_error /
-// empty_analysis，附错误详情）；配合 ai 层 ai request ok/failed 日志可还原完整调用链。
+// no_subscribed_channel），used 记录分诊成功，fallback 记录失败、空输出或格式不达标
+// （reason=ai_error / empty_analysis / format_invalid，附错误详情）；fallback/used 携带与
+// ai 层调用日志相同的 req_id，可还原完整调用链。
 func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo string, channels []store.NotificationChannel) string {
 	// 仅安全告警参与分诊；其余事件类型静默返回，不产生 skipped 日志噪声。
 	if !isSecurityAlertKind(ev.Kind) {
@@ -152,6 +153,8 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 	if !hasSubscribedChannel(channels, ev.Kind) {
 		return skip("no_subscribed_channel")
 	}
+	// 为本次 AI 决策注入请求关联 ID：参与度日志与 ai 层调用日志共用同一 req_id。
+	ctx, reqID := ai.EnsureRequestID(ctx)
 	ctx, cancel := context.WithTimeout(ctx, aiTriageTimeout)
 	defer cancel()
 	start := time.Now()
@@ -163,7 +166,7 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 			if err != nil {
 				reason = "ai_error"
 			}
-			attrs := []any{"event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds(), "reason", reason}
+			attrs := []any{"req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds(), "reason", reason}
 			if err != nil {
 				attrs = append(attrs, "error", err.Error())
 			}
@@ -171,8 +174,21 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 		}
 		return ""
 	}
+	// 格式护栏：提示词要求首行以「影响：」开头，不达标视为低质输出，降级保持原正文。
+	firstLine := analysis
+	if i := strings.IndexByte(analysis, '\n'); i >= 0 {
+		firstLine = analysis[:i]
+	}
+	if !strings.HasPrefix(strings.TrimSpace(firstLine), "影响：") {
+		if e.Logger != nil {
+			e.Logger.Warn("triage ai fallback",
+				"req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action,
+				"duration_ms", duration.Milliseconds(), "reason", "format_invalid")
+		}
+		return ""
+	}
 	if e.Logger != nil {
-		e.Logger.Info("triage ai used", "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
+		e.Logger.Info("triage ai used", "req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
 	}
 	return analysis
 }

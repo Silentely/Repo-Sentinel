@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -374,6 +375,7 @@ func TestClassifyCallError(t *testing.T) {
 		{"空响应", &callError{code: "empty_response", err: errors.New("ai: empty response")}, "empty_response"},
 		{"裸超时", context.DeadlineExceeded, "timeout"},
 		{"包装超时", &callError{code: "timeout", err: fmt.Errorf("ai: request timeout after 30ms: %w", context.DeadlineExceeded)}, "timeout"},
+		{"并发上限", &callError{code: "concurrency_limit", err: errors.New("ai: wait for concurrency slot: context deadline exceeded")}, "concurrency_limit"},
 		{"未知", errors.New("whatever"), "unknown"},
 	}
 	for _, tc := range cases {
@@ -383,4 +385,200 @@ func TestClassifyCallError(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCompleteLogsUsage 验证成功日志携带上游返回的 token 用量（成本可观测）。
+func TestCompleteLogsUsage(t *testing.T) {
+	srv := captureServer(t, http.StatusOK, `{"choices":[{"message":{"content":"总结"}}],"usage":{"prompt_tokens":42,"completion_tokens":7,"total_tokens":49}}`, nil)
+	defer srv.Close()
+	buf, logger := newTestLogger(t)
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Logger: logger}
+	if _, err := c.Complete(t.Context(), "s", "u"); err != nil {
+		t.Fatalf("Complete 应成功: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "prompt_tokens=42") || !strings.Contains(out, "completion_tokens=7") {
+		t.Fatalf("期望成功日志携带 token 用量，实际: %s", out)
+	}
+}
+
+// TestCompleteMetrics 验证指标与日志同源：成功累计请求/耗时/token，失败按 error_code 分列。
+func TestCompleteMetrics(t *testing.T) {
+	// 成功路径。
+	req0, fail0, dur0, prompt0, comp0, _ := MetricsSnapshot()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 至少 1ms 耗时，保证耗时累计断言可测。
+		time.Sleep(5 * time.Millisecond)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true}
+	if _, err := c.Complete(t.Context(), "s", "u"); err != nil {
+		t.Fatalf("Complete 应成功: %v", err)
+	}
+	req1, fail1, dur1, prompt1, comp1, _ := MetricsSnapshot()
+	if req1 != req0+1 {
+		t.Fatalf("请求计数应 +1，期望 %d 实际 %d", req0+1, req1)
+	}
+	if fail1 != fail0 {
+		t.Fatalf("失败计数不应增加，期望 %d 实际 %d", fail0, fail1)
+	}
+	if dur1 <= dur0 {
+		t.Fatal("耗时累计应增加")
+	}
+	if prompt1 != prompt0+10 || comp1 != comp0+5 {
+		t.Fatalf("token 计数应累计，期望 prompt %d/completion %d，实际 %d/%d", prompt0+10, comp0+5, prompt1, comp1)
+	}
+
+	// 失败路径：按 error_code 分列。
+	req2, fail2, _, _, _, byCode2 := MetricsSnapshot()
+	bad := captureServer(t, http.StatusBadGateway, `boom`, nil)
+	defer bad.Close()
+	cb := &Client{BaseURL: bad.URL, APIKey: "k", Enabled: true}
+	if _, err := cb.Complete(t.Context(), "s", "u"); err == nil {
+		t.Fatal("502 应失败")
+	}
+	req3, fail3, _, _, _, byCode3 := MetricsSnapshot()
+	if req3 != req2+1 || fail3 != fail2+1 {
+		t.Fatalf("失败应同时累计请求与失败计数，期望 req %d/fail %d，实际 %d/%d", req2+1, fail2+1, req3, fail3)
+	}
+	if byCode3["upstream_502"] != byCode2["upstream_502"]+1 {
+		t.Fatalf("失败次数应按 error_code 分列，期望 %d 实际 %d", byCode2["upstream_502"]+1, byCode3["upstream_502"])
+	}
+}
+
+// TestCompleteReqID 验证请求关联 ID：显式注入沿用，未注入自动生成且 start/ok 一致。
+func TestCompleteReqID(t *testing.T) {
+	srv := captureServer(t, http.StatusOK, `{"choices":[{"message":{"content":"ok"}}]}`, nil)
+	defer srv.Close()
+
+	// 显式注入：调用日志复用同一 req_id。
+	buf, logger := newTestLogger(t)
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Logger: logger}
+	if _, err := c.Complete(WithRequestID(t.Context(), "test-req-1"), "s", "u"); err != nil {
+		t.Fatalf("Complete 应成功: %v", err)
+	}
+	if !strings.Contains(buf.String(), "req_id=test-req-1") {
+		t.Fatalf("期望日志携带注入的 req_id，实际: %s", buf.String())
+	}
+
+	// 未注入：自动生成非空 ID，且同一调用各条日志一致。
+	buf2, logger2 := newTestLogger(t)
+	c2 := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Logger: logger2}
+	if _, err := c2.Complete(t.Context(), "s", "u"); err != nil {
+		t.Fatalf("Complete 应成功: %v", err)
+	}
+	re := regexp.MustCompile(`req_id=([0-9a-f]+)`)
+	ids := re.FindAllStringSubmatch(buf2.String(), -1)
+	if len(ids) < 2 {
+		t.Fatalf("期望 start/ok 日志均携带 req_id，实际: %s", buf2.String())
+	}
+	if ids[0][1] != ids[1][1] {
+		t.Fatalf("同一调用各日志 req_id 应一致，实际: %s", buf2.String())
+	}
+}
+
+// TestEnsureRequestID 验证关联 ID 生成/沿用语义。
+func TestEnsureRequestID(t *testing.T) {
+	ctx, id := EnsureRequestID(t.Context())
+	if id == "" {
+		t.Fatal("未注入时应生成非空 ID")
+	}
+	if RequestIDFromContext(ctx) != id {
+		t.Fatal("注入后应可读回同一 ID")
+	}
+	ctx2, id2 := EnsureRequestID(WithRequestID(t.Context(), "keep-me"))
+	if id2 != "keep-me" || RequestIDFromContext(ctx2) != "keep-me" {
+		t.Fatalf("已注入时应沿用，实际 %q", id2)
+	}
+	if RequestIDFromContext(nil) != "" {
+		t.Fatal("nil ctx 应返回空串")
+	}
+}
+
+// TestConcurrencyBudget 验证并发预算：槽位被占用时后续调用排队而非立即失败，释放后继续。
+func TestConcurrencyBudget(t *testing.T) {
+	old := aiMaxConcurrency
+	aiMaxConcurrency = 1
+	t.Cleanup(func() { aiMaxConcurrency = old })
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Timeout: 5 * time.Second}
+
+	// A 先占用唯一槽位（HTTP 处理被卡住，槽位未释放）。
+	aDone := make(chan error, 1)
+	go func() { _, err := c.Complete(t.Context(), "s", "u"); aDone <- err }()
+	<-entered
+
+	// B 应排队等待，而非立即失败。
+	bDone := make(chan error, 1)
+	go func() { _, err := c.Complete(t.Context(), "s", "u"); bDone <- err }()
+	select {
+	case err := <-bDone:
+		t.Fatalf("B 应等待槽位而非立即返回: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// 释放 A 后 A/B 依次完成。
+	close(release)
+	select {
+	case err := <-aDone:
+		if err != nil {
+			t.Fatalf("A 失败: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("A 超时")
+	}
+	select {
+	case err := <-bDone:
+		if err != nil {
+			t.Fatalf("B 失败: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("B 应获得槽位后完成")
+	}
+}
+
+// TestCompleteConcurrencyLimitContextCanceled 验证等待槽位超出 ctx 预算时以 concurrency_limit 失败。
+func TestCompleteConcurrencyLimitContextCanceled(t *testing.T) {
+	old := aiMaxConcurrency
+	aiMaxConcurrency = 1
+	t.Cleanup(func() { aiMaxConcurrency = old })
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Timeout: 5 * time.Second}
+
+	aDone := make(chan error, 1)
+	go func() { _, err := c.Complete(t.Context(), "s", "u"); aDone <- err }()
+	<-entered
+
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := c.Complete(ctx, "s", "u"); err == nil {
+		t.Fatal("等待槽位超预算应返回错误")
+	} else if code, _ := classifyCallError(err); code != "concurrency_limit" {
+		t.Fatalf("期望分类 concurrency_limit，实际 %s（%v）", code, err)
+	}
+	close(release)
+	<-aDone
 }

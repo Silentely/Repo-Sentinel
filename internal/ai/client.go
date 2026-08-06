@@ -3,6 +3,8 @@ package ai
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,6 +54,39 @@ type Client struct {
 	HTTP *http.Client
 	// Logger 可选；AI 降级时记录原因，不影响主链路。
 	Logger *slog.Logger
+
+	// sem 为调用并发预算（#8）：digest 多周期与分诊可能并发打 AI，
+	// 超出上限时排队（受 ctx 预算约束）。非配置字段，经 Replace 热更新不受影响；
+	// 懒初始化（semChan），避免构造函数侵入。Channel 为引用类型，Snapshot 复制后共享同一信号量。
+	sem chan struct{}
+}
+
+// aiMaxConcurrency AI 调用并发上限：摘要/分诊/连通性共用一个客户端实例时
+// 限制同时在途的 LLM 请求，避免突发调用推高网关延迟与费用。
+// 设为 var 便于测试调整；后续可配置化。
+var aiMaxConcurrency = 2
+
+// semChan 返回并发预算信号量，首次调用时懒初始化（受 c.mu 保护）。
+func (c *Client) semChan() chan struct{} {
+	c.mu.Lock()
+	if c.sem == nil {
+		c.sem = make(chan struct{}, aiMaxConcurrency)
+	}
+	sem := c.sem
+	c.mu.Unlock()
+	return sem
+}
+
+// acquireSlot 获取一个 AI 调用并发槽位；无空位时阻塞等待，直到有槽或 ctx 结束。
+// 等待计入调用总时长，由调用方预算（digest 无硬限、分诊 15s）兜底。
+func (c *Client) acquireSlot(ctx context.Context) (release func(), err error) {
+	sem := c.semChan()
+	select {
+	case sem <- struct{}{}:
+		return func() { <-sem }, nil
+	case <-ctx.Done():
+		return nil, &callError{code: "concurrency_limit", err: fmt.Errorf("ai: wait for concurrency slot: %w", ctx.Err())}
+	}
 }
 
 // Snapshot 返回当前只读副本，供方法与外部并发读取使用。
@@ -173,6 +208,54 @@ type chatResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	// Usage 为 OpenAI 兼容响应中的 token 用量（部分网关不返回，缺省为 0）。
+	Usage chatUsage `json:"usage"`
+}
+
+// chatUsage 单次调用的 token 用量，供成本记账与日志留痕。
+type chatUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+// reqIDCtxKey 是请求关联 ID 的 context 键。
+type reqIDCtxKey struct{}
+
+// NewRequestID 生成 16 位十六进制请求关联 ID；随机源不可用时回退时间戳，保证非空。
+func NewRequestID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("req-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
+}
+
+// WithRequestID 返回携带请求关联 ID 的 context，供上层在参与度日志与调用日志间串联。
+func WithRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, reqIDCtxKey{}, id)
+}
+
+// RequestIDFromContext 读取请求关联 ID；未注入时返回空串。
+func RequestIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if id, ok := ctx.Value(reqIDCtxKey{}).(string); ok {
+		return id
+	}
+	return ""
+}
+
+// EnsureRequestID 保证 ctx 携带请求 ID：已有则沿用，否则生成新 ID 注入。
+// 返回的 ID 供上层参与度日志使用，与 ai 层调用日志的 req_id 保持一致，
+// 使「参与度 → 调用 → 结果」可按单次决策端到端串联。
+func EnsureRequestID(ctx context.Context) (context.Context, string) {
+	if id := RequestIDFromContext(ctx); id != "" {
+		return ctx, id
+	}
+	id := NewRequestID()
+	return WithRequestID(ctx, id), id
 }
 
 // callError 携带调用失败分类与可选 HTTP 状态码，供日志输出稳定的 error_code。
@@ -205,9 +288,11 @@ func classifyCallError(err error) (code, detail string) {
 
 // Complete 执行单轮对话并返回助手文本。
 // 未配置、网络失败、HTTP 非 2xx、响应缺内容均返回错误，调用方负责降级。
-// 请求成败统一留痕（Logger 注入时）：DEBUG 记录发起，INFO 记录成功与输出长度，
-// WARN 记录失败并附 error_code 分类（timeout/network/upstream_<status> 等），
-// 便于区分网络问题与上游服务问题。未配置时不发起请求也不留痕（上层按降级处理）。
+// 请求成败统一留痕（Logger 注入时）：DEBUG 记录发起，INFO 记录成功与输出长度
+// 及 token 用量，WARN 记录失败并附 error_code 分类（timeout/network/upstream_<status>
+// 等），便于区分网络问题与上游服务问题；所有日志携带 req_id（context 未注入时自动生成），
+// 与上层参与度日志串联。未配置时不发起请求也不留痕（上层按降级处理）。
+// 指标与日志同源：成功/失败/耗时/token 在出口统一累计（见 metrics.go）。
 func (c *Client) Complete(ctx context.Context, system, user string) (content string, err error) {
 	s := c.Snapshot()
 	if !s.Enabled || s.APIKey == "" {
@@ -215,23 +300,42 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 	}
 	logger := s.Logger
 	model := s.model()
+	reqID := RequestIDFromContext(ctx)
+	if reqID == "" {
+		reqID = NewRequestID()
+	}
 	start := time.Now()
-	// 成功与失败统一在出口留痕，避免各分支重复记录。
+	var promptTok, completionTok int
+	// 成功与失败统一在出口留痕与计数，避免各分支重复记录。
 	defer func() {
-		if logger == nil {
-			return
-		}
-		attrs := []any{"model", model, "duration_ms", time.Since(start).Milliseconds()}
 		if err != nil {
 			code, detail := classifyCallError(err)
-			logger.Warn("ai request failed", append(attrs, "error_code", code, "error", detail)...)
+			metricsIncResult(true, code, time.Since(start), 0, 0)
+			if logger != nil {
+				logger.Warn("ai request failed",
+					"req_id", reqID, "model", model, "duration_ms", time.Since(start).Milliseconds(),
+					"error_code", code, "error", detail)
+			}
 			return
 		}
-		logger.Info("ai request ok", append(attrs, "output_chars", len(content))...)
+		metricsIncResult(false, "", time.Since(start), promptTok, completionTok)
+		if logger != nil {
+			logger.Info("ai request ok",
+				"req_id", reqID, "model", model, "duration_ms", time.Since(start).Milliseconds(),
+				"output_chars", len(content),
+				"prompt_tokens", promptTok, "completion_tokens", completionTok)
+		}
 	}()
 
 	ctx, cancel := context.WithTimeout(ctx, s.timeout())
 	defer cancel()
+
+	// 并发预算：超出上限时排队，等待计入总时长（受 ctx 预算约束）。
+	release, err := c.acquireSlot(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 
 	payload, err := json.Marshal(chatRequest{
 		Model: model,
@@ -249,6 +353,7 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 	endpoint := s.baseURL() + "/chat/completions"
 	if logger != nil {
 		logger.Debug("ai request start",
+			"req_id", reqID,
 			"model", model,
 			"endpoint", endpoint,
 			"max_tokens", s.maxTokens(),
@@ -282,6 +387,7 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 	if len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
 		return "", &callError{code: "empty_response", err: errors.New("ai: empty response")}
 	}
+	promptTok, completionTok = out.Usage.PromptTokens, out.Usage.CompletionTokens
 	return truncateOutput(strings.TrimSpace(out.Choices[0].Message.Content)), nil
 }
 
