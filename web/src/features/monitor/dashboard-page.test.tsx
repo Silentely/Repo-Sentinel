@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // 页面内链接与真实路由解耦：渲染为普通锚点即可。
@@ -167,6 +167,10 @@ vi.mock("./api", () => ({
     queryKey: ["test", "settings"],
     queryFn: async () => fixtures.settings,
   },
+  starTrendQueryOptions: (days: number) => ({
+    queryKey: ["test", "star-trend", days],
+    queryFn: async () => [],
+  }),
   githubConfigQueryOptions: {
     queryKey: ["test", "github"],
     queryFn: async () => fixtures.github,
@@ -195,6 +199,8 @@ describe("仪表盘", () => {
     // 默认回到「超出展示上限」场景，截断相关的用例各自覆写。
     fixtures.events = makeEventsPage(20);
     fixtures.outbox = makeOutboxPage(20);
+    // Star 增长面板默认开启，feature.stars 相关用例按需覆写。
+    delete (fixtures.settings as Record<string, unknown>)["feature.stars"];
   });
 
   it("渲染关键指标且接入进度卡片隐藏（全部就绪）", async () => {
@@ -285,5 +291,22 @@ describe("仪表盘", () => {
     await within(eventsPanel).findByText("事件 1");
     expect(within(eventsPanel).queryByText("15+")).toBeNull();
     expect(within(eventsPanel).queryByText(/仅显示最近 15 条/)).toBeNull();
+  });
+
+  it("Star 增长面板默认渲染，空数据展示空态文案", async () => {
+    renderPage();
+
+    const starsPanel = await screen.findByRole("region", { name: "⭐ Star 增长" });
+    await within(starsPanel).findByText(/暂无 star 数据/);
+  });
+
+  it("feature.stars 关闭时不渲染 Star 增长面板", async () => {
+    (fixtures.settings as Record<string, unknown>)["feature.stars"] = false;
+    renderPage();
+
+    // 面板初始随「默认全开」短暂渲染，settings 查询落定后应移除。
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "⭐ Star 增长" })).toBeNull();
+    });
   });
 });

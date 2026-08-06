@@ -27,9 +27,11 @@ import {
   repositoriesQueryOptions,
   retryOutbox,
   settingsQueryOptions,
+  starTrendQueryOptions,
 } from "./api";
+import { StarTrendChart } from "./star-trend-chart";
 
-type PanelKey = "outbox" | "events" | "repos";
+type PanelKey = "outbox" | "events" | "repos" | "stars";
 
 const PANEL_STORAGE_KEY = "reposentinel-dashboard-panels";
 
@@ -37,6 +39,7 @@ const DEFAULT_OPEN_PANELS: Record<PanelKey, boolean> = {
   outbox: true,
   events: true,
   repos: true,
+  stars: true,
 };
 
 function readOpenPanels(): Record<PanelKey, boolean> {
@@ -49,6 +52,7 @@ function readOpenPanels(): Record<PanelKey, boolean> {
       outbox: typeof parsed.outbox === "boolean" ? parsed.outbox : DEFAULT_OPEN_PANELS.outbox,
       events: typeof parsed.events === "boolean" ? parsed.events : DEFAULT_OPEN_PANELS.events,
       repos: typeof parsed.repos === "boolean" ? parsed.repos : DEFAULT_OPEN_PANELS.repos,
+      stars: typeof parsed.stars === "boolean" ? parsed.stars : DEFAULT_OPEN_PANELS.stars,
     };
   } catch {
     return { ...DEFAULT_OPEN_PANELS };
@@ -71,6 +75,11 @@ export function DashboardPage() {
   const outbox = useQuery(outboxQueryOptions("", "", DASHBOARD_FEED_LIMIT));
   const settings = useQuery(settingsQueryOptions);
   const githubConfig = useQuery(githubConfigQueryOptions);
+
+  // Star 增长趋势：时间范围由本地状态管理，切换范围时按 queryKey 换缓存。
+  const [trendDays, setTrendDays] = useState(30);
+  const starTrend = useQuery(starTrendQueryOptions(trendDays));
+  const featureStars = settings.data?.["feature.stars"] !== false;
 
   // 折叠状态从 localStorage 恢复，切换后写回。
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(readOpenPanels);
@@ -267,7 +276,22 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* 顺序：通知投递 → 最近事件 → 仓库与基线 */}
+      {/* 顺序：Star 增长 → 通知投递 → 最近事件 → 仓库与基线 */}
+      {featureStars ? (
+        <CollapsiblePanel
+          id="stars"
+          title="⭐ Star 增长"
+          open={openPanels.stars}
+          onToggle={() => togglePanel("stars")}
+        >
+          <StarTrendChart
+            points={starTrend.data ?? []}
+            days={trendDays}
+            onDaysChange={setTrendDays}
+            loading={starTrend.isPending}
+          />
+        </CollapsiblePanel>
+      ) : null}
       <CollapsiblePanel
         id="outbox"
         title="通知投递"
@@ -355,7 +379,7 @@ export function DashboardPage() {
                   <div className="feed-row__main">
                     <div className="feed-row__meta">
                       <span className={`event-kind kind-${ev.kind}`}>{eventKindLabel(ev.kind)}</span>
-                      <span className="event-action">{eventActionLabel(ev.action)}</span>
+                      <span className="event-action">{eventActionLabel(ev.action, ev.kind)}</span>
                       {repoName ? (
                         <span className="event-repo" title={repoName}>
                           {repoName}

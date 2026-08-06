@@ -28,6 +28,8 @@ export interface Repository {
   pr_enabled: boolean;
   actions_enabled: boolean;
   alerts_enabled: boolean;
+  stars_enabled: boolean;
+  watches_enabled: boolean;
   html_url: string;
   updated_at: string;
   default_branch?: string;
@@ -194,6 +196,8 @@ export interface RepositorySettings {
   pr_enabled?: boolean;
   actions_enabled?: boolean;
   alerts_enabled?: boolean;
+  stars_enabled?: boolean;
+  watches_enabled?: boolean;
   is_archived?: boolean;
 }
 
@@ -333,6 +337,8 @@ export interface SystemSettings {
   "feature.pull_requests"?: boolean;
   "feature.actions"?: boolean;
   "feature.security_alerts"?: boolean;
+  "feature.stars"?: boolean;
+  "feature.watches"?: boolean;
   "report.weekly_enabled"?: boolean;
   "report.weekly_day"?: string;
   "report.monthly_enabled"?: boolean;
@@ -484,5 +490,22 @@ export async function syncInstallationRepositories(): Promise<SyncInstallationRe
   return apiRequest<SyncInstallationReposResult>("/api/v1/github/sync-repositories", {
     method: "POST",
     body: JSON.stringify({}),
+  });
+}
+
+/** Star 增长趋势序列点（后端 /api/stats/star-trend 返回）。 */
+export interface StarTrendPoint {
+  date: string;
+  total: number;
+}
+
+/** Star 增长趋势查询：days 为 7/30/90/0（0 表示全部），跟随查询缓存切换数据。 */
+export function starTrendQueryOptions(days: number) {
+  return queryOptions({
+    queryKey: ["star-trend", days],
+    queryFn: async (): Promise<StarTrendPoint[]> => {
+      const data = await apiRequest<{ items: StarTrendPoint[] }>(`/api/v1/stats/star-trend?days=${days}`);
+      return data.items ?? [];
+    },
   });
 }
