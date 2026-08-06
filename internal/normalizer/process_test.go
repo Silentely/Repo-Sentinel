@@ -1,7 +1,9 @@
 package normalizer_test
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
 
 func TestProcessIssueOpenedCreatesEvent(t *testing.T) {
@@ -766,5 +769,117 @@ func TestUpdateSettingsAndArchive(t *testing.T) {
 	// 取消归档时应恢复所有能力开关。
 	if !saved.MonitorEnabled || !saved.IssuesEnabled || !saved.PrEnabled || !saved.ActionsEnabled || !saved.AlertsEnabled {
 		t.Fatal("取消归档应恢复所有能力开关为 true")
+	}
+}
+
+// --- star / watch ---
+
+// starPayload 构造 GitHub star 事件载荷（含 stargazers_count 实时值）。
+func starPayload(action, login, starredAt string, stargazers int64) []byte {
+	return []byte(fmt.Sprintf(`{
+		"action": %q,
+		"starred_at": %q,
+		"sender": {"login": %q},
+		"repository": {"id": 1001, "name": "r", "full_name": "o/r", "html_url": "https://github.com/o/r", "stargazers_count": %d, "owner": {"login": "o"}}
+	}`, action, starredAt, login, stargazers))
+}
+
+// watchPayload 构造 GitHub watch 事件载荷。
+func watchPayload(action, login string) []byte {
+	return []byte(fmt.Sprintf(`{
+		"action": %q,
+		"sender": {"login": %q},
+		"repository": {"id": 1001, "name": "r", "full_name": "o/r", "html_url": "https://github.com/o/r", "owner": {"login": "o"}}
+	}`, action, login))
+}
+
+func newID() string { return ulid.Make().String() }
+
+func TestProcessStarCreated(t *testing.T) {
+	st := openProcessStore(t)
+	p := &normalizer.Processor{Store: st}
+	res, err := p.Process(context.Background(), "star", "dlv-1", starPayload("created", "alice", "2026-08-01T10:00:00Z", 42))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Event == nil || res.Event.Kind != store.StarKind || res.Event.Action != "created" || res.Event.Actor != "alice" {
+		t.Fatalf("unexpected event: %+v", res.Event)
+	}
+	if res.Event.OccurredAt.UTC().Format(time.RFC3339) != "2026-08-01T10:00:00Z" {
+		t.Fatalf("occurred_at = %v", res.Event.OccurredAt)
+	}
+	// 快照已顺带写入当日。
+	rows, err := st.RepoStatSnapshots().ListInRange(context.Background(), nil, "stargazers", "2026-08-01", "2026-08-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Value != 42 {
+		t.Fatalf("want snapshot 42, got %+v", rows)
+	}
+}
+
+func TestProcessStarSameSecondDifferentUsers(t *testing.T) {
+	st := openProcessStore(t)
+	p := &normalizer.Processor{Store: st}
+	payloadA := starPayload("created", "alice", "2026-08-01T10:00:00Z", 42)
+	payloadB := starPayload("created", "bob", "2026-08-01T10:00:00Z", 43)
+	if _, err := p.Process(context.Background(), "star", "dlv-1", payloadA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Process(context.Background(), "star", "dlv-2", payloadB); err != nil {
+		t.Fatal(err)
+	}
+	total, _, err := st.Events().List(context.Background(), store.ListFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	starEvents := 0
+	for _, ev := range total {
+		if ev.Kind == store.StarKind {
+			starEvents++
+		}
+	}
+	if starEvents != 2 {
+		t.Fatalf("want 2 star events, got %d", starEvents)
+	}
+}
+
+func TestProcessWatchStarted(t *testing.T) {
+	st := openProcessStore(t)
+	p := &normalizer.Processor{Store: st}
+	res, err := p.Process(context.Background(), "watch", "dlv-1", watchPayload("started", "carol"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Event == nil || res.Event.Kind != store.WatchKind || res.Event.Action != "started" || res.Event.Actor != "carol" {
+		t.Fatalf("unexpected event: %+v", res.Event)
+	}
+}
+
+func TestProcessStarGatedByCapability(t *testing.T) {
+	st := openProcessStore(t)
+	repo := store.Repository{ID: newID(), Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "r", FullName: "o/r"}
+	if _, err := st.Repositories().Upsert(context.Background(), repo); err != nil {
+		t.Fatal(err)
+	}
+	// 能力开关由 UpdateSettings 单独管理：Upsert 创建路径走 DB 默认值（true），
+	// 直接在 struct 里给 StarsEnabled:false 不会落库。
+	starsOff, watchesOn := false, true
+	if err := st.Repositories().UpdateSettings(context.Background(), repo.ID, store.RepositorySettings{StarsEnabled: &starsOff, WatchesEnabled: &watchesOn}); err != nil {
+		t.Fatal(err)
+	}
+	p := &normalizer.Processor{Store: st}
+	res, err := p.Process(context.Background(), "star", "dlv-1", starPayload("created", "alice", "2026-08-01T10:00:00Z", 42))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Event != nil || !res.SuppressNotify {
+		t.Fatalf("star event should be gated: %+v", res)
+	}
+	// 也不写快照。
+	rows, _ := st.RepoStatSnapshots().ListInRange(context.Background(), nil, "stargazers", "2026-08-01", "2026-08-01")
+	if len(rows) != 0 {
+		t.Fatalf("gated repo should not write snapshot, got %+v", rows)
 	}
 }
