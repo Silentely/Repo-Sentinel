@@ -493,7 +493,7 @@ export async function syncInstallationRepositories(): Promise<SyncInstallationRe
   });
 }
 
-/** Star 增长趋势序列点（后端 /api/stats/star-trend 返回）。 */
+/** Star 增长趋势序列点（后端 /api/v1/stats/star-trend 返回）。 */
 export interface StarTrendPoint {
   date: string;
   total: number;
