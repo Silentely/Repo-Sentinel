@@ -31,6 +31,8 @@ func (Repository) Fields() []ent.Field {
 		field.Bool("pr_enabled").Default(true),
 		field.Bool("actions_enabled").Default(true),
 		field.Bool("alerts_enabled").Default(true),
+		field.Bool("stars_enabled").Default(true),
+		field.Bool("watches_enabled").Default(true),
 		field.String("html_url").Default(""),
 		field.String("default_branch").Default(""),
 		field.Time("baseline_started_at").Optional().Nillable(),

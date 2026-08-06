@@ -1,6 +1,27 @@
 package store
 
-import "testing"
+import (
+	"context"
+	"path/filepath"
+	"testing"
+
+	"github.com/Silentely/Repo-Sentinel/internal/config"
+)
+
+// openTestStore 为 store 包内部测试建 sqlite 文件库（store_test 包另有一个同名辅助，互不冲突）。
+func openTestStore(t *testing.T) Store {
+	t.Helper()
+	dir := t.TempDir()
+	s, err := Open(context.Background(), config.DatabaseConfig{
+		Driver: "sqlite",
+		URL:    "file:" + filepath.Join(dir, "test.db") + "?_fk=1",
+	})
+	if err != nil {
+		t.Fatalf("打开测试 Store 失败: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
 
 // TestKindDisplayName 守护领域层事件类型中文名（通知正文与 AI 分诊共用）。
 func TestKindDisplayName(t *testing.T) {
@@ -67,5 +88,36 @@ func TestRepoAllowsKindStarWatch(t *testing.T) {
 func TestIsSubscribableKindStarWatch(t *testing.T) {
 	if !IsSubscribableKind(StarKind) || !IsSubscribableKind(WatchKind) {
 		t.Fatal("star/watch should be subscribable")
+	}
+}
+
+// TestRepoStatSnapshotUpsertIdempotent 守护快照按 (repository_id, metric, sample_date)
+// 幂等：同日二次写入覆盖为新值，不产生重复行；ListInRange 含边界返回。
+func TestRepoStatSnapshotUpsertIdempotent(t *testing.T) {
+	st := openTestStore(t)
+	repo, err := st.Repositories().Upsert(context.Background(), Repository{
+		ID: newID(), Type: RepositoryTypeInstallation, SyncStatus: SyncStatusActive,
+		Owner: "o", Name: "r", FullName: "o/r", StarsEnabled: true, WatchesEnabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	snaps := st.RepoStatSnapshots()
+	in := RepoStatSnapshot{RepositoryID: repo.ID, Metric: "stargazers", Value: 10, SampleDate: "2026-08-01"}
+	if _, err := snaps.Upsert(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	// 同日二次写入幂等覆盖为新值，不产生重复行。
+	in.Value = 12
+	if _, err := snaps.Upsert(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := snaps.ListInRange(ctx, []string{repo.ID}, "stargazers", "2026-08-01", "2026-08-02")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Value != 12 {
+		t.Fatalf("want 1 row with value 12, got %+v", rows)
 	}
 }

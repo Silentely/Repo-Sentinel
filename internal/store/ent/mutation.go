@@ -21,6 +21,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationoutbox"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/predicate"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repostatsnapshot"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
@@ -45,6 +46,7 @@ const (
 	TypeGitHubInstallation  = "GitHubInstallation"
 	TypeNotificationChannel = "NotificationChannel"
 	TypeNotificationOutbox  = "NotificationOutbox"
+	TypeRepoStatSnapshot    = "RepoStatSnapshot"
 	TypeRepository          = "Repository"
 	TypeSecurityAlert       = "SecurityAlert"
 	TypeSyncCursor          = "SyncCursor"
@@ -6557,6 +6559,644 @@ func (m *NotificationOutboxMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown NotificationOutbox edge %s", name)
 }
 
+// RepoStatSnapshotMutation represents an operation that mutates the RepoStatSnapshot nodes in the graph.
+type RepoStatSnapshotMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	repository_id *string
+	metric        *string
+	value         *int64
+	addvalue      *int64
+	sample_date   *string
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*RepoStatSnapshot, error)
+	predicates    []predicate.RepoStatSnapshot
+}
+
+var _ ent.Mutation = (*RepoStatSnapshotMutation)(nil)
+
+// repostatsnapshotOption allows management of the mutation configuration using functional options.
+type repostatsnapshotOption func(*RepoStatSnapshotMutation)
+
+// newRepoStatSnapshotMutation creates new mutation for the RepoStatSnapshot entity.
+func newRepoStatSnapshotMutation(c config, op Op, opts ...repostatsnapshotOption) *RepoStatSnapshotMutation {
+	m := &RepoStatSnapshotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRepoStatSnapshot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRepoStatSnapshotID sets the ID field of the mutation.
+func withRepoStatSnapshotID(id string) repostatsnapshotOption {
+	return func(m *RepoStatSnapshotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RepoStatSnapshot
+		)
+		m.oldValue = func(ctx context.Context) (*RepoStatSnapshot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RepoStatSnapshot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRepoStatSnapshot sets the old RepoStatSnapshot of the mutation.
+func withRepoStatSnapshot(node *RepoStatSnapshot) repostatsnapshotOption {
+	return func(m *RepoStatSnapshotMutation) {
+		m.oldValue = func(context.Context) (*RepoStatSnapshot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RepoStatSnapshotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RepoStatSnapshotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of RepoStatSnapshot entities.
+func (m *RepoStatSnapshotMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RepoStatSnapshotMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RepoStatSnapshotMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RepoStatSnapshot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetRepositoryID sets the "repository_id" field.
+func (m *RepoStatSnapshotMutation) SetRepositoryID(s string) {
+	m.repository_id = &s
+}
+
+// RepositoryID returns the value of the "repository_id" field in the mutation.
+func (m *RepoStatSnapshotMutation) RepositoryID() (r string, exists bool) {
+	v := m.repository_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRepositoryID returns the old "repository_id" field's value of the RepoStatSnapshot entity.
+// If the RepoStatSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepoStatSnapshotMutation) OldRepositoryID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRepositoryID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRepositoryID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepositoryID: %w", err)
+	}
+	return oldValue.RepositoryID, nil
+}
+
+// ResetRepositoryID resets all changes to the "repository_id" field.
+func (m *RepoStatSnapshotMutation) ResetRepositoryID() {
+	m.repository_id = nil
+}
+
+// SetMetric sets the "metric" field.
+func (m *RepoStatSnapshotMutation) SetMetric(s string) {
+	m.metric = &s
+}
+
+// Metric returns the value of the "metric" field in the mutation.
+func (m *RepoStatSnapshotMutation) Metric() (r string, exists bool) {
+	v := m.metric
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetric returns the old "metric" field's value of the RepoStatSnapshot entity.
+// If the RepoStatSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepoStatSnapshotMutation) OldMetric(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetric is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetric requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetric: %w", err)
+	}
+	return oldValue.Metric, nil
+}
+
+// ResetMetric resets all changes to the "metric" field.
+func (m *RepoStatSnapshotMutation) ResetMetric() {
+	m.metric = nil
+}
+
+// SetValue sets the "value" field.
+func (m *RepoStatSnapshotMutation) SetValue(i int64) {
+	m.value = &i
+	m.addvalue = nil
+}
+
+// Value returns the value of the "value" field in the mutation.
+func (m *RepoStatSnapshotMutation) Value() (r int64, exists bool) {
+	v := m.value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValue returns the old "value" field's value of the RepoStatSnapshot entity.
+// If the RepoStatSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepoStatSnapshotMutation) OldValue(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValue: %w", err)
+	}
+	return oldValue.Value, nil
+}
+
+// AddValue adds i to the "value" field.
+func (m *RepoStatSnapshotMutation) AddValue(i int64) {
+	if m.addvalue != nil {
+		*m.addvalue += i
+	} else {
+		m.addvalue = &i
+	}
+}
+
+// AddedValue returns the value that was added to the "value" field in this mutation.
+func (m *RepoStatSnapshotMutation) AddedValue() (r int64, exists bool) {
+	v := m.addvalue
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetValue resets all changes to the "value" field.
+func (m *RepoStatSnapshotMutation) ResetValue() {
+	m.value = nil
+	m.addvalue = nil
+}
+
+// SetSampleDate sets the "sample_date" field.
+func (m *RepoStatSnapshotMutation) SetSampleDate(s string) {
+	m.sample_date = &s
+}
+
+// SampleDate returns the value of the "sample_date" field in the mutation.
+func (m *RepoStatSnapshotMutation) SampleDate() (r string, exists bool) {
+	v := m.sample_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSampleDate returns the old "sample_date" field's value of the RepoStatSnapshot entity.
+// If the RepoStatSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepoStatSnapshotMutation) OldSampleDate(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSampleDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSampleDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSampleDate: %w", err)
+	}
+	return oldValue.SampleDate, nil
+}
+
+// ResetSampleDate resets all changes to the "sample_date" field.
+func (m *RepoStatSnapshotMutation) ResetSampleDate() {
+	m.sample_date = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *RepoStatSnapshotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *RepoStatSnapshotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the RepoStatSnapshot entity.
+// If the RepoStatSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepoStatSnapshotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *RepoStatSnapshotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *RepoStatSnapshotMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *RepoStatSnapshotMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the RepoStatSnapshot entity.
+// If the RepoStatSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepoStatSnapshotMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *RepoStatSnapshotMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the RepoStatSnapshotMutation builder.
+func (m *RepoStatSnapshotMutation) Where(ps ...predicate.RepoStatSnapshot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RepoStatSnapshotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RepoStatSnapshotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RepoStatSnapshot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RepoStatSnapshotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RepoStatSnapshotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RepoStatSnapshot).
+func (m *RepoStatSnapshotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RepoStatSnapshotMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.repository_id != nil {
+		fields = append(fields, repostatsnapshot.FieldRepositoryID)
+	}
+	if m.metric != nil {
+		fields = append(fields, repostatsnapshot.FieldMetric)
+	}
+	if m.value != nil {
+		fields = append(fields, repostatsnapshot.FieldValue)
+	}
+	if m.sample_date != nil {
+		fields = append(fields, repostatsnapshot.FieldSampleDate)
+	}
+	if m.created_at != nil {
+		fields = append(fields, repostatsnapshot.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, repostatsnapshot.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RepoStatSnapshotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case repostatsnapshot.FieldRepositoryID:
+		return m.RepositoryID()
+	case repostatsnapshot.FieldMetric:
+		return m.Metric()
+	case repostatsnapshot.FieldValue:
+		return m.Value()
+	case repostatsnapshot.FieldSampleDate:
+		return m.SampleDate()
+	case repostatsnapshot.FieldCreatedAt:
+		return m.CreatedAt()
+	case repostatsnapshot.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RepoStatSnapshotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case repostatsnapshot.FieldRepositoryID:
+		return m.OldRepositoryID(ctx)
+	case repostatsnapshot.FieldMetric:
+		return m.OldMetric(ctx)
+	case repostatsnapshot.FieldValue:
+		return m.OldValue(ctx)
+	case repostatsnapshot.FieldSampleDate:
+		return m.OldSampleDate(ctx)
+	case repostatsnapshot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case repostatsnapshot.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown RepoStatSnapshot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RepoStatSnapshotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case repostatsnapshot.FieldRepositoryID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRepositoryID(v)
+		return nil
+	case repostatsnapshot.FieldMetric:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetric(v)
+		return nil
+	case repostatsnapshot.FieldValue:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValue(v)
+		return nil
+	case repostatsnapshot.FieldSampleDate:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSampleDate(v)
+		return nil
+	case repostatsnapshot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case repostatsnapshot.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RepoStatSnapshot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RepoStatSnapshotMutation) AddedFields() []string {
+	var fields []string
+	if m.addvalue != nil {
+		fields = append(fields, repostatsnapshot.FieldValue)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RepoStatSnapshotMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case repostatsnapshot.FieldValue:
+		return m.AddedValue()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RepoStatSnapshotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case repostatsnapshot.FieldValue:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddValue(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RepoStatSnapshot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RepoStatSnapshotMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RepoStatSnapshotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RepoStatSnapshotMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RepoStatSnapshot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RepoStatSnapshotMutation) ResetField(name string) error {
+	switch name {
+	case repostatsnapshot.FieldRepositoryID:
+		m.ResetRepositoryID()
+		return nil
+	case repostatsnapshot.FieldMetric:
+		m.ResetMetric()
+		return nil
+	case repostatsnapshot.FieldValue:
+		m.ResetValue()
+		return nil
+	case repostatsnapshot.FieldSampleDate:
+		m.ResetSampleDate()
+		return nil
+	case repostatsnapshot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case repostatsnapshot.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown RepoStatSnapshot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RepoStatSnapshotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RepoStatSnapshotMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RepoStatSnapshotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RepoStatSnapshotMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RepoStatSnapshotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RepoStatSnapshotMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RepoStatSnapshotMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown RepoStatSnapshot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RepoStatSnapshotMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown RepoStatSnapshot edge %s", name)
+}
+
 // RepositoryMutation represents an operation that mutates the Repository nodes in the graph.
 type RepositoryMutation struct {
 	config
@@ -6578,6 +7218,8 @@ type RepositoryMutation struct {
 	pr_enabled           *bool
 	actions_enabled      *bool
 	alerts_enabled       *bool
+	stars_enabled        *bool
+	watches_enabled      *bool
 	html_url             *string
 	default_branch       *string
 	baseline_started_at  *time.Time
@@ -7247,6 +7889,78 @@ func (m *RepositoryMutation) ResetAlertsEnabled() {
 	m.alerts_enabled = nil
 }
 
+// SetStarsEnabled sets the "stars_enabled" field.
+func (m *RepositoryMutation) SetStarsEnabled(b bool) {
+	m.stars_enabled = &b
+}
+
+// StarsEnabled returns the value of the "stars_enabled" field in the mutation.
+func (m *RepositoryMutation) StarsEnabled() (r bool, exists bool) {
+	v := m.stars_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStarsEnabled returns the old "stars_enabled" field's value of the Repository entity.
+// If the Repository object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepositoryMutation) OldStarsEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStarsEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStarsEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStarsEnabled: %w", err)
+	}
+	return oldValue.StarsEnabled, nil
+}
+
+// ResetStarsEnabled resets all changes to the "stars_enabled" field.
+func (m *RepositoryMutation) ResetStarsEnabled() {
+	m.stars_enabled = nil
+}
+
+// SetWatchesEnabled sets the "watches_enabled" field.
+func (m *RepositoryMutation) SetWatchesEnabled(b bool) {
+	m.watches_enabled = &b
+}
+
+// WatchesEnabled returns the value of the "watches_enabled" field in the mutation.
+func (m *RepositoryMutation) WatchesEnabled() (r bool, exists bool) {
+	v := m.watches_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWatchesEnabled returns the old "watches_enabled" field's value of the Repository entity.
+// If the Repository object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepositoryMutation) OldWatchesEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWatchesEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWatchesEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWatchesEnabled: %w", err)
+	}
+	return oldValue.WatchesEnabled, nil
+}
+
+// ResetWatchesEnabled resets all changes to the "watches_enabled" field.
+func (m *RepositoryMutation) ResetWatchesEnabled() {
+	m.watches_enabled = nil
+}
+
 // SetHTMLURL sets the "html_url" field.
 func (m *RepositoryMutation) SetHTMLURL(s string) {
 	m.html_url = &s
@@ -7608,7 +8322,7 @@ func (m *RepositoryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RepositoryMutation) Fields() []string {
-	fields := make([]string, 0, 22)
+	fields := make([]string, 0, 24)
 	if m._type != nil {
 		fields = append(fields, repository.FieldType)
 	}
@@ -7650,6 +8364,12 @@ func (m *RepositoryMutation) Fields() []string {
 	}
 	if m.alerts_enabled != nil {
 		fields = append(fields, repository.FieldAlertsEnabled)
+	}
+	if m.stars_enabled != nil {
+		fields = append(fields, repository.FieldStarsEnabled)
+	}
+	if m.watches_enabled != nil {
+		fields = append(fields, repository.FieldWatchesEnabled)
 	}
 	if m.html_url != nil {
 		fields = append(fields, repository.FieldHTMLURL)
@@ -7711,6 +8431,10 @@ func (m *RepositoryMutation) Field(name string) (ent.Value, bool) {
 		return m.ActionsEnabled()
 	case repository.FieldAlertsEnabled:
 		return m.AlertsEnabled()
+	case repository.FieldStarsEnabled:
+		return m.StarsEnabled()
+	case repository.FieldWatchesEnabled:
+		return m.WatchesEnabled()
 	case repository.FieldHTMLURL:
 		return m.HTMLURL()
 	case repository.FieldDefaultBranch:
@@ -7764,6 +8488,10 @@ func (m *RepositoryMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldActionsEnabled(ctx)
 	case repository.FieldAlertsEnabled:
 		return m.OldAlertsEnabled(ctx)
+	case repository.FieldStarsEnabled:
+		return m.OldStarsEnabled(ctx)
+	case repository.FieldWatchesEnabled:
+		return m.OldWatchesEnabled(ctx)
 	case repository.FieldHTMLURL:
 		return m.OldHTMLURL(ctx)
 	case repository.FieldDefaultBranch:
@@ -7886,6 +8614,20 @@ func (m *RepositoryMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAlertsEnabled(v)
+		return nil
+	case repository.FieldStarsEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStarsEnabled(v)
+		return nil
+	case repository.FieldWatchesEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWatchesEnabled(v)
 		return nil
 	case repository.FieldHTMLURL:
 		v, ok := value.(string)
@@ -8081,6 +8823,12 @@ func (m *RepositoryMutation) ResetField(name string) error {
 		return nil
 	case repository.FieldAlertsEnabled:
 		m.ResetAlertsEnabled()
+		return nil
+	case repository.FieldStarsEnabled:
+		m.ResetStarsEnabled()
+		return nil
+	case repository.FieldWatchesEnabled:
+		m.ResetWatchesEnabled()
 		return nil
 	case repository.FieldHTMLURL:
 		m.ResetHTMLURL()

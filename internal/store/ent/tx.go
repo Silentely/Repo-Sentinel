@@ -26,6 +26,8 @@ type Tx struct {
 	NotificationChannel *NotificationChannelClient
 	// NotificationOutbox is the client for interacting with the NotificationOutbox builders.
 	NotificationOutbox *NotificationOutboxClient
+	// RepoStatSnapshot is the client for interacting with the RepoStatSnapshot builders.
+	RepoStatSnapshot *RepoStatSnapshotClient
 	// Repository is the client for interacting with the Repository builders.
 	Repository *RepositoryClient
 	// SecurityAlert is the client for interacting with the SecurityAlert builders.
@@ -178,6 +180,7 @@ func (tx *Tx) init() {
 	tx.GitHubInstallation = NewGitHubInstallationClient(tx.config)
 	tx.NotificationChannel = NewNotificationChannelClient(tx.config)
 	tx.NotificationOutbox = NewNotificationOutboxClient(tx.config)
+	tx.RepoStatSnapshot = NewRepoStatSnapshotClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)
 	tx.SecurityAlert = NewSecurityAlertClient(tx.config)
 	tx.SyncCursor = NewSyncCursorClient(tx.config)

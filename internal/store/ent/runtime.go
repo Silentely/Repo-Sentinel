@@ -153,16 +153,24 @@ func init() {
 	repositoryDescAlertsEnabled := repositoryFields[14].Descriptor()
 	// repository.DefaultAlertsEnabled holds the default value on creation for the alerts_enabled field.
 	repository.DefaultAlertsEnabled = repositoryDescAlertsEnabled.Default.(bool)
+	// repositoryDescStarsEnabled is the schema descriptor for stars_enabled field.
+	repositoryDescStarsEnabled := repositoryFields[15].Descriptor()
+	// repository.DefaultStarsEnabled holds the default value on creation for the stars_enabled field.
+	repository.DefaultStarsEnabled = repositoryDescStarsEnabled.Default.(bool)
+	// repositoryDescWatchesEnabled is the schema descriptor for watches_enabled field.
+	repositoryDescWatchesEnabled := repositoryFields[16].Descriptor()
+	// repository.DefaultWatchesEnabled holds the default value on creation for the watches_enabled field.
+	repository.DefaultWatchesEnabled = repositoryDescWatchesEnabled.Default.(bool)
 	// repositoryDescHTMLURL is the schema descriptor for html_url field.
-	repositoryDescHTMLURL := repositoryFields[15].Descriptor()
+	repositoryDescHTMLURL := repositoryFields[17].Descriptor()
 	// repository.DefaultHTMLURL holds the default value on creation for the html_url field.
 	repository.DefaultHTMLURL = repositoryDescHTMLURL.Default.(string)
 	// repositoryDescDefaultBranch is the schema descriptor for default_branch field.
-	repositoryDescDefaultBranch := repositoryFields[16].Descriptor()
+	repositoryDescDefaultBranch := repositoryFields[18].Descriptor()
 	// repository.DefaultDefaultBranch holds the default value on creation for the default_branch field.
 	repository.DefaultDefaultBranch = repositoryDescDefaultBranch.Default.(string)
 	// repositoryDescLastSyncErrorCode is the schema descriptor for last_sync_error_code field.
-	repositoryDescLastSyncErrorCode := repositoryFields[20].Descriptor()
+	repositoryDescLastSyncErrorCode := repositoryFields[22].Descriptor()
 	// repository.DefaultLastSyncErrorCode holds the default value on creation for the last_sync_error_code field.
 	repository.DefaultLastSyncErrorCode = repositoryDescLastSyncErrorCode.Default.(string)
 	securityalertFields := schema.SecurityAlert{}.Fields()

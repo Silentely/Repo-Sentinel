@@ -184,6 +184,34 @@ func (_c *RepositoryCreate) SetNillableAlertsEnabled(v *bool) *RepositoryCreate 
 	return _c
 }
 
+// SetStarsEnabled sets the "stars_enabled" field.
+func (_c *RepositoryCreate) SetStarsEnabled(v bool) *RepositoryCreate {
+	_c.mutation.SetStarsEnabled(v)
+	return _c
+}
+
+// SetNillableStarsEnabled sets the "stars_enabled" field if the given value is not nil.
+func (_c *RepositoryCreate) SetNillableStarsEnabled(v *bool) *RepositoryCreate {
+	if v != nil {
+		_c.SetStarsEnabled(*v)
+	}
+	return _c
+}
+
+// SetWatchesEnabled sets the "watches_enabled" field.
+func (_c *RepositoryCreate) SetWatchesEnabled(v bool) *RepositoryCreate {
+	_c.mutation.SetWatchesEnabled(v)
+	return _c
+}
+
+// SetNillableWatchesEnabled sets the "watches_enabled" field if the given value is not nil.
+func (_c *RepositoryCreate) SetNillableWatchesEnabled(v *bool) *RepositoryCreate {
+	if v != nil {
+		_c.SetWatchesEnabled(*v)
+	}
+	return _c
+}
+
 // SetHTMLURL sets the "html_url" field.
 func (_c *RepositoryCreate) SetHTMLURL(v string) *RepositoryCreate {
 	_c.mutation.SetHTMLURL(v)
@@ -353,6 +381,14 @@ func (_c *RepositoryCreate) defaults() {
 		v := repository.DefaultAlertsEnabled
 		_c.mutation.SetAlertsEnabled(v)
 	}
+	if _, ok := _c.mutation.StarsEnabled(); !ok {
+		v := repository.DefaultStarsEnabled
+		_c.mutation.SetStarsEnabled(v)
+	}
+	if _, ok := _c.mutation.WatchesEnabled(); !ok {
+		v := repository.DefaultWatchesEnabled
+		_c.mutation.SetWatchesEnabled(v)
+	}
 	if _, ok := _c.mutation.HTMLURL(); !ok {
 		v := repository.DefaultHTMLURL
 		_c.mutation.SetHTMLURL(v)
@@ -404,6 +440,12 @@ func (_c *RepositoryCreate) check() error {
 	}
 	if _, ok := _c.mutation.AlertsEnabled(); !ok {
 		return &ValidationError{Name: "alerts_enabled", err: errors.New(`ent: missing required field "Repository.alerts_enabled"`)}
+	}
+	if _, ok := _c.mutation.StarsEnabled(); !ok {
+		return &ValidationError{Name: "stars_enabled", err: errors.New(`ent: missing required field "Repository.stars_enabled"`)}
+	}
+	if _, ok := _c.mutation.WatchesEnabled(); !ok {
+		return &ValidationError{Name: "watches_enabled", err: errors.New(`ent: missing required field "Repository.watches_enabled"`)}
 	}
 	if _, ok := _c.mutation.HTMLURL(); !ok {
 		return &ValidationError{Name: "html_url", err: errors.New(`ent: missing required field "Repository.html_url"`)}
@@ -510,6 +552,14 @@ func (_c *RepositoryCreate) createSpec() (*Repository, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AlertsEnabled(); ok {
 		_spec.SetField(repository.FieldAlertsEnabled, field.TypeBool, value)
 		_node.AlertsEnabled = value
+	}
+	if value, ok := _c.mutation.StarsEnabled(); ok {
+		_spec.SetField(repository.FieldStarsEnabled, field.TypeBool, value)
+		_node.StarsEnabled = value
+	}
+	if value, ok := _c.mutation.WatchesEnabled(); ok {
+		_spec.SetField(repository.FieldWatchesEnabled, field.TypeBool, value)
+		_node.WatchesEnabled = value
 	}
 	if value, ok := _c.mutation.HTMLURL(); ok {
 		_spec.SetField(repository.FieldHTMLURL, field.TypeString, value)
