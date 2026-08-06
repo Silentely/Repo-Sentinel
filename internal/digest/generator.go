@@ -187,14 +187,40 @@ func (g *Generator) filteredEvents(ctx context.Context, since time.Time, limit i
 
 // reportBody 生成定期报告正文：AI 可用时优先使用 AI 总结，失败回退模板。
 // 返回正文与是否使用了 AI。
+// 日志留痕 AI 参与度：skipped（未启用/无事件）、used（AI 总结成功）、
+// fallback（AI 调用失败或输出为空，回退模板），配合 ai 层 ai request ok/failed 日志，
+// 可完整还原「有没有发请求、AI 有没有参与、失败是网络还是上游问题」。
 func (g *Generator) reportBody(ctx context.Context, title string, events []store.Event, period string) (string, bool) {
 	template := buildReportBody(title, events, period)
 	if g.AI == nil || !g.AI.IsDigestEnabled() || len(events) == 0 {
+		if g.Logger != nil {
+			reason := "ai_not_enabled"
+			if len(events) == 0 {
+				reason = "no_events"
+			}
+			g.Logger.Info("digest ai skipped", "title", title, "events", len(events), "reason", reason)
+		}
 		return template, false
 	}
+	start := time.Now()
 	summary, err := g.AI.SummarizeEvents(ctx, events, g.repoNames(ctx, events), period)
+	duration := time.Since(start)
 	if err != nil || strings.TrimSpace(summary) == "" {
+		if g.Logger != nil {
+			reason := "empty_summary"
+			if err != nil {
+				reason = "ai_error"
+			}
+			attrs := []any{"title", title, "events", len(events), "duration_ms", duration.Milliseconds(), "reason", reason}
+			if err != nil {
+				attrs = append(attrs, "error", err.Error())
+			}
+			g.Logger.Warn("digest ai fallback", attrs...)
+		}
 		return template, false
+	}
+	if g.Logger != nil {
+		g.Logger.Info("digest ai used", "title", title, "events", len(events), "duration_ms", duration.Milliseconds())
 	}
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))

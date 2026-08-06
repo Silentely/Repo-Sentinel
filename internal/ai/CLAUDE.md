@@ -31,6 +31,16 @@
 
 无业务表；配置落在 system settings。
 
+## 日志留痕
+
+所有 LLM 调用统一经 `Client.Complete` 留痕（注入 Logger 时；未配置不发起请求也不留痕）：
+
+- `DEBUG ai request start` — 发起请求：model、endpoint、max_tokens、timeout_ms、input_bytes
+- `INFO ai request ok` — 成功：model、duration_ms、output_chars
+- `WARN ai request failed` — 失败：error_code 分类 + error 详情
+
+`error_code` 区分故障来源：`timeout`（超时）、`network`（网络层失败）、`upstream_<status>`（上游非 2xx，error 含响应体明细）、`bad_response`（响应解码失败）、`empty_response`（无内容）、`internal`。上层（如 digest 的 `digest ai used / ai skipped / ai fallback`）记录 AI 参与度，与上述调用日志配合可还原完整链路。
+
 ## 测试与质量
 
 - `client_test.go`、`runtime_test.go`、`summarize_test.go`

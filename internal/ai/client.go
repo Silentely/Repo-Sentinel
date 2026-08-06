@@ -175,18 +175,66 @@ type chatResponse struct {
 	} `json:"choices"`
 }
 
+// callError 携带调用失败分类与可选 HTTP 状态码，供日志输出稳定的 error_code。
+// 调用方无需感知：错误文本仍保持 ai: 前缀，errors.Is/As 语义不变。
+type callError struct {
+	code   string
+	status int // 上游 HTTP 状态码；非上游错误时为 0
+	err    error
+}
+
+func (e *callError) Error() string { return e.err.Error() }
+func (e *callError) Unwrap() error { return e.err }
+
+// classifyCallError 提取失败分类与可读详情，供日志留痕。
+// 分类回答「是网络问题还是上游问题」：timeout / network / upstream_<status> /
+// bad_response / empty_response / internal；无法归类时返回 unknown。
+func classifyCallError(err error) (code, detail string) {
+	var ce *callError
+	if errors.As(err, &ce) {
+		if ce.status > 0 {
+			return fmt.Sprintf("upstream_%d", ce.status), err.Error()
+		}
+		return ce.code, err.Error()
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout", err.Error()
+	}
+	return "unknown", err.Error()
+}
+
 // Complete 执行单轮对话并返回助手文本。
 // 未配置、网络失败、HTTP 非 2xx、响应缺内容均返回错误，调用方负责降级。
-func (c *Client) Complete(ctx context.Context, system, user string) (string, error) {
+// 请求成败统一留痕（Logger 注入时）：DEBUG 记录发起，INFO 记录成功与输出长度，
+// WARN 记录失败并附 error_code 分类（timeout/network/upstream_<status> 等），
+// 便于区分网络问题与上游服务问题。未配置时不发起请求也不留痕（上层按降级处理）。
+func (c *Client) Complete(ctx context.Context, system, user string) (content string, err error) {
 	s := c.Snapshot()
 	if !s.Enabled || s.APIKey == "" {
 		return "", ErrNotConfigured
 	}
+	logger := s.Logger
+	model := s.model()
+	start := time.Now()
+	// 成功与失败统一在出口留痕，避免各分支重复记录。
+	defer func() {
+		if logger == nil {
+			return
+		}
+		attrs := []any{"model", model, "duration_ms", time.Since(start).Milliseconds()}
+		if err != nil {
+			code, detail := classifyCallError(err)
+			logger.Warn("ai request failed", append(attrs, "error_code", code, "error", detail)...)
+			return
+		}
+		logger.Info("ai request ok", append(attrs, "output_chars", len(content))...)
+	}()
+
 	ctx, cancel := context.WithTimeout(ctx, s.timeout())
 	defer cancel()
 
 	payload, err := json.Marshal(chatRequest{
-		Model: s.model(),
+		Model: model,
 		Messages: []chatMessage{
 			{Role: "system", Content: system},
 			{Role: "user", Content: user},
@@ -195,32 +243,44 @@ func (c *Client) Complete(ctx context.Context, system, user string) (string, err
 		Temperature: 0.3,
 	})
 	if err != nil {
-		return "", fmt.Errorf("ai: encode request: %w", err)
+		return "", &callError{code: "internal", err: fmt.Errorf("ai: encode request: %w", err)}
 	}
 
 	endpoint := s.baseURL() + "/chat/completions"
+	if logger != nil {
+		logger.Debug("ai request start",
+			"model", model,
+			"endpoint", endpoint,
+			"max_tokens", s.maxTokens(),
+			"timeout_ms", s.timeout().Milliseconds(),
+			"input_bytes", len(system)+len(user),
+		)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return "", fmt.Errorf("ai: build request: %w", err)
+		return "", &callError{code: "internal", err: fmt.Errorf("ai: build request: %w", err)}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.APIKey)
 
 	resp, err := s.httpClient().Do(req)
 	if err != nil {
-		return "", fmt.Errorf("ai: request failed: %w", err)
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", &callError{code: "timeout", err: fmt.Errorf("ai: request timeout after %s: %w", s.timeout(), err)}
+		}
+		return "", &callError{code: "network", err: fmt.Errorf("ai: request failed: %w", err)}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ai: http %d: %s", resp.StatusCode, errorDetail(resp))
+		return "", &callError{code: "upstream", status: resp.StatusCode, err: fmt.Errorf("ai: http %d: %s", resp.StatusCode, errorDetail(resp))}
 	}
 
 	var out chatResponse
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&out); err != nil {
-		return "", fmt.Errorf("ai: decode response: %w", err)
+		return "", &callError{code: "bad_response", err: fmt.Errorf("ai: decode response: %w", err)}
 	}
 	if len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
-		return "", fmt.Errorf("ai: empty response")
+		return "", &callError{code: "empty_response", err: errors.New("ai: empty response")}
 	}
 	return truncateOutput(strings.TrimSpace(out.Choices[0].Message.Content)), nil
 }
@@ -256,13 +316,6 @@ func truncateOutput(content string) string {
 		return string(r[:maxOutputRunes])
 	}
 	return content
-}
-
-// logError 记录 AI 降级原因；Logger 为 nil 时静默。
-func (c *Client) logError(msg string, err error) {
-	if s := c.Snapshot(); s.Logger != nil {
-		s.Logger.Warn(msg, "error", err.Error())
-	}
 }
 
 // Ping 发送一次最小对话验证连通性，返回端到端耗时。

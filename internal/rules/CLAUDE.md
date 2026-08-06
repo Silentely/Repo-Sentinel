@@ -17,6 +17,15 @@
 
 - 实现 `webhooksvc.Evaluator`
 - 可选 `AI *ai.Client`：安全告警分诊（超时 `aiTriageTimeout` = 15s，失败则无分诊正文）
+- 可选 `Logger *slog.Logger`：分诊参与度留痕，由 `app.Build` / `webhooksvc` 注入
+
+## 分诊日志留痕
+
+`Engine.triageAnalysis` 输出参与度日志（Logger 注入时），与 ai 层 `ai request ok/failed` 配合还原调用链：
+
+- `INFO triage ai skipped` — 未参与，reason 区分 `triage_not_enabled` / `not_new_alert` / `no_subscribed_channel`（无订阅渠道时同样不发 AI 请求，避免无效费用）
+- `INFO triage ai used` — 分诊成功，附 duration_ms
+- `WARN triage ai fallback` — 失败回退（reason=`ai_error` / `empty_analysis`，附错误详情），正文保持原文
 
 门禁：
 

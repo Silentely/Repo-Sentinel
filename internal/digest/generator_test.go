@@ -1,7 +1,9 @@
 package digest
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -664,5 +666,68 @@ func TestSendWindowInvalidTimezoneFallsBackToUTC(t *testing.T) {
 	}
 	if _, ok := g.sendWindow(t.Context(), time.Date(2026, 7, 28, 11, 30, 0, 0, time.UTC)); ok {
 		t.Fatal("11:30 超出发送窗口")
+	}
+}
+
+// newTestSlog 返回写入内存缓冲的 DEBUG 级 slog 记录器，供 AI 参与度日志断言。
+func newTestSlog(t *testing.T) (*bytes.Buffer, *slog.Logger) {
+	t.Helper()
+	var buf bytes.Buffer
+	lv := new(slog.LevelVar)
+	lv.Set(slog.LevelDebug)
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: lv}))
+	return &buf, logger
+}
+
+// reportBody 日志：AI 启用且总结成功 → digest ai used，正文为 AI 总结。
+func TestReportBodyLogsAIUsed(t *testing.T) {
+	buf, logger := newTestSlog(t)
+	g := &Generator{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"今日共 1 条事件：- 新 Issue hello"}}]}`)}
+	num := 1
+	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
+	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时")
+	if !aiUsed {
+		t.Fatal("AI 总结成功应标记参与")
+	}
+	if !strings.Contains(body, "今日共 1 条事件") {
+		t.Fatalf("期望 AI 总结正文，实际: %s", body)
+	}
+	if !strings.Contains(buf.String(), `msg="digest ai used"`) {
+		t.Fatalf("期望 digest ai used 日志，实际: %s", buf.String())
+	}
+}
+
+// reportBody 日志：AI 调用失败 → digest ai fallback（reason=ai_error），正文回退模板。
+func TestReportBodyLogsAIFallback(t *testing.T) {
+	buf, logger := newTestSlog(t)
+	g := &Generator{Logger: logger, AI: aiStub(t, `not-json`)}
+	num := 1
+	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
+	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时")
+	if aiUsed {
+		t.Fatal("AI 失败不应标记参与")
+	}
+	if !strings.Contains(body, "共 1 条事件") {
+		t.Fatalf("期望回退模板正文，实际: %s", body)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `msg="digest ai fallback"`) || !strings.Contains(out, "reason=ai_error") {
+		t.Fatalf("期望 digest ai fallback 日志，实际: %s", out)
+	}
+}
+
+// reportBody 日志：AI 未启用 → digest ai skipped（reason=ai_not_enabled）。
+func TestReportBodyLogsAISkipped(t *testing.T) {
+	buf, logger := newTestSlog(t)
+	g := &Generator{Logger: logger}
+	num := 1
+	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
+	_, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时")
+	if aiUsed {
+		t.Fatal("AI 未启用不应标记参与")
+	}
+	out := buf.String()
+	if !strings.Contains(out, `msg="digest ai skipped"`) || !strings.Contains(out, "reason=ai_not_enabled") {
+		t.Fatalf("期望 digest ai skipped 日志，实际: %s", out)
 	}
 }

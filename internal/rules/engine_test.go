@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -15,6 +17,16 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
+
+// newRulesLogger 返回写入内存缓冲的 DEBUG 级 slog 记录器，供分诊参与度日志断言。
+func newRulesLogger(t *testing.T) (*bytes.Buffer, *slog.Logger) {
+	t.Helper()
+	var buf bytes.Buffer
+	lv := new(slog.LevelVar)
+	lv.Set(slog.LevelDebug)
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: lv}))
+	return &buf, logger
+}
 
 // TestShouldNotifyRealtime 表驱动守护实时通知判定：Issue/PR 按 action 白名单，
 // Actions 按结论失败与恢复，安全告警一律实时。
@@ -157,9 +169,11 @@ func TestTriageAnalysis(t *testing.T) {
 		HTMLURL:        "https://github.com/acme/web/security/dependabot/3",
 		PayloadSummary: map[string]any{"rule_or_dependency": "lodash"},
 	}
+	// 订阅全部类型的渠道（EventKinds 为 nil），使分诊有接收方。
+	subscribed := []store.NotificationChannel{{Enabled: true}}
 	t.Run("新告警返回分析", func(t *testing.T) {
 		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"影响：攻击面扩大。\n建议：升级依赖。"}}]}`)}
-		got := e.triageAnalysis(t.Context(), ev, "acme/web")
+		got := e.triageAnalysis(t.Context(), ev, "acme/web", subscribed)
 		if !strings.Contains(got, "影响：") {
 			t.Fatalf("期望包含分析，实际: %q", got)
 		}
@@ -167,25 +181,105 @@ func TestTriageAnalysis(t *testing.T) {
 	t.Run("非新告警返回空", func(t *testing.T) {
 		closed := &store.Event{Kind: store.AlertKindDependabot, Action: "fixed", Title: "x"}
 		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"ignored"}}]}`)}
-		if got := e.triageAnalysis(t.Context(), closed, "acme/web"); got != "" {
+		if got := e.triageAnalysis(t.Context(), closed, "acme/web", subscribed); got != "" {
 			t.Fatalf("终态告警不应分诊，实际: %q", got)
+		}
+	})
+	t.Run("无订阅渠道返回空", func(t *testing.T) {
+		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"不应调用"}}]}`)}
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web", nil); got != "" {
+			t.Fatalf("无订阅渠道不应分诊，实际: %q", got)
 		}
 	})
 	t.Run("AI 失败返回空", func(t *testing.T) {
 		e := &Engine{AI: aiStub(t, `internal error`)}
-		if got := e.triageAnalysis(t.Context(), ev, "acme/web"); got != "" {
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web", subscribed); got != "" {
 			t.Fatalf("AI 失败应返回空串，实际: %q", got)
 		}
 	})
 	t.Run("未配置 AI 返回空", func(t *testing.T) {
-		if got := (&Engine{}).triageAnalysis(t.Context(), ev, "acme/web"); got != "" {
+		if got := (&Engine{}).triageAnalysis(t.Context(), ev, "acme/web", subscribed); got != "" {
 			t.Fatalf("未配置 AI 应返回空串，实际: %q", got)
 		}
 	})
 	t.Run("分诊开关关闭返回空", func(t *testing.T) {
 		e := &Engine{AI: &ai.Client{APIKey: "k", Enabled: true, TriageEnabled: false}}
-		if got := e.triageAnalysis(t.Context(), ev, "acme/web"); got != "" {
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web", subscribed); got != "" {
 			t.Fatalf("分诊关闭应返回空串，实际: %q", got)
+		}
+	})
+}
+
+// TestTriageAnalysisLogs 验证分诊参与度留痕：used / skipped（三种原因）/ fallback。
+func TestTriageAnalysisLogs(t *testing.T) {
+	subscribed := []store.NotificationChannel{{Enabled: true}}
+	ev := &store.Event{
+		ID: ulid.Make().String(), Kind: store.AlertKindDependabot, Action: "created",
+		Title: "lodash 漏洞", Severity: "high",
+		PayloadSummary: map[string]any{"rule_or_dependency": "lodash"},
+	}
+
+	t.Run("成功 → triage ai used", func(t *testing.T) {
+		buf, logger := newRulesLogger(t)
+		e := &Engine{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"影响：攻击面扩大。\n建议：升级依赖。"}}]}`)}
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web", subscribed); got == "" {
+			t.Fatal("期望分诊成功")
+		}
+		if !strings.Contains(buf.String(), `msg="triage ai used"`) {
+			t.Fatalf("期望 triage ai used 日志，实际: %s", buf.String())
+		}
+	})
+	t.Run("未启用 → skipped triage_not_enabled", func(t *testing.T) {
+		buf, logger := newRulesLogger(t)
+		e := &Engine{Logger: logger}
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web", subscribed); got != "" {
+			t.Fatal("未配置 AI 应返回空")
+		}
+		if !strings.Contains(buf.String(), `msg="triage ai skipped"`) || !strings.Contains(buf.String(), "reason=triage_not_enabled") {
+			t.Fatalf("期望 skipped triage_not_enabled，实际: %s", buf.String())
+		}
+	})
+	t.Run("非告警事件静默不产生日志", func(t *testing.T) {
+		buf, logger := newRulesLogger(t)
+		issue := &store.Event{ID: ev.ID, Kind: store.WorkItemKindIssue, Action: "opened", Title: "普通问题"}
+		e := &Engine{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"不应调用"}}]}`)}
+		if got := e.triageAnalysis(t.Context(), issue, "acme/web", subscribed); got != "" {
+			t.Fatal("非告警事件应返回空")
+		}
+		if buf.Len() != 0 {
+			t.Fatalf("非告警事件不应产生分诊日志，实际: %s", buf.String())
+		}
+	})
+	t.Run("非新告警 → skipped not_new_alert", func(t *testing.T) {
+		buf, logger := newRulesLogger(t)
+		closed := &store.Event{ID: ev.ID, Kind: store.AlertKindDependabot, Action: "fixed", Title: "x"}
+		e := &Engine{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"ignored"}}]}`)}
+		if got := e.triageAnalysis(t.Context(), closed, "acme/web", subscribed); got != "" {
+			t.Fatal("终态告警应返回空")
+		}
+		if !strings.Contains(buf.String(), `msg="triage ai skipped"`) || !strings.Contains(buf.String(), "reason=not_new_alert") {
+			t.Fatalf("期望 skipped not_new_alert，实际: %s", buf.String())
+		}
+	})
+	t.Run("无订阅渠道 → skipped no_subscribed_channel", func(t *testing.T) {
+		buf, logger := newRulesLogger(t)
+		e := &Engine{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"不应调用"}}]}`)}
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web", nil); got != "" {
+			t.Fatal("无订阅渠道应返回空")
+		}
+		if !strings.Contains(buf.String(), `msg="triage ai skipped"`) || !strings.Contains(buf.String(), "reason=no_subscribed_channel") {
+			t.Fatalf("期望 skipped no_subscribed_channel，实际: %s", buf.String())
+		}
+	})
+	t.Run("AI 失败 → fallback ai_error", func(t *testing.T) {
+		buf, logger := newRulesLogger(t)
+		e := &Engine{Logger: logger, AI: aiStub(t, `internal error`)}
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web", subscribed); got != "" {
+			t.Fatal("AI 失败应返回空")
+		}
+		out := buf.String()
+		if !strings.Contains(out, `msg="triage ai fallback"`) || !strings.Contains(out, "reason=ai_error") {
+			t.Fatalf("期望 fallback ai_error，实际: %s", out)
 		}
 	})
 }
