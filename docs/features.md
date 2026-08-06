@@ -20,14 +20,14 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | 唯一管理员 | 环境变量引导或本机 setup；CLI 重置密码 |
 | Session / CSRF | HttpOnly Session、双提交 CSRF、登录限流 |
 | Webhook 接收 | 验签（含 previous Secret）、Delivery 幂等、异步规范化 |
-| 事件与资源 | Issue/PR、Workflow Run、三类安全告警、安装与仓库元数据 |
-| 仓库能力开关 | 单仓独立开关：监控（总开关）、Issues、PR、Actions、安全告警；关闭即停止采集、不建事件、不通知；归档联动关闭全部开关 |
+| 事件与资源 | Issue/PR、Star/Watch、Workflow Run、三类安全告警、安装与仓库元数据 |
+| 仓库能力开关 | 单仓独立开关：监控（总开关）、Issues、PR、Star/Watch、Actions、安全告警；关闭即停止采集、不建事件、不通知；归档联动关闭全部开关 |
 | 列表筛选与忽略 | 按仓库筛选；本地忽略长期打开项（不回写 GitHub）；事件流/每日汇总与资源列表默认排除归档仓与已忽略项 |
 | 基线与乱序 | 新仓基线抑制通知；陈旧 `source_updated_at` 丢弃回滚 |
 | 通知 | Outbox、Telegram、HTTP Webhook、死信重试、短时聚合与超频摘要 |
-| 渠道订阅 | 每渠道独立勾选订阅类型（Issue、PR、Actions、Dependabot、Code Scanning、Secret Scanning，默认全部）与「每日汇总」开关（默认开），合并通知按订阅重建子集 |
-| 全局功能模块 | Issues / PR / Actions / 安全告警：关闭后隐藏侧栏入口，并停止采集、对账与实时/摘要通知；仓库级开关在全局关闭时禁用 |
-| 管理后台 | 仪表盘（可折叠区块）、仓库管理、Issues/PR/Actions/安全告警列表、投递、渠道配置、主题 |
+| 渠道订阅 | 每渠道独立勾选订阅类型（Issue、PR、Star/Watch、Actions、Dependabot、Code Scanning、Secret Scanning，默认全部）与「每日汇总」开关（默认开），合并通知按订阅重建子集 |
+| 全局功能模块 | Issues / PR / Actions / 安全告警 / Star / Watch：关闭后停止采集、对账与实时/摘要通知；Issues/PR/Actions/安全告警关闭同时隐藏侧栏入口，Star 关闭同时隐藏仪表盘 Star 增长面板；仓库级开关在全局关闭时禁用 |
+| 管理后台 | 仪表盘（可折叠区块，含 Star 增长曲线，支持 7/30/90/全部范围）、仓库管理、Issues/PR/Actions/安全告警列表、投递、渠道配置、主题 |
 | 运维 CLI | `doctor` / `backup` / `restore`、配置校验、密码重置 |
 | 容器部署 | GHCR 镜像（`latest` 随正式 tag）、Compose 拉取部署、健康检查与 `/metrics` |
 | 历史数据保留 | 事件 / 终态投递 / Webhook Delivery 可配置保留天数，后台定期清理（0 禁用） |
