@@ -30,7 +30,6 @@ func (c *Client) SummarizeEvents(ctx context.Context, events []store.Event, repo
 	user := fmt.Sprintf("时段：%s\n共 %d 条事件：\n%s", period, len(events), renderEventLines(events, repoNames))
 	out, err := c.Complete(ctx, summarySystemPrompt, user)
 	if err != nil {
-		c.logError("ai summarize failed", err)
 		return "", err
 	}
 	return out, nil
@@ -43,7 +42,6 @@ func (c *Client) TriageAlert(ctx context.Context, ev store.Event, repo string) (
 		store.KindDisplayName(ev.Kind), repo, ev.Title, ev.Severity, store.PayloadString(ev.PayloadSummary, "rule_or_dependency"), ev.HTMLURL)
 	out, err := c.Complete(ctx, triageSystemPrompt, user)
 	if err != nil {
-		c.logError("ai triage failed", err)
 		return "", err
 	}
 	return out, nil

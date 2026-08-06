@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	htmlpkg "html"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -21,6 +22,8 @@ type Engine struct {
 	Store store.Store
 	// AI 可选；nil 或未启用时不进行安全告警分诊。
 	AI *ai.Client
+	// Logger 可选；分诊参与度与降级留痕。
+	Logger *slog.Logger
 }
 
 // aiTriageTimeout 分诊调用预算上限：告警通知应尽快入库，AI 慢则放弃分诊。
@@ -44,11 +47,9 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	}
 	title, body, htmlURL := renderMessage(res.Event, repoFullName)
 	// 安全告警分诊：新告警附带 AI 影响分析与处理建议；失败保持原文，不阻塞入库。
-	// 仅当存在订阅该告警类型的渠道时才调用，避免无接收方时产生无效的 AI 费用。
-	if hasSubscribedChannel(channels, res.Event.Kind) {
-		if analysis := e.triageAnalysis(ctx, res.Event, repoFullName); analysis != "" {
-			body = body + "\n────────────────\n🤖 AI 分析\n" + htmlpkg.EscapeString(analysis)
-		}
+	// 是否有接收渠道的检查并入 triageAnalysis，与参与度日志归并一处。
+	if analysis := e.triageAnalysis(ctx, res.Event, repoFullName, channels); analysis != "" {
+		body = body + "\n────────────────\n🤖 AI 分析\n" + htmlpkg.EscapeString(analysis)
 	}
 	for _, ch := range channels {
 		// 渠道未订阅该事件类型时跳过。
@@ -116,30 +117,75 @@ func hasSubscribedChannel(channels []store.NotificationChannel, kind string) boo
 	return false
 }
 
-// triageAnalysis 生成新安全告警的 AI 分析；未启用、非新告警或调用失败时返回空串。
+// triageAnalysis 生成新安全告警的 AI 分析；未启用、非新告警、无订阅渠道或调用失败时返回空串。
 // 返回空串时调用方保持原通知正文，AI 慢或不可用绝不影响通知入库。
-func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo string) string {
-	if e.AI == nil || !e.AI.IsTriageEnabled() || !isNewSecurityAlert(ev) {
+// 参与度留痕（Logger 注入时）：skipped 记录未参与原因（triage_not_enabled / not_new_alert /
+// no_subscribed_channel），used 记录分诊成功，fallback 记录失败或空输出（reason=ai_error /
+// empty_analysis，附错误详情）；配合 ai 层 ai request ok/failed 日志可还原完整调用链。
+func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo string, channels []store.NotificationChannel) string {
+	// 仅安全告警参与分诊；其余事件类型静默返回，不产生 skipped 日志噪声。
+	if !isSecurityAlertKind(ev.Kind) {
 		return ""
+	}
+	skip := func(reason string) string {
+		if e.Logger != nil {
+			e.Logger.Info("triage ai skipped", "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "reason", reason)
+		}
+		return ""
+	}
+	if e.AI == nil || !e.AI.IsTriageEnabled() {
+		return skip("triage_not_enabled")
+	}
+	if !isNewSecurityAlert(ev) {
+		return skip("not_new_alert")
+	}
+	// 无订阅渠道时不发起 AI 请求，避免无效费用；原因同样留痕。
+	if !hasSubscribedChannel(channels, ev.Kind) {
+		return skip("no_subscribed_channel")
 	}
 	ctx, cancel := context.WithTimeout(ctx, aiTriageTimeout)
 	defer cancel()
+	start := time.Now()
 	analysis, err := e.AI.TriageAlert(ctx, *ev, repo)
+	duration := time.Since(start)
 	if err != nil || strings.TrimSpace(analysis) == "" {
+		if e.Logger != nil {
+			reason := "empty_analysis"
+			if err != nil {
+				reason = "ai_error"
+			}
+			attrs := []any{"event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds(), "reason", reason}
+			if err != nil {
+				attrs = append(attrs, "error", err.Error())
+			}
+			e.Logger.Warn("triage ai fallback", attrs...)
+		}
 		return ""
 	}
+	if e.Logger != nil {
+		e.Logger.Info("triage ai used", "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
+	}
 	return analysis
+}
+
+// isSecurityAlertKind 判定事件是否为安全告警类型（分诊仅针对告警）。
+func isSecurityAlertKind(kind string) bool {
+	switch kind {
+	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
+		return true
+	}
+	return false
 }
 
 // isNewSecurityAlert 判定是否为「新产生」的安全告警（创建/打开/重新打开）。
 // 忽略与修复等终态事件无需 AI 分诊。
 func isNewSecurityAlert(ev *store.Event) bool {
-	switch ev.Kind {
-	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
-		switch ev.Action {
-		case "created", "opened", "reopened":
-			return true
-		}
+	if !isSecurityAlertKind(ev.Kind) {
+		return false
+	}
+	switch ev.Action {
+	case "created", "opened", "reopened":
+		return true
 	}
 	return false
 }

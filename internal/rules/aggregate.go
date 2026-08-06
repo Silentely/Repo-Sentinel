@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	htmlpkg "html"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,8 @@ type Aggregator struct {
 	BurstWindow    time.Duration
 	// AI 可选；flush 单事件回放时透传给 Engine 供安全告警分诊。
 	AI *ai.Client
+	// Logger 可选；透传给 Engine 供分诊参与度留痕。
+	Logger *slog.Logger
 
 	mu sync.Mutex
 	// key: repoID|category
@@ -179,7 +182,7 @@ func (a *Aggregator) flush(key string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if len(b.events) == 1 {
-		_ = (&Engine{Store: a.Store, AI: a.AI}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName)
+		_ = (&Engine{Store: a.Store, AI: a.AI, Logger: a.Logger}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName)
 		return
 	}
 	_ = a.enqueueMerged(ctx, b)

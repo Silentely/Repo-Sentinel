@@ -1,10 +1,13 @@
 package ai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -269,5 +272,115 @@ func TestClientPing(t *testing.T) {
 	defer empty.Close()
 	if _, err := (&Client{Enabled: true, APIKey: "k", BaseURL: empty.URL}).Ping(t.Context()); err == nil {
 		t.Fatal("空响应应返回错误")
+	}
+}
+
+// newTestLogger 返回写入内存缓冲的 DEBUG 级 slog 记录器，供日志留痕断言。
+func newTestLogger(t *testing.T) (*bytes.Buffer, *slog.Logger) {
+	t.Helper()
+	var buf bytes.Buffer
+	lv := new(slog.LevelVar)
+	lv.Set(slog.LevelDebug)
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: lv}))
+	return &buf, logger
+}
+
+// TestCompleteLogsSuccess 验证成功调用留痕：DEBUG 发起 + INFO 成功与输出长度。
+func TestCompleteLogsSuccess(t *testing.T) {
+	srv := captureServer(t, http.StatusOK, `{"choices":[{"message":{"content":"总结内容"}}]}`, nil)
+	defer srv.Close()
+	buf, logger := newTestLogger(t)
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Model: "m1", Logger: logger}
+	got, err := c.Complete(t.Context(), "sys", "usr")
+	if err != nil {
+		t.Fatalf("Complete 应成功: %v", err)
+	}
+	if got != "总结内容" {
+		t.Fatalf("返回值不应受日志影响，实际: %q", got)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `msg="ai request start"`) || !strings.Contains(out, "input_bytes=") {
+		t.Fatalf("期望 DEBUG 发起日志，实际: %s", out)
+	}
+	if !strings.Contains(out, `msg="ai request ok"`) || !strings.Contains(out, "output_chars=") {
+		t.Fatalf("期望 INFO 成功日志，实际: %s", out)
+	}
+	if !strings.Contains(out, "model=m1") {
+		t.Fatalf("期望携带 model 字段，实际: %s", out)
+	}
+}
+
+// TestCompleteLogsUpstreamError 验证上游非 2xx 分类为 upstream_<status> 且带响应明细。
+func TestCompleteLogsUpstreamError(t *testing.T) {
+	srv := captureServer(t, http.StatusBadGateway, `upstream connect error`, nil)
+	defer srv.Close()
+	buf, logger := newTestLogger(t)
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Logger: logger}
+	if _, err := c.Complete(t.Context(), "s", "u"); err == nil {
+		t.Fatal("502 应返回错误")
+	}
+	out := buf.String()
+	if !strings.Contains(out, `msg="ai request failed"`) {
+		t.Fatalf("期望 WARN 失败日志，实际: %s", out)
+	}
+	if !strings.Contains(out, "error_code=upstream_502") {
+		t.Fatalf("期望错误分类 upstream_502，实际: %s", out)
+	}
+	if !strings.Contains(out, "upstream connect error") {
+		t.Fatalf("期望日志含上游返回内容，实际: %s", out)
+	}
+}
+
+// TestCompleteLogsTimeout 验证超时分类为 timeout。
+func TestCompleteLogsTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	buf, logger := newTestLogger(t)
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Timeout: 30 * time.Millisecond, Logger: logger}
+	if _, err := c.Complete(t.Context(), "s", "u"); err == nil {
+		t.Fatal("期望超时错误")
+	}
+	out := buf.String()
+	if !strings.Contains(out, `msg="ai request failed"`) || !strings.Contains(out, "error_code=timeout") {
+		t.Fatalf("期望错误分类 timeout，实际: %s", out)
+	}
+}
+
+// TestCompleteLogsNotConfiguredSilent 验证未配置时不发起请求也不留痕（上层按降级处理）。
+func TestCompleteLogsNotConfiguredSilent(t *testing.T) {
+	buf, logger := newTestLogger(t)
+	c := &Client{Logger: logger}
+	if _, err := c.Complete(t.Context(), "s", "u"); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("无 Key 应返回 ErrNotConfigured，实际: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("未配置不应产生日志，实际: %s", buf.String())
+	}
+}
+
+// TestClassifyCallError 验证失败分类映射：网络/超时/上游/坏响应/空响应/未知。
+func TestClassifyCallError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"网络错误", &callError{code: "network", err: errors.New("ai: request failed: dial tcp")}, "network"},
+		{"上游 429", &callError{code: "upstream", status: 429, err: errors.New("ai: http 429: rate limited")}, "upstream_429"},
+		{"坏响应", &callError{code: "bad_response", err: errors.New("ai: decode response: boom")}, "bad_response"},
+		{"空响应", &callError{code: "empty_response", err: errors.New("ai: empty response")}, "empty_response"},
+		{"裸超时", context.DeadlineExceeded, "timeout"},
+		{"包装超时", &callError{code: "timeout", err: fmt.Errorf("ai: request timeout after 30ms: %w", context.DeadlineExceeded)}, "timeout"},
+		{"未知", errors.New("whatever"), "unknown"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if code, _ := classifyCallError(tc.err); code != tc.want {
+				t.Fatalf("期望分类 %s，实际 %s", tc.want, code)
+			}
+		})
 	}
 }
