@@ -386,6 +386,41 @@ func runStoreContract(t *testing.T, factory ContractFactory) {
 		}
 	})
 
+	t.Run(factory.Name()+"/Setting按Key集合批量读取且缺失键不报错", func(t *testing.T) {
+		opened := factory.Open(t)
+		for i, kv := range []struct{ key, raw string }{
+			{"batch.key.one", `{"n":1}`},
+			{"batch.key.two", `{"n":2}`},
+		} {
+			if _, err := opened.Settings().Upsert(t.Context(), store.SystemSetting{
+				ID:        ulid.Make().String(),
+				Key:       kv.key,
+				ValueJSON: json.RawMessage(kv.raw),
+				UpdatedAt: time.Now().UTC(),
+				UpdatedBy: "test",
+			}); err != nil {
+				t.Fatalf("第 %d 次写入批量设置失败: %v", i, err)
+			}
+		}
+		rows, err := opened.Settings().GetMany(t.Context(), "batch.key.one", "batch.key.two", "batch.key.missing")
+		if err != nil {
+			t.Fatalf("批量读取设置失败: %v", err)
+		}
+		if len(rows) != 2 {
+			t.Fatalf("批量读取应返回 2 条（缺失键跳过），got %d", len(rows))
+		}
+		found := map[string]bool{}
+		for _, row := range rows {
+			found[row.Key] = true
+		}
+		if !found["batch.key.one"] || !found["batch.key.two"] {
+			t.Fatalf("批量读取返回键集=%v，期望包含 batch.key.one 与 batch.key.two", found)
+		}
+		if rows, err := opened.Settings().GetMany(t.Context()); err != nil || len(rows) != 0 {
+			t.Fatalf("空键集应返回空切片且无错误，got rows=%d err=%v", len(rows), err)
+		}
+	})
+
 	t.Run(factory.Name()+"/Audit仅追加并支持只读查询", func(t *testing.T) {
 		opened := factory.Open(t)
 		entry := store.AuditLog{

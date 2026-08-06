@@ -12,33 +12,66 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-func (s *server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+// settingSpec 描述一个可配置的系统设置：默认值、写入白名单与校验规则。
+// 设置键的唯一事实来源：GET 默认值、PUT 白名单、校验规则均由此派生，
+// 新增设置只改一处，避免三处漂移（历史 bug：PUT 白名单接受 burst_window_sec 而 GET 不返回）。
+type settingSpec struct {
+	key string
+	def any
+	// validate 校验并规范化写入值；返回规范化值、失败提示与是否通过。
+	validate func(v any) (any, string, bool)
+}
+
+// settingSpecs 系统设置注册表（defaults 由注册表统一派生）。
+var settingSpecs = func() []settingSpec {
 	defaults := store.DefaultRetentionPolicy()
-	out := map[string]any{
-		"admin.timezone":                    "UTC",
-		"digest.local_time":                 "09:00",
-		"digest.send_empty":                 false,
-		"notify.aggregate_window_sec":       60,
-		"notify.burst_threshold":            15,
-		"notify.burst_window_sec":           300,
-		"display.closed_limit":              20,
-		"retention.events_days":             defaults.EventsDays,
-		"retention.outbox_days":             defaults.OutboxDays,
-		"retention.webhook_deliveries_days": defaults.WebhookDeliveriesDays,
-		"feature.issues":                    true,
-		"feature.pull_requests":             true,
-		"feature.actions":                   true,
-		"feature.security_alerts":           true,
-		"report.weekly_enabled":             false,
-		"report.weekly_day":                 "monday",
-		"report.monthly_enabled":            false,
-		"report.monthly_day":                1,
+	boolMsg := "开关值须为布尔类型。"
+	return []settingSpec{
+		{key: "admin.timezone", def: "UTC", validate: validateTimezone},
+		{key: "digest.local_time", def: "09:00", validate: validateLocalTime},
+		{key: "digest.send_empty", def: false, validate: boolSetting(boolMsg)},
+		{key: "notify.aggregate_window_sec", def: 60, validate: intRangeSetting(1, 86400, "时间窗须为 1–86400 的整数秒。")},
+		{key: "notify.burst_threshold", def: 15, validate: intRangeSetting(1, 10000, "突发阈值须为 1–10000 的整数。")},
+		{key: "notify.burst_window_sec", def: 300, validate: intRangeSetting(1, 86400, "时间窗须为 1–86400 的整数秒。")},
+		{key: "display.closed_limit", def: 20, validate: intRangeSetting(1, 500, "展示上限须为 1–500 的整数。")},
+		{key: "retention.events_days", def: defaults.EventsDays, validate: intRangeSetting(0, 3650, "保留天数须为 0–3650 的整数（0 表示禁用该类清理）。")},
+		{key: "retention.outbox_days", def: defaults.OutboxDays, validate: intRangeSetting(0, 3650, "保留天数须为 0–3650 的整数（0 表示禁用该类清理）。")},
+		{key: "retention.webhook_deliveries_days", def: defaults.WebhookDeliveriesDays, validate: intRangeSetting(0, 3650, "保留天数须为 0–3650 的整数（0 表示禁用该类清理）。")},
+		{key: "feature.issues", def: true, validate: boolSetting(boolMsg)},
+		{key: "feature.pull_requests", def: true, validate: boolSetting(boolMsg)},
+		{key: "feature.actions", def: true, validate: boolSetting(boolMsg)},
+		{key: "feature.security_alerts", def: true, validate: boolSetting(boolMsg)},
+		{key: "report.weekly_enabled", def: false, validate: boolSetting(boolMsg)},
+		{key: "report.weekly_day", def: "monday", validate: validateWeekday},
+		{key: "report.monthly_enabled", def: false, validate: boolSetting(boolMsg)},
+		{key: "report.monthly_day", def: 1, validate: intRangeSetting(1, 28, "每月发送日须为 1–28 的整数。")},
 	}
+}()
+
+func findSettingSpec(key string) (settingSpec, bool) {
+	for _, spec := range settingSpecs {
+		if spec.key == key {
+			return spec, true
+		}
+	}
+	return settingSpec{}, false
+}
+
+func (s *server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	out := make(map[string]any, len(settingSpecs))
+	for _, spec := range settingSpecs {
+		out[spec.key] = spec.def
+	}
+	// 批量读取一次拉齐所有键：逐个 Get 会产生 18 次往返查询，设置页与仪表盘高频调用时无谓放大延迟。
+	keys := make([]string, 0, len(out))
 	for key := range out {
-		if s, err := s.dependencies.Store.Settings().Get(r.Context(), key); err == nil {
+		keys = append(keys, key)
+	}
+	if rows, err := s.dependencies.Store.Settings().GetMany(r.Context(), keys...); err == nil {
+		for _, row := range rows {
 			var v any
-			if json.Unmarshal(s.ValueJSON, &v) == nil {
-				out[key] = v
+			if json.Unmarshal(row.ValueJSON, &v) == nil {
+				out[row.Key] = v
 			}
 		}
 	}
@@ -50,23 +83,15 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if !s.decodeRequestJSON(w, r, &body) {
 		return
 	}
-	allowed := map[string]bool{
-		"admin.timezone": true, "digest.local_time": true, "digest.send_empty": true,
-		"notify.aggregate_window_sec": true, "notify.burst_threshold": true, "notify.burst_window_sec": true,
-		"display.closed_limit":  true,
-		"retention.events_days": true, "retention.outbox_days": true, "retention.webhook_deliveries_days": true,
-		"feature.issues": true, "feature.pull_requests": true, "feature.actions": true, "feature.security_alerts": true,
-		"report.weekly_enabled": true, "report.weekly_day": true,
-		"report.monthly_enabled": true, "report.monthly_day": true,
-	}
 	// 先全量校验再写入：map 遍历顺序随机，边校验边写会导致部分生效——
-	// 用户看到 400 却已有键被落库。
+	// 用户看到 400 却已有键被落库。白名单即注册表本身，未知键静默忽略。
 	validated := make(map[string]any, len(body))
 	for k, v := range body {
-		if !allowed[k] {
+		spec, ok := findSettingSpec(k)
+		if !ok {
 			continue
 		}
-		nv, msg, ok := validateSettingValue(k, v)
+		nv, msg, ok := spec.validate(v)
 		if !ok {
 			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{
 				"field":   k,
@@ -96,57 +121,64 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateSettingValue 校验并规范化单个设置项；返回规范化值、失败提示与是否通过。
+// 保留独立函数签名供既有测试直接调用，实现委托注册表。
 func validateSettingValue(key string, v any) (any, string, bool) {
-	switch key {
-	case "retention.events_days", "retention.outbox_days", "retention.webhook_deliveries_days":
-		days, ok := coerceIntInRange(v, 0, 3650)
-		return days, "保留天数须为 0–3650 的整数（0 表示禁用该类清理）。", ok
-	case "notify.aggregate_window_sec", "notify.burst_window_sec":
-		sec, ok := coerceIntInRange(v, 1, 86400)
-		return sec, "时间窗须为 1–86400 的整数秒。", ok
-	case "notify.burst_threshold":
-		n, ok := coerceIntInRange(v, 1, 10000)
-		return n, "突发阈值须为 1–10000 的整数。", ok
-	case "display.closed_limit":
-		n, ok := coerceIntInRange(v, 1, 500)
-		return n, "展示上限须为 1–500 的整数。", ok
-	case "digest.local_time":
-		s, ok := v.(string)
-		if !ok {
-			return nil, "时间格式须为 HH:MM。", false
-		}
-		normalized, ok := normalizeLocalTime(s)
-		return normalized, "时间格式须为 HH:MM（00:00–23:59）。", ok
-	case "admin.timezone":
-		s, ok := v.(string)
-		if !ok || s == "" {
-			return nil, "时区须为 IANA 名称（如 Asia/Shanghai）。", false
-		}
-		if _, err := time.LoadLocation(s); err != nil {
-			return nil, "时区须为 IANA 名称（如 Asia/Shanghai）。", false
-		}
-		return s, "", true
-	case "digest.send_empty",
-		"feature.issues", "feature.pull_requests", "feature.actions", "feature.security_alerts",
-		"report.weekly_enabled", "report.monthly_enabled":
-		b, ok := v.(bool)
-		return b, "开关值须为布尔类型。", ok
-	case "report.weekly_day":
-		s, ok := v.(string)
-		if !ok {
-			return nil, "发送日须为英文周名（monday–sunday）。", false
-		}
-		normalized := strings.ToLower(s)
-		if !validWeekdayName(normalized) {
-			return nil, "发送日须为英文周名（monday–sunday）。", false
-		}
-		return normalized, "", true
-	case "report.monthly_day":
-		n, ok := coerceIntInRange(v, 1, 28)
-		return n, "每月发送日须为 1–28 的整数。", ok
-	default:
+	spec, ok := findSettingSpec(key)
+	if !ok {
 		return v, "", true
 	}
+	return spec.validate(v)
+}
+
+// boolSetting 生成布尔开关校验器。
+func boolSetting(message string) func(any) (any, string, bool) {
+	return func(v any) (any, string, bool) {
+		b, ok := v.(bool)
+		return b, message, ok
+	}
+}
+
+// intRangeSetting 生成整数区间校验器。
+func intRangeSetting(min, max int, message string) func(any) (any, string, bool) {
+	return func(v any) (any, string, bool) {
+		n, ok := coerceIntInRange(v, min, max)
+		return n, message, ok
+	}
+}
+
+// validateTimezone 校验 IANA 时区名称。
+func validateTimezone(v any) (any, string, bool) {
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return nil, "时区须为 IANA 名称（如 Asia/Shanghai）。", false
+	}
+	if _, err := time.LoadLocation(s); err != nil {
+		return nil, "时区须为 IANA 名称（如 Asia/Shanghai）。", false
+	}
+	return s, "", true
+}
+
+// validateLocalTime 校验并归一化 HH:MM。
+func validateLocalTime(v any) (any, string, bool) {
+	s, ok := v.(string)
+	if !ok {
+		return nil, "时间格式须为 HH:MM。", false
+	}
+	normalized, ok := normalizeLocalTime(s)
+	return normalized, "时间格式须为 HH:MM（00:00–23:59）。", ok
+}
+
+// validateWeekday 校验并归一化英文周名（小写）。
+func validateWeekday(v any) (any, string, bool) {
+	s, ok := v.(string)
+	if !ok {
+		return nil, "发送日须为英文周名（monday–sunday）。", false
+	}
+	normalized := strings.ToLower(s)
+	if !validWeekdayName(normalized) {
+		return nil, "发送日须为英文周名（monday–sunday）。", false
+	}
+	return normalized, "", true
 }
 
 // validWeekdayName 判定是否合法英文周名（小写）。

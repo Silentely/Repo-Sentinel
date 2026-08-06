@@ -23,6 +23,25 @@ func (s *settingsStore) Get(ctx context.Context, key string) (SystemSetting, err
 	return settingFromEntity(entity), nil
 }
 
+// GetMany 批量读取设置：单次查询按 key 集合过滤，仅返回存在的行。
+// 相比逐个 Get 可减少一次设置页渲染（handleGetSettings）产生的 18 次往返查询。
+func (s *settingsStore) GetMany(ctx context.Context, keys ...string) ([]SystemSetting, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	entities, err := s.client.SystemSetting.Query().
+		Where(systemsetting.KeyIn(keys...)).
+		All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	out := make([]SystemSetting, 0, len(entities))
+	for _, entity := range entities {
+		out = append(out, settingFromEntity(entity))
+	}
+	return out, nil
+}
+
 func (s *settingsStore) Upsert(ctx context.Context, input SystemSetting) (SystemSetting, error) {
 	entity, err := s.client.SystemSetting.Query().
 		Where(systemsetting.KeyEQ(input.Key)).
