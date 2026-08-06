@@ -12,6 +12,8 @@ const (
 	SettingFeaturePullRequests   = "feature.pull_requests"
 	SettingFeatureActions        = "feature.actions"
 	SettingFeatureSecurityAlerts = "feature.security_alerts"
+	SettingFeatureStars          = "feature.stars"
+	SettingFeatureWatches        = "feature.watches"
 )
 
 // FeatureEnabled 读取布尔型全局功能开关。
@@ -41,6 +43,10 @@ func KindFeatureKey(kind string) string {
 		return SettingFeaturePullRequests
 	case WorkflowRunKind:
 		return SettingFeatureActions
+	case StarKind:
+		return SettingFeatureStars
+	case WatchKind:
+		return SettingFeatureWatches
 	case AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning:
 		return SettingFeatureSecurityAlerts
 	default:
@@ -57,12 +63,14 @@ func KindFeatureEnabled(ctx context.Context, settings SettingsStore, kind string
 	return FeatureEnabled(ctx, settings, key)
 }
 
-// FeatureFlags 一次读取四个全局功能开关，供摘要等批量过滤使用。
+// FeatureFlags 一次读取六个全局功能开关，供摘要等批量过滤使用。
 type FeatureFlags struct {
 	Issues         bool
 	PullRequests   bool
 	Actions        bool
 	SecurityAlerts bool
+	Stars          bool
+	Watches        bool
 }
 
 // LoadFeatureFlags 加载全部功能开关；缺省均为 true。
@@ -72,6 +80,8 @@ func LoadFeatureFlags(ctx context.Context, settings SettingsStore) FeatureFlags 
 		PullRequests:   FeatureEnabled(ctx, settings, SettingFeaturePullRequests),
 		Actions:        FeatureEnabled(ctx, settings, SettingFeatureActions),
 		SecurityAlerts: FeatureEnabled(ctx, settings, SettingFeatureSecurityAlerts),
+		Stars:          FeatureEnabled(ctx, settings, SettingFeatureStars),
+		Watches:        FeatureEnabled(ctx, settings, SettingFeatureWatches),
 	}
 }
 
@@ -84,6 +94,10 @@ func (f FeatureFlags) AllowsKind(kind string) bool {
 		return f.PullRequests
 	case WorkflowRunKind:
 		return f.Actions
+	case StarKind:
+		return f.Stars
+	case WatchKind:
+		return f.Watches
 	case AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning:
 		return f.SecurityAlerts
 	default:

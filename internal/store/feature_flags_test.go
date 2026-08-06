@@ -83,3 +83,13 @@ func TestLoadFeatureFlags_AllowsKind(t *testing.T) {
 		t.Fatal("actions 未关时 workflow_run 应放行")
 	}
 }
+
+// TestKindFeatureKeyStarWatch 守护 star/watch 到全局功能开关键的映射。
+func TestKindFeatureKeyStarWatch(t *testing.T) {
+	if got := store.KindFeatureKey(store.StarKind); got != store.SettingFeatureStars {
+		t.Fatalf("star kind key = %q, want %q", got, store.SettingFeatureStars)
+	}
+	if got := store.KindFeatureKey(store.WatchKind); got != store.SettingFeatureWatches {
+		t.Fatalf("watch kind key = %q, want %q", got, store.SettingFeatureWatches)
+	}
+}
