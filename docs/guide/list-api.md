@@ -15,7 +15,7 @@
 
 `review` / `check` 的组合过滤在 SQL 层完成，分页与 `total` 均为过滤后结果。
 
-## GET /api/v1/outbox
+## GET /api/v1/notifications/outbox
 
 | 参数 | 取值 | 说明 |
 | --- | --- | --- |
