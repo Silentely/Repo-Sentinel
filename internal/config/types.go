@@ -32,7 +32,7 @@ type AIConfig struct {
 	APIKey Secret `yaml:"api_key"`
 	// Model 模型名，默认 gpt-4o-mini。
 	Model string `yaml:"model"`
-	// Timeout 单次请求超时，默认 20s。
+	// Timeout 单次请求超时，默认 30s。
 	Timeout time.Duration `yaml:"timeout"`
 	// MaxTokens 输出 token 上限，默认 800。
 	MaxTokens int `yaml:"max_tokens"`

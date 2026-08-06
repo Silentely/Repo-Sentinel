@@ -181,7 +181,7 @@ AI 用于三处：每日摘要 / 周报 / 月报正文生成（`digest_enabled`�
 | `REPOSENTINEL_AI_API_KEY` | API Key，`enabled=true` 时必填 |
 | `REPOSENTINEL_AI_BASE_URL` | OpenAI 兼容端点，默认 `https://api.openai.com/v1` |
 | `REPOSENTINEL_AI_MODEL` | 模型名，默认 `gpt-4o-mini` |
-| `REPOSENTINEL_AI_TIMEOUT` | 单次请求超时，默认 `20s` |
+| `REPOSENTINEL_AI_TIMEOUT` | 单次请求超时，默认 `30s` |
 | `REPOSENTINEL_AI_MAX_TOKENS` | 输出 token 上限，默认 `800` |
 | `REPOSENTINEL_AI_DIGEST_ENABLED` | 是否启用 AI 摘要，默认 `true` |
 | `REPOSENTINEL_AI_TRIAGE_ENABLED` | 是否启用安全告警分诊，默认 `true` |
