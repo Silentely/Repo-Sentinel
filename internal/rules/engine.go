@@ -102,6 +102,15 @@ func shouldNotifyRealtime(ev *store.Event) bool {
 	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
 		// 安全告警不论 action（创建/忽略/严重度变化等）一律实时通知，避免遗漏风险。
 		return true
+	case store.StarKind:
+		switch ev.Action {
+		case "created", "deleted":
+			return true
+		}
+	case store.WatchKind:
+		if ev.Action == "started" {
+			return true
+		}
 	}
 	return false
 }
@@ -326,6 +335,17 @@ func statusDisplay(ev *store.Event) (emoji, label string) {
 			}
 			return "🛡️", "告警更新"
 		}
+	case store.StarKind:
+		switch ev.Action {
+		case "created":
+			return "⭐", "已收藏"
+		case "deleted":
+			return "💔", "取消收藏"
+		}
+	case store.WatchKind:
+		if ev.Action == "started" {
+			return "👀", "已关注"
+		}
 	}
 
 	// 通用回退：按 action 语义猜测
@@ -416,6 +436,12 @@ func eventEmoji(ev *store.Event) string {
 		return "📝"
 	case ev.Kind == store.WorkItemKindPR:
 		return "🔀"
+
+	// star/watch 事件
+	case ev.Kind == store.StarKind:
+		return "⭐"
+	case ev.Kind == store.WatchKind:
+		return "👀"
 
 	// Issue 状态
 	case ev.Kind == store.WorkItemKindIssue && ev.Action == "opened":
