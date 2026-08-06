@@ -32,6 +32,7 @@
 | `update_check` | 远程版本检查 |
 | `aggregation` | 通知合并窗口与超频阈值 |
 | `ai` | OpenAI 兼容端点、模型、摘要/分诊开关 |
+| `oauth` | Agent 客户端凭据（client_id/client_secret） |
 
 Secret 典型环境变量（示例配置注释为准）：
 
@@ -45,6 +46,7 @@ Secret 典型环境变量（示例配置注释为准）：
 - `REPOSENTINEL_METRICS_TOKEN`
 - `REPOSENTINEL_UPDATE_CHECK_TOKEN`
 - `REPOSENTINEL_DATABASE_URL`
+- `REPOSENTINEL_OAUTH_CLIENT_ID` / `REPOSENTINEL_OAUTH_CLIENT_SECRET`
 
 ## 关键依赖与配置
 
@@ -76,4 +78,5 @@ A: 用于 Secure Cookie 判定（https → Secure）及对外链接语义。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-06T12:50:00Z | 新增 `oauth` 配置段（OAuthConfig：client_id 默认 reposentinel-agent、client_secret 经 REPOSENTINEL_OAUTH_CLIENT_SECRET 注入） |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

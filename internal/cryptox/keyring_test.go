@@ -332,6 +332,50 @@ func Test密钥环格式化始终掩码且错误不泄漏输入(t *testing.T) {
 	}
 }
 
+func TestDeriveHMACKey确定性且随主密钥轮换(t *testing.T) {
+	ring := newTestKeyRing(t)
+	aad := []byte("oauth:signing:v1")
+
+	first, err := ring.DeriveHMACKey(aad)
+	if err != nil {
+		t.Fatalf("首次派生失败: %v", err)
+	}
+	if len(first) == 0 {
+		t.Fatal("派生密钥为空")
+	}
+	second, err := ring.DeriveHMACKey(aad)
+	if err != nil {
+		t.Fatalf("二次派生失败: %v", err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("相同主密钥与 AAD 的派生结果不稳定")
+	}
+	if bytes.Equal(first, testKey(0x11)) {
+		t.Fatal("派生密钥不应等于主密钥材料")
+	}
+
+	otherRing, err := NewKeyRing(testEncryptionConfig(testKey(0x99), nil))
+	if err != nil {
+		t.Fatalf("创建另一密钥环失败: %v", err)
+	}
+	third, err := otherRing.DeriveHMACKey(aad)
+	if err != nil {
+		t.Fatalf("他钥派生失败: %v", err)
+	}
+	if bytes.Equal(first, third) {
+		t.Fatal("不同主密钥不应派生相同密钥")
+	}
+
+	// 不同 AAD 也应产生不同派生密钥（防止跨用途复用同一签名密钥）。
+	fourth, err := ring.DeriveHMACKey([]byte("oauth:signing:v2"))
+	if err != nil {
+		t.Fatalf("异 AAD 派生失败: %v", err)
+	}
+	if bytes.Equal(first, fourth) {
+		t.Fatal("不同 AAD 不应派生相同密钥")
+	}
+}
+
 func requireKeyMismatch(t *testing.T, err error) {
 	t.Helper()
 	if !errors.Is(err, ErrEncryptionKeyMismatch) {

@@ -1,0 +1,17 @@
+; DNS for AI Discovery（DNS-AID）示例 zone 片段。
+; 目的：让 AI Agent 通过 DNS 发现 RepoSentinel 实例的端点。
+; 使用方法：把 example.com 替换为你的域名，将以下记录加入权威 zone；
+; 对 _agents 子域启用 DNSSEC 签名并发布 DS 记录。
+; 参考：draft-mozleywilliams-dnsop-dnsaid、RFC 9460（SVCB/HTTPS）。
+
+; MCP 网关端点（HTTPS 记录，等价 SVCB 的 alpn/mandatory/port 参数）。
+_mcp._agents.example.com.   3600 IN HTTPS 1 reposentinel.example.com. alpn="mcp" port=443 mandatory=alpn,port
+
+; Agent 索引 / 入口点。
+_index._agents.example.com. 3600 IN HTTPS 1 reposentinel.example.com. alpn="index" port=443 mandatory=alpn,port
+
+; A2A（Agent-to-Agent）协议入口；未部署 A2A 端点时可省略。
+_a2a._agents.example.com.   3600 IN HTTPS 1 reposentinel.example.com. alpn="a2a" port=443 mandatory=alpn,port
+
+; 若使用非 443 端口或偏好 SVCB 形式：
+; _mcp._agents.example.com. 3600 IN SVCB 1 reposentinel.example.com. alpn="mcp" port=8443 mandatory=alpn,port

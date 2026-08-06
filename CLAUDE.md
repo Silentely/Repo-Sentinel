@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-06T12:50:00Z | Agent 发现（AI Readiness）：动态 sitemap.xml 与 robots.txt（含 Content-Signals）、全局 Link 头、RFC 9727 API 目录、OpenAPI 3.1、OAuth 2.0 client-credentials 令牌端点（/oauth/token、/oauth/jwks）与 RFC 8414/9728 discovery 元数据、auth.md、MCP Streamable HTTP 网关（/mcp）与 Server Card、Agent Skills 索引、Accept: text/markdown 协商、WebMCP 前端接入；新增 `deployments/dnsaid/example.zone`（DNS-AID 示例记录） |
 | 2026-08-05T09:57:59Z | AI 上下文初始化：补充项目愿景、架构总览、Mermaid 模块图、模块索引；校正前端路由路径与版本示例；保留迁移/Ent/提交/CI/安全等既有约定 |
 
 ## 项目愿景
@@ -137,7 +138,7 @@ graph TD
 | `internal/app` | 依赖装配、生命周期、后台任务 | [internal/app/CLAUDE.md](internal/app/CLAUDE.md) |
 | `internal/cli` | serve/version/config/admin/doctor/healthcheck/backup/restore | [internal/cli/CLAUDE.md](internal/cli/CLAUDE.md) |
 | `internal/config` | YAML + 环境变量加载与校验 | [internal/config/CLAUDE.md](internal/config/CLAUDE.md) |
-| `internal/httpapi` | Chi 路由、REST API、中间件、SPA | [internal/httpapi/CLAUDE.md](internal/httpapi/CLAUDE.md) |
+| `internal/httpapi` | Chi 路由、REST API、中间件、SPA、Agent 发现端点 | [internal/httpapi/CLAUDE.md](internal/httpapi/CLAUDE.md) |
 | `internal/store` | 领域模型、Store 接口、Ent 适配 | [internal/store/CLAUDE.md](internal/store/CLAUDE.md) |
 | `internal/auth` | 管理员、密码、Session、CSRF、登录限流 | [internal/auth/CLAUDE.md](internal/auth/CLAUDE.md) |
 | `internal/githubx` | App JWT、Webhook 验签、REST、运行时配置 | [internal/githubx/CLAUDE.md](internal/githubx/CLAUDE.md) |

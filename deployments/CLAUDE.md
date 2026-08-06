@@ -43,9 +43,11 @@ A: 否。多数场景根 `docker-compose.yml` + 文档即可；本目录侧重�
 ## 相关文件清单
 
 - `test/postgres.compose.yml`
+- `dnsaid/example.zone` — DNS for AI Discovery（DNS-AID）示例记录（SVCB/HTTPS + DNSSEC 说明）
 
 ## 变更记录 (Changelog)
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-06T12:50:00Z | 新增 `dnsaid/example.zone`：DNS-AID `_agents` 命名空间 SVCB/HTTPS 示例记录 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

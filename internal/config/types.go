@@ -19,6 +19,16 @@ type Config struct {
 	UpdateCheck UpdateCheckConfig    `yaml:"update_check"`
 	Aggregation AggregationConfig    `yaml:"aggregation"`
 	AI          AIConfig             `yaml:"ai"`
+	OAuth       OAuthConfig          `yaml:"oauth"`
+}
+
+// OAuthConfig 描述面向 Agent 的 OAuth 2.0 client-credentials 客户端凭据。
+// 未配置时 discovery 元数据仍发布，但 /oauth/token 拒绝签发令牌。
+type OAuthConfig struct {
+	// ClientID Agent 客户端标识，建议形如 reposentinel-agent。
+	ClientID string `yaml:"client_id"`
+	// ClientSecret 通过 REPOSENTINEL_OAUTH_CLIENT_SECRET 注入，不写入配置文件。
+	ClientSecret Secret `yaml:"client_secret"`
 }
 
 // AIConfig 描述可选的 LLM 集成（OpenAI 兼容 Chat Completions）。
