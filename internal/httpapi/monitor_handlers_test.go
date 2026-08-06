@@ -584,3 +584,51 @@ func TestOutbox空渠道匹配置退分支归一化分页参数(t *testing.T) {
 		t.Fatal("空匹配时 items 必须是空数组 []，不得为 null")
 	}
 }
+
+func TestHandleStarTrend(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	ctx := t.Context()
+
+	// 造一个活跃仓 + 两条快照（08-02 缺，聚合应向前补值）。
+	if _, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-trend-1", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "a", FullName: "o/a", StarsEnabled: true, WatchesEnabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []store.RepoStatSnapshot{
+		{RepositoryID: "repo-trend-1", Metric: store.MetricStargazers, Value: 10, SampleDate: "2026-08-01"},
+		{RepositoryID: "repo-trend-1", Metric: store.MetricStargazers, Value: 15, SampleDate: "2026-08-03"},
+	} {
+		if _, err := fixture.store.RepoStatSnapshots().Upsert(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 未登录应拒绝。
+	unauth := fixture.request(t, http.MethodGet, "/api/v1/stats/star-trend", "", "127.0.0.1:45401", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	// days=0 全量：首点为最早快照日 08-01，total=10。
+	resp := fixture.request(t, http.MethodGet, "/api/v1/stats/star-trend?days=0", "", "127.0.0.1:45402", cookies, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", resp.Code, resp.Body.String())
+	}
+	var body struct {
+		Items []store.StarTrendPoint `json:"items"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Items) == 0 || body.Items[0].Date != "2026-08-01" || body.Items[0].Total != 10 {
+		t.Fatalf("unexpected trend: %+v", body.Items)
+	}
+
+	// 非法 days 回退 30，仍应 200。
+	bad := fixture.request(t, http.MethodGet, "/api/v1/stats/star-trend?days=abc", "", "127.0.0.1:45403", cookies, nil)
+	if bad.Code != http.StatusOK {
+		t.Fatalf("invalid days status = %d, body = %s", bad.Code, bad.Body.String())
+	}
+}
