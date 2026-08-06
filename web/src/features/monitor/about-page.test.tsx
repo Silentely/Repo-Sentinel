@@ -29,6 +29,8 @@ const settingsFixture = {
   "feature.pull_requests": true,
   "feature.actions": true,
   "feature.security_alerts": true,
+  "feature.stars": true,
+  "feature.watches": true,
 };
 
 const { saveSystemSettingsMock, saveAIConfigMock, testAIConnectivityMock } = vi.hoisted(() => ({
@@ -150,7 +152,33 @@ describe("关于与设置页", () => {
       "feature.pull_requests": true,
       "feature.actions": true,
       "feature.security_alerts": true,
+      "feature.stars": true,
+      "feature.watches": true,
     });
+  });
+
+  it("功能模块区块提供 Star 事件与 Watch 事件开关并提交对应键", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // 等待设置回填后两个新开关默认开启。
+    const starToggle = await screen.findByRole("checkbox", { name: "Star 事件" });
+    const watchToggle = screen.getByRole("checkbox", { name: "Watch 事件" });
+    expect(starToggle).toBeChecked();
+    expect(watchToggle).toBeChecked();
+
+    // 关闭 Star 事件后保存，验证两个键进入提交负载。
+    await user.click(starToggle);
+    await user.click(screen.getByRole("button", { name: "保存开关" }));
+
+    const featuresSection = screen.getByRole("region", { name: "功能模块开关" });
+    expect(await within(featuresSection).findByText("功能模块开关已保存。")).toBeInTheDocument();
+    expect(saveSystemSettingsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "feature.stars": false,
+        "feature.watches": true,
+      }),
+    );
   });
 
   it("保存偏好成功后在运行偏好区块内展示提示", async () => {

@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import { SUBSCRIBABLE_KINDS, subscriptionSummary, uiCheckedKinds } from "./notify-subscription";
 
+describe("SUBSCRIBABLE_KINDS", () => {
+  it("订阅白名单包含 star/watch", () => {
+    const values = SUBSCRIBABLE_KINDS.map((k) => k.value);
+    expect(values).toContain("star");
+    expect(values).toContain("watch");
+  });
+  it("star/watch 条目对应全局功能开关键", () => {
+    expect(SUBSCRIBABLE_KINDS.find((k) => k.value === "star")?.featureKey).toBe("feature.stars");
+    expect(SUBSCRIBABLE_KINDS.find((k) => k.value === "watch")?.featureKey).toBe("feature.watches");
+  });
+});
+
 describe("uiCheckedKinds", () => {
   it("null 渲染为全部勾选", () => {
     expect(uiCheckedKinds(null)).toEqual(SUBSCRIBABLE_KINDS.map((k) => k.value));
