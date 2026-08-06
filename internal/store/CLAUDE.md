@@ -98,4 +98,5 @@ A: 仅当来源更新时间/状态更新时写入，配合乱序 Webhook 丢弃�
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-06T15:48:41Z | 新增 star 快照表、仓库 star/watch 能力开关（stars_enabled、watches_enabled）、feature.stars / feature.watches 全局开关及 star 快照读取与存储（含 SQLite/PostgreSQL 双轨迁移） |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
