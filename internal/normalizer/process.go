@@ -30,6 +30,10 @@ type Result struct {
 
 type envelope struct {
 	Action string `json:"action"`
+	// Sender star/watch 等以顶层 sender 传达动作主体。
+	Sender ghUser `json:"sender"`
+	// StarredAt star 事件发生时间（载荷字段 starred_at）。
+	StarredAt time.Time `json:"starred_at"`
 	// Repository may be object
 	Repository *ghRepository `json:"repository"`
 	// Installation
@@ -44,14 +48,15 @@ type envelope struct {
 }
 
 type ghRepository struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	FullName      string `json:"full_name"`
-	Private       bool   `json:"private"`
-	HTMLURL       string `json:"html_url"`
-	DefaultBranch string `json:"default_branch"`
-	Archived      bool   `json:"archived"`
-	Owner         struct {
+	ID              int64  `json:"id"`
+	Name            string `json:"name"`
+	FullName        string `json:"full_name"`
+	Private         bool   `json:"private"`
+	HTMLURL         string `json:"html_url"`
+	DefaultBranch   string `json:"default_branch"`
+	StargazersCount int64  `json:"stargazers_count"`
+	Archived        bool   `json:"archived"`
+	Owner           struct {
 		Login string `json:"login"`
 	} `json:"owner"`
 }
@@ -166,6 +171,10 @@ func (p *Processor) Process(ctx context.Context, eventType, deliveryID string, p
 		return p.processInstallation(ctx, eventType, env, payload)
 	case "repository":
 		return p.processRepositoryEvent(ctx, env)
+	case "star":
+		return p.processStar(ctx, env)
+	case "watch":
+		return p.processWatch(ctx, env)
 	case "issues":
 		return p.processIssue(ctx, env)
 	case "pull_request":
@@ -282,6 +291,109 @@ func (p *Processor) processRepositoryEvent(ctx context.Context, env envelope) (R
 		repo, _ = p.Store.Repositories().Upsert(ctx, repo)
 	}
 	return Result{Repository: &repo, Updated: true, SuppressNotify: true}, nil
+}
+
+// starCountMetric 快照指标名（与 store 层约定一致）。
+const starCountMetric = "stargazers"
+
+// processStar 处理 star 事件：创建事件 + 顺带写当日 star 计数快照。
+// 载荷 repository.stargazers_count 为实时值，写入快照可捕捉对账间隔内的变化。
+func (p *Processor) processStar(ctx context.Context, env envelope) (Result, error) {
+	if env.Repository == nil {
+		return Result{}, fmt.Errorf("missing repository")
+	}
+	repo, err := p.ensureRepository(ctx, env.Repository, nil)
+	if err != nil {
+		return Result{}, err
+	}
+	if !p.ingestGate(ctx, repo, store.StarKind) {
+		return Result{Repository: &repo, SuppressNotify: true}, nil
+	}
+	if env.Repository.StargazersCount > 0 && p.Store != nil {
+		date := time.Now().UTC().Format("2006-01-02")
+		if !env.StarredAt.IsZero() {
+			date = env.StarredAt.UTC().Format("2006-01-02")
+		}
+		if _, err := p.Store.RepoStatSnapshots().Upsert(ctx, store.RepoStatSnapshot{
+			RepositoryID: repo.ID, Metric: starCountMetric, Value: env.Repository.StargazersCount, SampleDate: date,
+		}); err != nil {
+			return Result{}, fmt.Errorf("upsert star snapshot: %w", err)
+		}
+	}
+	actor := strings.TrimSpace(env.Sender.Login)
+	if actor == "" {
+		actor = "unknown"
+	}
+	starredAt := env.StarredAt
+	if starredAt.IsZero() {
+		starredAt = time.Now().UTC()
+	}
+	action := normalizeAction(env.Action)
+	// 同秒多个用户 star 会撞指纹：StateHash 纳入 actor 与纳秒时间戳保证唯一。
+	hash := StateHash(actor, starredAt.UTC().Format(time.RFC3339Nano), action)
+	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
+	fp := Fingerprint("webhook", repo.FullName, store.StarKind, ResourceIdentity(store.StarKind, 0, 0), action, starredAt, hash)
+	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
+	}
+	title := repo.FullName
+	ev := store.Event{
+		ID: ulid.Make().String(), Source: "webhook", Kind: store.StarKind, Action: action,
+		RepositoryID: &repo.ID, Title: title, Actor: actor,
+		OccurredAt: starredAt, SourceUpdatedAt: &starredAt, HTMLURL: repo.HTMLURL,
+		PayloadSummary:       map[string]any{"count": env.Repository.StargazersCount},
+		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
+	}
+	created, err := p.Store.Events().Create(ctx, ev)
+	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
+		}
+		return Result{}, err
+	}
+	return Result{Event: &created, Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
+}
+
+// processWatch 处理 watch 事件（GitHub 仅发送 started，无取消事件）。
+func (p *Processor) processWatch(ctx context.Context, env envelope) (Result, error) {
+	if env.Repository == nil {
+		return Result{}, fmt.Errorf("missing repository")
+	}
+	repo, err := p.ensureRepository(ctx, env.Repository, nil)
+	if err != nil {
+		return Result{}, err
+	}
+	if !p.ingestGate(ctx, repo, store.WatchKind) {
+		return Result{Repository: &repo, SuppressNotify: true}, nil
+	}
+	actor := strings.TrimSpace(env.Sender.Login)
+	if actor == "" {
+		actor = "unknown"
+	}
+	occurredAt := time.Now().UTC()
+	action := normalizeAction(env.Action)
+	hash := StateHash(actor, occurredAt.Format(time.RFC3339Nano), action)
+	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
+	fp := Fingerprint("webhook", repo.FullName, store.WatchKind, ResourceIdentity(store.WatchKind, 0, 0), action, occurredAt, hash)
+	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
+	}
+	title := repo.FullName
+	ev := store.Event{
+		ID: ulid.Make().String(), Source: "webhook", Kind: store.WatchKind, Action: action,
+		RepositoryID: &repo.ID, Title: title, Actor: actor,
+		OccurredAt: occurredAt, SourceUpdatedAt: &occurredAt, HTMLURL: repo.HTMLURL,
+		PayloadSummary:       map[string]any{},
+		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
+	}
+	created, err := p.Store.Events().Create(ctx, ev)
+	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
+		}
+		return Result{}, err
+	}
+	return Result{Event: &created, Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
 }
 
 func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, error) {
