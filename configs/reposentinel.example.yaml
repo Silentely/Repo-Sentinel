@@ -93,7 +93,7 @@ ai:
   # 模型名。
   # model: "gpt-4o-mini"
   # 单次请求超时，使用 Go duration 格式。
-  # timeout: "20s"
+  # timeout: "30s"
   # 输出 token 上限。
   # max_tokens: 800
   # 是否启用 AI 摘要（每日/周报/月报）。

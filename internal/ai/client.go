@@ -22,7 +22,7 @@ var ErrNotConfigured = errors.New("ai: not configured")
 const (
 	DefaultBaseURL   = "https://api.openai.com/v1"
 	DefaultModel     = "gpt-4o-mini"
-	DefaultTimeout   = 20 * time.Second
+	DefaultTimeout   = 30 * time.Second
 	DefaultMaxTokens = 800
 )
 
@@ -40,7 +40,7 @@ type Client struct {
 	APIKey string
 	// Model 模型名；为空时使用缺省 gpt-4o-mini。
 	Model string
-	// Timeout 单次请求超时上限；为空时使用 20s。
+	// Timeout 单次请求超时上限；为空时使用 30s。
 	Timeout time.Duration
 	// MaxTokens 输出 token 上限；为空时使用 800。
 	MaxTokens int
