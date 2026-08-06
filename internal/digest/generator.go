@@ -36,6 +36,10 @@ const (
 	defaultMonthlyDay = 1
 )
 
+// minSummaryRunes AI 摘要质量下限：低于该长度的输出视为低质回退模板。
+// 阈值保守（正常总结远高于此），主要拦截「OK」「无事件」类空泛输出。
+const minSummaryRunes = 12
+
 // Generator 定期报告生成器：每日摘要 / 每周报告 / 每月报告。
 type Generator struct {
 	Store store.Store
@@ -188,8 +192,8 @@ func (g *Generator) filteredEvents(ctx context.Context, since time.Time, limit i
 // reportBody 生成定期报告正文：AI 可用时优先使用 AI 总结，失败回退模板。
 // 返回正文与是否使用了 AI。
 // 日志留痕 AI 参与度：skipped（未启用/无事件）、used（AI 总结成功）、
-// fallback（AI 调用失败或输出为空，回退模板），配合 ai 层 ai request ok/failed 日志，
-// 可完整还原「有没有发请求、AI 有没有参与、失败是网络还是上游问题」。
+// fallback（AI 调用失败/输出为空/质量不达标，回退模板），配合 ai 层 ai request ok/failed 日志
+// （携带同一 req_id），可完整还原「有没有发请求、AI 有没有参与、失败是网络还是上游问题」。
 func (g *Generator) reportBody(ctx context.Context, title string, events []store.Event, period string) (string, bool) {
 	template := buildReportBody(title, events, period)
 	if g.AI == nil || !g.AI.IsDigestEnabled() || len(events) == 0 {
@@ -202,6 +206,8 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 		}
 		return template, false
 	}
+	// 为本次 AI 决策注入请求关联 ID：参与度日志与 ai 层调用日志共用同一 req_id。
+	ctx, reqID := ai.EnsureRequestID(ctx)
 	start := time.Now()
 	summary, err := g.AI.SummarizeEvents(ctx, events, g.repoNames(ctx, events), period)
 	duration := time.Since(start)
@@ -211,7 +217,7 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 			if err != nil {
 				reason = "ai_error"
 			}
-			attrs := []any{"title", title, "events", len(events), "duration_ms", duration.Milliseconds(), "reason", reason}
+			attrs := []any{"req_id", reqID, "title", title, "events", len(events), "duration_ms", duration.Milliseconds(), "reason", reason}
 			if err != nil {
 				attrs = append(attrs, "error", err.Error())
 			}
@@ -219,8 +225,18 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 		}
 		return template, false
 	}
+	// 质量护栏：AI 输出过短或复读模板预览头（「最近活动：」）视为低质，
+	// 回退模板避免「AI 输出反而更差」；阈值保守，宁可多回退。
+	if len([]rune(summary)) < minSummaryRunes || strings.Contains(summary, "最近活动：") {
+		if g.Logger != nil {
+			g.Logger.Warn("digest ai fallback",
+				"req_id", reqID, "title", title, "events", len(events),
+				"duration_ms", duration.Milliseconds(), "reason", "low_quality")
+		}
+		return template, false
+	}
 	if g.Logger != nil {
-		g.Logger.Info("digest ai used", "title", title, "events", len(events), "duration_ms", duration.Milliseconds())
+		g.Logger.Info("digest ai used", "req_id", reqID, "title", title, "events", len(events), "duration_ms", duration.Milliseconds())
 	}
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))

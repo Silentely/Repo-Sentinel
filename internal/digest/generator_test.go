@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -729,5 +730,62 @@ func TestReportBodyLogsAISkipped(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, `msg="digest ai skipped"`) || !strings.Contains(out, "reason=ai_not_enabled") {
 		t.Fatalf("期望 digest ai skipped 日志，实际: %s", out)
+	}
+}
+
+// reportBody 质量护栏：AI 输出过短 → digest ai fallback（reason=low_quality），正文回退模板。
+func TestReportBodyLogsLowQuality(t *testing.T) {
+	buf, logger := newTestSlog(t)
+	g := &Generator{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"一切正常"}}]}`)}
+	num := 1
+	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
+	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时")
+	if aiUsed {
+		t.Fatal("低质输出不应标记参与")
+	}
+	if !strings.Contains(body, "共 1 条事件") {
+		t.Fatalf("期望回退模板正文，实际: %s", body)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `msg="digest ai fallback"`) || !strings.Contains(out, "reason=low_quality") {
+		t.Fatalf("期望 low_quality 回退日志，实际: %s", out)
+	}
+}
+
+// reportBody 质量护栏：AI 输出复读模板预览头（「最近活动：」）→ 低质回退。
+func TestReportBodyLogsLowQualityTemplateEcho(t *testing.T) {
+	buf, logger := newTestSlog(t)
+	g := &Generator{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"共 1 条事件\n最近活动：\n• [已打开] hello"}}]}`)}
+	num := 1
+	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
+	_, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时")
+	if aiUsed {
+		t.Fatal("复读模板的输出不应标记参与")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "reason=low_quality") {
+		t.Fatalf("期望 low_quality 回退日志，实际: %s", out)
+	}
+}
+
+// reportBody 与 ai 层日志携带同一 req_id：参与度日志与调用日志可按单次决策串联。
+func TestReportBodyReqIDConsistent(t *testing.T) {
+	buf, logger := newTestSlog(t)
+	aiClient := aiStub(t, `{"choices":[{"message":{"content":"今日共 1 条事件：- 新 Issue hello，问题已定位正在修复"}}]}`)
+	// 同一 Logger 注入 AI 客户端，使参与度日志与 ai 层调用日志写入同一缓冲。
+	aiClient.Logger = logger
+	g := &Generator{Logger: logger, AI: aiClient}
+	num := 1
+	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
+	if _, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时"); !aiUsed {
+		t.Fatal("AI 总结成功应标记参与")
+	}
+	re := regexp.MustCompile(`req_id=([0-9a-f]+)`)
+	ids := re.FindAllStringSubmatch(buf.String(), -1)
+	if len(ids) < 2 {
+		t.Fatalf("期望 digest 与 ai 层日志均携带 req_id，实际: %s", buf.String())
+	}
+	if ids[0][1] != ids[1][1] {
+		t.Fatalf("digest 与 ai 层 req_id 应一致，实际: %s", buf.String())
 	}
 }

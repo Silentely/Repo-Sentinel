@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -218,6 +219,12 @@ func TestTriageAnalysis(t *testing.T) {
 			t.Fatalf("AI 失败应返回空串，实际: %q", got)
 		}
 	})
+	t.Run("格式不达标返回空", func(t *testing.T) {
+		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"分析：存在风险。"}}]}`)}
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web", subscribed); got != "" {
+			t.Fatalf("缺「影响：」前缀应返回空串，实际: %q", got)
+		}
+	})
 	t.Run("未配置 AI 返回空", func(t *testing.T) {
 		if got := (&Engine{}).triageAnalysis(t.Context(), ev, "acme/web", subscribed); got != "" {
 			t.Fatalf("未配置 AI 应返回空串，实际: %q", got)
@@ -301,6 +308,35 @@ func TestTriageAnalysisLogs(t *testing.T) {
 		out := buf.String()
 		if !strings.Contains(out, `msg="triage ai fallback"`) || !strings.Contains(out, "reason=ai_error") {
 			t.Fatalf("期望 fallback ai_error，实际: %s", out)
+		}
+	})
+	t.Run("格式不达标 → fallback format_invalid", func(t *testing.T) {
+		buf, logger := newRulesLogger(t)
+		e := &Engine{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"分析：存在风险。"}}]}`)}
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web", subscribed); got != "" {
+			t.Fatal("格式不达标应返回空")
+		}
+		out := buf.String()
+		if !strings.Contains(out, `msg="triage ai fallback"`) || !strings.Contains(out, "reason=format_invalid") {
+			t.Fatalf("期望 fallback format_invalid，实际: %s", out)
+		}
+	})
+	t.Run("used 与 ai 层日志 req_id 一致", func(t *testing.T) {
+		buf, logger := newRulesLogger(t)
+		aiClient := aiStub(t, `{"choices":[{"message":{"content":"影响：攻击面扩大。\n建议：升级依赖。"}}]}`)
+		// 同一 Logger 注入 AI 客户端，使参与度日志与 ai 层调用日志写入同一缓冲。
+		aiClient.Logger = logger
+		e := &Engine{Logger: logger, AI: aiClient}
+		if got := e.triageAnalysis(t.Context(), ev, "acme/web", subscribed); got == "" {
+			t.Fatal("期望分诊成功")
+		}
+		re := regexp.MustCompile(`req_id=([0-9a-f]+)`)
+		ids := re.FindAllStringSubmatch(buf.String(), -1)
+		if len(ids) < 2 {
+			t.Fatalf("期望 triage 与 ai 层日志均携带 req_id，实际: %s", buf.String())
+		}
+		if ids[0][1] != ids[1][1] {
+			t.Fatalf("triage 与 ai 层 req_id 应一致，实际: %s", buf.String())
 		}
 	})
 }

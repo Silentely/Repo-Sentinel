@@ -23,8 +23,14 @@ func TestMetricsEndpointOptionalToken(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "reposentinel_webhook_accepted_total") {
-		t.Fatalf("body=%s", rec.Body.String())
+	body := rec.Body.String()
+	if !strings.Contains(body, "reposentinel_webhook_accepted_total") {
+		t.Fatalf("body=%s", body)
+	}
+	// AI 指标默认输出（计数为 0 也应有行，便于监控端预置告警）。
+	if !strings.Contains(body, "reposentinel_ai_requests_total") ||
+		!strings.Contains(body, "reposentinel_ai_prompt_tokens_total") {
+		t.Fatalf("期望包含 AI 指标行，body=%s", body)
 	}
 
 	s.dependencies.Config.Metrics.Token = config.NewSecret("tok")
