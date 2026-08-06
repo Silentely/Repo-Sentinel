@@ -58,6 +58,23 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		p.Logger.Warn("public api rate low", "remaining", remaining, "repo", repo.FullName)
 	}
 	features := store.LoadFeatureFlags(ctx, p.Store.Settings())
+
+	// star 计数快照：公开仓轮询时顺带拉取，失败不阻断。
+	if features.Stars && repo.StarsEnabled {
+		if meta, _, err := p.Client.GetRepository(ctx, repo.Owner, repo.Name); err != nil {
+			if p.Logger != nil {
+				p.Logger.Warn("star snapshot poll failed", "repo", repo.FullName, "error_code", "star_snapshot_failed", "error", err.Error())
+			}
+		} else if meta.StargazersCount > 0 {
+			if _, err := p.Store.RepoStatSnapshots().Upsert(ctx, store.RepoStatSnapshot{
+				RepositoryID: repo.ID, Metric: "stargazers", Value: meta.StargazersCount,
+				SampleDate: time.Now().UTC().Format("2006-01-02"),
+			}); err != nil && p.Logger != nil {
+				p.Logger.Warn("star snapshot upsert failed", "repo", repo.FullName, "error_code", "star_snapshot_upsert_failed", "error", err.Error())
+			}
+		}
+	}
+
 	for _, it := range items {
 		kind := store.WorkItemKindIssue
 		if it.PullRequest != nil {
