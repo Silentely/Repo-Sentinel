@@ -387,6 +387,12 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 		}
 		cfg.AI.TriageEnabled = parsed
 	}
+	if value, ok := lookup("REPOSENTINEL_OAUTH_CLIENT_ID"); ok {
+		cfg.OAuth.ClientID = value
+	}
+	if value, ok := lookup("REPOSENTINEL_OAUTH_CLIENT_SECRET"); ok {
+		cfg.OAuth.ClientSecret = NewSecret(value)
+	}
 	return explicit, nil
 }
 

@@ -104,6 +104,20 @@ func newKeyMaterial(key []byte) (keyMaterial, error) {
 	}, nil
 }
 
+// DeriveHMACKey 从当前主密钥派生确定性的 HMAC 签名密钥。
+// 使用固定 nonce 与固定明文：主密钥不变则派生结果不变（重启后令牌仍可验证），
+// 主密钥轮换后旧派生密钥自动失效（已签发令牌同步作废）。
+// 派生密钥仅用于 OAuth 访问令牌签名等次级用途，绝不外泄主密钥材料。
+func (k KeyRing) DeriveHMACKey(aad []byte) ([]byte, error) {
+	if !k.current.available {
+		return nil, errInvalidEncryptionKey
+	}
+	var nonce [12]byte
+	const plaintext = "reposentinel:derive:hmac:v1"
+	sealed := k.current.aead.Seal(nil, nonce[:], []byte(plaintext), aad)
+	return sealed, nil
+}
+
 // String 返回固定掩码，避免普通字符串格式化泄漏密钥环内容。
 func (KeyRing) String() string {
 	return keyRingMask

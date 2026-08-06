@@ -101,3 +101,11 @@ ai:
   # 是否启用实时安全告警 AI 分诊。
   triage_enabled: true
   # API Key 通过 REPOSENTINEL_AI_API_KEY 注入；enabled=true 时必须提供。
+
+oauth:
+  # 面向 AI Agent 的 OAuth 2.0 client-credentials 客户端凭据（Agent 只读访问管理 API）。
+  # 未配置时 Agent 发现元数据照常发布，但 /oauth/token 拒绝签发令牌。
+  # 客户端标识，默认 reposentinel-agent；可通过 REPOSENTINEL_OAUTH_CLIENT_ID 覆盖。
+  client_id: "reposentinel-agent"
+  # 客户端密钥通过 REPOSENTINEL_OAUTH_CLIENT_SECRET 注入，不写入本文件。
+  # 访问令牌由主密钥（REPOSENTINEL_ENCRYPTION_KEY）派生密钥签名，主密钥轮换后旧令牌自动作废。

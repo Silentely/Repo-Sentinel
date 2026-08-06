@@ -118,6 +118,9 @@ type httpTestOptions struct {
 	ready         ReadyChecker
 	frontend      fs.FS
 	keyRing       *cryptox.KeyRing
+	// oauthClientID / oauthClientSecret 装配到 Config.OAuth，用于 Agent Bearer 认证测试。
+	oauthClientID     string
+	oauthClientSecret string
 	// envAppID > 0 时模拟环境变量已设置 App ID（管理台锁定）。
 	envAppID int64
 	// updateChecker 装配到 Dependencies.UpdateChecker；nil 时 handler 回退临时检查器。
@@ -186,6 +189,10 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		Setup:    config.SetupConfig{AllowRemote: options.allowRemote},
 		UpdateCheck: config.UpdateCheckConfig{
 			Enabled: false, // 单测默认不联网
+		},
+		OAuth: config.OAuthConfig{
+			ClientID:     options.oauthClientID,
+			ClientSecret: config.NewSecret(options.oauthClientSecret),
 		},
 	}
 	if options.envAppID > 0 {

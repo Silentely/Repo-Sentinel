@@ -135,6 +135,7 @@ func New(dependencies Dependencies) http.Handler {
 	router.Use(s.accessLogMiddleware)
 	router.Use(s.recoveryMiddleware)
 	router.Use(securityHeadersMiddleware)
+	router.Use(agentLinkHeadersMiddleware)
 
 	router.Get("/health/live", s.handleLive)
 	router.Get("/health/ready", s.handleReady)
@@ -142,6 +143,23 @@ func New(dependencies Dependencies) http.Handler {
 		router.Get("/metrics", s.handleMetrics)
 	}
 	router.Post(githubx.WebhookPath, s.handleGitHubWebhook)
+
+	// Agent 发现端点（RFC 8288 / 9727 / 9728 / 8414、sitemap、MCP、Auth.md）。
+	router.Get("/robots.txt", s.handleRobotsTXT)
+	router.Get("/sitemap.xml", s.handleSitemapXML)
+	router.Get("/auth.md", s.handleAuthMD)
+	router.Get("/openapi.json", s.handleOpenAPIJSON)
+	router.Get("/.well-known/api-catalog", s.handleWellKnownAPICatalog)
+	router.Get("/.well-known/oauth-authorization-server", s.handleWellKnownOAuthAuthorizationServer)
+	router.Get("/.well-known/oauth-protected-resource", s.handleWellKnownOAuthProtectedResource)
+	router.Get("/.well-known/agent-skills/index.json", s.handleWellKnownAgentSkillsIndex)
+	router.Get("/.well-known/agent-skills/reposentinel-api/SKILL.md", s.handleAgentSkillsArtifact)
+	router.Get("/.well-known/mcp/server-card.json", s.handleWellKnownMCPCard)
+	router.Get("/oauth/jwks", s.handleOAuthJWKS)
+	router.Get("/oauth/authorize", s.handleOAuthAuthorize)
+	router.Post("/oauth/authorize", s.handleOAuthAuthorize)
+	router.Post("/oauth/token", s.handleOAuthToken)
+	router.Post("/mcp", s.authenticationMiddleware(http.HandlerFunc(s.handleMCP)).ServeHTTP)
 	router.Route("/api/v1", func(api chi.Router) {
 		api.Get("/setup/status", s.handleSetupStatus)
 		api.Post("/setup", s.handleSetup)
@@ -192,7 +210,8 @@ func New(dependencies Dependencies) http.Handler {
 	notFound := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, nil)
 	})
-	router.NotFound(newSPAHandler(dependencies.Frontend, notFound).ServeHTTP)
+	spa := newSPAHandler(dependencies.Frontend, notFound)
+	router.NotFound(s.markdownNegotiationMiddleware(spa).ServeHTTP)
 	router.MethodNotAllowed(notFound.ServeHTTP)
 	return router
 }

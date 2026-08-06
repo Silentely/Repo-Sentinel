@@ -71,28 +71,42 @@ func (s *server) recoveryMiddleware(next http.Handler) http.Handler {
 
 func (s *server) authenticationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(SessionCookieName)
-		if err != nil {
-			s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
+		// 优先 Session Cookie（管理台）。
+		if cookie, err := r.Cookie(SessionCookieName); err == nil {
+			session, err := s.dependencies.SessionService.Authenticate(r.Context(), cookie.Value)
+			if err != nil {
+				s.writeMappedError(w, r, err)
+				return
+			}
+			session, err = s.dependencies.SessionService.Touch(r.Context(), session)
+			if err != nil {
+				s.writeMappedError(w, r, err)
+				return
+			}
+			ctx := context.WithValue(r.Context(), sessionContextKey, session)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
-		session, err := s.dependencies.SessionService.Authenticate(r.Context(), cookie.Value)
-		if err != nil {
-			s.writeMappedError(w, r, err)
-			return
+		// 无 Session Cookie 时尝试 OAuth Bearer（Agent 只读访问）。
+		if token, ok := bearerToken(r); ok {
+			audience := s.siteOrigin(r) + "/api/v1"
+			if clientID, err := s.oauthValidateToken(token, audience); err == nil {
+				ctx := context.WithValue(r.Context(), agentClientContextKey, clientID)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
 		}
-		session, err = s.dependencies.SessionService.Touch(r.Context(), session)
-		if err != nil {
-			s.writeMappedError(w, r, err)
-			return
-		}
-		ctx := context.WithValue(r.Context(), sessionContextKey, session)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
 	})
 }
 
 func (s *server) csrfMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Agent Bearer 认证已自带请求方身份，无需双提交 CSRF。
+		if _, ok := agentClientIDFromContext(r.Context()); ok {
+			next.ServeHTTP(w, r)
+			return
+		}
 		session, ok := sessionFromContext(r.Context())
 		if !ok {
 			s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
