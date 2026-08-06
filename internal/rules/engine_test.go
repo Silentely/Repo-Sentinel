@@ -59,6 +59,27 @@ func TestShouldNotifyRealtime(t *testing.T) {
 	}
 }
 
+// TestShouldNotifyRealtimeStarWatch 守护 star/watch 实时通知判定：创建/删除/关注
+// 一律实时；未知 action 不通知（与 Issue/PR 的白名单语义一致）。
+func TestShouldNotifyRealtimeStarWatch(t *testing.T) {
+	star := &store.Event{Kind: store.StarKind, Action: "created"}
+	if !shouldNotifyRealtime(star) {
+		t.Fatal("star created should notify realtime")
+	}
+	starDeleted := &store.Event{Kind: store.StarKind, Action: "deleted"}
+	if !shouldNotifyRealtime(starDeleted) {
+		t.Fatal("star deleted should notify realtime")
+	}
+	watch := &store.Event{Kind: store.WatchKind, Action: "started"}
+	if !shouldNotifyRealtime(watch) {
+		t.Fatal("watch started should notify realtime")
+	}
+	// 未知 action 不通知。
+	if shouldNotifyRealtime(&store.Event{Kind: store.StarKind, Action: "unknown"}) {
+		t.Fatal("unknown star action should not notify")
+	}
+}
+
 func TestRenderMessage_IssueOpened(t *testing.T) {
 	now := time.Date(2026, 7, 30, 9, 15, 0, 0, time.UTC)
 	num := 8
@@ -519,6 +540,22 @@ func TestStatusDisplay_Table(t *testing.T) {
 				t.Fatalf("statusDisplay = %s %s, want %s %s", emoji, label, tc.wantEmoji, tc.wantLabel)
 			}
 		})
+	}
+}
+
+// TestStatusDisplayStarWatch 守护 star/watch 状态文案：收藏/取消收藏/已关注。
+func TestStatusDisplayStarWatch(t *testing.T) {
+	emoji, label := statusDisplay(&store.Event{Kind: store.StarKind, Action: "created"})
+	if emoji != "⭐" || label != "已收藏" {
+		t.Fatalf("star created: %q %q", emoji, label)
+	}
+	emoji, label = statusDisplay(&store.Event{Kind: store.StarKind, Action: "deleted"})
+	if emoji != "💔" || label != "取消收藏" {
+		t.Fatalf("star deleted: %q %q", emoji, label)
+	}
+	emoji, label = statusDisplay(&store.Event{Kind: store.WatchKind, Action: "started"})
+	if emoji != "👀" || label != "已关注" {
+		t.Fatalf("watch started: %q %q", emoji, label)
 	}
 }
 
