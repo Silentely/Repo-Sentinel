@@ -99,13 +99,24 @@ export function eventKindLabel(kind: string): string {
       return "Code Scan";
     case "secret_scanning":
       return "Secret";
+    case "star":
+      return "Star";
+    case "watch":
+      return "Watch";
     default:
       return kind;
   }
 }
 
-/** 事件动作 → 中文文案（仪表盘事件行用）。 */
-export function eventActionLabel(action: string): string {
+/** 事件动作 → 中文文案（仪表盘事件行用）；star/watch 动作依赖 kind 区分，避免与 issue/alert 的 created 撞文案。 */
+export function eventActionLabel(action: string, kind?: string): string {
+  if (kind === "star") {
+    if (action === "created") return "已收藏";
+    if (action === "deleted") return "取消收藏";
+  }
+  if (kind === "watch") {
+    if (action === "started") return "已关注";
+  }
   switch (action) {
     case "opened":
       return "已打开";

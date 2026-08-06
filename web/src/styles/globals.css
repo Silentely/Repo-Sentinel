@@ -2180,6 +2180,37 @@ a.status-item--link:focus-visible {
   gap: 6px;
 }
 
+/* ── Star 增长折线图面板 ── */
+
+.star-trend__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.star-trend__value {
+  margin-left: 8px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.star-trend__ranges {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+/* 范围按钮选中态：与 .filter-bar .quiet-button.active 视觉一致 */
+.star-trend__ranges .quiet-button.is-active {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom: 2px solid var(--accent);
+}
+
 .ignored-badge {
   display: inline-flex;
   align-items: center;
