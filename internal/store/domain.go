@@ -21,6 +21,10 @@ const (
 	// WorkflowRunKind Actions 工作流运行的事件类型（此前全项目散落裸字符串，收敛为常量防拼写漂移）。
 	WorkflowRunKind = "workflow_run"
 
+	// StarKind / WatchKind 仓库影响力事件类型。
+	StarKind  = "star"
+	WatchKind = "watch"
+
 	AlertKindDependabot     = "dependabot"
 	AlertKindCodeScanning   = "code_scanning"
 	AlertKindSecretScanning = "secret_scanning"
@@ -69,6 +73,8 @@ type Repository struct {
 	PrEnabled          bool       `json:"pr_enabled"`
 	ActionsEnabled     bool       `json:"actions_enabled"`
 	AlertsEnabled      bool       `json:"alerts_enabled"`
+	StarsEnabled       bool       `json:"stars_enabled"`
+	WatchesEnabled     bool       `json:"watches_enabled"`
 	HTMLURL            string     `json:"html_url"`
 	DefaultBranch      string     `json:"default_branch"`
 	BaselineStartedAt  *time.Time `json:"baseline_started_at,omitempty"`
@@ -101,6 +107,10 @@ func RepoAllowsKind(repo *Repository, kind string) bool {
 		return repo.ActionsEnabled
 	case AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning:
 		return repo.AlertsEnabled
+	case StarKind:
+		return repo.StarsEnabled
+	case WatchKind:
+		return repo.WatchesEnabled
 	}
 	return true
 }
@@ -120,6 +130,10 @@ func KindDisplayName(kind string) string {
 		return "Secret Scanning 密钥扫描"
 	case WorkflowRunKind:
 		return "Actions 工作流"
+	case StarKind:
+		return "Star"
+	case WatchKind:
+		return "Watch"
 	default:
 		return kind
 	}
@@ -292,6 +306,23 @@ type Event struct {
 	CreatedAt            time.Time      `json:"created_at"`
 }
 
+// RepoStatSnapshot 仓库指标按天快照（当前仅 stargazers，metric 预留扩展）。
+type RepoStatSnapshot struct {
+	ID           string    `json:"id"`
+	RepositoryID string    `json:"repository_id"`
+	Metric       string    `json:"metric"`
+	Value        int64     `json:"value"`
+	SampleDate   string    `json:"sample_date"` // UTC 日期 YYYY-MM-DD
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// StarTrendPoint 仪表盘 star 趋势序列点。
+type StarTrendPoint struct {
+	Date  string `json:"date"`
+	Total int64  `json:"total"`
+}
+
 // NotificationChannel 通知渠道。
 type NotificationChannel struct {
 	ID             string `json:"id"`
@@ -317,6 +348,8 @@ var subscribableKinds = map[string]struct{}{
 	AlertKindDependabot:     {},
 	AlertKindCodeScanning:   {},
 	AlertKindSecretScanning: {},
+	StarKind:                {},
+	WatchKind:               {},
 }
 
 // IsSubscribableKind 判定 kind 是否在订阅白名单内。
@@ -426,6 +459,8 @@ type RepositorySettings struct {
 	PrEnabled      *bool `json:"pr_enabled,omitempty"`
 	ActionsEnabled *bool `json:"actions_enabled,omitempty"`
 	AlertsEnabled  *bool `json:"alerts_enabled,omitempty"`
+	StarsEnabled   *bool `json:"stars_enabled,omitempty"`
+	WatchesEnabled *bool `json:"watches_enabled,omitempty"`
 	IsArchived     *bool `json:"is_archived,omitempty"`
 }
 
@@ -490,6 +525,13 @@ type EventStore interface {
 	ListSince(ctx context.Context, since time.Time, limit int) ([]Event, error)
 	// DeleteOlderThan 删除 created_at 早于 cutoff 的事件，返回删除行数。
 	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error)
+}
+
+// RepoStatSnapshotStore 仓库指标快照。
+// ListInRange 参数：repoIDs、metric、fromDate、toDate（均为 YYYY-MM-DD，含边界）。
+type RepoStatSnapshotStore interface {
+	Upsert(context.Context, RepoStatSnapshot) (RepoStatSnapshot, error)
+	ListInRange(context.Context, []string, string, string, string) ([]RepoStatSnapshot, error)
 }
 
 // ChannelStore 通知渠道。

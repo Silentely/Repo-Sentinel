@@ -64,6 +64,7 @@ type Store interface {
 	WorkflowRuns() WorkflowRunStore
 	SecurityAlerts() SecurityAlertStore
 	Events() EventStore
+	RepoStatSnapshots() RepoStatSnapshotStore
 	Channels() ChannelStore
 	Outbox() OutboxStore
 	Cursors() CursorStore
