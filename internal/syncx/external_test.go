@@ -1,7 +1,9 @@
 package syncx
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -196,5 +198,116 @@ func TestReconcileRequiresGitHubApp(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("未配置 App 应失败")
+	}
+}
+
+// externalRepoFixture 构造外部仓（acme/demo）与按路径分发的伪 GitHub 服务器：
+// /repos/acme/demo/issues 返回空 issues，/repos/acme/demo 返回可配置的仓库元数据。
+func externalRepoFixture(t *testing.T, repoMetaFn func(http.ResponseWriter)) (store.Store, store.Repository, *githubx.PublicClient) {
+	t.Helper()
+	data := openSyncStore(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/acme/demo/issues":
+			_ = json.NewEncoder(w).Encode([]any{})
+		case "/repos/acme/demo":
+			repoMetaFn(w)
+		default:
+			http.Error(w, "unexpected path: "+r.URL.Path, http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	repo, err := data.Repositories().Upsert(t.Context(), store.Repository{
+		ID: ulid.Make().String(), Type: store.RepositoryTypeExternal,
+		SyncStatus: store.SyncStatusActive, Owner: "acme", Name: "demo", FullName: "acme/demo",
+		HTMLURL: "https://github.com/acme/demo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data, repo, &githubx.PublicClient{BaseURL: srv.URL, HTTP: srv.Client()}
+}
+
+// 快照正路径：外部仓轮询时 GetRepository 成功 → stargazers_count>0 → Upsert 落库，
+// sample_date 为当日 UTC 日期。
+func TestExternalPollWritesStarSnapshot(t *testing.T) {
+	data, repo, client := externalRepoFixture(t, func(w http.ResponseWriter) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"stargazers_count": 456, "forks_count": 10, "open_issues_count": 3})
+	})
+	p := &ExternalPoller{Store: data, Client: client}
+	if err := p.PollOne(t.Context(), repo); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := data.RepoStatSnapshots().ListInRange(t.Context(), []string{repo.ID}, "stargazers", "2000-01-01", "2100-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("应落 1 条 stargazers 快照，got %d", len(rows))
+	}
+	if rows[0].RepositoryID != repo.ID {
+		t.Fatalf("快照应归属仓库 %s，got %s", repo.ID, rows[0].RepositoryID)
+	}
+	if rows[0].Value != 456 {
+		t.Fatalf("快照值应为 456，got %d", rows[0].Value)
+	}
+	if want := time.Now().UTC().Format("2006-01-02"); rows[0].SampleDate != want {
+		t.Fatalf("快照 sample_date 应为当日 UTC %s，got %s", want, rows[0].SampleDate)
+	}
+}
+
+// 0 值守卫：stargazers_count=0 时不落快照。
+func TestExternalPollSkipsZeroStarSnapshot(t *testing.T) {
+	data, repo, client := externalRepoFixture(t, func(w http.ResponseWriter) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"stargazers_count": 0})
+	})
+	p := &ExternalPoller{Store: data, Client: client}
+	if err := p.PollOne(t.Context(), repo); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := data.RepoStatSnapshots().ListInRange(t.Context(), []string{repo.ID}, "stargazers", "2000-01-01", "2100-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("stargazers_count=0 不应落快照，got %d 行", len(rows))
+	}
+}
+
+// 软失败路径：元数据端点 500 时轮询不阻断（主流程成功推进）、不落快照，
+// 仅记录 star_snapshot_failed 日志。
+func TestExternalPollStarSnapshotSoftFail(t *testing.T) {
+	data, repo, client := externalRepoFixture(t, func(w http.ResponseWriter) {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	})
+	var buf bytes.Buffer
+	p := &ExternalPoller{
+		Store:  data,
+		Client: client,
+		Logger: slog.New(slog.NewTextHandler(&buf, nil)),
+	}
+	if err := p.PollOne(t.Context(), repo); err != nil {
+		t.Fatalf("快照软失败不应阻断轮询: %v", err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("star_snapshot_failed")) {
+		t.Fatalf("应记录 star_snapshot_failed 软失败日志，got %q", buf.String())
+	}
+	// 主流程仍成功：仓库同步时间被刷新。
+	got, err := data.Repositories().Get(t.Context(), repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastSyncedAt == nil {
+		t.Fatal("轮询主流程应成功推进 last_synced_at")
+	}
+	rows, err := data.RepoStatSnapshots().ListInRange(t.Context(), []string{repo.ID}, "stargazers", "2000-01-01", "2100-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("软失败不应落快照，got %d 行", len(rows))
 	}
 }
