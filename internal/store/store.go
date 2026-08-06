@@ -69,6 +69,8 @@ type Store interface {
 	Outbox() OutboxStore
 	Cursors() CursorStore
 	Dashboard(context.Context) (DashboardStats, error)
+	// StarTrend 汇总活跃监控仓的 star 快照为按日总趋势；days<=0 表示全部。
+	StarTrend(context.Context, int) ([]StarTrendPoint, error)
 	// CleanupRetention 按策略删除过期事件、终态 Outbox 与旧 Webhook Delivery。
 	CleanupRetention(context.Context, RetentionPolicy, time.Time) (CleanupResult, error)
 	WithTx(context.Context, func(Store) error) error

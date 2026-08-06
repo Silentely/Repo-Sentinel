@@ -25,6 +25,10 @@ const (
 	StarKind  = "star"
 	WatchKind = "watch"
 
+	// MetricStargazers 快照指标名（与 normalizer 包 starCountMetric 常量字符串一致，
+	// 两处固定为 "stargazers"；store 聚合、syncx 对账与 normalizer 写入共用该值）。
+	MetricStargazers = "stargazers"
+
 	AlertKindDependabot     = "dependabot"
 	AlertKindCodeScanning   = "code_scanning"
 	AlertKindSecretScanning = "secret_scanning"

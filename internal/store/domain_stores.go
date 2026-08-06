@@ -1652,6 +1652,83 @@ func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
 	return stats, nil
 }
 
+// StarTrend 汇总全部活跃监控仓的 star 快照为按日总趋势。
+// days>0 时仅返回最近 days 天（含今天，缺数据日不补 0）；days<=0 返回全部（从最早快照日起）。
+// 每仓某日无快照时向前补最近一次快照值；范围内首日之前无快照的仓，从该仓首个快照日起参与求和。
+func (s *storeImpl) StarTrend(ctx context.Context, days int) ([]StarTrendPoint, error) {
+	repoIDs, err := s.client.Repository.Query().
+		Where(
+			repository.IsArchivedEQ(false),
+			repository.MonitorEnabledEQ(true),
+			repository.StarsEnabledEQ(true),
+		).
+		Select(repository.FieldID).
+		Strings(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	if len(repoIDs) == 0 {
+		return []StarTrendPoint{}, nil
+	}
+	rows, err := s.client.RepoStatSnapshot.Query().
+		Where(repostatsnapshot.RepositoryIDIn(repoIDs...), repostatsnapshot.MetricEQ(MetricStargazers)).
+		Order(entclient.Asc(repostatsnapshot.FieldSampleDate)).
+		All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	if len(rows) == 0 {
+		return []StarTrendPoint{}, nil
+	}
+	// 按仓库分组，日期升序。
+	byRepo := map[string][]RepoStatSnapshot{}
+	var earliest string
+	for _, e := range rows {
+		snap := repoStatSnapshotFromEntity(e)
+		byRepo[snap.RepositoryID] = append(byRepo[snap.RepositoryID], snap)
+		if earliest == "" || snap.SampleDate < earliest {
+			earliest = snap.SampleDate
+		}
+	}
+	start := earliest
+	if days > 0 {
+		from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+		if from > start {
+			start = from
+		}
+	}
+	end := time.Now().UTC().Format("2006-01-02")
+	// 逐日向前补值求和。
+	totals := map[string]int64{}
+	lastByRepo := map[string]int64{}
+	for d := start; d <= end; {
+		var total int64
+		for id, snaps := range byRepo {
+			// 取该仓 <= d 的最近快照值（每仓序列有序，用线性推进即可，仓库量小）。
+			for _, s := range snaps {
+				if s.SampleDate > d {
+					break
+				}
+				lastByRepo[id] = s.Value
+			}
+			if v, ok := lastByRepo[id]; ok {
+				total += v
+			}
+		}
+		totals[d] = total
+		// 推进日期。
+		t, _ := time.Parse("2006-01-02", d)
+		d = t.AddDate(0, 0, 1).Format("2006-01-02")
+	}
+	out := make([]StarTrendPoint, 0, len(totals))
+	for d := start; d <= end; {
+		out = append(out, StarTrendPoint{Date: d, Total: totals[d]})
+		t, _ := time.Parse("2006-01-02", d)
+		d = t.AddDate(0, 0, 1).Format("2006-01-02")
+	}
+	return out, nil
+}
+
 // --- repo stat snapshots ---
 
 type repoStatSnapshotStore struct{ client *entclient.Client }

@@ -27,6 +27,26 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+// handleStarTrend 返回 star 总数按日趋势；days 支持 7/30/90/0（0=全部），非法或缺省回退 30。
+func (s *server) handleStarTrend(w http.ResponseWriter, r *http.Request) {
+	if s.dependencies.Store == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		return
+	}
+	days := 30
+	if raw := r.URL.Query().Get("days"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && (v == 7 || v == 30 || v == 90 || v == 0) {
+			days = v
+		}
+	}
+	items, err := s.dependencies.Store.StarTrend(r.Context(), days)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 // writeListResponse 输出统一分页列表响应，五个列表端点共用同一结构。
 func writeListResponse[T any](w http.ResponseWriter, items []T, page store.PageResult) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "page": page.Page, "per_page": page.PerPage, "total": page.Total})

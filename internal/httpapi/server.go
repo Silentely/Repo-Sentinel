@@ -170,6 +170,7 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/auth/session", s.handleSession)
 			protected.Get("/system/version", s.handleVersion)
 			protected.Get("/dashboard", s.handleDashboard)
+			protected.Get("/stats/star-trend", s.handleStarTrend)
 			protected.Get("/repositories", s.handleListRepositories)
 			protected.Post("/repositories/external", s.handleAddExternalRepository)
 			protected.Get("/work-items", s.handleListWorkItems)
