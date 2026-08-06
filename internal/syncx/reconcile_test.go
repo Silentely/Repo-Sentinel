@@ -1,12 +1,14 @@
 package syncx
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -22,16 +24,17 @@ import (
 
 // 伪 GitHub API 路由：Reconciler 经由 AppClient 发出的全部请求都由 httptest 拦截，杜绝真实网络。
 var (
-	reAccessTokens = regexp.MustCompile(`^/app/installations/\d+/access_tokens$`)
-	reIssues       = regexp.MustCompile(`^/repos/[^/]+/[^/]+/issues$`)
-	reActionsRuns  = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs$`)
-	reDependabot   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/dependabot/alerts$`)
-	reCodeScanning = regexp.MustCompile(`^/repos/[^/]+/[^/]+/code-scanning/alerts$`)
-	reSecretScan   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/secret-scanning/alerts$`)
-	rePRReviews    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/(\d+)/reviews$`)
-	rePRReviewers  = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/(\d+)/requested_reviewers$`)
-	rePRDetail     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/(\d+)$`)
-	rePRCheckRuns  = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits/[^/]+/check-runs$`)
+	reAccessTokens   = regexp.MustCompile(`^/app/installations/\d+/access_tokens$`)
+	reIssues         = regexp.MustCompile(`^/repos/[^/]+/[^/]+/issues$`)
+	reRepositoryMeta = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
+	reActionsRuns    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs$`)
+	reDependabot     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/dependabot/alerts$`)
+	reCodeScanning   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/code-scanning/alerts$`)
+	reSecretScan     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/secret-scanning/alerts$`)
+	rePRReviews      = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/(\d+)/reviews$`)
+	rePRReviewers    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/(\d+)/requested_reviewers$`)
+	rePRDetail       = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/(\d+)$`)
+	rePRCheckRuns    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits/[^/]+/check-runs$`)
 )
 
 // fakeGitHub 伪 GitHub API 服务：按路由返回可配置响应，并用原子计数器观测请求次数。
@@ -51,6 +54,10 @@ type fakeGitHub struct {
 	// issues429RetryAfter 缺省 "60"。N=0 表示不限流。
 	rateLimitIssuesRequests int
 	issues429RetryAfter     string
+	// repoMetaFn 可选：/repos/{owner}/{repo} 元数据响应体；缺省空对象（stargazers_count=0，不落快照）。
+	repoMetaFn func() any
+	// repoMetaHTTPStatus 可选：元数据端点状态码（缺省 200），用于覆盖快照软失败路径。
+	repoMetaHTTPStatus int
 
 	// 请求计数器（httptest 每个请求独立 goroutine，必须用原子量）。
 	prDetailRequests atomic.Int64 // GET /pulls/{n}：enrich 预算观测点
@@ -89,6 +96,17 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		write([]any{})
+	case reRepositoryMeta.MatchString(path):
+		// star 快照元数据端点：默认 200 + 空对象（不落快照）；测试可配置响应体或状态码。
+		if f.repoMetaHTTPStatus != 0 {
+			http.Error(w, http.StatusText(f.repoMetaHTTPStatus), f.repoMetaHTTPStatus)
+			return
+		}
+		if f.repoMetaFn != nil {
+			write(f.repoMetaFn())
+			return
+		}
+		write(map[string]any{})
 	case reActionsRuns.MatchString(path):
 		f.actionsPages.Add(1)
 		write(map[string]any{"workflow_runs": []any{}})
@@ -701,5 +719,91 @@ func TestReconcileAlertsRateLimitPropagates(t *testing.T) {
 	r := &Reconciler{Store: data, GitHub: fake.client}
 	if err := r.ReconcileRepository(ctx, repo); !githubx.IsRateLimited(err) {
 		t.Fatalf("告警路径限流应向上返回，got %v", err)
+	}
+}
+
+// 快照正路径：门禁触发（全局 Stars 与仓库 StarsEnabled 均默认开启）→ GetRepository 成功
+// → StargazersCount>0 → Upsert 落库，sample_date 为当日 UTC 日期。
+func TestReconcileWritesStarSnapshot(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+
+	fake.repoMetaFn = func() any {
+		return map[string]any{"full_name": "acme/demo", "stargazers_count": 123, "forks_count": 4, "open_issues_count": 2}
+	}
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+
+	rows, err := data.RepoStatSnapshots().ListInRange(ctx, []string{repo.ID}, "stargazers", "2000-01-01", "2100-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("应落 1 条 stargazers 快照，got %d", len(rows))
+	}
+	row := rows[0]
+	if row.RepositoryID != repo.ID {
+		t.Fatalf("快照应归属仓库 %s，got %s", repo.ID, row.RepositoryID)
+	}
+	if row.Value != 123 {
+		t.Fatalf("快照值应为 123，got %d", row.Value)
+	}
+	if want := time.Now().UTC().Format("2006-01-02"); row.SampleDate != want {
+		t.Fatalf("快照 sample_date 应为当日 UTC %s，got %s", want, row.SampleDate)
+	}
+}
+
+// 0 值守卫：stargazers_count=0 时不落快照。
+func TestReconcileSkipsZeroStarSnapshot(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+
+	fake.repoMetaFn = func() any {
+		return map[string]any{"stargazers_count": 0}
+	}
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+
+	rows, err := data.RepoStatSnapshots().ListInRange(ctx, []string{repo.ID}, "stargazers", "2000-01-01", "2100-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("stargazers_count=0 不应落快照，got %d 行", len(rows))
+	}
+}
+
+// 软失败路径：元数据端点 500 时对账不阻断、不落快照、不污染 last_sync_error_code，
+// 仅记录 star_snapshot_failed 日志。
+func TestReconcileStarSnapshotSoftFail(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+
+	var buf bytes.Buffer
+	r := &Reconciler{Store: data, GitHub: fake.client, Logger: slog.New(slog.NewTextHandler(&buf, nil))}
+	fake.repoMetaHTTPStatus = http.StatusInternalServerError
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("快照软失败不应阻断对账: %v", err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("star_snapshot_failed")) {
+		t.Fatalf("应记录 star_snapshot_failed 软失败日志，got %q", buf.String())
+	}
+	got, err := data.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastSyncErrorCode != "" {
+		t.Fatalf("软失败不应污染错误码，got %s", got.LastSyncErrorCode)
+	}
+	rows, err := data.RepoStatSnapshots().ListInRange(ctx, []string{repo.ID}, "stargazers", "2000-01-01", "2100-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("软失败不应落快照，got %d 行", len(rows))
 	}
 }
