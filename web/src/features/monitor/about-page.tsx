@@ -44,6 +44,8 @@ interface SettingsFormState {
   featurePRs: boolean;
   featureActions: boolean;
   featureAlerts: boolean;
+  featureStars: boolean;
+  featureWatches: boolean;
 }
 
 // 定期报告发送日枚举（与后端 report.weekly_day 一致）。
@@ -78,6 +80,8 @@ function formFromSettings(data: SystemSettings | undefined): SettingsFormState {
     featurePRs: data?.["feature.pull_requests"] !== false,
     featureActions: data?.["feature.actions"] !== false,
     featureAlerts: data?.["feature.security_alerts"] !== false,
+    featureStars: data?.["feature.stars"] !== false,
+    featureWatches: data?.["feature.watches"] !== false,
   };
 }
 
@@ -108,6 +112,8 @@ function featuresBody(form: SettingsFormState): SystemSettings {
     "feature.pull_requests": form.featurePRs,
     "feature.actions": form.featureActions,
     "feature.security_alerts": form.featureAlerts,
+    "feature.stars": form.featureStars,
+    "feature.watches": form.featureWatches,
   };
 }
 
@@ -392,6 +398,8 @@ export function AboutPage() {
         <label className="check-row"><input type="checkbox" checked={form.featurePRs} onChange={(e) => set("featurePRs", e.target.checked)} /><span>Pull Requests</span></label>
         <label className="check-row"><input type="checkbox" checked={form.featureActions} onChange={(e) => set("featureActions", e.target.checked)} /><span>Actions</span></label>
         <label className="check-row"><input type="checkbox" checked={form.featureAlerts} onChange={(e) => set("featureAlerts", e.target.checked)} /><span>安全告警</span></label>
+        <label className="check-row"><input type="checkbox" checked={form.featureStars} onChange={(e) => set("featureStars", e.target.checked)} /><span>Star 事件</span></label>
+        <label className="check-row"><input type="checkbox" checked={form.featureWatches} onChange={(e) => set("featureWatches", e.target.checked)} /><span>Watch 事件</span></label>
         <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("features")}>
           {saveSettings.isPending ? "保存中…" : "保存开关"}
         </button>

@@ -398,6 +398,8 @@ export function ReposPage() {
   const featurePRs = settings.data?.["feature.pull_requests"] !== false;
   const featureActions = settings.data?.["feature.actions"] !== false;
   const featureAlerts = settings.data?.["feature.security_alerts"] !== false;
+  const featureStars = settings.data?.["feature.stars"] !== false;
+  const featureWatches = settings.data?.["feature.watches"] !== false;
 
   const updateSettings = useMutation({
     mutationFn: ({ id, settings }: { id: string; settings: RepositorySettings }) => {
@@ -421,6 +423,8 @@ export function ReposPage() {
             updated.pr_enabled = false;
             updated.actions_enabled = false;
             updated.alerts_enabled = false;
+            updated.stars_enabled = false;
+            updated.watches_enabled = false;
             }
             if (settings.is_archived === false) {
             updated.monitor_enabled = true;
@@ -428,6 +432,8 @@ export function ReposPage() {
             updated.pr_enabled = true;
             updated.actions_enabled = true;
             updated.alerts_enabled = true;
+            updated.stars_enabled = true;
+            updated.watches_enabled = true;
             }
             return updated;
           }),
@@ -501,6 +507,8 @@ export function ReposPage() {
                 prs: featurePRs,
                 actions: featureActions,
                 alerts: featureAlerts,
+                stars: featureStars,
+                watches: featureWatches,
               }}
             />
           ))}
@@ -519,7 +527,7 @@ function RepoCard({
   repo: Repository;
   onToggle: (s: RepositorySettings) => void;
   saving: boolean;
-  features: { issues: boolean; prs: boolean; actions: boolean; alerts: boolean };
+  features: { issues: boolean; prs: boolean; actions: boolean; alerts: boolean; stars: boolean; watches: boolean };
 }) {
   const monitorOn = repo.monitor_enabled;
   function handleArchive(next: boolean) {
@@ -592,6 +600,22 @@ function RepoCard({
             monitorOn={monitorOn}
             saving={saving}
             onChange={(v) => onToggle({ alerts_enabled: v })}
+          />
+          <CapabilityToggle
+            label="Star"
+            repoEnabled={repo.stars_enabled}
+            globalOn={features.stars}
+            monitorOn={monitorOn}
+            saving={saving}
+            onChange={(v) => onToggle({ stars_enabled: v })}
+          />
+          <CapabilityToggle
+            label="Watch"
+            repoEnabled={repo.watches_enabled}
+            globalOn={features.watches}
+            monitorOn={monitorOn}
+            saving={saving}
+            onChange={(v) => onToggle({ watches_enabled: v })}
           />
         </div>
         <Toggle label="本系统归档" checked={repo.is_archived} disabled={saving} onChange={handleArchive} />
