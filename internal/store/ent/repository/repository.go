@@ -39,6 +39,10 @@ const (
 	FieldActionsEnabled = "actions_enabled"
 	// FieldAlertsEnabled holds the string denoting the alerts_enabled field in the database.
 	FieldAlertsEnabled = "alerts_enabled"
+	// FieldStarsEnabled holds the string denoting the stars_enabled field in the database.
+	FieldStarsEnabled = "stars_enabled"
+	// FieldWatchesEnabled holds the string denoting the watches_enabled field in the database.
+	FieldWatchesEnabled = "watches_enabled"
 	// FieldHTMLURL holds the string denoting the html_url field in the database.
 	FieldHTMLURL = "html_url"
 	// FieldDefaultBranch holds the string denoting the default_branch field in the database.
@@ -76,6 +80,8 @@ var Columns = []string{
 	FieldPrEnabled,
 	FieldActionsEnabled,
 	FieldAlertsEnabled,
+	FieldStarsEnabled,
+	FieldWatchesEnabled,
 	FieldHTMLURL,
 	FieldDefaultBranch,
 	FieldBaselineStartedAt,
@@ -113,6 +119,10 @@ var (
 	DefaultActionsEnabled bool
 	// DefaultAlertsEnabled holds the default value on creation for the "alerts_enabled" field.
 	DefaultAlertsEnabled bool
+	// DefaultStarsEnabled holds the default value on creation for the "stars_enabled" field.
+	DefaultStarsEnabled bool
+	// DefaultWatchesEnabled holds the default value on creation for the "watches_enabled" field.
+	DefaultWatchesEnabled bool
 	// DefaultHTMLURL holds the default value on creation for the "html_url" field.
 	DefaultHTMLURL string
 	// DefaultDefaultBranch holds the default value on creation for the "default_branch" field.
@@ -197,6 +207,16 @@ func ByActionsEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByAlertsEnabled orders the results by the alerts_enabled field.
 func ByAlertsEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAlertsEnabled, opts...).ToFunc()
+}
+
+// ByStarsEnabled orders the results by the stars_enabled field.
+func ByStarsEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStarsEnabled, opts...).ToFunc()
+}
+
+// ByWatchesEnabled orders the results by the watches_enabled field.
+func ByWatchesEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWatchesEnabled, opts...).ToFunc()
 }
 
 // ByHTMLURL orders the results by the html_url field.

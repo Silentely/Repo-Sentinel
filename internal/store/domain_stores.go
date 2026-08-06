@@ -12,6 +12,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationchannel"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationoutbox"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repostatsnapshot"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
@@ -291,6 +292,12 @@ func (s *repositoryStore) UpdateSettings(ctx context.Context, id string, setting
 	if settings.AlertsEnabled != nil {
 		upd.SetAlertsEnabled(*settings.AlertsEnabled)
 	}
+	if settings.StarsEnabled != nil {
+		upd.SetStarsEnabled(*settings.StarsEnabled)
+	}
+	if settings.WatchesEnabled != nil {
+		upd.SetWatchesEnabled(*settings.WatchesEnabled)
+	}
 	if settings.IsArchived != nil {
 		upd.SetIsArchived(*settings.IsArchived)
 		if *settings.IsArchived {
@@ -301,6 +308,8 @@ func (s *repositoryStore) UpdateSettings(ctx context.Context, id string, setting
 			upd.SetPrEnabled(false)
 			upd.SetActionsEnabled(false)
 			upd.SetAlertsEnabled(false)
+			upd.SetStarsEnabled(false)
+			upd.SetWatchesEnabled(false)
 		} else {
 			// 取消归档时恢复所有能力开关。
 			upd.SetSyncStatus(SyncStatusActive)
@@ -309,6 +318,8 @@ func (s *repositoryStore) UpdateSettings(ctx context.Context, id string, setting
 			upd.SetPrEnabled(true)
 			upd.SetActionsEnabled(true)
 			upd.SetAlertsEnabled(true)
+			upd.SetStarsEnabled(true)
+			upd.SetWatchesEnabled(true)
 		}
 	}
 	return mapStoreError(upd.Exec(ctx))
@@ -326,6 +337,7 @@ func repositoryFromEntity(e *entclient.Repository) Repository {
 		IsArchived: e.IsArchived, IsPrivate: e.IsPrivate,
 		MonitorEnabled: e.MonitorEnabled, IssuesEnabled: e.IssuesEnabled,
 		PrEnabled: e.PrEnabled, ActionsEnabled: e.ActionsEnabled, AlertsEnabled: e.AlertsEnabled,
+		StarsEnabled: e.StarsEnabled, WatchesEnabled: e.WatchesEnabled,
 		HTMLURL: e.HTMLURL, DefaultBranch: e.DefaultBranch,
 		BaselineStartedAt: e.BaselineStartedAt, BaselineFinishedAt: e.BaselineFinishedAt,
 		LastSyncedAt: e.LastSyncedAt, LastSyncErrorCode: e.LastSyncErrorCode,
@@ -1638,4 +1650,79 @@ func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
 	stats.ReposBaseline = baseline
 	stats.ChannelsEnabled = channels
 	return stats, nil
+}
+
+// --- repo stat snapshots ---
+
+type repoStatSnapshotStore struct{ client *entclient.Client }
+
+func (s *repoStatSnapshotStore) Upsert(ctx context.Context, in RepoStatSnapshot) (RepoStatSnapshot, error) {
+	now := time.Now().UTC()
+	existing, err := s.client.RepoStatSnapshot.Query().
+		Where(
+			repostatsnapshot.RepositoryIDEQ(in.RepositoryID),
+			repostatsnapshot.MetricEQ(in.Metric),
+			repostatsnapshot.SampleDateEQ(in.SampleDate),
+		).
+		Only(ctx)
+	if err == nil {
+		entity, err := s.client.RepoStatSnapshot.UpdateOneID(existing.ID).
+			SetValue(in.Value).
+			SetUpdatedAt(now).
+			Save(ctx)
+		if err != nil {
+			return RepoStatSnapshot{}, mapStoreError(err)
+		}
+		return repoStatSnapshotFromEntity(entity), nil
+	}
+	if mapStoreError(err) != ErrNotFound {
+		return RepoStatSnapshot{}, mapStoreError(err)
+	}
+	if in.ID == "" {
+		in.ID = newID()
+	}
+	if in.CreatedAt.IsZero() {
+		in.CreatedAt = now
+	}
+	entity, err := s.client.RepoStatSnapshot.Create().
+		SetID(in.ID).
+		SetRepositoryID(in.RepositoryID).
+		SetMetric(in.Metric).
+		SetValue(in.Value).
+		SetSampleDate(in.SampleDate).
+		SetCreatedAt(in.CreatedAt.UTC()).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return RepoStatSnapshot{}, mapStoreError(err)
+	}
+	return repoStatSnapshotFromEntity(entity), nil
+}
+
+func (s *repoStatSnapshotStore) ListInRange(ctx context.Context, repoIDs []string, metric, fromDate, toDate string) ([]RepoStatSnapshot, error) {
+	q := s.client.RepoStatSnapshot.Query().
+		Where(
+			repostatsnapshot.MetricEQ(metric),
+			repostatsnapshot.SampleDateGTE(fromDate),
+			repostatsnapshot.SampleDateLTE(toDate),
+		)
+	if len(repoIDs) > 0 {
+		q = q.Where(repostatsnapshot.RepositoryIDIn(repoIDs...))
+	}
+	rows, err := q.Order(entclient.Asc(repostatsnapshot.FieldSampleDate)).All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	out := make([]RepoStatSnapshot, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, repoStatSnapshotFromEntity(row))
+	}
+	return out, nil
+}
+
+func repoStatSnapshotFromEntity(e *entclient.RepoStatSnapshot) RepoStatSnapshot {
+	return RepoStatSnapshot{
+		ID: e.ID, RepositoryID: e.RepositoryID, Metric: e.Metric, Value: e.Value,
+		SampleDate: e.SampleDate, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+	}
 }

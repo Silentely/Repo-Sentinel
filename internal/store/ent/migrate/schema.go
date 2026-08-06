@@ -255,6 +255,34 @@ var (
 			},
 		},
 	}
+	// RepoStatSnapshotsColumns holds the columns for the "repo_stat_snapshots" table.
+	RepoStatSnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "repository_id", Type: field.TypeString},
+		{Name: "metric", Type: field.TypeString},
+		{Name: "value", Type: field.TypeInt64},
+		{Name: "sample_date", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// RepoStatSnapshotsTable holds the schema information for the "repo_stat_snapshots" table.
+	RepoStatSnapshotsTable = &schema.Table{
+		Name:       "repo_stat_snapshots",
+		Columns:    RepoStatSnapshotsColumns,
+		PrimaryKey: []*schema.Column{RepoStatSnapshotsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "repostatsnapshot_repository_id_metric_sample_date",
+				Unique:  true,
+				Columns: []*schema.Column{RepoStatSnapshotsColumns[1], RepoStatSnapshotsColumns[2], RepoStatSnapshotsColumns[4]},
+			},
+			{
+				Name:    "repostatsnapshot_metric_sample_date",
+				Unique:  false,
+				Columns: []*schema.Column{RepoStatSnapshotsColumns[2], RepoStatSnapshotsColumns[4]},
+			},
+		},
+	}
 	// RepositoriesColumns holds the columns for the "repositories" table.
 	RepositoriesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -272,6 +300,8 @@ var (
 		{Name: "pr_enabled", Type: field.TypeBool, Default: true},
 		{Name: "actions_enabled", Type: field.TypeBool, Default: true},
 		{Name: "alerts_enabled", Type: field.TypeBool, Default: true},
+		{Name: "stars_enabled", Type: field.TypeBool, Default: true},
+		{Name: "watches_enabled", Type: field.TypeBool, Default: true},
 		{Name: "html_url", Type: field.TypeString, Default: ""},
 		{Name: "default_branch", Type: field.TypeString, Default: ""},
 		{Name: "baseline_started_at", Type: field.TypeTime, Nullable: true},
@@ -300,7 +330,7 @@ var (
 			{
 				Name:    "repository_type_last_synced_at",
 				Unique:  false,
-				Columns: []*schema.Column{RepositoriesColumns[1], RepositoriesColumns[19]},
+				Columns: []*schema.Column{RepositoriesColumns[1], RepositoriesColumns[21]},
 			},
 			{
 				Name:    "repository_sync_status",
@@ -578,6 +608,7 @@ var (
 		GithubInstallationsTable,
 		NotificationChannelsTable,
 		NotificationOutboxTable,
+		RepoStatSnapshotsTable,
 		RepositoriesTable,
 		SecurityAlertsTable,
 		SyncCursorsTable,
@@ -601,6 +632,9 @@ func init() {
 	}
 	NotificationOutboxTable.Annotation = &entsql.Annotation{
 		Table: "notification_outbox",
+	}
+	RepoStatSnapshotsTable.Annotation = &entsql.Annotation{
+		Table: "repo_stat_snapshots",
 	}
 	RepositoriesTable.Annotation = &entsql.Annotation{
 		Table: "repositories",

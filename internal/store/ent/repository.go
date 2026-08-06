@@ -45,6 +45,10 @@ type Repository struct {
 	ActionsEnabled bool `json:"actions_enabled,omitempty"`
 	// AlertsEnabled holds the value of the "alerts_enabled" field.
 	AlertsEnabled bool `json:"alerts_enabled,omitempty"`
+	// StarsEnabled holds the value of the "stars_enabled" field.
+	StarsEnabled bool `json:"stars_enabled,omitempty"`
+	// WatchesEnabled holds the value of the "watches_enabled" field.
+	WatchesEnabled bool `json:"watches_enabled,omitempty"`
 	// HTMLURL holds the value of the "html_url" field.
 	HTMLURL string `json:"html_url,omitempty"`
 	// DefaultBranch holds the value of the "default_branch" field.
@@ -69,7 +73,7 @@ func (*Repository) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case repository.FieldIsArchived, repository.FieldIsPrivate, repository.FieldMonitorEnabled, repository.FieldIssuesEnabled, repository.FieldPrEnabled, repository.FieldActionsEnabled, repository.FieldAlertsEnabled:
+		case repository.FieldIsArchived, repository.FieldIsPrivate, repository.FieldMonitorEnabled, repository.FieldIssuesEnabled, repository.FieldPrEnabled, repository.FieldActionsEnabled, repository.FieldAlertsEnabled, repository.FieldStarsEnabled, repository.FieldWatchesEnabled:
 			values[i] = new(sql.NullBool)
 		case repository.FieldGithubRepoID:
 			values[i] = new(sql.NullInt64)
@@ -183,6 +187,18 @@ func (_m *Repository) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field alerts_enabled", values[i])
 			} else if value.Valid {
 				_m.AlertsEnabled = value.Bool
+			}
+		case repository.FieldStarsEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field stars_enabled", values[i])
+			} else if value.Valid {
+				_m.StarsEnabled = value.Bool
+			}
+		case repository.FieldWatchesEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field watches_enabled", values[i])
+			} else if value.Valid {
+				_m.WatchesEnabled = value.Bool
 			}
 		case repository.FieldHTMLURL:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -316,6 +332,12 @@ func (_m *Repository) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("alerts_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AlertsEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("stars_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.StarsEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("watches_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.WatchesEnabled))
 	builder.WriteString(", ")
 	builder.WriteString("html_url=")
 	builder.WriteString(_m.HTMLURL)

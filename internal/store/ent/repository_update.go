@@ -243,6 +243,34 @@ func (_u *RepositoryUpdate) SetNillableAlertsEnabled(v *bool) *RepositoryUpdate 
 	return _u
 }
 
+// SetStarsEnabled sets the "stars_enabled" field.
+func (_u *RepositoryUpdate) SetStarsEnabled(v bool) *RepositoryUpdate {
+	_u.mutation.SetStarsEnabled(v)
+	return _u
+}
+
+// SetNillableStarsEnabled sets the "stars_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdate) SetNillableStarsEnabled(v *bool) *RepositoryUpdate {
+	if v != nil {
+		_u.SetStarsEnabled(*v)
+	}
+	return _u
+}
+
+// SetWatchesEnabled sets the "watches_enabled" field.
+func (_u *RepositoryUpdate) SetWatchesEnabled(v bool) *RepositoryUpdate {
+	_u.mutation.SetWatchesEnabled(v)
+	return _u
+}
+
+// SetNillableWatchesEnabled sets the "watches_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdate) SetNillableWatchesEnabled(v *bool) *RepositoryUpdate {
+	if v != nil {
+		_u.SetWatchesEnabled(*v)
+	}
+	return _u
+}
+
 // SetHTMLURL sets the "html_url" field.
 func (_u *RepositoryUpdate) SetHTMLURL(v string) *RepositoryUpdate {
 	_u.mutation.SetHTMLURL(v)
@@ -450,6 +478,12 @@ func (_u *RepositoryUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if value, ok := _u.mutation.AlertsEnabled(); ok {
 		_spec.SetField(repository.FieldAlertsEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.StarsEnabled(); ok {
+		_spec.SetField(repository.FieldStarsEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.WatchesEnabled(); ok {
+		_spec.SetField(repository.FieldWatchesEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.HTMLURL(); ok {
 		_spec.SetField(repository.FieldHTMLURL, field.TypeString, value)
@@ -716,6 +750,34 @@ func (_u *RepositoryUpdateOne) SetNillableAlertsEnabled(v *bool) *RepositoryUpda
 	return _u
 }
 
+// SetStarsEnabled sets the "stars_enabled" field.
+func (_u *RepositoryUpdateOne) SetStarsEnabled(v bool) *RepositoryUpdateOne {
+	_u.mutation.SetStarsEnabled(v)
+	return _u
+}
+
+// SetNillableStarsEnabled sets the "stars_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdateOne) SetNillableStarsEnabled(v *bool) *RepositoryUpdateOne {
+	if v != nil {
+		_u.SetStarsEnabled(*v)
+	}
+	return _u
+}
+
+// SetWatchesEnabled sets the "watches_enabled" field.
+func (_u *RepositoryUpdateOne) SetWatchesEnabled(v bool) *RepositoryUpdateOne {
+	_u.mutation.SetWatchesEnabled(v)
+	return _u
+}
+
+// SetNillableWatchesEnabled sets the "watches_enabled" field if the given value is not nil.
+func (_u *RepositoryUpdateOne) SetNillableWatchesEnabled(v *bool) *RepositoryUpdateOne {
+	if v != nil {
+		_u.SetWatchesEnabled(*v)
+	}
+	return _u
+}
+
 // SetHTMLURL sets the "html_url" field.
 func (_u *RepositoryUpdateOne) SetHTMLURL(v string) *RepositoryUpdateOne {
 	_u.mutation.SetHTMLURL(v)
@@ -953,6 +1015,12 @@ func (_u *RepositoryUpdateOne) sqlSave(ctx context.Context) (_node *Repository, 
 	}
 	if value, ok := _u.mutation.AlertsEnabled(); ok {
 		_spec.SetField(repository.FieldAlertsEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.StarsEnabled(); ok {
+		_spec.SetField(repository.FieldStarsEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.WatchesEnabled(); ok {
+		_spec.SetField(repository.FieldWatchesEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.HTMLURL(); ok {
 		_spec.SetField(repository.FieldHTMLURL, field.TypeString, value)

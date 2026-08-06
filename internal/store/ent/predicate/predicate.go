@@ -27,6 +27,9 @@ type NotificationChannel func(*sql.Selector)
 // NotificationOutbox is the predicate function for notificationoutbox builders.
 type NotificationOutbox func(*sql.Selector)
 
+// RepoStatSnapshot is the predicate function for repostatsnapshot builders.
+type RepoStatSnapshot func(*sql.Selector)
+
 // Repository is the predicate function for repository builders.
 type Repository func(*sql.Selector)
 

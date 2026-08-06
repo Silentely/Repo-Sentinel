@@ -23,6 +23,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationchannel"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationoutbox"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repostatsnapshot"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
@@ -50,6 +51,8 @@ type Client struct {
 	NotificationChannel *NotificationChannelClient
 	// NotificationOutbox is the client for interacting with the NotificationOutbox builders.
 	NotificationOutbox *NotificationOutboxClient
+	// RepoStatSnapshot is the client for interacting with the RepoStatSnapshot builders.
+	RepoStatSnapshot *RepoStatSnapshotClient
 	// Repository is the client for interacting with the Repository builders.
 	Repository *RepositoryClient
 	// SecurityAlert is the client for interacting with the SecurityAlert builders.
@@ -82,6 +85,7 @@ func (c *Client) init() {
 	c.GitHubInstallation = NewGitHubInstallationClient(c.config)
 	c.NotificationChannel = NewNotificationChannelClient(c.config)
 	c.NotificationOutbox = NewNotificationOutboxClient(c.config)
+	c.RepoStatSnapshot = NewRepoStatSnapshotClient(c.config)
 	c.Repository = NewRepositoryClient(c.config)
 	c.SecurityAlert = NewSecurityAlertClient(c.config)
 	c.SyncCursor = NewSyncCursorClient(c.config)
@@ -188,6 +192,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GitHubInstallation:  NewGitHubInstallationClient(cfg),
 		NotificationChannel: NewNotificationChannelClient(cfg),
 		NotificationOutbox:  NewNotificationOutboxClient(cfg),
+		RepoStatSnapshot:    NewRepoStatSnapshotClient(cfg),
 		Repository:          NewRepositoryClient(cfg),
 		SecurityAlert:       NewSecurityAlertClient(cfg),
 		SyncCursor:          NewSyncCursorClient(cfg),
@@ -221,6 +226,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GitHubInstallation:  NewGitHubInstallationClient(cfg),
 		NotificationChannel: NewNotificationChannelClient(cfg),
 		NotificationOutbox:  NewNotificationOutboxClient(cfg),
+		RepoStatSnapshot:    NewRepoStatSnapshotClient(cfg),
 		Repository:          NewRepositoryClient(cfg),
 		SecurityAlert:       NewSecurityAlertClient(cfg),
 		SyncCursor:          NewSyncCursorClient(cfg),
@@ -258,8 +264,9 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AdminAccount, c.AdminSession, c.AuditLog, c.Event, c.GitHubInstallation,
-		c.NotificationChannel, c.NotificationOutbox, c.Repository, c.SecurityAlert,
-		c.SyncCursor, c.SystemSetting, c.WebhookDelivery, c.WorkItem, c.WorkflowRun,
+		c.NotificationChannel, c.NotificationOutbox, c.RepoStatSnapshot, c.Repository,
+		c.SecurityAlert, c.SyncCursor, c.SystemSetting, c.WebhookDelivery, c.WorkItem,
+		c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -270,8 +277,9 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AdminAccount, c.AdminSession, c.AuditLog, c.Event, c.GitHubInstallation,
-		c.NotificationChannel, c.NotificationOutbox, c.Repository, c.SecurityAlert,
-		c.SyncCursor, c.SystemSetting, c.WebhookDelivery, c.WorkItem, c.WorkflowRun,
+		c.NotificationChannel, c.NotificationOutbox, c.RepoStatSnapshot, c.Repository,
+		c.SecurityAlert, c.SyncCursor, c.SystemSetting, c.WebhookDelivery, c.WorkItem,
+		c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -294,6 +302,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.NotificationChannel.mutate(ctx, m)
 	case *NotificationOutboxMutation:
 		return c.NotificationOutbox.mutate(ctx, m)
+	case *RepoStatSnapshotMutation:
+		return c.RepoStatSnapshot.mutate(ctx, m)
 	case *RepositoryMutation:
 		return c.Repository.mutate(ctx, m)
 	case *SecurityAlertMutation:
@@ -1276,6 +1286,139 @@ func (c *NotificationOutboxClient) mutate(ctx context.Context, m *NotificationOu
 	}
 }
 
+// RepoStatSnapshotClient is a client for the RepoStatSnapshot schema.
+type RepoStatSnapshotClient struct {
+	config
+}
+
+// NewRepoStatSnapshotClient returns a client for the RepoStatSnapshot from the given config.
+func NewRepoStatSnapshotClient(c config) *RepoStatSnapshotClient {
+	return &RepoStatSnapshotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `repostatsnapshot.Hooks(f(g(h())))`.
+func (c *RepoStatSnapshotClient) Use(hooks ...Hook) {
+	c.hooks.RepoStatSnapshot = append(c.hooks.RepoStatSnapshot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `repostatsnapshot.Intercept(f(g(h())))`.
+func (c *RepoStatSnapshotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RepoStatSnapshot = append(c.inters.RepoStatSnapshot, interceptors...)
+}
+
+// Create returns a builder for creating a RepoStatSnapshot entity.
+func (c *RepoStatSnapshotClient) Create() *RepoStatSnapshotCreate {
+	mutation := newRepoStatSnapshotMutation(c.config, OpCreate)
+	return &RepoStatSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RepoStatSnapshot entities.
+func (c *RepoStatSnapshotClient) CreateBulk(builders ...*RepoStatSnapshotCreate) *RepoStatSnapshotCreateBulk {
+	return &RepoStatSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RepoStatSnapshotClient) MapCreateBulk(slice any, setFunc func(*RepoStatSnapshotCreate, int)) *RepoStatSnapshotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RepoStatSnapshotCreateBulk{err: fmt.Errorf("calling to RepoStatSnapshotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RepoStatSnapshotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RepoStatSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RepoStatSnapshot.
+func (c *RepoStatSnapshotClient) Update() *RepoStatSnapshotUpdate {
+	mutation := newRepoStatSnapshotMutation(c.config, OpUpdate)
+	return &RepoStatSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RepoStatSnapshotClient) UpdateOne(_m *RepoStatSnapshot) *RepoStatSnapshotUpdateOne {
+	mutation := newRepoStatSnapshotMutation(c.config, OpUpdateOne, withRepoStatSnapshot(_m))
+	return &RepoStatSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RepoStatSnapshotClient) UpdateOneID(id string) *RepoStatSnapshotUpdateOne {
+	mutation := newRepoStatSnapshotMutation(c.config, OpUpdateOne, withRepoStatSnapshotID(id))
+	return &RepoStatSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RepoStatSnapshot.
+func (c *RepoStatSnapshotClient) Delete() *RepoStatSnapshotDelete {
+	mutation := newRepoStatSnapshotMutation(c.config, OpDelete)
+	return &RepoStatSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RepoStatSnapshotClient) DeleteOne(_m *RepoStatSnapshot) *RepoStatSnapshotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RepoStatSnapshotClient) DeleteOneID(id string) *RepoStatSnapshotDeleteOne {
+	builder := c.Delete().Where(repostatsnapshot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RepoStatSnapshotDeleteOne{builder}
+}
+
+// Query returns a query builder for RepoStatSnapshot.
+func (c *RepoStatSnapshotClient) Query() *RepoStatSnapshotQuery {
+	return &RepoStatSnapshotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRepoStatSnapshot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RepoStatSnapshot entity by its id.
+func (c *RepoStatSnapshotClient) Get(ctx context.Context, id string) (*RepoStatSnapshot, error) {
+	return c.Query().Where(repostatsnapshot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RepoStatSnapshotClient) GetX(ctx context.Context, id string) *RepoStatSnapshot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RepoStatSnapshotClient) Hooks() []Hook {
+	return c.hooks.RepoStatSnapshot
+}
+
+// Interceptors returns the client interceptors.
+func (c *RepoStatSnapshotClient) Interceptors() []Interceptor {
+	return c.inters.RepoStatSnapshot
+}
+
+func (c *RepoStatSnapshotClient) mutate(ctx context.Context, m *RepoStatSnapshotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RepoStatSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RepoStatSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RepoStatSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RepoStatSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RepoStatSnapshot mutation op: %q", m.Op())
+	}
+}
+
 // RepositoryClient is a client for the Repository schema.
 type RepositoryClient struct {
 	config
@@ -2211,12 +2354,14 @@ func (c *WorkflowRunClient) mutate(ctx context.Context, m *WorkflowRunMutation) 
 type (
 	hooks struct {
 		AdminAccount, AdminSession, AuditLog, Event, GitHubInstallation,
-		NotificationChannel, NotificationOutbox, Repository, SecurityAlert, SyncCursor,
-		SystemSetting, WebhookDelivery, WorkItem, WorkflowRun []ent.Hook
+		NotificationChannel, NotificationOutbox, RepoStatSnapshot, Repository,
+		SecurityAlert, SyncCursor, SystemSetting, WebhookDelivery, WorkItem,
+		WorkflowRun []ent.Hook
 	}
 	inters struct {
 		AdminAccount, AdminSession, AuditLog, Event, GitHubInstallation,
-		NotificationChannel, NotificationOutbox, Repository, SecurityAlert, SyncCursor,
-		SystemSetting, WebhookDelivery, WorkItem, WorkflowRun []ent.Interceptor
+		NotificationChannel, NotificationOutbox, RepoStatSnapshot, Repository,
+		SecurityAlert, SyncCursor, SystemSetting, WebhookDelivery, WorkItem,
+		WorkflowRun []ent.Interceptor
 	}
 )

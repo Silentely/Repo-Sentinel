@@ -134,6 +134,16 @@ func AlertsEnabled(v bool) predicate.Repository {
 	return predicate.Repository(sql.FieldEQ(FieldAlertsEnabled, v))
 }
 
+// StarsEnabled applies equality check predicate on the "stars_enabled" field. It's identical to StarsEnabledEQ.
+func StarsEnabled(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldStarsEnabled, v))
+}
+
+// WatchesEnabled applies equality check predicate on the "watches_enabled" field. It's identical to WatchesEnabledEQ.
+func WatchesEnabled(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldWatchesEnabled, v))
+}
+
 // HTMLURL applies equality check predicate on the "html_url" field. It's identical to HTMLURLEQ.
 func HTMLURL(v string) predicate.Repository {
 	return predicate.Repository(sql.FieldEQ(FieldHTMLURL, v))
@@ -692,6 +702,26 @@ func AlertsEnabledEQ(v bool) predicate.Repository {
 // AlertsEnabledNEQ applies the NEQ predicate on the "alerts_enabled" field.
 func AlertsEnabledNEQ(v bool) predicate.Repository {
 	return predicate.Repository(sql.FieldNEQ(FieldAlertsEnabled, v))
+}
+
+// StarsEnabledEQ applies the EQ predicate on the "stars_enabled" field.
+func StarsEnabledEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldStarsEnabled, v))
+}
+
+// StarsEnabledNEQ applies the NEQ predicate on the "stars_enabled" field.
+func StarsEnabledNEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldNEQ(FieldStarsEnabled, v))
+}
+
+// WatchesEnabledEQ applies the EQ predicate on the "watches_enabled" field.
+func WatchesEnabledEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldEQ(FieldWatchesEnabled, v))
+}
+
+// WatchesEnabledNEQ applies the NEQ predicate on the "watches_enabled" field.
+func WatchesEnabledNEQ(v bool) predicate.Repository {
+	return predicate.Repository(sql.FieldNEQ(FieldWatchesEnabled, v))
 }
 
 // HTMLURLEQ applies the EQ predicate on the "html_url" field.

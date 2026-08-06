@@ -191,9 +191,10 @@ func (s *storeImpl) SecurityAlerts() SecurityAlertStore { return &securityAlertS
 func (s *storeImpl) Events() EventStore                 { return &eventStore{client: s.client} }
 
 // RepoStatSnapshots 返回仓库指标快照存储访问器。
-// 具体实现随 stargazer 同步任务落地（Ent 实体 + 迁移），本阶段仅声明接口。
-func (s *storeImpl) RepoStatSnapshots() RepoStatSnapshotStore { return nil }
-func (s *storeImpl) Channels() ChannelStore                   { return &channelStore{client: s.client} }
-func (s *storeImpl) Outbox() OutboxStore                      { return &outboxStore{client: s.client} }
-func (s *storeImpl) Cursors() CursorStore                     { return &cursorStore{client: s.client} }
-func (s *storeImpl) Close() error                             { return s.closeFn() }
+func (s *storeImpl) RepoStatSnapshots() RepoStatSnapshotStore {
+	return &repoStatSnapshotStore{client: s.client}
+}
+func (s *storeImpl) Channels() ChannelStore { return &channelStore{client: s.client} }
+func (s *storeImpl) Outbox() OutboxStore    { return &outboxStore{client: s.client} }
+func (s *storeImpl) Cursors() CursorStore   { return &cursorStore{client: s.client} }
+func (s *storeImpl) Close() error           { return s.closeFn() }
