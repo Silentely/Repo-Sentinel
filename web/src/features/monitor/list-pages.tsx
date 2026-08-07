@@ -7,7 +7,16 @@ import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate, type QueryGateQuery } from "../../components/query-gate";
 import { apiRequest } from "../../lib/api/client";
 import { toApiError } from "../../lib/api/errors";
-import { alertKindLabel, formatRelativeTime, repoDisplayName, syncStatusLabel } from "../../lib/format";
+import {
+  alertKindLabel,
+  alertStateLabel,
+  formatRelativeTime,
+  repoDisplayName,
+  severityLabel,
+  syncStatusLabel,
+  workItemStateLabel,
+  workflowConclusionLabel,
+} from "../../lib/format";
 import {
   type Page,
   repositoriesQueryOptions,
@@ -295,7 +304,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
             return (
               <li key={it.id}>
                   <div className="pr-header">
-                    <span className={`event-kind state-${it.state || "open"}`}>{it.state || "—"}</span>
+                    <span className={`event-kind state-${it.state || "open"}`}>{workItemStateLabel(it.state)}</span>
                     {it.draft && <span className="draft-badge">Draft</span>}
                     {it.merged && <span className="merged-badge">Merged</span>}
                     {it.ignored && <span className="ignored-badge">已忽略</span>}
@@ -418,22 +427,22 @@ export function ReposPage() {
             if (r.id !== id) return r;
             const updated = { ...r, ...settings };
             if (settings.is_archived === true) {
-            updated.monitor_enabled = false;
-            updated.issues_enabled = false;
-            updated.pr_enabled = false;
-            updated.actions_enabled = false;
-            updated.alerts_enabled = false;
-            updated.stars_enabled = false;
-            updated.watches_enabled = false;
+              updated.monitor_enabled = false;
+              updated.issues_enabled = false;
+              updated.pr_enabled = false;
+              updated.actions_enabled = false;
+              updated.alerts_enabled = false;
+              updated.stars_enabled = false;
+              updated.watches_enabled = false;
             }
             if (settings.is_archived === false) {
-            updated.monitor_enabled = true;
-            updated.issues_enabled = true;
-            updated.pr_enabled = true;
-            updated.actions_enabled = true;
-            updated.alerts_enabled = true;
-            updated.stars_enabled = true;
-            updated.watches_enabled = true;
+              updated.monitor_enabled = true;
+              updated.issues_enabled = true;
+              updated.pr_enabled = true;
+              updated.actions_enabled = true;
+              updated.alerts_enabled = true;
+              updated.stars_enabled = true;
+              updated.watches_enabled = true;
             }
             return updated;
           }),
@@ -751,7 +760,7 @@ function ActionsList() {
             return (
               <li key={run.id}>
                   <div className="run-header">
-                    <span className={`event-kind state-${runConclusion}`}>{runConclusion}</span>
+                    <span className={`event-kind state-${runConclusion}`}>{workflowConclusionLabel(runConclusion)}</span>
                     {run.event && <span className="event-type">{run.event}</span>}
                     {run.run_attempt && run.run_attempt > 1 && <span className="attempt-badge">Attempt #{run.run_attempt}</span>}
                     {run.ignored && <span className="ignored-badge">已忽略</span>}
@@ -880,8 +889,8 @@ function SecurityList() {
                     #{num} {label}
                   </strong>
                   <span className="muted">
-                    {a.state || "—"}
-                    {a.severity ? ` · ${a.severity}` : ""}
+                    {alertStateLabel(a.state)}
+                    {a.severity ? ` · ${severityLabel(a.severity)}` : ""}
                   </span>
                   <ItemActions
                     htmlUrl={a.html_url}

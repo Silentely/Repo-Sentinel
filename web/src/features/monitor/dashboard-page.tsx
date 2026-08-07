@@ -13,6 +13,7 @@ import {
   eventKindLabel,
   formatRelativeTime,
   outboxStatusLabel,
+  severityLabel,
   syncStatusLabel,
 } from "../../lib/format";
 import {
@@ -385,7 +386,7 @@ export function DashboardPage() {
                           {repoName}
                         </span>
                       ) : null}
-                      {ev.severity ? <span className={`severity severity-${ev.severity}`}>{ev.severity}</span> : null}
+                      {ev.severity ? <span className={`severity severity-${ev.severity}`}>{severityLabel(ev.severity)}</span> : null}
                       {ev.occurred_at ? <span className="event-time">{formatRelativeTime(ev.occurred_at)}</span> : null}
                       {ev.actor ? <span className="muted">· {ev.actor}</span> : null}
                     </div>

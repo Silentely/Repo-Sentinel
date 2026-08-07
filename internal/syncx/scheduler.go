@@ -46,7 +46,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			return
 		}
 		if err := s.Reconciler.ReconcileAll(ctx, 15); err != nil && s.Logger != nil {
-			s.Logger.Error("scheduled reconcile failed", "error_code", "reconcile_failed")
+			s.Logger.Error("scheduled reconcile failed", "error_code", "reconcile_failed", "error", err.Error())
 		}
 	}
 	runExternal := func() {
@@ -54,7 +54,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			return
 		}
 		if err := s.External.PollAll(ctx); err != nil && s.Logger != nil {
-			s.Logger.Error("scheduled external poll failed", "error_code", "external_poll_failed")
+			s.Logger.Error("scheduled external poll failed", "error_code", "external_poll_failed", "error", err.Error())
 		}
 	}
 	runDigest := func() {
@@ -63,13 +63,13 @@ func (s *Scheduler) Run(ctx context.Context) {
 		}
 		now := time.Now()
 		if err := s.Digest.RunOnce(ctx, now); err != nil && s.Logger != nil {
-			s.Logger.Error("scheduled digest failed", "error_code", "digest_failed")
+			s.Logger.Error("scheduled digest failed", "error_code", "digest_failed", "error", err.Error())
 		}
 		if err := s.Digest.RunWeekly(ctx, now); err != nil && s.Logger != nil {
-			s.Logger.Error("scheduled weekly report failed", "error_code", "weekly_report_failed")
+			s.Logger.Error("scheduled weekly report failed", "error_code", "weekly_report_failed", "error", err.Error())
 		}
 		if err := s.Digest.RunMonthly(ctx, now); err != nil && s.Logger != nil {
-			s.Logger.Error("scheduled monthly report failed", "error_code", "monthly_report_failed")
+			s.Logger.Error("scheduled monthly report failed", "error_code", "monthly_report_failed", "error", err.Error())
 		}
 	}
 

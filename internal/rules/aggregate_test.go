@@ -139,6 +139,13 @@ func TestAggregatorBurstSummary(t *testing.T) {
 	if len(items) < 1 {
 		t.Fatal("超频后应产生摘要 outbox")
 	}
+	// 标题应包含仓库名，Telegram 预览无需展开正文即可定位超频来源。
+	if !strings.Contains(items[0].Title, "acme/demo") {
+		t.Fatalf("超频摘要标题应含仓库名，实际: %q", items[0].Title)
+	}
+	if !strings.Contains(items[0].Title, "通知频率超限") {
+		t.Fatalf("超频摘要标题应保留通用语义，实际: %q", items[0].Title)
+	}
 }
 
 // TestHTMLEscape 守护通知文案的转义行为：合并与实时消息统一使用标准库

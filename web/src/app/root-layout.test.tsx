@@ -47,6 +47,10 @@ vi.mock("../features/monitor/api", () => ({
     queryKey: ["test", "settings"],
     queryFn: () => new Promise<never>(() => undefined),
   },
+  versionQueryOptions: {
+    queryKey: ["test", "version"],
+    queryFn: () => new Promise<never>(() => undefined),
+  },
 }));
 
 import { RootLayout } from "./root-layout";

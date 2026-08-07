@@ -148,7 +148,12 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	a.bursts[repoID] = filtered
 	if len(filtered) > a.BurstThreshold {
 		sample := res.Event
+		// 标题带上仓库名：Telegram 推送预览只看标题，无仓库名时无法区分是哪个仓超频。
+		// repoFullName 为空（如聚合器单事件回放）时回退通用标题；写入前统一转义。
 		title := "⚠️ 通知频率超限"
+		if repoFullName != "" {
+			title = fmt.Sprintf("⚠️ 通知频率超限：%s", repoFullName)
+		}
 		a.mu.Unlock()
 		// 降级：只写一条速率限制摘要（必须在锁外访问 Store）
 		return a.enqueueBurstSummary(ctx, repoID, repoFullName, cat, title, sample)
