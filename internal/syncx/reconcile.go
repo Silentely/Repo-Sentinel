@@ -103,6 +103,11 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	issuesSynced := false
 	if wantIssues || wantPRs {
 		if err := r.syncIssues(ctx, token, repo, since, isBaseline, wantIssues, wantPRs); err != nil {
+			// 上游 404/410（仓库已删除或不可见）：兜底标记 unavailable 并终止本轮，
+			// 与外部仓轮询的降级语义一致；webhook repository.deleted 漏投递时靠此路径收口。
+			if r.markUnavailableIfGone(ctx, repo, err) {
+				return nil
+			}
 			return err
 		}
 		issuesSynced = true
@@ -113,6 +118,9 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 			// 限流是全安装级信号：不能当作单仓软失败吞掉，必须终止本轮。
 			if githubx.IsRateLimited(err) {
 				return err
+			}
+			if r.markUnavailableIfGone(ctx, repo, err) {
+				return nil
 			}
 			// Actions 权限不足时软失败
 			softFailed = true
@@ -484,6 +492,27 @@ func strPtr(p *string) string {
 		return ""
 	}
 	return *p
+}
+
+// markUnavailableIfGone 将对账中遇到的 404/410 错误映射为本地 unavailable 状态，返回是否已标记。
+// 404/410 表示上游仓库已删除或对当前 App 不可见（转私有 / 授权被收回），继续对账只会反复失败；
+// 403/5xx/限流属于临时或权限问题，不在此处理。安全告警的"功能未开启"404 已在 syncAlerts 内部消化，
+// 不会传播到此处。
+func (r *Reconciler) markUnavailableIfGone(ctx context.Context, repo store.Repository, err error) bool {
+	var stErr *githubx.HTTPStatusError
+	if !errors.As(err, &stErr) || (stErr.StatusCode != http.StatusNotFound && stErr.StatusCode != http.StatusGone) {
+		return false
+	}
+	if uerr := r.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable); uerr != nil {
+		if r.Logger != nil {
+			r.Logger.Warn("mark repo unavailable failed", "repo", repo.FullName, "error_code", "repo_unavailable_mark_failed", "error", uerr.Error())
+		}
+		return false
+	}
+	if r.Logger != nil {
+		r.Logger.Warn("repo gone on github, marked unavailable", "repo", repo.FullName, "error_code", "repo_marked_unavailable", "status_code", stErr.StatusCode)
+	}
+	return true
 }
 
 // ReconcileAll 对账全部自有仓（受预算限制：每轮最多 N 个）。

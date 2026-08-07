@@ -223,8 +223,9 @@ func (p *Processor) processInstallation(ctx context.Context, eventType string, e
 	// installation.created 载荷顶层为 repositories；
 	// installation_repositories 的 added/removed 为 repositories_added / repositories_removed。
 	var extra struct {
-		Repositories      []ghRepository `json:"repositories"`
-		RepositoriesAdded []ghRepository `json:"repositories_added"`
+		Repositories        []ghRepository `json:"repositories"`
+		RepositoriesAdded   []ghRepository `json:"repositories_added"`
+		RepositoriesRemoved []ghRepository `json:"repositories_removed"`
 	}
 	_ = json.Unmarshal(payload, &extra)
 	seen := map[string]struct{}{}
@@ -251,6 +252,17 @@ func (p *Processor) processInstallation(ctx context.Context, eventType string, e
 	}
 	if err := upsertList(extra.RepositoriesAdded); err != nil {
 		return Result{}, err
+	}
+	// repositories_removed：仓库被移出安装（授权收回）。GitHub 侧仓库仍存在，保留历史数据
+	// 但暂停采集，等待重新授权后经对账或 added 事件恢复；本地不存在的条目静默跳过。
+	for i := range extra.RepositoriesRemoved {
+		name := strings.TrimSpace(extra.RepositoriesRemoved[i].FullName)
+		if name == "" {
+			continue
+		}
+		if r, err := p.Store.Repositories().GetByFullName(ctx, name); err == nil {
+			_ = p.Store.Repositories().UpdateSyncStatus(ctx, r.ID, store.SyncStatusUnavailable)
+		}
 	}
 	return Result{Repository: repo, Updated: true, SuppressNotify: true}, nil
 }
@@ -283,7 +295,17 @@ func (p *Processor) processRepositoryEvent(ctx context.Context, env envelope) (R
 		_ = p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived})
 		repo.SyncStatus = store.SyncStatusActive
 		repo.IsArchived = false
-	case "deleted", "transferred":
+	case "deleted":
+		// 仓库已在 GitHub 删除：本地历史数据失去上游来源，级联删除仓库与全部关联数据，
+		// 确保已打开的 PR/Issue、事件、告警、快照与待投递通知不残留。
+		if err := p.Store.Repositories().DeleteRepository(ctx, repo.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+			return Result{}, fmt.Errorf("delete repository cascade: %w", err)
+		}
+		// 仓库行已删除：Result 不再携带 Repository（调用方仅用于日志展示）。
+		return Result{Updated: true, SuppressNotify: true}, nil
+	case "transferred":
+		// 转移后 App 可能失去访问权：GitHub 侧仓库仍存在，保留数据但暂停采集，
+		// 等待对账 404 兜底或后续事件恢复。
 		_ = p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable)
 		repo.SyncStatus = store.SyncStatusUnavailable
 	case "privatized":
