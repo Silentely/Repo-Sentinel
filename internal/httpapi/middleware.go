@@ -48,6 +48,7 @@ func (s *server) accessLogMiddleware(next http.Handler) http.Handler {
 			"remote_ip", remoteIPFromContext(r.Context()),
 			"http_status", wrapped.status,
 			"duration_ms", time.Since(startedAt).Milliseconds(),
+			"user_agent", r.UserAgent(),
 		)
 	})
 }

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"compress/gzip"
 	"io"
 	"io/fs"
 	"mime"
@@ -121,6 +122,65 @@ func (h *spaHandler) serveFile(w http.ResponseWriter, r *http.Request, name, cac
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", cacheControl)
+	// 文本类资源按客户端能力 gzip 压缩，降低自托管出站带宽；带 Range 的请求不压缩
+	// （gzip 与字节区间语义冲突），非压缩变体仍可被标准缓存按 Vary 区分。
+	if acceptsGzip(r.Header.Get("Accept-Encoding")) && r.Header.Get("Range") == "" && compressibleType(contentType) {
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+		gzw := &gzipResponseWriter{ResponseWriter: w, gz: gz}
+		http.ServeContent(gzw, r, name, info.ModTime(), bytes.NewReader(contents))
+		return true
+	}
 	http.ServeContent(w, r, name, info.ModTime(), bytes.NewReader(contents))
 	return true
+}
+
+// gzipResponseWriter 包装 http.ResponseWriter，在写出时移除 Content-Length
+// 并标记 Content-Encoding / Vary，避免压缩后长度与原始字节数不一致。
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	gz *gzip.Writer
+}
+
+func (w *gzipResponseWriter) WriteHeader(status int) {
+	// 304 / HEAD 等无正文响应不需要 Content-Encoding。
+	if status != http.StatusNotModified {
+		w.Header().Del("Content-Length")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Add("Vary", "Accept-Encoding")
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.gz.Write(b)
+}
+
+// acceptsGzip 判断 Accept-Encoding 是否显式接受 gzip；
+// gzip;q=0 表示不接受，按段解析避免误判。
+func acceptsGzip(header string) bool {
+	for _, part := range strings.Split(header, ",") {
+		part = strings.TrimSpace(part)
+		if !strings.HasPrefix(part, "gzip") {
+			continue
+		}
+		return !strings.Contains(part, ";q=0")
+	}
+	return false
+}
+
+// compressibleType 判断内容类型是否值得 gzip（文本类/脚本/JSON/SVG）。
+func compressibleType(contentType string) bool {
+	if contentType == "" {
+		return false
+	}
+	mt, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+	switch mt {
+	case "application/javascript", "application/json", "application/manifest+json", "image/svg+xml":
+		return true
+	}
+	return strings.HasPrefix(mt, "text/")
 }

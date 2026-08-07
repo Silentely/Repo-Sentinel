@@ -1,12 +1,14 @@
 package webhooksvc_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -178,6 +180,32 @@ func TestProcessEvaluatorErrorMarksFailed(t *testing.T) {
 	got := mustGetDelivery(t, data, "delivery-rule")
 	if got.Status != store.DeliveryFailed || got.ErrorCode != "rule_failed" {
 		t.Fatalf("rule 失败应标记 failed/rule_failed，got status=%s code=%s", got.Status, got.ErrorCode)
+	}
+}
+
+// TestProcessRuleErrorLogCarriesRepo rule 失败日志必须携带仓库名，
+// 便于按仓库聚合定位通知链路故障（错误行只有 rowID 时难以排查）。
+func TestProcessRuleErrorLogCarriesRepo(t *testing.T) {
+	data := openServiceStore(t)
+	seedActiveDemoRepo(t, data)
+	var logBuffer bytes.Buffer
+	svc := &webhooksvc.Service{
+		Store:      data,
+		Logger:     slog.New(slog.NewJSONHandler(&logBuffer, nil)),
+		Evaluator:  failingEvaluator{},
+		Background: t.Context(),
+	}
+	payload := issueOpenedPayload(t)
+	rowID := seedDelivery(t, data, "delivery-rule-log", "issues", payload)
+
+	svc.Process(rowID, "issues", "delivery-rule-log", payload)
+
+	logs := logBuffer.String()
+	if !strings.Contains(logs, "rule evaluate failed") {
+		t.Fatalf("应记录 rule evaluate failed，实际日志: %s", logs)
+	}
+	if !strings.Contains(logs, "acme/demo") {
+		t.Fatalf("rule 失败日志应携带仓库名 acme/demo，实际日志: %s", logs)
 	}
 }
 

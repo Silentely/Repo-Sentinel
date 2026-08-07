@@ -441,7 +441,7 @@ export function DashboardPage() {
               title="还没有关注中的仓库"
               description="安装 GitHub App 并配置 Webhook 后，仓库会自动出现。已归档仓库请在「仓库管理」查看。"
               action={
-                <span className="link-row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+                <span className="link-row link-row--centered">
                   <Link to="/github">打开 GitHub App 页</Link>
                   <span className="muted">· 安装后点「从 GitHub 同步仓库」可补拉仓库</span>
                 </span>

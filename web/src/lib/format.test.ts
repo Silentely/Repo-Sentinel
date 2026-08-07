@@ -4,10 +4,36 @@ import {
   alertStateLabel,
   eventActionLabel,
   eventKindLabel,
+  formatRelativeTime,
   severityLabel,
   workItemStateLabel,
   workflowConclusionLabel,
 } from "./format";
+
+describe("formatRelativeTime", () => {
+  const now = new Date("2026-08-07T12:00:00Z");
+
+  it("空串与非法日期返回空串", () => {
+    expect(formatRelativeTime("")).toBe("");
+    expect(formatRelativeTime("not-a-date")).toBe("");
+  });
+
+  it("60 秒内与未来时间（时钟偏差）归为刚刚，不渲染空白", () => {
+    expect(formatRelativeTime("2026-08-07T11:59:30Z", now)).toBe("刚刚");
+    expect(formatRelativeTime("2026-08-07T12:00:01Z", now)).toBe("刚刚");
+  });
+
+  it("分钟/小时/天粒度", () => {
+    expect(formatRelativeTime("2026-08-07T11:55:00Z", now)).toBe("5 分钟前");
+    expect(formatRelativeTime("2026-08-07T09:00:00Z", now)).toBe("3 小时前");
+    expect(formatRelativeTime("2026-08-05T12:00:00Z", now)).toBe("2 天前");
+  });
+
+  it("超过 30 天用月/年粒度，与相对时间风格一致", () => {
+    expect(formatRelativeTime("2026-06-23T12:00:00Z", now)).toBe("1 个月前");
+    expect(formatRelativeTime("2025-07-03T12:00:00Z", now)).toBe("1 年前");
+  });
+});
 
 describe("eventActionLabel", () => {
   it("支持 star/watch kind 感知文案", () => {

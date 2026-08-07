@@ -1,10 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 func TestSPA静态资源返回正确类型与不可变缓存(t *testing.T) {
@@ -90,4 +94,103 @@ func TestSPA非GET请求不会回退到HTML(t *testing.T) {
 
 	response := fixture.request(t, http.MethodPost, "/login", `{}`, "127.0.0.1:44005", nil, nil)
 	assertAPIError(t, response, http.StatusNotFound, "not_found")
+}
+
+func TestSPA文本资源按gzip压缩且内容可解压(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		frontend: fstest.MapFS{
+			"assets/app-abc123.js": &fstest.MapFile{Data: []byte(strings.Repeat("console.log('ok');", 100))},
+		},
+	})
+
+	response := fixture.request(t, http.MethodGet, "/assets/app-abc123.js", "", "127.0.0.1:44006", nil, map[string]string{
+		"Accept-Encoding": "gzip",
+	})
+	if response.Code != http.StatusOK {
+		t.Fatalf("状态=%d，响应=%s", response.Code, response.Body.String())
+	}
+	if enc := response.Header().Get("Content-Encoding"); enc != "gzip" {
+		t.Fatalf("Content-Encoding=%q，期望 gzip", enc)
+	}
+	if vary := response.Header().Get("Vary"); !strings.Contains(vary, "Accept-Encoding") {
+		t.Fatalf("Vary=%q 应包含 Accept-Encoding", vary)
+	}
+	if response.Header().Get("Content-Length") != "" {
+		t.Fatal("gzip 响应不应携带 Content-Length（长度与原始字节不一致）")
+	}
+	gz, err := gzip.NewReader(bytes.NewReader(response.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("响应体不是合法 gzip: %v", err)
+	}
+	defer gz.Close()
+	decoded, err := io.ReadAll(gz)
+	if err != nil {
+		t.Fatalf("gzip 解压失败: %v", err)
+	}
+	if !strings.HasPrefix(string(decoded), "console.log('ok');") {
+		t.Fatalf("解压内容不符，前 40 字节: %q", decoded[:min(40, len(decoded))])
+	}
+}
+
+func TestSPA不支持gzip时不压缩(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		frontend: fstest.MapFS{
+			"assets/app-abc123.js": &fstest.MapFile{Data: []byte("console.log('ok');")},
+		},
+	})
+
+	// 无 Accept-Encoding
+	plain := fixture.request(t, http.MethodGet, "/assets/app-abc123.js", "", "127.0.0.1:44007", nil, nil)
+	if enc := plain.Header().Get("Content-Encoding"); enc != "" {
+		t.Fatalf("无 Accept-Encoding 不应压缩，got %q", enc)
+	}
+	if plain.Body.String() != "console.log('ok');" {
+		t.Fatal("无 Accept-Encoding 应返回原始内容")
+	}
+	// gzip;q=0 显式拒绝
+	refused := fixture.request(t, http.MethodGet, "/assets/app-abc123.js", "", "127.0.0.1:44008", nil, map[string]string{
+		"Accept-Encoding": "gzip;q=0",
+	})
+	if enc := refused.Header().Get("Content-Encoding"); enc != "" {
+		t.Fatalf("gzip;q=0 不应压缩，got %q", enc)
+	}
+}
+
+func TestSPARange请求不gzip(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		frontend: fstest.MapFS{
+			"assets/app-abc123.js": &fstest.MapFile{Data: []byte("console.log('ok');")},
+		},
+	})
+
+	response := fixture.request(t, http.MethodGet, "/assets/app-abc123.js", "", "127.0.0.1:44009", nil, map[string]string{
+		"Accept-Encoding": "gzip",
+		"Range":           "bytes=0-9",
+	})
+	if enc := response.Header().Get("Content-Encoding"); enc != "" {
+		t.Fatalf("Range 请求不应 gzip，got %q", enc)
+	}
+	if code := response.Code; code != http.StatusPartialContent {
+		t.Fatalf("Range 请求应返回 206，got %d", code)
+	}
+}
+
+func TestSPAGzipNotModified不带编码头(t *testing.T) {
+	modTime := time.Unix(1700000000, 0)
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		frontend: fstest.MapFS{
+			"assets/app-abc123.js": &fstest.MapFile{Data: []byte("console.log('ok');"), ModTime: modTime},
+		},
+	})
+
+	response := fixture.request(t, http.MethodGet, "/assets/app-abc123.js", "", "127.0.0.1:44010", nil, map[string]string{
+		"Accept-Encoding":   "gzip",
+		"If-Modified-Since": modTime.UTC().Format(http.TimeFormat),
+	})
+	if response.Code != http.StatusNotModified {
+		t.Fatalf("命中缓存应返回 304，got %d", response.Code)
+	}
+	if enc := response.Header().Get("Content-Encoding"); enc != "" {
+		t.Fatalf("304 响应不应携带 Content-Encoding，got %q", enc)
+	}
 }

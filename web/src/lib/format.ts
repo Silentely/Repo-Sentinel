@@ -1,24 +1,28 @@
 /**
  * 将 ISO 日期字符串格式化为相对时间（中文）。
  * 用于列表与仪表盘共用。
+ * @param now 可选基准时间（测试注入用），默认当前时间。
  */
-export function formatRelativeTime(dateString: string): string {
+export function formatRelativeTime(dateString: string, now: Date = new Date()): string {
   if (!dateString) return "";
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return "";
-  const now = new Date();
   const diffMs = now.getTime() - date.getTime();
-  if (diffMs < 0) return "";
+  // 未来时间（客户端与服务端存在时钟偏差、或事件带计划时间）不渲染空白，
+  // 与 60 秒内同样归为「刚刚」，避免列表时间列留白。
+  if (diffMs < 60 * 1000) return "刚刚";
   const diffSeconds = Math.floor(diffMs / 1000);
   const diffMinutes = Math.floor(diffSeconds / 60);
   const diffHours = Math.floor(diffMinutes / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (diffSeconds < 60) return "刚刚";
   if (diffMinutes < 60) return `${diffMinutes} 分钟前`;
   if (diffHours < 24) return `${diffHours} 小时前`;
   if (diffDays < 30) return `${diffDays} 天前`;
-  return date.toLocaleDateString("zh-CN");
+  // 超过一个月改用月/年粒度，与列表其余行的相对时间风格保持一致；
+  // 直接显示绝对日期会与整列「X 前」的节奏割裂。
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)} 个月前`;
+  return `${Math.floor(diffDays / 365)} 年前`;
 }
 
 /** 仓库同步状态 → 中文展示文案（仪表盘与列表页共用，避免两处维护漂移）。 */

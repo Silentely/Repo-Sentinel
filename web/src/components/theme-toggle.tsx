@@ -18,7 +18,7 @@ export function ThemeToggle() {
     const apply = () => {
       const dark = mode === "dark" || (mode === "system" && media.matches);
       document.documentElement.classList.toggle("dark", dark);
-      // 切换主题后同步更新浏览器 UI 颜色；首帧取值由 index.html 内联脚本负责。
+      // 切换主题后同步更新浏览器 UI 颜色；首帧取值由 public/theme-init.js 负责。
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) {
         meta.setAttribute("content", dark ? darkThemeColor : lightThemeColor);
