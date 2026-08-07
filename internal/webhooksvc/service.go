@@ -45,7 +45,8 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	res, err := proc.Process(ctx, eventType, deliveryID, body)
 	if err != nil {
 		_ = s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, "normalize_failed")
-		s.logError("webhook normalize failed", deliveryID, eventType, "normalize_failed", err.Error())
+		// 规范化失败时仓库信息尚未解析出来，repo 留空由调用方从日志链路定位。
+		s.logError("webhook normalize failed", deliveryID, eventType, "normalize_failed", "", err.Error())
 		return
 	}
 	repoName := ""
@@ -61,7 +62,7 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 		}
 		if err != nil {
 			// 通知已丢：状态必须可查，标记为失败而不是 processed。
-			s.logError("rule evaluate failed", deliveryID, eventType, "rule_failed", err.Error())
+			s.logError("rule evaluate failed", deliveryID, eventType, "rule_failed", repoName, err.Error())
 			_ = s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, "rule_failed")
 			return
 		}
@@ -79,15 +80,19 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	}
 }
 
-func (s *Service) logError(msg, deliveryID, eventType, code, errMsg string) {
+func (s *Service) logError(msg, deliveryID, eventType, code, repoName, errMsg string) {
 	if s.Logger == nil {
 		return
 	}
-	s.Logger.Error(
-		msg,
+	attrs := []any{
 		"delivery_id", deliveryID,
 		"event_type", eventType,
 		"error_code", code,
 		"error", errMsg,
-	)
+	}
+	// repo 为空（如规范化失败）时不带该字段，保持日志字段稳定。
+	if repoName != "" {
+		attrs = append(attrs, "repo", repoName)
+	}
+	s.Logger.Error(msg, attrs...)
 }

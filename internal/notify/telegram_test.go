@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -115,5 +116,55 @@ func TestSendTelegramNotConfigured(t *testing.T) {
 	err := w.sendTelegramDirect(t.Context(), "http://unused", "", "token", "text", "", "HTML")
 	if err == nil {
 		t.Fatal("期望空 chatID 返回错误")
+	}
+}
+
+func TestTruncateTelegramTextKeepsShortText(t *testing.T) {
+	short := strings.Repeat("a", telegramTextLimit-1)
+	if got := truncateTelegramText(short); got != short {
+		t.Fatalf("短文本不应截断，got len=%d", len(got))
+	}
+	// 恰好等于上限同样不截断。
+	exact := strings.Repeat("a", telegramTextLimit)
+	if got := truncateTelegramText(exact); got != exact {
+		t.Fatal("等于上限的文本不应截断")
+	}
+}
+
+func TestTruncateTelegramTextCutsLongText(t *testing.T) {
+	long := strings.Repeat("a", telegramTextLimit+500)
+	got := truncateTelegramText(long)
+	if len([]rune(got)) > telegramTextLimit+20 {
+		t.Fatalf("截断后长度应接近上限，got %d", len([]rune(got)))
+	}
+	if !strings.HasSuffix(got, "已截断）") {
+		t.Fatalf("截断后应带省略提示，实际尾部: %q", got[len(got)-12:])
+	}
+}
+
+func TestTruncateTelegramTextAvoidsBrokenTag(t *testing.T) {
+	// 截断点落在 <a href="..." 开标签中间：必须回退到标签之前，不能把残缺标签发给 Telegram。
+	text := strings.Repeat("a", telegramTextLimit-10) + `<a href="https://github.com/org/repo/issues/123"`
+	got := truncateTelegramText(text)
+	if strings.Contains(got, "<a href") {
+		t.Fatalf("截断结果不应包含未闭合标签: %q", got[len(got)-60:])
+	}
+}
+
+func TestTruncateTelegramTextAvoidsBrokenEntity(t *testing.T) {
+	// 截断点落在实体中间（&amp 无分号）：必须剔除残缺实体。
+	text := strings.Repeat("a", telegramTextLimit-3) + "&amp"
+	got := truncateTelegramText(text)
+	if strings.HasSuffix(got, "&amp") {
+		t.Fatalf("截断结果不应以未闭合实体结尾: %q", got[len(got)-12:])
+	}
+}
+
+func TestTruncateTelegramTextKeepsMultibyteIntact(t *testing.T) {
+	// 多字节 UTF-8（中文）按码点截断，不得产生替换字符乱码。
+	long := strings.Repeat("中", telegramTextLimit+100)
+	got := truncateTelegramText(long)
+	if strings.ContainsRune(got, '\uFFFD') {
+		t.Fatal("截断结果不应包含替换字符乱码")
 	}
 }

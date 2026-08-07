@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -29,6 +30,22 @@ const (
 	httpTestPassword    = "管理员初始密码一二三四五六"
 	httpChangedPassword = "管理员更新密码一二三四五六"
 )
+
+// TestAccessLogIncludesUserAgent 访问日志（debug 级）必须携带 User-Agent，
+// 便于区分浏览器、Agent 客户端与爬虫流量。
+func TestAccessLogIncludesUserAgent(t *testing.T) {
+	var logBuffer bytes.Buffer
+	s := &server{dependencies: Dependencies{Logger: slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug}))}}
+	handler := s.accessLogMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard", nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 RepoSentinel-TestBot")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	if !strings.Contains(logBuffer.String(), "RepoSentinel-TestBot") {
+		t.Fatalf("access log 应包含 user_agent，实际日志: %s", logBuffer.String())
+	}
+}
 
 func Test中间件提供JSON请求标识安全头与缓存保护(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})

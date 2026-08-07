@@ -496,7 +496,7 @@ export function ReposPage() {
             }
             action={
               showArchived ? undefined : (
-                <span className="link-row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+                <span className="link-row link-row--centered">
                   <Link to="/github">打开 GitHub App 页</Link>
                 </span>
               )
@@ -939,7 +939,13 @@ function ListFooter({
         已显示 {shown} / 共 {total} 条
       </span>
       {hasNextPage ? (
-        <button className="quiet-button" type="button" disabled={fetchingNextPage} onClick={onLoadMore}>
+        <button
+          className="quiet-button"
+          type="button"
+          disabled={fetchingNextPage}
+          aria-busy={fetchingNextPage}
+          onClick={onLoadMore}
+        >
           {fetchingNextPage ? "加载中…" : "加载更多"}
         </button>
       ) : null}

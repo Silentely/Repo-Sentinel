@@ -172,6 +172,7 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 	if parseMode == "" {
 		parseMode = "HTML"
 	}
+	text = truncateTelegramText(text)
 	payload := map[string]any{
 		"chat_id":                  chatID,
 		"text":                     text,
@@ -309,6 +310,48 @@ func (w *Worker) markDead(ctx context.Context, id, code string) {
 type retryAfterError struct {
 	seconds int
 	code    string
+}
+
+// telegramTextLimit 是 Telegram 消息正文的保守上限。
+// 官方限制为 4096 字符（HTML 模式下按解析后文本计算），留出余量避免长链接展开等边界情况。
+const telegramTextLimit = 4000
+
+// truncateTelegramText 将超长消息安全截断到 telegramTextLimit 个字符：
+// 按 Unicode 码点截断避免切断多字节字符；截断点若落在 HTML 标签或实体中间，
+// 回退到最近的完整位置，避免把残缺标签/实体发给 Telegram 触发 400。
+// 超长场景（AI 摘要、聚合消息、报告）不会因此进入死信。
+func truncateTelegramText(text string) string {
+	runes := []rune(text)
+	if len(runes) <= telegramTextLimit {
+		return text
+	}
+	s := string(runes[:telegramTextLimit])
+	// 截断点落在开标签中间（如 <a href="..."）时回退到标签开始之前。
+	if lastOpen := strings.LastIndex(s, "<"); lastOpen >= 0 {
+		if lastClose := strings.LastIndex(s, ">"); lastClose < lastOpen {
+			s = s[:lastOpen]
+		}
+	}
+	// 剔除结尾残留的不完整 HTML 实体（如 &amp 无分号）。
+	if amp := strings.LastIndex(s, "&"); amp >= 0 {
+		rest := s[amp+1:]
+		if rest != "" && !strings.Contains(rest, ";") && isEntityTail(rest) {
+			s = s[:amp]
+		}
+	}
+	s = strings.TrimRight(s, " \n")
+	return s + "…\n（内容过长，已截断）"
+}
+
+// isEntityTail 判断字符串是否全为 HTML 实体字符（字母/数字/#），用于识别未闭合实体。
+func isEntityTail(s string) bool {
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '#' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (e *retryAfterError) Error() string { return e.code }

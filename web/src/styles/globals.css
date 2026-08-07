@@ -1882,6 +1882,11 @@ a.status-item--link:focus-visible {
   margin-top: 4px;
 }
 
+/* 空态操作行居中变体：CSP style-src 'self' 会拦截内联 style 属性，居中统一走类而非内联样式。 */
+.link-row--centered {
+  justify-content: center;
+}
+
 .callout {
   margin: 12px 0 0;
   padding: 12px 14px;
