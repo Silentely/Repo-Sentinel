@@ -3,6 +3,7 @@ package normalizer_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -881,5 +882,78 @@ func TestProcessStarGatedByCapability(t *testing.T) {
 	rows, _ := st.RepoStatSnapshots().ListInRange(context.Background(), nil, "stargazers", "2026-08-01", "2026-08-01")
 	if len(rows) != 0 {
 		t.Fatalf("gated repo should not write snapshot, got %+v", rows)
+	}
+}
+
+// repository.deleted 事件：GitHub 侧仓库已删除，本地必须级联删除仓库与全部关联数据，
+// 已打开的 PR/Issue、事件、告警与待投递通知不得残留。
+func TestProcessRepositoryDeletedCascadeRemovesData(t *testing.T) {
+	data := openProcessStore(t)
+	repo := seedActiveDemoRepo(t, data)
+	ctx := t.Context()
+
+	// 预置该仓库的打开 PR 与对应事件。
+	if _, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-del", RepositoryID: repo.ID, Number: 9, Kind: store.WorkItemKindPR,
+		State: "open", Title: "删除前打开的 PR", Author: "alice",
+		HTMLURL: "https://github.com/acme/demo/pull/9", SourceUpdatedAt: time.Now().UTC(), StateHash: "h-del",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	repoID := repo.ID
+	if _, err := data.Events().Create(ctx, store.Event{
+		ID: "ev-del", Source: "webhook", Kind: store.WorkItemKindPR, Action: "opened",
+		RepositoryID: &repoID, Title: "删除前打开的 PR", Actor: "alice",
+		OccurredAt: time.Now().UTC(), DedupeFingerprint: "fp-del", StateHash: "h-del",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"action":     "deleted",
+		"repository": demoRepoPayload(false),
+	})
+	proc := &normalizer.Processor{Store: data}
+	if _, err := proc.Process(ctx, "repository", "delivery-deleted", payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.Repositories().Get(ctx, repo.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("仓库应已级联删除，got err=%v", err)
+	}
+	if _, err := data.WorkItems().GetByRepoNumber(ctx, repo.ID, 9); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("关联 WorkItem 应已删除，got err=%v", err)
+	}
+	if _, err := data.Events().GetByFingerprint(ctx, "fp-del"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("关联 Event 应已删除，got err=%v", err)
+	}
+}
+
+// installation_repositories 的 removed 载荷：仓库被移出安装（授权收回）。
+// GitHub 侧仓库仍存在，本地保留数据但必须暂停采集（unavailable）。
+func TestProcessInstallationRepositoriesRemovedMarksUnavailable(t *testing.T) {
+	data := openProcessStore(t)
+	repo := seedActiveDemoRepo(t, data)
+
+	payload, _ := json.Marshal(map[string]any{
+		"action": "removed",
+		"installation": map[string]any{
+			"id":      4242,
+			"account": map[string]any{"login": "acme", "type": "Organization"},
+		},
+		"repositories_removed": []map[string]any{{
+			"id": 99, "name": "demo", "full_name": "acme/demo",
+			"owner": map[string]any{"login": "acme"},
+		}},
+	})
+	proc := &normalizer.Processor{Store: data}
+	if _, err := proc.Process(t.Context(), "installation_repositories", "delivery-removed", payload); err != nil {
+		t.Fatal(err)
+	}
+	got, err := data.Repositories().Get(t.Context(), repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SyncStatus != store.SyncStatusUnavailable {
+		t.Fatalf("removed 后应标记 unavailable，got %q", got.SyncStatus)
 	}
 }

@@ -454,6 +454,11 @@ type RepositoryStore interface {
 	UpdateSyncStatus(context.Context, string, string) error
 	UpdateSettings(context.Context, string, RepositorySettings) error
 	CountByType(context.Context, string) (int, error)
+	// DeleteRepository 级联删除仓库及其全部关联数据（work_items、workflow_runs、security_alerts、
+	// events 及引用这些事件的 outbox、sync_cursors、repo_stat_snapshots），整个删除在一个事务内完成。
+	// 用于 GitHub 侧仓库已删除（webhook repository.deleted）时的本地数据清理；
+	// 仓库不存在时返回 ErrNotFound，调用方可按幂等语义忽略。
+	DeleteRepository(context.Context, string) error
 }
 
 // RepositorySettings 仓库能力开关与归档设置。

@@ -44,6 +44,8 @@ type fakeGitHub struct {
 
 	// issuesFn 按页返回 issues 响应体；用例可定制，默认空页。
 	issuesFn func(page int) any
+	// issuesHTTPStatus 可选：issues 端点状态码（默认 200），用于模拟仓库已删除（404）等场景。
+	issuesHTTPStatus int
 	// dependabotFn 按 after 游标返回 dependabot alerts 响应体与下一页游标；
 	// 返回的 next 非空时写入 Link header 模拟游标分页；用例可定制，默认空页。
 	dependabotFn func(cursor string) (any, string)
@@ -81,6 +83,10 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write(map[string]any{"token": "test-installation-token", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
 	case reIssues.MatchString(path):
 		f.issuesPages.Add(1)
+		if f.issuesHTTPStatus != 0 {
+			http.Error(w, http.StatusText(f.issuesHTTPStatus), f.issuesHTTPStatus)
+			return
+		}
 		if f.rateLimitIssuesRequests > 0 {
 			f.rateLimitIssuesRequests--
 			ra := f.issues429RetryAfter
@@ -805,5 +811,34 @@ func TestReconcileStarSnapshotSoftFail(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Fatalf("软失败不应落快照，got %d 行", len(rows))
+	}
+}
+
+// TestReconcileMarkUnavailableOn404 对账兜底：上游 issues 返回 404（仓库已删除或不可见）
+// 时标记 unavailable 并终止本轮，与外部仓轮询的降级语义一致；webhook repository.deleted
+// 漏投递时靠该路径收口，避免每轮对账反复失败。
+func TestReconcileMarkUnavailableOn404(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+
+	fake.issuesHTTPStatus = http.StatusNotFound
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("404 兜底不应向外报错: %v", err)
+	}
+	got, err := data.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SyncStatus != store.SyncStatusUnavailable {
+		t.Fatalf("404 后应标记 unavailable，got %q", got.SyncStatus)
+	}
+	// 后续 ReconcileAll 应跳过该仓（不产生新的 issues 请求）。
+	if err := r.ReconcileAll(ctx, 10); err != nil {
+		t.Fatalf("ReconcileAll 不应报错: %v", err)
+	}
+	if got := fake.issuesPages.Load(); got != 1 {
+		t.Fatalf("unavailable 后不应再请求 issues，got %d", got)
 	}
 }

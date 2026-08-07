@@ -275,6 +275,54 @@ func (s *repositoryStore) UpdateSyncStatus(ctx context.Context, id, status strin
 	return mapStoreError(err)
 }
 
+// DeleteRepository 级联删除仓库及其全部关联数据，整体在一个事务内完成。
+// 删除顺序：先取该仓库的事件 ID，删除引用这些事件的 Outbox 投递（通知正文虽已快照，
+// 但事件与仓库行即将消失，继续投递没有意义）；再删事件、工作项、运行、告警、游标与
+// 指标快照；最后删仓库行本身。仓库不存在时返回 ErrNotFound，调用方可按幂等语义忽略。
+func (s *repositoryStore) DeleteRepository(ctx context.Context, id string) error {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	eventIDs, err := tx.Event.Query().Where(event.RepositoryIDEQ(id)).IDs(ctx)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	if len(eventIDs) > 0 {
+		if _, err := tx.NotificationOutbox.Delete().
+			Where(notificationoutbox.EventIDIn(eventIDs...)).Exec(ctx); err != nil {
+			return mapStoreError(err)
+		}
+	}
+	if _, err := tx.Event.Delete().Where(event.RepositoryIDEQ(id)).Exec(ctx); err != nil {
+		return mapStoreError(err)
+	}
+	if _, err := tx.WorkItem.Delete().Where(workitem.RepositoryIDEQ(id)).Exec(ctx); err != nil {
+		return mapStoreError(err)
+	}
+	if _, err := tx.WorkflowRun.Delete().Where(workflowrun.RepositoryIDEQ(id)).Exec(ctx); err != nil {
+		return mapStoreError(err)
+	}
+	if _, err := tx.SecurityAlert.Delete().Where(securityalert.RepositoryIDEQ(id)).Exec(ctx); err != nil {
+		return mapStoreError(err)
+	}
+	if _, err := tx.SyncCursor.Delete().Where(synccursor.RepositoryIDEQ(id)).Exec(ctx); err != nil {
+		return mapStoreError(err)
+	}
+	if _, err := tx.RepoStatSnapshot.Delete().Where(repostatsnapshot.RepositoryIDEQ(id)).Exec(ctx); err != nil {
+		return mapStoreError(err)
+	}
+	if err := tx.Repository.DeleteOneID(id).Exec(ctx); err != nil {
+		return mapStoreError(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return mapStoreError(err)
+	}
+	return nil
+}
+
 func (s *repositoryStore) UpdateSettings(ctx context.Context, id string, settings RepositorySettings) error {
 	upd := s.client.Repository.UpdateOneID(id).SetUpdatedAt(time.Now().UTC())
 	if settings.MonitorEnabled != nil {
