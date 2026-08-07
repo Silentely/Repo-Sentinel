@@ -642,6 +642,26 @@ func TestBuildReportBody_PeriodLabel(t *testing.T) {
 	}
 }
 
+// buildReportBody 预览行必须转义用户输入标题：ParseMode=HTML 下 <、& 会破坏消息或注入。
+func TestBuildReportBody_EscapesEventTitle(t *testing.T) {
+	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: `修复 <b>加粗</b> & "引号" 问题`}}
+	body := buildReportBody("📊 每日摘要 2026-08-07", events, "过去 24 小时")
+	if strings.Contains(body, "<b>加粗</b>") {
+		t.Fatalf("标题不应原样输出 HTML，实际: %s", body)
+	}
+	if !strings.Contains(body, "&lt;b&gt;加粗&lt;/b&gt; &amp;") {
+		t.Fatalf("标题应按 HTML 转义，实际: %s", body)
+	}
+}
+
+// buildReportBody 空事件文案应带上周期，避免日/周/月报共用含糊的「期间」。
+func TestBuildReportBody_EmptyUsesPeriod(t *testing.T) {
+	body := buildReportBody("📊 月度报告 2026-08", nil, "过去 30 天")
+	if !strings.Contains(body, "🎉 过去 30 天无新事件") {
+		t.Fatalf("空事件文案应包含周期，实际: %s", body)
+	}
+}
+
 // 非法时区应回退 UTC 而非报错，且窗口判定不受影响。
 func TestSendWindowInvalidTimezoneFallsBackToUTC(t *testing.T) {
 	data := openDigestStore(t)

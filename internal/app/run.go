@@ -113,7 +113,7 @@ func (a *App) runSessionCleanup(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if _, err := a.sessionService.CleanupExpired(ctx); err != nil && a.logger != nil {
-				a.logger.Error("session cleanup failed", "error_code", "database_unavailable")
+				a.logger.Error("session cleanup failed", "error_code", "database_unavailable", "error", err.Error())
 			}
 		}
 	}
@@ -136,7 +136,7 @@ func (a *App) runRetentionCleanup(ctx context.Context) {
 		result, err := a.data.CleanupRetention(ctx, policy, time.Now().UTC())
 		if err != nil {
 			if a.logger != nil {
-				a.logger.Error("retention cleanup failed", "error_code", "database_unavailable")
+				a.logger.Error("retention cleanup failed", "error_code", "database_unavailable", "error", err.Error())
 			}
 			return
 		}

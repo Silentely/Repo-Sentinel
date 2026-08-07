@@ -84,7 +84,8 @@ export function channelLabel(channelType?: string): string {
   }
 }
 
-/** 事件类型 → 英文短名（仪表盘事件行用）。 */
+/** 事件类型 → 展示短名（仪表盘事件行用）。Issue/PR/Actions/Star/Watch 与侧栏品牌词一致；
+ * 三类安全告警复用 alertKindLabel 中文名，避免同一 kind 在仪表盘与安全页文案分叉。 */
 export function eventKindLabel(kind: string): string {
   switch (kind) {
     case "issue":
@@ -93,18 +94,12 @@ export function eventKindLabel(kind: string): string {
       return "PR";
     case "workflow_run":
       return "Actions";
-    case "dependabot":
-      return "Dependabot";
-    case "code_scanning":
-      return "Code Scan";
-    case "secret_scanning":
-      return "Secret";
     case "star":
       return "Star";
     case "watch":
       return "Watch";
     default:
-      return kind;
+      return alertKindLabel(kind);
   }
 }
 
@@ -147,5 +142,78 @@ export function eventActionLabel(action: string, kind?: string): string {
       return "自动忽略";
     default:
       return action;
+  }
+}
+
+/** Issue/PR 状态 → 中文文案（列表页徽章用，与筛选按钮文案一致）。 */
+export function workItemStateLabel(state: string): string {
+  switch (state) {
+    case "open":
+      return "未关闭";
+    case "closed":
+      return "已关闭";
+    default:
+      return state || "—";
+  }
+}
+
+/** Actions 结论/状态 → 中文文案（Actions 列表页徽章用，与仪表盘状态语义一致）。 */
+export function workflowConclusionLabel(conclusion: string): string {
+  switch (conclusion) {
+    case "success":
+      return "成功";
+    case "failure":
+    case "startup_failure":
+      return "失败";
+    case "cancelled":
+      return "已取消";
+    case "timed_out":
+      return "超时";
+    case "action_required":
+      return "需处理";
+    case "skipped":
+      return "已跳过";
+    case "in_progress":
+    case "queued":
+    case "pending":
+      return "进行中";
+    default:
+      return conclusion || "—";
+  }
+}
+
+/** 安全告警严重度 → 中文文案（与后端通知文案严重度中文保持一致）。 */
+export function severityLabel(severity: string): string {
+  switch (severity) {
+    case "critical":
+      return "严重";
+    case "high":
+    case "error":
+      return "高";
+    case "medium":
+    case "warning":
+      return "中";
+    case "low":
+    case "note":
+      return "低";
+    default:
+      return severity || "";
+  }
+}
+
+/** 安全告警状态 → 中文文案（安全列表页用）。 */
+export function alertStateLabel(state: string): string {
+  switch (state) {
+    case "open":
+      return "待处理";
+    case "dismissed":
+      return "GitHub 已忽略";
+    case "fixed":
+    case "resolved":
+      return "已修复";
+    case "auto_dismissed":
+      return "自动忽略";
+    default:
+      return state || "—";
   }
 }

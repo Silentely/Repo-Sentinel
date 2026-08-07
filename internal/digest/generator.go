@@ -316,7 +316,8 @@ func buildReportBody(title string, events []store.Event, period string) string {
 	b.WriteString("────────────────\n")
 
 	if len(events) == 0 {
-		b.WriteString("🎉 期间无新事件\n")
+		// 空事件文案带上周期（过去 24 小时/7 天/30 天），避免三类报告共用一句含糊的「期间」。
+		b.WriteString(fmt.Sprintf("🎉 %s无新事件\n", period))
 		return b.String()
 	}
 
@@ -355,7 +356,9 @@ func buildReportBody(title string, events []store.Event, period string) string {
 		if ev.SubjectNumber != nil {
 			numStr = fmt.Sprintf(" #%d", *ev.SubjectNumber)
 		}
-		b.WriteString(fmt.Sprintf("• [%s]%s %s\n", status, numStr, ev.Title))
+		// 标题来自 GitHub 用户输入，正文以 ParseMode=HTML 发送，必须转义，
+		// 否则 <、& 等字符会破坏消息或注入 HTML（与 renderMessage 保持一致）。
+		b.WriteString(fmt.Sprintf("• [%s]%s %s\n", status, numStr, htmlpkg.EscapeString(ev.Title)))
 	}
 
 	return b.String()
