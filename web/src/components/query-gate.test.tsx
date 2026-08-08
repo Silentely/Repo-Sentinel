@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../lib/api/errors";
 
@@ -20,6 +20,23 @@ describe("QueryGate", () => {
     expect(alert).toHaveTextContent("boom");
     expect(screen.queryByText("空空如也")).not.toBeInTheDocument();
     expect(screen.queryByText("列表内容")).not.toBeInTheDocument();
+  });
+
+  it("查询失败且提供 refetch 时显示重试按钮", () => {
+    const refetch = vi.fn();
+    render(
+      <QueryGate
+        query={{ isPending: false, isError: true, error: new Error("网络抖动"), refetch }}
+        isEmpty={false}
+        emptyState={<p>空空如也</p>}
+      >
+        <p>列表内容</p>
+      </QueryGate>,
+    );
+
+    const retryButton = screen.getByRole("button", { name: "重试" });
+    fireEvent.click(retryButton);
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it("加载中渲染默认骨架屏，支持 isPending 与旧命名 isLoading", () => {

@@ -200,6 +200,29 @@ func TestCompleteNon2xxDetail(t *testing.T) {
 	}
 }
 
+// TestCompleteNon2xxDetailTruncatesBody 验证上游超大错误体不会被完整写入错误与日志。
+func TestCompleteNon2xxDetailTruncatesBody(t *testing.T) {
+	const prefix = "gateway exploded"
+	huge := prefix + strings.Repeat("x", maxErrorDetailBytes*4)
+	srv := captureServer(t, http.StatusBadGateway, huge, nil)
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true}
+
+	_, err := c.Complete(t.Context(), "s", "u")
+	if err == nil {
+		t.Fatal("502 应返回错误")
+	}
+	if !strings.Contains(err.Error(), prefix) {
+		t.Fatalf("错误应保留响应体前缀：%v", err)
+	}
+	if !strings.Contains(err.Error(), "响应体已截断") {
+		t.Fatalf("错误应说明响应体已截断：%v", err)
+	}
+	if strings.Contains(err.Error(), strings.Repeat("x", maxErrorDetailBytes+1)) {
+		t.Fatal("错误不应携带超过响应体明细上限的连续内容")
+	}
+}
+
 func TestCompleteTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
@@ -220,6 +243,19 @@ func TestCompleteResponseTooLarge(t *testing.T) {
 	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true}
 	if _, err := c.Complete(t.Context(), "s", "u"); err == nil {
 		t.Fatal("超限响应体应解析失败")
+	}
+}
+
+// TestCompleteRejectsOversizedValidPrefix 验证合法 JSON 前缀后追加超大尾部时仍会拒绝响应，
+// 防止 decoder 只解析首个对象而绕过响应体上限。
+func TestCompleteRejectsOversizedValidPrefix(t *testing.T) {
+	body := `{"choices":[{"message":{"content":"ok"}}]}` + strings.Repeat(" ", maxResponseBytes)
+	srv := captureServer(t, http.StatusOK, body, nil)
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true}
+
+	if _, err := c.Complete(t.Context(), "s", "u"); err == nil || !strings.Contains(err.Error(), "response body exceeds") {
+		t.Fatalf("超大响应体应返回明确的大小错误，实际: %v", err)
 	}
 }
 

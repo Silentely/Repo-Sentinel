@@ -1,10 +1,14 @@
 package syncx
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +18,22 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
+
+func TestSchedulerFailureLogIncludesTaskAndDuration(t *testing.T) {
+	var logBuffer bytes.Buffer
+	s := &Scheduler{Logger: slog.New(slog.NewJSONHandler(&logBuffer, nil))}
+
+	s.runScheduledTask("digest", "scheduled digest failed", "digest_failed", func() error {
+		return errors.New("digest boom")
+	})
+
+	logs := logBuffer.String()
+	for _, want := range []string{`"task":"digest"`, `"duration_ms":`, `"error_code":"digest_failed"`, `"error":"digest boom"`} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("调度失败日志应包含 %s，实际: %s", want, logs)
+		}
+	}
+}
 
 // upsertSetting 写入系统设置（digest.Generator 的运行参数载体）。
 func upsertSetting(t *testing.T, data store.Store, key string, value any) {

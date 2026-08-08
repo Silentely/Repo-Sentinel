@@ -13,6 +13,7 @@ import {
   testChannel,
   deleteChannel,
   toggleChannel,
+  type ChannelType,
   type NotificationChannelRow,
   type SystemSettings,
 } from "./api";
@@ -22,13 +23,17 @@ function kindGloballyEnabled(settings: SystemSettings | undefined, featureKey: (
   return settings?.[featureKey] !== false;
 }
 
+function channelDisplayName(type: ChannelType): string {
+  return type === "telegram" ? "Telegram" : "HTTP Webhook";
+}
+
 // ---- ChannelForm：Telegram 与 HTTP Webhook 共用的渠道配置表单 ----
 // 渠道差异（文案、占位符、端点类型、校验提示）通过 props 参数化，
 // 表单结构、DOM class 与既有样式保持一致。
 
 interface ChannelFormProps {
   // 渠道标识：决定 upsert/test 端点类型。
-  type: "telegram" | "http_webhook";
+  type: ChannelType;
   // 区块标题，同时作为 upsert 时的渠道名称。
   title: string;
   // 区块顶部说明文案。
@@ -50,7 +55,7 @@ interface ChannelFormProps {
   emptyTargetError: string;
   // 保存成功的提示文案。
   successMessage: string;
-  // 共享的测试请求状态与触发回调。
+  // 当前渠道的测试请求状态与触发回调。
   testPending: boolean;
   onTest: () => void;
   // 全局提示：成功写入消息并清空旧错误；失败只写错误。
@@ -237,9 +242,9 @@ export function NotifyPage() {
   };
 
   const testMut = useMutation({
-    mutationFn: (type: "telegram" | "http_webhook") => testChannel(type),
-    onSuccess: () => {
-      setMessage("测试通知已发送，请检查您的通知渠道。");
+    mutationFn: (type: ChannelType) => testChannel(type),
+    onSuccess: (_data, type) => {
+      setMessage(`${channelDisplayName(type)} 测试通知已发送，请检查您的通知渠道。`);
       setError("");
     },
     onError: (err) => {
@@ -248,9 +253,9 @@ export function NotifyPage() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: (type: "telegram" | "http_webhook") => deleteChannel(type),
-    onSuccess: async () => {
-      setMessage("渠道已删除。");
+    mutationFn: (type: ChannelType) => deleteChannel(type),
+    onSuccess: async (_data, type) => {
+      setMessage(`${channelDisplayName(type)} 渠道已删除。`);
       setError("");
       await invalidateAll();
     },
@@ -260,10 +265,10 @@ export function NotifyPage() {
   });
 
   const toggleMut = useMutation({
-    mutationFn: ({ type, enabled }: { type: "telegram" | "http_webhook"; enabled: boolean }) =>
+    mutationFn: ({ type, enabled }: { type: ChannelType; enabled: boolean }) =>
       toggleChannel(type, enabled),
-    onSuccess: async () => {
-      setMessage("渠道状态已更新。");
+    onSuccess: async (_data, { type, enabled }) => {
+      setMessage(`${channelDisplayName(type)} 渠道已${enabled ? "启用" : "禁用"}。`);
       setError("");
       await invalidateAll();
     },
@@ -272,11 +277,13 @@ export function NotifyPage() {
     },
   });
 
-  const handleDelete = (type: "telegram" | "http_webhook") => {
-    if (window.confirm(`确定要删除 ${type === "telegram" ? "Telegram" : "HTTP Webhook"} 渠道吗？`)) {
+  const handleDelete = (type: ChannelType) => {
+    if (window.confirm(`确定要删除 ${channelDisplayName(type)} 渠道吗？`)) {
       deleteMut.mutate(type);
     }
   };
+
+  const testingType = testMut.isPending ? testMut.variables : undefined;
 
   return (
     <>
@@ -327,7 +334,7 @@ export function NotifyPage() {
                     onClick={() =>
                       toggleMut.mutate({ type: ch.channel_type, enabled: !ch.enabled })
                     }
-                    disabled={toggleMut.isPending}
+                    disabled={toggleMut.isPending && toggleMut.variables?.type === ch.channel_type}
                   >
                     {ch.enabled ? "禁用" : "启用"}
                   </button>
@@ -335,15 +342,15 @@ export function NotifyPage() {
                     className="quiet-button"
                     type="button"
                     onClick={() => testMut.mutate(ch.channel_type)}
-                    disabled={testMut.isPending || !ch.enabled}
+                    disabled={testingType === ch.channel_type || !ch.enabled}
                   >
-                    {testMut.isPending ? "发送中…" : "测试"}
+                    {testingType === ch.channel_type ? "发送中…" : "测试"}
                   </button>
                   <button
                     className="quiet-button quiet-button--danger"
                     type="button"
                     onClick={() => handleDelete(ch.channel_type)}
-                    disabled={deleteMut.isPending}
+                    disabled={deleteMut.isPending && deleteMut.variables === ch.channel_type}
                   >
                     删除
                   </button>
@@ -373,7 +380,7 @@ export function NotifyPage() {
         statusTargetLabel="Chat ID"
         emptyTargetError="请填写 Telegram Chat ID。"
         successMessage="Telegram 渠道已保存。"
-        testPending={testMut.isPending}
+        testPending={testingType === "telegram"}
         onTest={() => testMut.mutate("telegram")}
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
@@ -405,7 +412,7 @@ export function NotifyPage() {
         statusTargetLabel="URL"
         emptyTargetError="请填写 HTTPS URL。"
         successMessage="HTTP Webhook 渠道已保存。"
-        testPending={testMut.isPending}
+        testPending={testingType === "http_webhook"}
         onTest={() => testMut.mutate("http_webhook")}
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}

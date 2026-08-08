@@ -353,6 +353,10 @@ a.primary-button {
   font-size: 0.7rem;
 }
 
+.error-alert__action {
+  margin-top: 10px;
+}
+
 /* 路由级错误/404 兜底页：独立于应用布局，居中呈现恢复入口 */
 .route-fallback {
   max-width: 480px;

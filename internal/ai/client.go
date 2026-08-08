@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // ErrNotConfigured 表示未配置 API Key；调用方应视为功能不可用并降级，不视为故障。
@@ -380,8 +381,18 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 		return "", &callError{code: "upstream", status: resp.StatusCode, err: fmt.Errorf("ai: http %d: %s", resp.StatusCode, errorDetail(resp))}
 	}
 
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if err != nil {
+		return "", &callError{code: "bad_response", err: fmt.Errorf("ai: read response: %w", err)}
+	}
+	if len(raw) > maxResponseBytes {
+		return "", &callError{
+			code: "bad_response",
+			err:  fmt.Errorf("ai: response body exceeds %d bytes", maxResponseBytes),
+		}
+	}
 	var out chatResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&out); err != nil {
+	if err := json.Unmarshal(raw, &out); err != nil {
 		return "", &callError{code: "bad_response", err: fmt.Errorf("ai: decode response: %w", err)}
 	}
 	if len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
@@ -391,23 +402,37 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 	return truncateOutput(strings.TrimSpace(out.Choices[0].Message.Content)), nil
 }
 
-// maxResponseBytes AI 响应体大小上限：防御异常大响应消耗内存。
-const maxResponseBytes = 1 << 20 // 1 MiB
+// AI 响应体大小上限：防御异常大响应消耗内存；错误明细单独使用更小的上限。
+const (
+	maxResponseBytes    = 1 << 20 // 1 MiB
+	maxErrorDetailBytes = 512
+	maxErrorDetailRunes = 200
+)
 
 // errorDetail 提取非 2xx 响应体前 200 字符作为错误明细（如网关 502/503 附带的说明），
 // 帮助连通性测试与降级日志定位真实原因；正文缺失或不可读时返回稳定占位。
 func errorDetail(resp *http.Response) string {
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 512))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorDetailBytes+1))
 	if err != nil {
 		return "unreadable response"
+	}
+	truncated := len(raw) > maxErrorDetailBytes
+	if truncated {
+		raw = raw[:maxErrorDetailBytes]
+		// 上限按字节计算时可能切断 UTF-8 码点，回退到最近的完整边界。
+		for len(raw) > 0 && !utf8.Valid(raw) {
+			raw = raw[:len(raw)-1]
+		}
 	}
 	detail := strings.TrimSpace(string(raw))
 	if detail == "" {
 		return "empty response"
 	}
-	const maxDetailRunes = 200
-	if r := []rune(detail); len(r) > maxDetailRunes {
-		detail = string(r[:maxDetailRunes]) + "…"
+	if r := []rune(detail); len(r) > maxErrorDetailRunes {
+		detail = string(r[:maxErrorDetailRunes]) + "…"
+	}
+	if truncated {
+		detail += "…（响应体已截断）"
 	}
 	return detail
 }

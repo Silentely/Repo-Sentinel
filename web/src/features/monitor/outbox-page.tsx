@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
+import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { channelLabel, formatRelativeTime, outboxStatusLabel } from "../../lib/format";
 import { outboxQueryOptions, retryOutbox, type OutboxItem } from "./api";
@@ -21,16 +22,23 @@ const channelFilters = [
   { label: "HTTP Webhook", value: "http_webhook" },
 ];
 
+interface BatchRetryResult {
+  succeeded: number;
+  failed: number;
+}
+
 export function OutboxPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [channelFilter, setChannelFilter] = useState<string>("");
   const [selectedItem, setSelectedItem] = useState<OutboxItem | null>(null);
+  const closeDetail = useCallback(() => setSelectedItem(null), []);
 
   const outbox = useQuery(outboxQueryOptions(statusFilter, channelFilter));
 
   // 行级忙碌：只让当前重试的记录转圈，避免整列禁用。
   const [retryBusyId, setRetryBusyId] = useState<string | null>(null);
+  const [batchRetryResult, setBatchRetryResult] = useState<BatchRetryResult | null>(null);
 
   const retry = useMutation({
     mutationFn: (id: string) => retryOutbox(id),
@@ -43,13 +51,24 @@ export function OutboxPage() {
   });
 
   const retryAllDead = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<BatchRetryResult> => {
       const deadItems = (outbox.data?.items ?? []).filter((it) => it.status === "dead");
+      let succeeded = 0;
+      let failed = 0;
       for (const item of deadItems) {
-        await retryOutbox(item.id);
+        try {
+          await retryOutbox(item.id);
+          succeeded += 1;
+        } catch {
+          // 单条失败不阻断后续项目，页面只反馈数量，详细错误保留在对应记录中。
+          failed += 1;
+        }
       }
+      return { succeeded, failed };
     },
-    onSuccess: async () => {
+    onMutate: () => setBatchRetryResult(null),
+    onSuccess: async (result) => {
+      setBatchRetryResult(result);
       await queryClient.invalidateQueries({ queryKey: ["outbox"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
@@ -124,6 +143,16 @@ export function OutboxPage() {
             )}
           </div>
         </div>
+        {batchRetryResult && batchRetryResult.failed > 0 ? (
+          <ErrorAlert
+            title="批量重试未全部成功"
+            message={`已重新排队 ${batchRetryResult.succeeded} 条，另有 ${batchRetryResult.failed} 条失败；请查看列表中的错误码后重试。`}
+          />
+        ) : batchRetryResult ? (
+          <p className="success-banner" role="status">
+            已重新排队 {batchRetryResult.succeeded} 条失败投递。
+          </p>
+        ) : null}
 
         <QueryGate
           query={outbox}
@@ -145,16 +174,7 @@ export function OutboxPage() {
               <li
                 key={item.id}
                 className={selectedItem?.id === item.id ? "event-list__item--selected" : ""}
-                role="button"
-                tabIndex={0}
-                aria-expanded={selectedItem?.id === item.id}
-                onClick={() => toggleDetail(item)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    toggleDetail(item);
-                  }
-                }}
+                aria-busy={retryBusyId === item.id ? "true" : undefined}
               >
                 <span className={`event-kind status-${item.status}`}>{outboxStatusLabel(item.status)}</span>
                 {item.channel_type && (
@@ -164,11 +184,22 @@ export function OutboxPage() {
                 <span className="muted">尝试 {item.attempt_count} 次</span>
                 {item.last_error_code && <span className="error-code">{item.last_error_code}</span>}
                 {item.created_at && <span className="event-time">{formatRelativeTime(item.created_at)}</span>}
+                <button
+                  className="quiet-button quiet-button--compact"
+                  type="button"
+                  aria-expanded={selectedItem?.id === item.id}
+                  aria-controls={`outbox-detail-${item.id}`}
+                  aria-label={`${selectedItem?.id === item.id ? "收起" : "查看"}投递详情：${item.title || item.id}`}
+                  onClick={() => toggleDetail(item)}
+                >
+                  {selectedItem?.id === item.id ? "收起详情" : "查看详情"}
+                </button>
                 {item.status === "dead" ? (
                   <button
-                    className="quiet-button"
+                    className="quiet-button quiet-button--compact"
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); retry.mutate(item.id); }}
+                    aria-label={`重试投递：${item.title || item.id}`}
+                    onClick={() => retry.mutate(item.id)}
                     disabled={retryBusyId === item.id}
                   >
                     {retryBusyId === item.id ? "重试中…" : "重试"}
@@ -181,7 +212,7 @@ export function OutboxPage() {
       </section>
 
       {selectedItem && (
-        <OutboxDetailDrawer item={selectedItem} onClose={() => setSelectedItem(null)} />
+        <OutboxDetailDrawer item={selectedItem} onClose={closeDetail} />
       )}
     </>
   );
@@ -217,6 +248,7 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
       <aside
         ref={panelRef}
         className="drawer-panel"
+        id={`outbox-detail-${item.id}`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

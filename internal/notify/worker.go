@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -346,15 +347,25 @@ func truncateLogTitle(title string) string {
 	return string(runes[:logTitleLimit]) + "…"
 }
 
-// readBodyDetail 读取响应体前 bodyDetailLimit 字节并压缩为单行文本；
+// readBodyDetail 读取响应体前 bodyDetailLimit+1 字节并压缩为单行文本；
+// 多读一个字节用于判断是否截断，避免把完整响应误报为截断或反之。
 // 读取失败或内容为空时返回空串，由调用方决定是否拼接。
 func readBodyDetail(resp *http.Response) string {
 	if resp == nil || resp.Body == nil {
 		return ""
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, bodyDetailLimit))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, bodyDetailLimit+1))
 	if err != nil {
 		return ""
+	}
+	truncated := len(raw) > bodyDetailLimit
+	if truncated {
+		raw = raw[:bodyDetailLimit]
+		// 上限按字节计算时可能切断 UTF-8 码点；回退到最近的完整边界，
+		// 避免错误详情中出现乱码或无效字符串。
+		for len(raw) > 0 && !utf8.Valid(raw) {
+			raw = raw[:len(raw)-1]
+		}
 	}
 	text := strings.TrimSpace(string(raw))
 	if text == "" {
@@ -362,8 +373,8 @@ func readBodyDetail(resp *http.Response) string {
 	}
 	// 压缩连续空白与控制字符，避免换行/ANSI 序列污染 JSON 日志单行。
 	text = strings.Join(strings.Fields(text), " ")
-	if len(text) > bodyDetailLimit {
-		text = text[:bodyDetailLimit] + "…"
+	if truncated {
+		text += "…（响应体已截断）"
 	}
 	return text
 }
