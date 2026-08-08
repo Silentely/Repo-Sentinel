@@ -11,6 +11,11 @@ describe("登录页", () => {
     expect(document.title).toBe("登录 · RepoSentinel");
   });
 
+  it("页面载入后用户名输入框自动聚焦", () => {
+    render(<LoginPage loginAction={vi.fn()} />);
+    expect(screen.getByLabelText("用户名")).toHaveFocus();
+  });
+
   it("展示准确产品信息、认证字段与 CLI 恢复入口", () => {
     render(<LoginPage loginAction={vi.fn()} version="dev" />);
 

@@ -6,8 +6,9 @@ import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
+import { apiRequest } from "../../lib/api/client";
 import { channelLabel, outboxErrorHint, outboxStatusLabel } from "../../lib/format";
-import { outboxQueryOptions, retryOutbox, type OutboxItem } from "./api";
+import { outboxQueryOptions, retryOutbox, type OutboxItem, type Page } from "./api";
 
 const statusFilters = [
   { label: "全部", value: "" },
@@ -74,6 +75,48 @@ export function OutboxPage() {
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
+
+  // 跨页重试全部失败：先分页收集全部 dead 投递 id（不受当前筛选限制），再逐个重新排队。
+  // 用于失败记录跨多页时一键恢复，避免用户逐页操作。
+  const retryAllDeadAcrossPages = useMutation({
+    mutationFn: async (): Promise<BatchRetryResult> => {
+      const ids: string[] = [];
+      for (let page = 1; ; page++) {
+        const params = new URLSearchParams({ per_page: "100", page: String(page), status: "dead" });
+        const data = await apiRequest<Page<OutboxItem>>(`/api/v1/notifications/outbox?${params.toString()}`);
+        ids.push(...data.items.map((it) => it.id));
+        if (data.items.length === 0 || page * data.per_page >= data.total) break;
+      }
+      let succeeded = 0;
+      let failed = 0;
+      for (const id of ids) {
+        try {
+          await retryOutbox(id);
+          succeeded += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      return { succeeded, failed };
+    },
+    onMutate: () => setBatchRetryResult(null),
+    onSuccess: async (result) => {
+      setBatchRetryResult(result);
+      await queryClient.invalidateQueries({ queryKey: ["outbox"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+
+  // 全局 dead 总数：用于「重试全部失败」按钮的显示条件（无失败时隐藏）。
+  const deadTotalQuery = useQuery({
+    queryKey: ["outbox", "dead-total"],
+    queryFn: async (): Promise<number> => {
+      const data = await apiRequest<Page<OutboxItem>>("/api/v1/notifications/outbox?status=dead&per_page=1");
+      return data.total;
+    },
+    staleTime: 30_000,
+  });
+  const totalDead = deadTotalQuery.data ?? 0;
 
   const items = outbox.data?.items ?? [];
   const deadCount = items.filter((it) => it.status === "dead").length;
@@ -142,6 +185,21 @@ export function OutboxPage() {
                 )}
               </button>
             )}
+            {totalDead > 0 ? (
+              <button
+                className="quiet-button quiet-button--primary-ghost"
+                type="button"
+                onClick={() => retryAllDeadAcrossPages.mutate()}
+                disabled={retryAllDeadAcrossPages.isPending}
+                title={`跨页重试全部 ${totalDead} 条失败投递`}
+              >
+                {retryAllDeadAcrossPages.isPending ? (
+                  <><Loader2 size={14} className="spin" aria-hidden="true" /> 收集中…</>
+                ) : (
+                  `重试全部失败 (${totalDead})`
+                )}
+              </button>
+            ) : null}
           </div>
         </div>
         {batchRetryResult && batchRetryResult.failed > 0 ? (

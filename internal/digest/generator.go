@@ -486,13 +486,7 @@ func digestStatusLabel(ev store.Event) string {
 		if ev.Action == "recovered" {
 			return "已恢复"
 		}
-		if store.IsFailureConclusion(ev.WorkflowConclusion) {
-			return "失败"
-		}
-		if ev.WorkflowConclusion == "success" {
-			return "成功"
-		}
-		return "已完成"
+		return store.WorkflowConclusionLabel(ev.WorkflowConclusion)
 	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
 		switch ev.Action {
 		case "created", "opened", "reopened":

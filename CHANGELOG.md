@@ -6,6 +6,11 @@
 
 ### Added
 
+- 列表页（Issues/PR、Actions、安全告警）筛选条件同步到 URL：刷新或复制链接后保留当前筛选；新增 `useUrlState` 共享 hook 与受限枚举解析
+- 设置页成功提示（偏好/功能开关/AI 配置/密码）3 秒后自动消退，连续提交会重置计时，避免多条成功信息常驻堆叠
+- 登录页载入后用户名输入框自动聚焦，减少一次点击即可开始输入
+- Outbox 投递记录页新增「重试全部失败」：跨页收集全部 dead 投递并逐个重新排队，用于失败记录跨多页时一键恢复；按钮仅在有失败投递时显示
+- Webhook 处理失败计数指标（`reposentinel_webhook_failed_total`）：规范化或规则评估失败时递增，与 WebhookDelivery 的 failed 状态对应
 - 管理台按路由更新浏览器标签页标题（「仪表盘 · RepoSentinel」等）：多标签场景可直接看出当前页面；登录与初始化页设置独立标题
 - 渠道订阅类型提供「全选 / 清空」快捷操作与已选计数，全选仅勾选全局开关未关闭的类型
 - 投递记录详情抽屉对已收录的错误码展示中文排障提示（如 Telegram 限流、Chat ID 无效、接收端 5xx），机器码保留便于对照日志
@@ -21,6 +26,10 @@
 
 ### Changed
 
+- Workflow 结论中文标签（成功/失败/超时/…）收敛到 store 领域层 `WorkflowConclusionLabel`：rules 实时通知与 digest 定期报告共用同一映射，消除两处维护漂移；emoji 逻辑同步收拢
+- 调度器成功执行留痕为 Debug 级（task + duration_ms）：正常周期不刷屏，排查「任务有没有跑」时开 debug 即可确认
+- Outbox 每 tick 领取批量由 20 提升到 50（`claimBatchSize`）：突发积压（如 GitHub 批量推送）时单轮消化更多，避免队列长期堆积
+- Webhook 未配置 Secret 时 503 响应补 `Retry-After: 60`：GitHub 按 5xx 退避重试，配置未就绪期间不再高频重试
 - 每日/每周/月度报告正文末尾补「生成时间」页脚（UTC，与规则通知时间格式一致），便于判断报告新鲜度
 - Webhook 拒绝日志（未配置 Secret / 验签失败）补充 `delivery_id` 与 `event_type`：GitHub 投递失败可按投递 ID 在两侧日志间交叉定位
 - Webhook 后台处理增加并发限流（信号量，默认 32）：突发事件不会无限起 goroutine 同时写库/调 GitHub API，超出部分排队等待而非丢弃；实例关闭期间不再排队新工作

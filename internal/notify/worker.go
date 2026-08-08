@@ -40,6 +40,10 @@ var defaultBackoff = [...]time.Duration{
 
 const maxAttempts = 8
 
+// claimBatchSize 每 tick 领取的投递条目上限：突发积压（如 GitHub 批量推送）时
+// 单轮消化更多，避免队列长期堆积；单实例顺序投递，batch 内无并发放大。
+const claimBatchSize = 50
+
 // AAD 通知密钥加密的附加认证数据。必须与写入端（app/bootstrap、httpapi 渠道管理）保持一致，
 // 否则历史加密的渠道密钥将无法解密，故收敛为单一来源。
 const AAD = "reposentinel:notify-secret:v1"
@@ -80,7 +84,7 @@ func (w *Worker) Run(ctx context.Context, interval time.Duration) {
 }
 
 func (w *Worker) tick(ctx context.Context) {
-	items, err := w.Store.Outbox().ClaimDue(ctx, time.Now().UTC(), 2*time.Minute, 20)
+	items, err := w.Store.Outbox().ClaimDue(ctx, time.Now().UTC(), 2*time.Minute, claimBatchSize)
 	if err != nil {
 		if w.Logger != nil {
 			// 领取失败必须携带真实错误，否则数据库抖动时只有 error_code 无法区分

@@ -21,17 +21,26 @@ type Scheduler struct {
 }
 
 // runScheduledTask 统一记录调度任务失败上下文；任务本身仍按调用方提供的顺序同步执行。
-// 只记录失败，避免按分钟级周期制造大量成功日志；duration_ms 便于区分慢任务与即时失败。
+// 失败记 Error（error_code 稳定可聚合），成功留痕放 Debug（task + duration_ms）：
+// 正常周期不刷屏，排查「任务到底跑没跑」时把 logging.level 调成 debug 即可确认。
 func (s *Scheduler) runScheduledTask(task, message, errorCode string, run func() error) {
 	startedAt := time.Now()
-	if err := run(); err != nil && s.Logger != nil {
-		s.Logger.Error(
-			message,
-			"task", task,
-			"duration_ms", time.Since(startedAt).Milliseconds(),
-			"error_code", errorCode,
-			"error", err.Error(),
-		)
+	err := run()
+	durationMs := time.Since(startedAt).Milliseconds()
+	if err != nil {
+		if s.Logger != nil {
+			s.Logger.Error(
+				message,
+				"task", task,
+				"duration_ms", durationMs,
+				"error_code", errorCode,
+				"error", err.Error(),
+			)
+		}
+		return
+	}
+	if s.Logger != nil {
+		s.Logger.Debug("scheduled task ok", "task", task, "duration_ms", durationMs)
 	}
 }
 

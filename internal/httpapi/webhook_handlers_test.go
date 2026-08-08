@@ -242,6 +242,20 @@ func TestWebhook未配置Secret返回503(t *testing.T) {
 	assertNoDelivery(t, noConfigSecret.store, "delivery-unconfigured-fallback")
 }
 
+// TestWebhookNotConfiguredSetsRetryAfter 未配置 secret 时 503 必须携带 Retry-After：
+// GitHub 按 5xx 退避重试，明确的退避窗口能避免配置未就绪期间高频重试。
+func TestWebhookNotConfiguredSetsRetryAfter(t *testing.T) {
+	noRuntimeSecret := newWebhookTestFixture(t, webhookTestOptions{})
+	resp := noRuntimeSecret.postWebhook(t, []byte(`{}`), map[string]string{
+		"X-Hub-Signature-256": "sha256=whatever",
+		"X-GitHub-Delivery":   "delivery-retry-after",
+		"X-GitHub-Event":      "issues",
+	})
+	if got := resp.Header().Get("Retry-After"); got != "60" {
+		t.Fatalf("未配置 secret 的 503 应带 Retry-After: 60，实际: %q", got)
+	}
+}
+
 // TestWebhook拒绝日志携带Delivery上下文 拒绝路径（未配置/验签失败）日志必须带
 // delivery_id 与 event_type，否则 GitHub 投递失败排查只能靠请求级 request_id 反查。
 func TestWebhook拒绝日志携带Delivery上下文(t *testing.T) {

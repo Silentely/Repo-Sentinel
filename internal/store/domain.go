@@ -627,6 +627,33 @@ func IsFailureConclusion(c string) bool {
 	return ok
 }
 
+// WorkflowConclusionLabel 返回 Workflow 结论的中文标签（成功/失败/已取消/…）。
+// rules 实时通知与 digest 定期报告共用同一映射，避免两处维护漂移；
+// 前端同义文案见 web/src/lib/format.ts 的 workflowConclusionLabel。
+func WorkflowConclusionLabel(conclusion string) string {
+	switch conclusion {
+	case "success":
+		return "成功"
+	case "failure", "startup_failure":
+		return "失败"
+	case "cancelled":
+		return "已取消"
+	case "timed_out":
+		return "超时"
+	case "action_required":
+		return "需处理"
+	case "skipped":
+		return "已跳过"
+	case "in_progress", "queued", "pending":
+		return "进行中"
+	default:
+		if IsFailureConclusion(conclusion) {
+			return "失败"
+		}
+		return "已完成"
+	}
+}
+
 // FailedConclusions 返回失败结论列表，供 SQL IN 查询使用；每次返回新切片，外部修改不影响内部集合。
 func FailedConclusions() []string {
 	out := make([]string, 0, len(failedConclusionSet))

@@ -46,6 +46,8 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 			"event_type", eventType,
 			"error_code", "webhook_not_configured",
 		)
+		// GitHub 对 5xx 会按退避重试：给出明确窗口，避免配置未就绪期间高频重试打满日志与入库。
+		w.Header().Set("Retry-After", "60")
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, "webhook_not_configured", nil)
 		return
 	}

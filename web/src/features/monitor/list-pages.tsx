@@ -8,6 +8,7 @@ import { QueryGate, type QueryGateQuery } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
 import { apiRequest } from "../../lib/api/client";
 import { toApiError } from "../../lib/api/errors";
+import { parseIgnoredMode, useUrlState } from "../../lib/use-url-state";
 import {
   alertKindLabel,
   alertStateLabel,
@@ -207,11 +208,12 @@ function EventListBody({
 
 function WorkItemsList({ kind, title, description }: { kind: string; title: string; description: string }) {
   const { active: activeRepos } = useActiveRepos();
-  const [state, setState] = useState<string>("open");
-  const [repoId, setRepoId] = useState<string>("");
-  const [ignoredMode, setIgnoredMode] = useState<IgnoredMode>("active");
-  const [reviewFilter, setReviewFilter] = useState<string>("");
-  const [checkFilter, setCheckFilter] = useState<string>("");
+  // 筛选条件同步到 URL（?state=&repo=&ignored=&review=&check=）：刷新/复制链接后保留。
+  const [state, setState] = useUrlState("state", "open");
+  const [repoId, setRepoId] = useUrlState("repo", "");
+  const [ignoredMode, setIgnoredMode] = useUrlState<IgnoredMode>("ignored", "active", parseIgnoredMode);
+  const [reviewFilter, setReviewFilter] = useUrlState("review", "");
+  const [checkFilter, setCheckFilter] = useUrlState("check", "");
 
   // 审核/检查状态由后端按 review/check 参数过滤（total 为过滤后总数），客户端不再二次过滤；
   // 每页 50 条，超过时通过「加载更多」翻页拉取。
@@ -737,9 +739,10 @@ function Toggle({
 
 function ActionsList() {
   const { active: activeRepos } = useActiveRepos();
-  const [repoId, setRepoId] = useState<string>("");
-  const [conclusion, setConclusion] = useState<string>("");
-  const [ignoredMode, setIgnoredMode] = useState<IgnoredMode>("active");
+  // 筛选条件同步到 URL：刷新后保留仓库/结论/忽略筛选。
+  const [repoId, setRepoId] = useUrlState("repo", "");
+  const [conclusion, setConclusion] = useUrlState("conclusion", "");
+  const [ignoredMode, setIgnoredMode] = useUrlState<IgnoredMode>("ignored", "active", parseIgnoredMode);
   const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkflowRunIgnored, ["workflow-runs"]);
 
   const { q, items, total } = useInfiniteList<WorkflowRun>({
@@ -848,10 +851,11 @@ export function ActionsPage() {
 
 function SecurityList() {
   const { active: activeRepos } = useActiveRepos();
-  const [state, setState] = useState<string>("open");
-  const [alertKind, setAlertKind] = useState<string>("");
-  const [repoId, setRepoId] = useState<string>("");
-  const [ignoredMode, setIgnoredMode] = useState<IgnoredMode>("active");
+  // 筛选条件同步到 URL：刷新后保留状态/类型/仓库/忽略筛选。
+  const [state, setState] = useUrlState("state", "open");
+  const [alertKind, setAlertKind] = useUrlState("kind", "");
+  const [repoId, setRepoId] = useUrlState("repo", "");
+  const [ignoredMode, setIgnoredMode] = useUrlState<IgnoredMode>("ignored", "active", parseIgnoredMode);
   const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setSecurityAlertIgnored, ["security-alerts"]);
 
   const { q, items, total } = useInfiniteList<SecurityAlert>({
