@@ -9,11 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
 	"math"
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -84,12 +86,14 @@ func (w *Worker) tick(ctx context.Context) {
 		return
 	}
 	for _, item := range items {
-		if err := w.deliver(ctx, item); err != nil {
+		channelType, err := w.deliver(ctx, item)
+		if err != nil {
 			if w.Logger != nil {
 				w.Logger.Warn(
 					"notification delivery failed",
 					"outbox_id", item.ID,
 					"channel_id", item.ChannelID,
+					"channel_type", channelType,
 					"attempt", item.AttemptCount,
 					"error", err.Error(),
 				)
@@ -104,6 +108,7 @@ func (w *Worker) tick(ctx context.Context) {
 					"notification delivered but mark failed",
 					"outbox_id", item.ID,
 					"channel_id", item.ChannelID,
+					"channel_type", channelType,
 					"error_code", "outbox_mark_failed",
 					"error", err.Error(),
 				)
@@ -116,6 +121,7 @@ func (w *Worker) tick(ctx context.Context) {
 				"notification delivered",
 				"outbox_id", item.ID,
 				"channel_id", item.ChannelID,
+				"channel_type", channelType,
 				"title", item.Title,
 			)
 		}
@@ -125,22 +131,22 @@ func (w *Worker) tick(ctx context.Context) {
 	}
 }
 
-func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox) error {
+func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox) (string, error) {
 	ch, err := w.Store.Channels().Get(ctx, item.ChannelID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	secret, err := w.decryptSecret(ctx, ch.SecretEnvelope)
 	if err != nil {
-		return fmt.Errorf("decrypt_secret: %w", err)
+		return ch.ChannelType, fmt.Errorf("decrypt_secret: %w", err)
 	}
 	switch ch.ChannelType {
 	case store.ChannelTelegram:
-		return w.sendTelegram(ctx, ch.Target, secret, item.BodyText, item.HTMLURL, item.ParseMode)
+		return ch.ChannelType, w.sendTelegram(ctx, ch.Target, secret, item.BodyText, item.HTMLURL, item.ParseMode)
 	case store.ChannelHTTPWebhook:
-		return w.sendHTTP(ctx, ch, secret, item)
+		return ch.ChannelType, w.sendHTTP(ctx, ch, secret, item)
 	default:
-		return fmt.Errorf("unknown_channel")
+		return ch.ChannelType, fmt.Errorf("unknown_channel")
 	}
 }
 
@@ -223,20 +229,24 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 	if err := validateWebhookURL(ch.Target, ch.AllowPrivate); err != nil {
 		return err
 	}
+	now := time.Now().UTC()
 	payload := map[string]any{
 		"spec_version": "1",
 		"delivery_id":  item.ID,
-		"emitted_at":   time.Now().UTC().Format(time.RFC3339),
+		"emitted_at":   now.Format(time.RFC3339),
 		"event":        item.BodyJSON,
 		"title":        item.Title,
-		"body_text":    item.BodyText,
+		// body_text 为 Telegram HTML 格式正文（保留兼容）；body_plain 为同一内容的纯文本，
+		// 供不具备 HTML 解析能力的接收端直接消费。
+		"body_text":  item.BodyText,
+		"body_plain": htmlToPlainText(item.BodyText),
 	}
 	raw, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ch.Target, bytes.NewReader(raw))
 	if err != nil {
 		return err
 	}
-	ts := time.Now().UTC().Format(time.RFC3339)
+	ts := now.Format(time.RFC3339)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-GitHub-Monitor-Event", "notification")
 	req.Header.Set("X-GitHub-Monitor-Delivery", item.ID)
@@ -315,6 +325,21 @@ type retryAfterError struct {
 // telegramTextLimit 是 Telegram 消息正文的保守上限。
 // 官方限制为 4096 字符（HTML 模式下按解析后文本计算），留出余量避免长链接展开等边界情况。
 const telegramTextLimit = 4000
+
+// htmlLinkRe / htmlTagRe 用于把 Telegram HTML 正文转为纯文本（HTTP Webhook 接收端消费）。
+var (
+	htmlLinkRe = regexp.MustCompile(`<a href="([^"]*)">([^<]*)</a>`)
+	htmlTagRe  = regexp.MustCompile(`<[^>]+>`)
+)
+
+// htmlToPlainText 将通知正文（HTML 格式）转为纯文本：
+// 链接标签保留「文字 (URL)」便于接收端直接阅读，其余标签（<b>/<code> 等）剔除，
+// HTML 实体（&amp; 等）反转义。仅作展示降级，不影响原 HTML 正文投递。
+func htmlToPlainText(s string) string {
+	s = htmlLinkRe.ReplaceAllString(s, `$2 ($1)`)
+	s = htmlTagRe.ReplaceAllString(s, "")
+	return html.UnescapeString(s)
+}
 
 // truncateTelegramText 将超长消息安全截断到 telegramTextLimit 个字符：
 // 按 Unicode 码点截断避免切断多字节字符；截断点若落在 HTML 标签或实体中间，

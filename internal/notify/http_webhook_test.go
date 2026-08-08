@@ -1,8 +1,10 @@
 package notify
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,5 +102,60 @@ func TestSendHTTPHonorsRetryAfterHTTPDate(t *testing.T) {
 		t.Fatal("期望非 2xx 返回错误")
 	} else if _, ok := err.(*retryAfterError); ok {
 		t.Fatalf("已过期的日期不应生成 retryAfterError: %v", err)
+	}
+}
+
+// 出站 payload 必须同时携带 HTML 正文（body_text，兼容既有接收端）与纯文本（body_plain，
+// 供无 HTML 解析能力的接收端直接消费），且 body_plain 不含残留标签。
+func TestSendHTTPIncludesPlainBody(t *testing.T) {
+	var receivedBody map[string]any
+	w, ch, item := newWebhookHarness(t, func(rw http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("无法解析请求体: %v", err)
+		}
+		receivedBody = body
+		rw.WriteHeader(http.StatusOK)
+	})
+	item.BodyText = `<b>🟢 已打开｜修复登录 Bug</b>
+────────────────
+📦 仓库：<code>org/repo</code>
+<a href="https://github.com/org/repo/issues/42">🔗 在 GitHub 中查看</a>`
+	if err := w.sendHTTP(t.Context(), ch, "", item); err != nil {
+		t.Fatalf("不期望错误: %v", err)
+	}
+	if receivedBody["body_text"] != item.BodyText {
+		t.Fatal("body_text 应保留原 HTML 正文")
+	}
+	plain, ok := receivedBody["body_plain"].(string)
+	if !ok || plain == "" {
+		t.Fatal("payload 应包含 body_plain 纯文本")
+	}
+	if strings.ContainsAny(plain, "<>") {
+		t.Fatalf("body_plain 不应含 HTML 标签: %q", plain)
+	}
+	if !strings.Contains(plain, "org/repo") {
+		t.Fatalf("body_plain 应包含仓库名: %q", plain)
+	}
+	if !strings.Contains(plain, "https://github.com/org/repo/issues/42") {
+		t.Fatalf("body_plain 应保留链接 URL: %q", plain)
+	}
+}
+
+// htmlToPlainText 标签剔除与实体反转义的正确性。
+func TestHTMLToPlainText(t *testing.T) {
+	got := htmlToPlainText(`<b>标题</b> &amp; <code>x &lt; y</code> <a href="https://example.com/a?b=1&amp;c=2">链接</a>`)
+	// 标签被剔除；&lt; 反转义后的 < 属于正文内容而非标签。
+	if strings.Contains(got, "<b>") || strings.Contains(got, "<code>") || strings.Contains(got, "</") {
+		t.Fatalf("结果不应残留标签: %q", got)
+	}
+	if !strings.Contains(got, "标题") || !strings.Contains(got, "&") {
+		t.Fatalf("实体应反转义: %q", got)
+	}
+	if !strings.Contains(got, "x < y") {
+		t.Fatalf("&lt; 应反转义为 <: %q", got)
+	}
+	if !strings.Contains(got, "链接 (https://example.com/a?b=1&c=2)") {
+		t.Fatalf("链接应保留文字与 URL: %q", got)
 	}
 }

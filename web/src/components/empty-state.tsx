@@ -6,9 +6,11 @@ export interface EmptyStateProps {
   title: string;
   description: string;
   action?: ReactNode;
+  /** action 为按钮等非导航元素时设为 false，避免误配右箭头暗示「跳转」。 */
+  actionArrow?: boolean;
 }
 
-export function EmptyState({ eyebrow, title, description, action }: EmptyStateProps) {
+export function EmptyState({ eyebrow, title, description, action, actionArrow = true }: EmptyStateProps) {
   return (
     <section className="empty-state">
       {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
@@ -17,7 +19,7 @@ export function EmptyState({ eyebrow, title, description, action }: EmptyStatePr
       {action ? (
         <div className="empty-state__action">
           {action}
-          <ArrowRight aria-hidden="true" size={16} />
+          {actionArrow ? <ArrowRight aria-hidden="true" size={16} /> : null}
         </div>
       ) : null}
     </section>

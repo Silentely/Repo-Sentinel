@@ -696,6 +696,17 @@ a.status-item--link:focus-visible {
   letter-spacing: -0.02em;
 }
 
+/* 指标加载骨架：与列表骨架同款脉冲，避免加载中露出「—」被误读为零值。 */
+.status-item__skeleton {
+  display: inline-block;
+  width: 3.5rem;
+  height: 1.3rem;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg-muted) 25%, color-mix(in oklch, var(--bg-muted) 60%, var(--bg-surface)) 50%, var(--bg-muted) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
 /* 仪表盘接入进度 */
 .setup-progress__list {
   list-style: none;
@@ -1455,6 +1466,11 @@ a.status-item--link:focus-visible {
   font-size: 0.82rem;
 }
 
+/* 列表全部加载的终点提示：弱化呈现，避免与「加载更多」按钮抢视觉。 */
+.list-footer__end {
+  color: var(--text-muted);
+}
+
 .event-list li {
   display: flex;
   flex-wrap: wrap;
@@ -2194,6 +2210,15 @@ a.status-item--link:focus-visible {
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 10px;
+}
+
+/* Star 趋势图加载骨架：与图表区等高，脉冲占位避免空态误读。 */
+.star-trend__skeleton {
+  height: 240px;
+  border-radius: var(--radius-card);
+  background: linear-gradient(90deg, var(--bg-muted) 25%, color-mix(in oklch, var(--bg-muted) 60%, var(--bg-surface)) 50%, var(--bg-muted) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
 }
 
 .star-trend__value {

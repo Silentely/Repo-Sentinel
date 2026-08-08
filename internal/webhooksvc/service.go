@@ -38,6 +38,7 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	if ctx == nil {
 		return
 	}
+	startedAt := time.Now()
 	// 关闭期间 Background 已取消：状态标记必须脱离取消，否则行永久停留在 accepted。
 	markCtx, markCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer markCancel()
@@ -46,7 +47,7 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	if err != nil {
 		_ = s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, "normalize_failed")
 		// 规范化失败时仓库信息尚未解析出来，repo 留空由调用方从日志链路定位。
-		s.logError("webhook normalize failed", deliveryID, eventType, "normalize_failed", "", err.Error())
+		s.logError("webhook normalize failed", deliveryID, eventType, "normalize_failed", "", err.Error(), time.Since(startedAt).Milliseconds())
 		return
 	}
 	repoName := ""
@@ -62,25 +63,30 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 		}
 		if err != nil {
 			// 通知已丢：状态必须可查，标记为失败而不是 processed。
-			s.logError("rule evaluate failed", deliveryID, eventType, "rule_failed", repoName, err.Error())
+			s.logError("rule evaluate failed", deliveryID, eventType, "rule_failed", repoName, err.Error(), time.Since(startedAt).Milliseconds())
 			_ = s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, "rule_failed")
 			return
 		}
 	}
 	_ = s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryProcessed, "")
 	if s.Logger != nil {
-		s.Logger.Info(
-			"github webhook processed",
+		attrs := []any{
 			"delivery_id", deliveryID,
 			"event_type", eventType,
 			"repo", repoName,
 			"updated", res.Updated,
 			"suppressed", res.SuppressNotify,
-		)
+			"duration_ms", time.Since(startedAt).Milliseconds(),
+		}
+		// 有事件时带出事件类型，便于按 kind 聚合处理量与耗时。
+		if res.Event != nil {
+			attrs = append(attrs, "event_kind", res.Event.Kind)
+		}
+		s.Logger.Info("github webhook processed", attrs...)
 	}
 }
 
-func (s *Service) logError(msg, deliveryID, eventType, code, repoName, errMsg string) {
+func (s *Service) logError(msg, deliveryID, eventType, code, repoName, errMsg string, durationMs int64) {
 	if s.Logger == nil {
 		return
 	}
@@ -89,6 +95,7 @@ func (s *Service) logError(msg, deliveryID, eventType, code, repoName, errMsg st
 		"event_type", eventType,
 		"error_code", code,
 		"error", errMsg,
+		"duration_ms", durationMs,
 	}
 	// repo 为空（如规范化失败）时不带该字段，保持日志字段稳定。
 	if repoName != "" {

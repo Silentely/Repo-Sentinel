@@ -99,6 +99,15 @@ export function OutboxPage() {
                 ))}
               </select>
             </label>
+            {statusFilter || channelFilter ? (
+              <button
+                className="quiet-button"
+                type="button"
+                onClick={() => { setStatusFilter(""); setChannelFilter(""); }}
+              >
+                清除筛选
+              </button>
+            ) : null}
             {statusFilter === "dead" && deadCount > 0 && (
               <button
                 className="quiet-button quiet-button--primary-ghost"
