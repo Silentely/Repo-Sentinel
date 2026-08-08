@@ -53,7 +53,7 @@ vi.mock("../features/monitor/api", () => ({
   },
 }));
 
-import { RootLayout, mobileTitleFor } from "./root-layout";
+import { RootLayout, mobileTitleFor, pageTitleFor } from "./root-layout";
 
 const session: AuthenticationResponse = {
   admin: { id: "admin-1", username: "admin" },
@@ -188,5 +188,18 @@ describe("移动端顶栏标题 mobileTitleFor", () => {
 
   it("未知路径回退「仪表盘」", () => {
     expect(mobileTitleFor("/no-such-page")).toBe("仪表盘");
+  });
+});
+
+describe("浏览器标签页标题 pageTitleFor", () => {
+  it("复用移动端标题并追加品牌后缀", () => {
+    expect(pageTitleFor("/")).toBe("仪表盘 · RepoSentinel");
+    expect(pageTitleFor("/notifications/outbox")).toBe("投递记录 · RepoSentinel");
+    expect(pageTitleFor("/settings")).toBe("设置 · RepoSentinel");
+  });
+
+  it("渲染壳层后按当前路由更新 document.title", () => {
+    renderLayout();
+    expect(document.title).toBe("仪表盘 · RepoSentinel");
   });
 });

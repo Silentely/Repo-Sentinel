@@ -5,7 +5,8 @@ import { Loader2, X } from "lucide-react";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
-import { channelLabel, formatRelativeTime, outboxStatusLabel } from "../../lib/format";
+import { RelativeTime } from "../../components/relative-time";
+import { channelLabel, outboxErrorHint, outboxStatusLabel } from "../../lib/format";
 import { outboxQueryOptions, retryOutbox, type OutboxItem } from "./api";
 
 const statusFilters = [
@@ -182,8 +183,8 @@ export function OutboxPage() {
                 )}
                 <strong>{item.title || item.id}</strong>
                 <span className="muted">尝试 {item.attempt_count} 次</span>
-                {item.last_error_code && <span className="error-code">{item.last_error_code}</span>}
-                {item.created_at && <span className="event-time">{formatRelativeTime(item.created_at)}</span>}
+                {item.last_error_code && <span className="error-code" title={outboxErrorHint(item.last_error_code) || undefined}>{item.last_error_code}</span>}
+                {item.created_at ? <RelativeTime date={item.created_at} className="event-time" /> : null}
                 <button
                   className="quiet-button quiet-button--compact"
                   type="button"
@@ -281,7 +282,12 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
           {item.last_error_code && (
             <div className="drawer-field">
               <dt>错误码</dt>
-              <dd><code>{item.last_error_code}</code></dd>
+              <dd>
+                <code>{item.last_error_code}</code>
+                {outboxErrorHint(item.last_error_code) ? (
+                  <p className="field-hint">{outboxErrorHint(item.last_error_code)}</p>
+                ) : null}
+              </dd>
             </div>
           )}
           {item.html_url && (

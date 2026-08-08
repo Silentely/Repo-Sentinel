@@ -182,6 +182,9 @@ func TestRunOnceEmptyDefaultNoSend(t *testing.T) {
 	}
 }
 
+// reportGeneratedAt 页脚断言用固定生成时刻，保证测试确定性。
+var reportGeneratedAt = time.Date(2026, 8, 8, 9, 5, 0, 0, time.UTC)
+
 func TestBuildDigestBody_WithEvents(t *testing.T) {
 	num1 := 8
 	num2 := 42
@@ -192,7 +195,7 @@ func TestBuildDigestBody_WithEvents(t *testing.T) {
 		{Kind: store.AlertKindDependabot, Action: "opened", Title: "bump lodash"},
 		{Kind: "workflow_run", Action: "completed", Title: "CI"},
 	}
-	body := buildDigestBody("📊 每日摘要 2026-07-30", events)
+	body := buildDigestBody("📊 每日摘要 2026-07-30", events, reportGeneratedAt)
 
 	if !strings.Contains(body, "共 5 条事件") {
 		t.Errorf("期望包含事件总数，实际: %s", body)
@@ -224,10 +227,13 @@ func TestBuildDigestBody_WithEvents(t *testing.T) {
 }
 
 func TestBuildDigestBody_Empty(t *testing.T) {
-	body := buildDigestBody("📊 每日摘要 2026-07-30", nil)
+	body := buildDigestBody("📊 每日摘要 2026-07-30", nil, reportGeneratedAt)
 
 	if !strings.Contains(body, "无新事件") {
 		t.Errorf("期望无事件提示，实际: %s", body)
+	}
+	if !strings.Contains(body, "⏰ 生成时间：2026-08-08 09:05 UTC") {
+		t.Errorf("空报告也应带生成时间页脚，实际: %s", body)
 	}
 }
 
@@ -236,7 +242,7 @@ func TestBuildDigestBody_ManyEvents(t *testing.T) {
 	for i := range events {
 		events[i] = store.Event{Kind: store.WorkItemKindIssue, Action: "opened", Title: "test"}
 	}
-	body := buildDigestBody("test", events)
+	body := buildDigestBody("test", events, reportGeneratedAt)
 
 	if !strings.Contains(body, "共 10 条事件") {
 		t.Errorf("期望包含总数，实际: %s", body)
@@ -254,7 +260,7 @@ func TestBuildDigestBody_SortedByCount(t *testing.T) {
 		{Kind: "workflow_run", Title: "c"},
 		{Kind: store.WorkItemKindIssue, Title: "d"},
 	}
-	body := buildDigestBody("test", events)
+	body := buildDigestBody("test", events, reportGeneratedAt)
 
 	idxWorkflow := strings.Index(body, "Actions")
 	idxIssue := strings.Index(body, "Issue")
@@ -636,16 +642,19 @@ func TestParseWeekday(t *testing.T) {
 func TestBuildReportBody_PeriodLabel(t *testing.T) {
 	num := 1
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "t", SubjectNumber: &num}}
-	body := buildReportBody("📊 每周报告", events, "过去 7 天", nil)
+	body := buildReportBody("📊 每周报告", events, "过去 7 天", nil, reportGeneratedAt)
 	if !strings.Contains(body, "过去 7 天共 1 条事件") {
 		t.Errorf("期望时段文案参数化，实际: %s", body)
+	}
+	if !strings.Contains(body, "⏰ 生成时间：2026-08-08 09:05 UTC") {
+		t.Errorf("非空报告应带生成时间页脚，实际: %s", body)
 	}
 }
 
 // buildReportBody 预览行必须转义用户输入标题：ParseMode=HTML 下 <、& 会破坏消息或注入。
 func TestBuildReportBody_EscapesEventTitle(t *testing.T) {
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: `修复 <b>加粗</b> & "引号" 问题`}}
-	body := buildReportBody("📊 每日摘要 2026-08-07", events, "过去 24 小时", nil)
+	body := buildReportBody("📊 每日摘要 2026-08-07", events, "过去 24 小时", nil, reportGeneratedAt)
 	if strings.Contains(body, "<b>加粗</b>") {
 		t.Fatalf("标题不应原样输出 HTML，实际: %s", body)
 	}
@@ -656,7 +665,7 @@ func TestBuildReportBody_EscapesEventTitle(t *testing.T) {
 
 // buildReportBody 空事件文案应带上周期，避免日/周/月报共用含糊的「期间」。
 func TestBuildReportBody_EmptyUsesPeriod(t *testing.T) {
-	body := buildReportBody("📊 月度报告 2026-08", nil, "过去 30 天", nil)
+	body := buildReportBody("📊 月度报告 2026-08", nil, "过去 30 天", nil, reportGeneratedAt)
 	if !strings.Contains(body, "🎉 过去 30 天无新事件") {
 		t.Fatalf("空事件文案应包含周期，实际: %s", body)
 	}
@@ -671,7 +680,7 @@ func TestBuildReportBody_ShowsRepoName(t *testing.T) {
 		{Kind: store.WorkItemKindIssue, Action: "opened", Title: "修复登录 Bug", SubjectNumber: &num, RepositoryID: &repoID},
 		{Kind: store.WorkItemKindIssue, Action: "closed", Title: "无仓库事件"},
 	}
-	body := buildReportBody("📊 每日摘要 2026-08-08", events, "过去 24 小时", map[string]string{"repo-1": "acme/demo"})
+	body := buildReportBody("📊 每日摘要 2026-08-08", events, "过去 24 小时", map[string]string{"repo-1": "acme/demo"}, reportGeneratedAt)
 	if !strings.Contains(body, "acme/demo#42 修复登录 Bug") {
 		t.Fatalf("预览行应带仓库名 acme/demo#42，实际: %s", body)
 	}
@@ -724,7 +733,7 @@ func TestReportBodyLogsAIUsed(t *testing.T) {
 	g := &Generator{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"今日共 1 条事件：- 新 Issue hello"}}]}`)}
 	num := 1
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
-	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时")
+	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt)
 	if !aiUsed {
 		t.Fatal("AI 总结成功应标记参与")
 	}
@@ -742,7 +751,7 @@ func TestReportBodyLogsAIFallback(t *testing.T) {
 	g := &Generator{Logger: logger, AI: aiStub(t, `not-json`)}
 	num := 1
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
-	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时")
+	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt)
 	if aiUsed {
 		t.Fatal("AI 失败不应标记参与")
 	}
@@ -761,7 +770,7 @@ func TestReportBodyLogsAISkipped(t *testing.T) {
 	g := &Generator{Logger: logger}
 	num := 1
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
-	_, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时")
+	_, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt)
 	if aiUsed {
 		t.Fatal("AI 未启用不应标记参与")
 	}
@@ -777,7 +786,7 @@ func TestReportBodyLogsLowQuality(t *testing.T) {
 	g := &Generator{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"一切正常"}}]}`)}
 	num := 1
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
-	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时")
+	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt)
 	if aiUsed {
 		t.Fatal("低质输出不应标记参与")
 	}
@@ -796,7 +805,7 @@ func TestReportBodyLogsLowQualityTemplateEcho(t *testing.T) {
 	g := &Generator{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"共 1 条事件\n最近活动：\n• [已打开] hello"}}]}`)}
 	num := 1
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
-	_, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时")
+	_, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt)
 	if aiUsed {
 		t.Fatal("复读模板的输出不应标记参与")
 	}
@@ -815,7 +824,7 @@ func TestReportBodyReqIDConsistent(t *testing.T) {
 	g := &Generator{Logger: logger, AI: aiClient}
 	num := 1
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
-	if _, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时"); !aiUsed {
+	if _, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt); !aiUsed {
 		t.Fatal("AI 总结成功应标记参与")
 	}
 	re := regexp.MustCompile(`req_id=([0-9a-f]+)`)

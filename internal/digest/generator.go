@@ -71,7 +71,7 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 	}
 
 	title := fmt.Sprintf("📊 每日摘要 %s", dateKey)
-	body, aiUsed := g.reportBody(ctx, title, events, "过去 24 小时")
+	body, aiUsed := g.reportBody(ctx, title, events, "过去 24 小时", now)
 	return g.enqueue(ctx, settingLastDigest, "digest", dateKey, title, body, map[string]any{
 		"digest": true, "date": dateKey, "count": len(events), "ai": aiUsed,
 	})
@@ -108,7 +108,7 @@ func (g *Generator) RunWeekly(ctx context.Context, now time.Time) error {
 	}
 
 	title := fmt.Sprintf("📊 每周报告 %s 起", dateKey)
-	body, aiUsed := g.reportBody(ctx, title, events, "过去 7 天")
+	body, aiUsed := g.reportBody(ctx, title, events, "过去 7 天", now)
 	return g.enqueue(ctx, settingLastWeekly, "report|weekly", dateKey, title, body, map[string]any{
 		"report": "weekly", "period_start": dateKey, "count": len(events), "ai": aiUsed,
 	})
@@ -143,7 +143,7 @@ func (g *Generator) RunMonthly(ctx context.Context, now time.Time) error {
 	}
 
 	title := fmt.Sprintf("📊 月度报告 %s", dateKey)
-	body, aiUsed := g.reportBody(ctx, title, events, "过去 30 天")
+	body, aiUsed := g.reportBody(ctx, title, events, "过去 30 天", now)
 	return g.enqueue(ctx, settingLastMonthly, "report|monthly", dateKey, title, body, map[string]any{
 		"report": "monthly", "period": dateKey, "count": len(events), "ai": aiUsed,
 	})
@@ -194,10 +194,10 @@ func (g *Generator) filteredEvents(ctx context.Context, since time.Time, limit i
 // 日志留痕 AI 参与度：skipped（未启用/无事件）、used（AI 总结成功）、
 // fallback（AI 调用失败/输出为空/质量不达标，回退模板），配合 ai 层 ai request ok/failed 日志
 // （携带同一 req_id），可完整还原「有没有发请求、AI 有没有参与、失败是网络还是上游问题」。
-func (g *Generator) reportBody(ctx context.Context, title string, events []store.Event, period string) (string, bool) {
+func (g *Generator) reportBody(ctx context.Context, title string, events []store.Event, period string, now time.Time) (string, bool) {
 	// 仓库名映射一次批量拉取，模板预览与 AI 总结共用，避免两处各自查询造成 N+1。
 	names := g.repoNames(ctx, events)
-	template := buildReportBody(title, events, period, names)
+	template := buildReportBody(title, events, period, names, now)
 	if g.AI == nil || !g.AI.IsDigestEnabled() || len(events) == 0 {
 		if g.Logger != nil {
 			reason := "ai_not_enabled"
@@ -317,14 +317,16 @@ func (g *Generator) enqueue(
 }
 
 // buildDigestBody 保留兼容入口：每日摘要模板正文（「过去 24 小时」时段文案）。
-func buildDigestBody(title string, events []store.Event) string {
-	return buildReportBody(title, events, "过去 24 小时", nil)
+func buildDigestBody(title string, events []store.Event, generatedAt time.Time) string {
+	return buildReportBody(title, events, "过去 24 小时", nil, generatedAt)
 }
 
 // buildReportBody 构建分组格式的定期报告正文。
 // repoNames 为仓库 ID → full_name 映射（可为 nil）：预览行带仓库名便于多仓用户
 // 一眼区分事件归属；映射缺失时回退原格式（不带仓库前缀）。
-func buildReportBody(title string, events []store.Event, period string, repoNames map[string]string) string {
+// generatedAt 为报告生成时刻：页脚标注生成时间（UTC，与规则通知时间格式一致），
+// 让用户能判断报告新鲜度，避免把旧报告误认为当前时刻。
+func buildReportBody(title string, events []store.Event, period string, repoNames map[string]string, generatedAt time.Time) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
 	b.WriteString("────────────────\n")
@@ -332,6 +334,7 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 	if len(events) == 0 {
 		// 空事件文案带上周期（过去 24 小时/7 天/30 天），避免三类报告共用一句含糊的「期间」。
 		b.WriteString(fmt.Sprintf("🎉 %s无新事件\n", period))
+		appendReportFooter(&b, generatedAt)
 		return b.String()
 	}
 
@@ -391,7 +394,14 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 		b.WriteString(line.String() + "\n")
 	}
 
+	appendReportFooter(&b, generatedAt)
 	return b.String()
+}
+
+// appendReportFooter 追加报告页脚：生成时间（UTC），与规则通知的「⏰ 时间」格式保持一致。
+func appendReportFooter(b *strings.Builder, generatedAt time.Time) {
+	b.WriteString("────────────────\n")
+	b.WriteString(fmt.Sprintf("⏰ 生成时间：%s\n", generatedAt.UTC().Format("2006-01-02 15:04 UTC")))
 }
 
 // parseWeekday 将英文周名解析为 time.Weekday；非法返回 false。

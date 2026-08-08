@@ -47,6 +47,11 @@ export function mobileTitleFor(pathname: string): string {
   return "仪表盘";
 }
 
+/** 浏览器标签页标题：复用移动端标题映射加品牌后缀，避免两套页面名文案漂移。 */
+export function pageTitleFor(pathname: string): string {
+  return `${mobileTitleFor(pathname)} · RepoSentinel`;
+}
+
 export function RootLayout({ session }: RootLayoutProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -61,6 +66,11 @@ export function RootLayout({ session }: RootLayoutProps) {
   const sidebarRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+
+  // 浏览器标签页标题随路由更新：多标签场景下能直接看出当前页面。
+  useEffect(() => {
+    document.title = pageTitleFor(pathname);
+  }, [pathname]);
 
   // 离开当前路由（含浏览器前进/后退）后收起抽屉，避免遮挡新页面。
   const previousPathname = useRef(pathname);

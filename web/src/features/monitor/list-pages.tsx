@@ -5,12 +5,12 @@ import { Link } from "@tanstack/react-router";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate, type QueryGateQuery } from "../../components/query-gate";
+import { RelativeTime } from "../../components/relative-time";
 import { apiRequest } from "../../lib/api/client";
 import { toApiError } from "../../lib/api/errors";
 import {
   alertKindLabel,
   alertStateLabel,
-  formatRelativeTime,
   repoDisplayName,
   severityLabel,
   syncStatusLabel,
@@ -330,7 +330,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                       <span className="assignees">→ {it.assignees.join(", ")}</span>
                     )}
                     {it.milestone && <span className="milestone">🎯 {it.milestone}</span>}
-                    {it.source_updated_at && <span className="updated-at">{formatRelativeTime(it.source_updated_at)}</span>}
+                    {it.source_updated_at && <RelativeTime date={it.source_updated_at} className="updated-at" />}
                   </div>
                   <div className="pr-status">
                     {it.review_decision ? (
@@ -603,7 +603,7 @@ function RepoCard({
             {syncStatusLabel(repo.sync_status)}
             {repo.is_archived ? " · 本系统已归档" : ""}
           </span>
-          {repo.last_synced_at && <span className="last-synced">最后同步: {formatRelativeTime(repo.last_synced_at)}</span>}
+          {repo.last_synced_at && <RelativeTime date={repo.last_synced_at} className="last-synced" prefix="最后同步: " />}
           {repo.last_sync_error_code && <span className="sync-error">同步错误: {repo.last_sync_error_code}</span>}
         </div>
       </div>
@@ -817,7 +817,7 @@ function ActionsList() {
                   </div>
                   <div className="run-meta">
                     {run.actor && <span className="actor">by {run.actor}</span>}
-                    {run.run_started_at && <span className="started-at">{formatRelativeTime(run.run_started_at)}</span>}
+                    {run.run_started_at && <RelativeTime date={run.run_started_at} className="started-at" />}
                   </div>
                   <ItemActions
                     htmlUrl={run.html_url}

@@ -6,6 +6,11 @@ import { ApiError } from "../../lib/api/errors";
 import { LoginPage } from "./login-page";
 
 describe("登录页", () => {
+  it("设置标签页标题", () => {
+    render(<LoginPage loginAction={vi.fn()} />);
+    expect(document.title).toBe("登录 · RepoSentinel");
+  });
+
   it("展示准确产品信息、认证字段与 CLI 恢复入口", () => {
     render(<LoginPage loginAction={vi.fn()} version="dev" />);
 

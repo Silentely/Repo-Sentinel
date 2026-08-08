@@ -221,3 +221,56 @@ export function alertStateLabel(state: string): string {
       return state || "—";
   }
 }
+
+/**
+ * Outbox 投递错误码 → 中文排障提示（投递记录页用）。
+ * 机器码保留展示（便于对照日志），说明文字帮助普通用户判断下一步动作；
+ * 未收录的错误码返回空串，不占用展示空间。
+ */
+export function outboxErrorHint(errorCode: string): string {
+  switch (errorCode) {
+    case "telegram_not_configured":
+      return "Telegram 渠道缺少 Bot Token 或 Chat ID，请到「渠道配置」补全。";
+    case "telegram_rate_limited":
+      return "Telegram 触发限流，已按上游建议推迟重试，通常会自动恢复。";
+    case "telegram_http_500":
+    case "telegram_http_502":
+    case "telegram_http_503":
+      return "Telegram 服务端暂时不可用，系统会按退避策略自动重试。";
+    case "telegram_client_error_400":
+      return "Telegram 拒绝消息：多为 Chat ID 无效或正文格式问题，请核对渠道目标。";
+    case "telegram_client_error_401":
+      return "Telegram Bot Token 无效或已失效，请到「渠道配置」更新 Token。";
+    case "telegram_client_error_403":
+      return "机器人无法访问该会话：用户需先向机器人发起对话，或机器人已被屏蔽。";
+    case "telegram_client_error_404":
+      return "Telegram Chat ID 不存在，请核对渠道目标是否填写正确。";
+    case "http_webhook_retry_after":
+      return "接收端要求按 Retry-After 推迟重试，系统已遵循该指引。";
+    case "http_webhook_status_408":
+    case "http_webhook_status_425":
+    case "http_webhook_status_429":
+      return "接收端限流或繁忙，系统将按退避策略自动重试。";
+    case "http_webhook_status_500":
+    case "http_webhook_status_502":
+    case "http_webhook_status_503":
+    case "http_webhook_status_504":
+      return "接收端服务端错误，请检查 Webhook 目标服务是否正常。";
+    case "decrypt_secret":
+      return "渠道密钥解密失败：可能主密钥已更换或数据损坏，请重新保存渠道配置。";
+    case "missing_keyring":
+      return "未配置加密主密钥，无法解密渠道密钥，请检查部署配置。";
+    case "unknown_channel":
+      return "未知渠道类型，该记录无法投递，请检查渠道配置。";
+    case "database_unavailable":
+      return "数据库暂时不可用，投递队列等待恢复后继续。";
+    case "outbox_mark_failed":
+      return "投递状态回写失败，条目将在锁超时后重新尝试。";
+    case "normalize_failed":
+      return "Webhook 载荷无法解析，事件被丢弃，请核对 GitHub 事件格式。";
+    case "rule_failed":
+      return "通知规则评估失败，事件未进入投递，请查看服务端日志。";
+    default:
+      return "";
+  }
+}

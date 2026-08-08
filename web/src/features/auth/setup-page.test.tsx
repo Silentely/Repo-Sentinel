@@ -5,6 +5,11 @@ import { describe, expect, it, vi } from "vitest";
 import { SetupPage } from "./setup-page";
 
 describe("首次设置页", () => {
+  it("设置标签页标题", () => {
+    render(<SetupPage setupAction={vi.fn()} />);
+    expect(document.title).toBe("初始化 · RepoSentinel");
+  });
+
   it("按 Unicode 字符数拒绝不足 12 字符的密码", async () => {
     const user = userEvent.setup();
     const setupAction = vi.fn(async () => undefined);
