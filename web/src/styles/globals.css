@@ -1093,6 +1093,19 @@ a.status-item--link:focus-visible {
   background: color-mix(in oklch, var(--accent) 16%, var(--bg-surface));
 }
 
+/* 破坏性操作（彻底删除仓库）：危险色描边，hover 加深，避免与主操作混淆。 */
+.quiet-button--danger {
+  color: var(--danger);
+  border-color: color-mix(in oklch, var(--danger) 40%, var(--border-subtle));
+  background: color-mix(in oklch, var(--danger) 6%, var(--bg-surface));
+}
+
+.quiet-button--danger:hover {
+  color: var(--danger);
+  border-color: color-mix(in oklch, var(--danger) 60%, var(--border-subtle));
+  background: color-mix(in oklch, var(--danger) 12%, var(--bg-surface));
+}
+
 @media (max-width: 720px) {
   .repo-baseline-row {
     grid-template-columns: 22px minmax(0, 1fr);

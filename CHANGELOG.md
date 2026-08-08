@@ -6,6 +6,7 @@
 
 ### Added
 
+- 仓库管理页支持「彻底删除」：`DELETE /api/v1/repositories/{id}` 级联清理该仓库全部本地数据（PR/Issue、事件、告警、快照、游标、待投递通知），用于 GitHub 侧仓库已删除但 `repository.deleted` webhook 漏投递时的手动收口
 - 仓库级联删除：GitHub 侧删除仓库（`repository.deleted` webhook）时，自动清理本地仓库与全部关联数据（PR/Issue、事件、告警、star 快照、同步游标、待投递通知），不留孤儿数据
 - AI 集成配置新增「测试连通性」：以当前生效配置发送一次最小对话验证端点 / 模型 / API Key，返回耗时与结果；未锁定字段可在请求中临时覆盖（保存前验证），不写库、不改变运行时
 - SPA 静态资源（HTML / JS / CSS / JSON / SVG）按客户端能力 gzip 传输，降低自托管出站带宽；带 Range 的请求与非文本类型不压缩

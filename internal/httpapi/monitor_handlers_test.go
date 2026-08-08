@@ -632,3 +632,66 @@ func TestHandleStarTrend(t *testing.T) {
 		t.Fatalf("invalid days status = %d, body = %s", bad.Code, bad.Body.String())
 	}
 }
+
+// TestDeleteRepositoryCascadeViaAPI 手动彻底删除：DELETE /api/v1/repositories/{id}
+// 需认证 + CSRF，成功后仓库与关联数据（PR/事件）全部消失，重复删除返回 not_found。
+func TestDeleteRepositoryCascadeViaAPI(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	ctx := t.Context()
+	now := time.Now().UTC()
+
+	repo, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-del-1", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusUnavailable,
+		Owner: "acme", Name: "ternssh", FullName: "acme/ternssh",
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+	if _, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-del-1", RepositoryID: repo.ID, Number: 1, Kind: store.WorkItemKindPR,
+		State: "open", Title: "stale pr", SourceUpdatedAt: now, StateHash: "h1",
+	}); err != nil {
+		t.Fatalf("upsert work item: %v", err)
+	}
+	repoID := repo.ID
+	if _, err := fixture.store.Events().Create(ctx, store.Event{
+		ID: "ev-del-1", Source: "webhook", Kind: store.WorkItemKindPR, Action: "opened",
+		RepositoryID: &repoID, Title: "stale pr", OccurredAt: now, DedupeFingerprint: "fp-del-1",
+	}); err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	// 未登录拒绝。
+	unauth := fixture.request(t, http.MethodDelete, "/api/v1/repositories/"+repo.ID,
+		"", "127.0.0.1:45101", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	// 缺 CSRF 拒绝。
+	noCSRF := fixture.request(t, http.MethodDelete, "/api/v1/repositories/"+repo.ID,
+		"", "127.0.0.1:45102", cookies, nil)
+	assertAPIError(t, noCSRF, http.StatusForbidden, "csrf_failed")
+
+	// 正常删除。
+	ok := fixture.request(t, http.MethodDelete, "/api/v1/repositories/"+repo.ID,
+		"", "127.0.0.1:45103", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if ok.Code != http.StatusOK {
+		t.Fatalf("delete status=%d body=%s", ok.Code, ok.Body.String())
+	}
+	if _, err := fixture.store.Repositories().Get(ctx, repo.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("仓库应已删除，got err=%v", err)
+	}
+	if _, err := fixture.store.WorkItems().GetByRepoNumber(ctx, repo.ID, 1); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("关联 PR 应已删除，got err=%v", err)
+	}
+	if _, err := fixture.store.Events().GetByFingerprint(ctx, "fp-del-1"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("关联事件应已删除，got err=%v", err)
+	}
+
+	// 重复删除返回 not_found。
+	again := fixture.request(t, http.MethodDelete, "/api/v1/repositories/"+repo.ID,
+		"", "127.0.0.1:45104", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	assertAPIError(t, again, http.StatusNotFound, "not_found")
+}

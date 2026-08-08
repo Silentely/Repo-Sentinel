@@ -29,7 +29,7 @@
 | 仪表盘 / 列表 / GitHub / 关于 | 已交付 | 关于页可检查 GitHub Release；列表支持按仓筛选与本地忽略；仪表盘区块可折叠并记住状态 |
 | 仪表盘 Star 增长曲线 | 已交付 | 全部仓库 Star 总数折线图，7/30/90/全部范围；无数据时显示引导文案 |
 | 归档仓数据隔离 | 已交付 | 列表、侧栏计数、事件流与每日汇总默认排除已归档仓库；历史项仍保留在库中；GitHub 侧归档自动联动关闭采集 |
-| 仓库删除清理 | 已交付 | GitHub 侧删除（repository.deleted）级联删除本地仓库与全部关联数据；对账 404/410、repositories_removed、transferred 标记不可用并暂停采集，可经 API 重新激活 |
+| 仓库删除清理 | 已交付 | GitHub 侧删除（repository.deleted）级联删除本地仓库与全部关联数据；对账 404/410、repositories_removed、transferred 标记不可用并暂停采集，可经 API 重新激活；仓库管理页提供「彻底删除」按钮兜底清理漏投递场景 |
 | doctor / backup / restore | 已交付 | 备份须同时保管主密钥 |
 | GHCR 镜像 | 已交付 | `main`/`dev` 推送对应浮动标签；`v*` 推送 `vX.Y.Z` + `latest` |
 | Prometheus `/metrics` | 已交付 | 进程内计数 + 可选 Bearer；建议内网抓取 |

@@ -138,6 +138,11 @@ export async function activateRepository(id: string): Promise<Repository> {
   });
 }
 
+/** 彻底删除仓库并级联清理全部本地数据（PR/Issue、事件、告警、快照、游标、待投递通知），不可恢复。 */
+export async function deleteRepository(id: string): Promise<void> {
+  await apiRequest(`/api/v1/repositories/${id}`, { method: "DELETE" });
+}
+
 export async function retryOutbox(id: string): Promise<void> {
   await apiRequest(`/api/v1/notifications/outbox/${id}/retry`, {
     method: "POST",
