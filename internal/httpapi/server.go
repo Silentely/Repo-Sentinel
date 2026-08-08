@@ -195,6 +195,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/repositories/{id}/activate", s.handleActivateRepository)
 				mutating.Post("/repositories/{id}/reconcile", s.handleReconcileRepository)
 				mutating.Patch("/repositories/{id}/settings", s.handleUpdateRepositorySettings)
+				mutating.Delete("/repositories/{id}", s.handleDeleteRepository)
 				mutating.Patch("/work-items/{id}/ignored", s.handleSetWorkItemIgnored)
 				mutating.Patch("/workflow-runs/{id}/ignored", s.handleSetWorkflowRunIgnored)
 				mutating.Patch("/security-alerts/{id}/ignored", s.handleSetSecurityAlertIgnored)

@@ -19,6 +19,7 @@ import {
 } from "../../lib/format";
 import {
   type Page,
+  deleteRepository,
   repositoriesQueryOptions,
   setSecurityAlertIgnored,
   setWorkItemIgnored,
@@ -466,6 +467,24 @@ export function ReposPage() {
     },
   });
 
+  // 彻底删除：GitHub 侧已删除但 webhook 漏投递时的手动收口，级联清理全部关联数据。
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const deleteOne = useMutation({
+    mutationFn: (id: string) => {
+      setErrorMsg(null);
+      setDeletingId(id);
+      return deleteRepository(id);
+    },
+    onSuccess: async () => {
+      setDeletingId(null);
+      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await queryClient.invalidateQueries({ queryKey: ["work-items"] });
+      await queryClient.invalidateQueries({ queryKey: ["workflow-runs"] });
+      await queryClient.invalidateQueries({ queryKey: ["security-alerts"] });
+    },
+  });
+
   const allRepos = repos.data?.items ?? [];
   const activeRepos = allRepos.filter((r) => !r.is_archived);
   const archivedRepos = allRepos.filter((r) => r.is_archived);
@@ -511,6 +530,8 @@ export function ReposPage() {
               repo={repo}
               onToggle={(settings) => updateSettings.mutate({ id: repo.id, settings })}
               saving={savingId === repo.id}
+              deleting={deletingId === repo.id}
+              onDelete={(id) => deleteOne.mutate(id)}
               features={{
                 issues: featureIssues,
                 prs: featurePRs,
@@ -531,11 +552,15 @@ function RepoCard({
   repo,
   onToggle,
   saving,
+  deleting,
+  onDelete,
   features,
 }: {
   repo: Repository;
   onToggle: (s: RepositorySettings) => void;
   saving: boolean;
+  deleting: boolean;
+  onDelete: (id: string) => void;
   features: { issues: boolean; prs: boolean; actions: boolean; alerts: boolean; stars: boolean; watches: boolean };
 }) {
   const monitorOn = repo.monitor_enabled;
@@ -550,6 +575,18 @@ function RepoCard({
       }
     }
     onToggle({ is_archived: next });
+  }
+
+  function handleDelete() {
+    const name = repo.full_name || repo.name;
+    if (
+      !window.confirm(
+        `确定彻底删除「${name}」？将级联清理该仓库的全部本地数据（PR/Issue、事件、告警、快照、游标与待投递通知），不可恢复。GitHub 侧若仍存在该仓库，重新同步后会重新出现。`,
+      )
+    ) {
+      return;
+    }
+    onDelete(repo.id);
   }
 
   return (
@@ -628,6 +665,14 @@ function RepoCard({
           />
         </div>
         <Toggle label="本系统归档" checked={repo.is_archived} disabled={saving} onChange={handleArchive} />
+        <button
+          type="button"
+          className="quiet-button quiet-button--compact quiet-button--danger"
+          disabled={saving || deleting}
+          onClick={handleDelete}
+        >
+          {deleting ? "删除中…" : "彻底删除"}
+        </button>
       </div>
     </li>
   );

@@ -120,6 +120,18 @@ func (s *server) handleActivateRepository(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, repo)
 }
 
+// handleDeleteRepository 彻底删除仓库并级联清理全部关联数据（PR/Issue、事件、告警、快照、
+// 游标、待投递通知）。用于 GitHub 侧仓库已删除但 repository.deleted webhook 漏投递
+// （或升级前已处理）时的手动收口；删除不可恢复。
+func (s *server) handleDeleteRepository(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if err := s.dependencies.Store.Repositories().DeleteRepository(r.Context(), id); err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "deleted", "repository_id": id})
+}
+
 func (s *server) handleUpdateRepositorySettings(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var body store.RepositorySettings

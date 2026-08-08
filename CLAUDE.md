@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-08T05:30:00Z | 仓库管理页新增「彻底删除」（DELETE /api/v1/repositories/{id} 级联清理），补上 repository.deleted webhook 漏投递时的手动收口 |
 | 2026-08-07T12:00:00Z | 仓库生命周期收口：GitHub 侧删除（repository.deleted webhook）级联删除本地仓库与全部关联数据（PR/Issue、事件、告警、快照、游标、待投递通知）；对账遇 404/410 兜底标记 unavailable；解析 installation_repositories 的 repositories_removed 并标记 unavailable |
 | 2026-08-07T10:00:00Z | 打磨：CSP 兼容修复（主题预置脚本外置、空态操作行内联样式改 CSS 类）、相对时间未来时间/月年粒度、Telegram 超长消息安全截断、SPA 静态资源 gzip、访问日志补 user_agent、webhook 错误日志补仓库名、加载更多按钮 aria-busy |
 | 2026-08-06T15:48:41Z | 新增 GitHub star/watch 事件支持：实时通知判定与中文文案、三层开关（全局 feature 开关 / 仓库级 stars_enabled、watches_enabled / 渠道订阅 event_kinds）、仪表盘 Star 增长曲线（/api/v1/stats/star-trend） |
