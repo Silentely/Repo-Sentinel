@@ -26,6 +26,53 @@ func openTestStore(t *testing.T) store.Store {
 	return data
 }
 
+// waitOutboxCount 轮询等待 outbox 达到期望数量（默认 5s 超时）。
+// 聚合 flush 由 time.AfterFunc 异步触发，固定 sleep 在 CI 高负载 / -race 下
+// 可能早于 flush 完成而误报 got 0，轮询可消除此类时序 flaky。
+func waitOutboxCount(t *testing.T, ctx context.Context, data store.Store, want int) []store.NotificationOutbox {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(items) == want {
+			return items
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("等待 outbox 数量 %d 超时，当前 %d", want, len(items))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// waitFlushWindow 等待聚合窗口结束且 flush 有机会执行，期间持续断言 outbox 数量为 0。
+// 用于「不应投递」类断言：固定 sleep 若早于 flush 完成则只是假通过，无法真正验证
+// flush 后的过滤行为，因此改为等待整个窗口周期并逐次复核。
+func waitFlushWindow(t *testing.T, ctx context.Context, data store.Store, window time.Duration) {
+	t.Helper()
+	start := time.Now()
+	minWait := window + 150*time.Millisecond
+	deadline := start.Add(window + 5*time.Second)
+	for {
+		items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(items) != 0 {
+			t.Fatalf("预期无 outbox，got %d", len(items))
+		}
+		if time.Since(start) >= minWait {
+			return
+		}
+		if time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func seedChannel(t *testing.T, data store.Store) store.NotificationChannel {
 	t.Helper()
 	ch, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
@@ -65,14 +112,8 @@ func TestAggregatorMergesWithinWindow(t *testing.T) {
 	if len(items) != 0 {
 		t.Fatalf("窗口内不应投递，got %d", len(items))
 	}
-	time.Sleep(80 * time.Millisecond)
-	items, _, err = data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 {
-		t.Fatalf("合并后应 1 条 outbox，got %d", len(items))
-	}
+	// 窗口结束后合并为 1 条；flush 异步执行，轮询等待（消除高负载下的时序 flaky）
+	items = waitOutboxCount(t, ctx, data, 1)
 	if items[0].BodyJSON["count"] != float64(2) && items[0].BodyJSON["count"] != 2 {
 		// JSON number may be int
 		if n, ok := items[0].BodyJSON["count"].(int); !ok || n != 2 {
@@ -107,7 +148,8 @@ func TestAggregator窗口内关闭全局开关不投递(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(80 * time.Millisecond)
+	// flush 异步执行：等待窗口结束并复核整个周期内均无投递（消除高负载下的时序 flaky）
+	waitFlushWindow(t, ctx, data, 50*time.Millisecond)
 	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 10})
 	if err != nil {
 		t.Fatal(err)
@@ -224,14 +266,8 @@ func TestAggregator合并按渠道订阅重建子集(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	time.Sleep(80 * time.Millisecond)
-	out, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(out) != 1 {
-		t.Fatalf("合并应 1 条 outbox，got %d", len(out))
-	}
+	// flush 异步执行，轮询等待合并结果（消除高负载下的时序 flaky）
+	out := waitOutboxCount(t, ctx, data, 1)
 	if !strings.Contains(out[0].BodyText, "dep-alert") {
 		t.Fatalf("应包含订阅的 dependabot 事件，正文: %s", out[0].BodyText)
 	}
@@ -261,7 +297,8 @@ func TestAggregator渠道全不命中不产生outbox(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	time.Sleep(80 * time.Millisecond)
+	// flush 异步执行：等待窗口结束并复核整个周期内均无投递（消除高负载下的时序 flaky）
+	waitFlushWindow(t, ctx, data, 50*time.Millisecond)
 	out, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
 	if err != nil {
 		t.Fatal(err)
