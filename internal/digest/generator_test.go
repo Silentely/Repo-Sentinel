@@ -636,7 +636,7 @@ func TestParseWeekday(t *testing.T) {
 func TestBuildReportBody_PeriodLabel(t *testing.T) {
 	num := 1
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "t", SubjectNumber: &num}}
-	body := buildReportBody("📊 每周报告", events, "过去 7 天")
+	body := buildReportBody("📊 每周报告", events, "过去 7 天", nil)
 	if !strings.Contains(body, "过去 7 天共 1 条事件") {
 		t.Errorf("期望时段文案参数化，实际: %s", body)
 	}
@@ -645,7 +645,7 @@ func TestBuildReportBody_PeriodLabel(t *testing.T) {
 // buildReportBody 预览行必须转义用户输入标题：ParseMode=HTML 下 <、& 会破坏消息或注入。
 func TestBuildReportBody_EscapesEventTitle(t *testing.T) {
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: `修复 <b>加粗</b> & "引号" 问题`}}
-	body := buildReportBody("📊 每日摘要 2026-08-07", events, "过去 24 小时")
+	body := buildReportBody("📊 每日摘要 2026-08-07", events, "过去 24 小时", nil)
 	if strings.Contains(body, "<b>加粗</b>") {
 		t.Fatalf("标题不应原样输出 HTML，实际: %s", body)
 	}
@@ -656,9 +656,27 @@ func TestBuildReportBody_EscapesEventTitle(t *testing.T) {
 
 // buildReportBody 空事件文案应带上周期，避免日/周/月报共用含糊的「期间」。
 func TestBuildReportBody_EmptyUsesPeriod(t *testing.T) {
-	body := buildReportBody("📊 月度报告 2026-08", nil, "过去 30 天")
+	body := buildReportBody("📊 月度报告 2026-08", nil, "过去 30 天", nil)
 	if !strings.Contains(body, "🎉 过去 30 天无新事件") {
 		t.Fatalf("空事件文案应包含周期，实际: %s", body)
+	}
+}
+
+// buildReportBody 预览行带仓库名：多仓用户靠 full_name 区分事件归属；
+// 无 RepositoryID 的事件保持原格式（不带仓库前缀）。
+func TestBuildReportBody_ShowsRepoName(t *testing.T) {
+	repoID := "repo-1"
+	num := 42
+	events := []store.Event{
+		{Kind: store.WorkItemKindIssue, Action: "opened", Title: "修复登录 Bug", SubjectNumber: &num, RepositoryID: &repoID},
+		{Kind: store.WorkItemKindIssue, Action: "closed", Title: "无仓库事件"},
+	}
+	body := buildReportBody("📊 每日摘要 2026-08-08", events, "过去 24 小时", map[string]string{"repo-1": "acme/demo"})
+	if !strings.Contains(body, "acme/demo#42 修复登录 Bug") {
+		t.Fatalf("预览行应带仓库名 acme/demo#42，实际: %s", body)
+	}
+	if !strings.Contains(body, "• [已关闭] 无仓库事件") {
+		t.Fatalf("无仓库事件应保持原格式（不带仓库前缀），实际: %s", body)
 	}
 }
 

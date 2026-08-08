@@ -1,9 +1,14 @@
 package notify
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,6 +106,118 @@ func TestHandleFailureGenericExceedsMaxAttemptsGoesDead(t *testing.T) {
 type errTestGeneric struct{}
 
 func (errTestGeneric) Error() string { return "telegram_http_500" }
+
+// claimFailStore 嵌入 store.Store 并覆盖 Outbox()，用于注入 ClaimDue 失败。
+type claimFailStore struct {
+	store.Store
+	outbox store.OutboxStore
+}
+
+func (s *claimFailStore) Outbox() store.OutboxStore { return s.outbox }
+
+// failingOutboxStore 嵌入 OutboxStore 接口，仅覆写 ClaimDue 返回错误；
+// 其余方法不会被测试路径触达，保持 nil 内嵌即可。
+type failingOutboxStore struct {
+	store.OutboxStore
+}
+
+func (failingOutboxStore) ClaimDue(context.Context, time.Time, time.Duration, int) ([]store.NotificationOutbox, error) {
+	return nil, errors.New("claim boom: database locked")
+}
+
+// TestTickClaimFailureLogsErrorDetail 领取失败日志必须携带真实错误详情，
+// 否则数据库抖动时只有 error_code 无法判断是连接、锁还是迁移问题。
+func TestTickClaimFailureLogsErrorDetail(t *testing.T) {
+	var logBuffer bytes.Buffer
+	w := &Worker{
+		Store:  &claimFailStore{outbox: failingOutboxStore{}},
+		Logger: slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelError})),
+	}
+	w.tick(t.Context())
+
+	logs := logBuffer.String()
+	if !strings.Contains(logs, "outbox claim failed") {
+		t.Fatalf("应记录 outbox claim failed，实际日志: %s", logs)
+	}
+	if !strings.Contains(logs, "claim boom: database locked") {
+		t.Fatalf("领取失败日志应携带错误详情，实际日志: %s", logs)
+	}
+}
+
+// TestSendTelegramErrorCarriesBodyDetail Telegram 4xx/5xx 错误必须携带截断响应体，
+// 否则「chat not found」这类可行动原因只能靠抓包才能看到。
+func TestSendTelegramErrorCarriesBodyDetail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"ok":false,"description":"Bad Request: chat not found"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	w := &Worker{Client: srv.Client()}
+	err := w.sendTelegramDirect(t.Context(), srv.URL, "chat-1", "token", "text", "", "HTML")
+	if err == nil {
+		t.Fatal("400 应返回错误")
+	}
+	if !strings.Contains(err.Error(), "telegram_client_error_400") {
+		t.Fatalf("错误应含稳定错误码前缀，实际: %v", err)
+	}
+	if !strings.Contains(err.Error(), "chat not found") {
+		t.Fatalf("错误应携带响应体详情，实际: %v", err)
+	}
+	if got := deliveryErrorCode(err); got != "telegram_client_error_400" {
+		t.Fatalf("deliveryErrorCode = %q, want telegram_client_error_400", got)
+	}
+}
+
+// TestSendHTTPErrorCarriesBodyDetail HTTP Webhook 5xx 错误必须携带截断响应体。
+func TestSendHTTPErrorCarriesBodyDetail(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"upstream exploded"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	w := &Worker{Client: srv.Client()}
+	ch := store.NotificationChannel{ChannelType: store.ChannelHTTPWebhook, Target: srv.URL, AllowPrivate: true}
+	item := store.NotificationOutbox{ID: "o-1", Title: "t", BodyText: "b"}
+	err := w.sendHTTP(t.Context(), ch, "", item)
+	if err == nil {
+		t.Fatal("500 应返回错误")
+	}
+	if !strings.Contains(err.Error(), "http_webhook_status_500") {
+		t.Fatalf("错误应含稳定错误码前缀，实际: %v", err)
+	}
+	if !strings.Contains(err.Error(), "upstream exploded") {
+		t.Fatalf("错误应携带响应体详情，实际: %v", err)
+	}
+	if got := deliveryErrorCode(err); got != "http_webhook_status_500" {
+		t.Fatalf("deliveryErrorCode = %q, want http_webhook_status_500", got)
+	}
+}
+
+// TestDeliveryErrorCode 稳定错误码推导：retryAfterError 用自带 code，
+// 代码风格前缀直接复用，网络层自由文本归为 delivery_failed。
+func TestDeliveryErrorCode(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"retryAfter", &retryAfterError{seconds: 10, code: "telegram_rate_limited"}, "telegram_rate_limited"},
+		{"telegram 4xx", errors.New("telegram_client_error_400: Bad Request: chat not found"), "telegram_client_error_400"},
+		{"http 5xx", errors.New("http_webhook_status_503: Service Unavailable"), "http_webhook_status_503"},
+		{"wrapped decrypt", errors.New("decrypt_secret: aes: invalid key"), "decrypt_secret"},
+		{"network text", errors.New("dial tcp 10.0.0.1:8080: connect: connection refused"), "delivery_failed"},
+		{"ssrf", errors.New("ssrf_blocked"), "ssrf_blocked"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := deliveryErrorCode(tc.err); got != tc.want {
+				t.Fatalf("deliveryErrorCode = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestValidateWebhookURLRejectsNonHTTPSAndPrivate(t *testing.T) {
 	cases := []struct {

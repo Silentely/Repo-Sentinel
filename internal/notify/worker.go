@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"log/slog"
 	"math"
 	"net"
@@ -81,7 +82,9 @@ func (w *Worker) tick(ctx context.Context) {
 	items, err := w.Store.Outbox().ClaimDue(ctx, time.Now().UTC(), 2*time.Minute, 20)
 	if err != nil {
 		if w.Logger != nil {
-			w.Logger.Error("outbox claim failed", "error_code", "database_unavailable")
+			// 领取失败必须携带真实错误，否则数据库抖动时只有 error_code 无法区分
+			// 是连接、锁还是迁移问题。
+			w.Logger.Error("outbox claim failed", "error_code", "database_unavailable", "error", err.Error())
 		}
 		return
 	}
@@ -122,7 +125,8 @@ func (w *Worker) tick(ctx context.Context) {
 				"outbox_id", item.ID,
 				"channel_id", item.ChannelID,
 				"channel_type", channelType,
-				"title", item.Title,
+				"attempt", item.AttemptCount,
+				"title", truncateLogTitle(item.Title),
 			)
 		}
 		if w.OnSent != nil {
@@ -205,22 +209,26 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusTooManyRequests {
-		// 解析 Telegram 返回的 retry_after 字段
+		// 先读限流响应体，再从中解析 retry_after 字段。
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, bodyDetailLimit))
 		var tgResp struct {
 			Parameters struct {
 				RetryAfter int `json:"retry_after"`
 			} `json:"parameters"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&tgResp); err == nil && tgResp.Parameters.RetryAfter > 0 {
+		if json.Unmarshal(raw, &tgResp) == nil && tgResp.Parameters.RetryAfter > 0 {
 			return &retryAfterError{seconds: tgResp.Parameters.RetryAfter, code: "telegram_rate_limited"}
 		}
 		return &retryAfterError{seconds: 30, code: "telegram_rate_limited"}
 	}
+	// 4xx/5xx 读取响应体详情（截断），Telegram 会直接给出「chat not found」等可行动原因，
+	// 带进错误后日志与 Outbox 排障无需再抓包。
+	detail := readBodyDetail(resp)
 	if resp.StatusCode >= 500 || resp.StatusCode == 408 || resp.StatusCode == 425 {
-		return fmt.Errorf("telegram_http_%d", resp.StatusCode)
+		return deliveryErrorf(fmt.Sprintf("telegram_http_%d", resp.StatusCode), detail)
 	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("telegram_client_error_%d", resp.StatusCode)
+		return deliveryErrorf(fmt.Sprintf("telegram_client_error_%d", resp.StatusCode), detail)
 	}
 	return nil
 }
@@ -266,19 +274,18 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 		if ra := parseRetryAfter(resp); ra > 0 {
 			return &retryAfterError{seconds: ra, code: "http_webhook_retry_after"}
 		}
-		return fmt.Errorf("http_webhook_status_%d", resp.StatusCode)
+		return deliveryErrorf(fmt.Sprintf("http_webhook_status_%d", resp.StatusCode), readBodyDetail(resp))
 	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("http_webhook_client_%d", resp.StatusCode)
+		return deliveryErrorf(fmt.Sprintf("http_webhook_client_%d", resp.StatusCode), readBodyDetail(resp))
 	}
 	return nil
 }
 
 func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbox, err error) {
-	code := "delivery_failed"
+	code := deliveryErrorCode(err)
 	var ra *retryAfterError
 	if errors.As(err, &ra) {
-		code = ra.code
 		// 限流退避同样受重试上限约束，否则目标长期 429 时条目会无限重投。
 		if item.AttemptCount >= maxAttempts {
 			w.markDead(ctx, item.ID, code)
@@ -320,6 +327,76 @@ func (w *Worker) markDead(ctx context.Context, id, code string) {
 type retryAfterError struct {
 	seconds int
 	code    string
+}
+
+// bodyDetailLimit 是错误详情携带的响应体上限：足够容纳 Telegram/接收端
+// 一行可行动原因（如 chat not found），又不会把整段 HTML 错误页写进日志。
+const bodyDetailLimit = 512
+
+// logTitleLimit 是日志中 title 字段的上限：通知标题可能携带超长正文摘要，
+// 全量写入会让单行日志膨胀，截断保留可读前缀即可。
+const logTitleLimit = 120
+
+// truncateLogTitle 按码点截断日志标题并追加省略号，避免超长标题刷屏。
+func truncateLogTitle(title string) string {
+	runes := []rune(title)
+	if len(runes) <= logTitleLimit {
+		return title
+	}
+	return string(runes[:logTitleLimit]) + "…"
+}
+
+// readBodyDetail 读取响应体前 bodyDetailLimit 字节并压缩为单行文本；
+// 读取失败或内容为空时返回空串，由调用方决定是否拼接。
+func readBodyDetail(resp *http.Response) string {
+	if resp == nil || resp.Body == nil {
+		return ""
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, bodyDetailLimit))
+	if err != nil {
+		return ""
+	}
+	text := strings.TrimSpace(string(raw))
+	if text == "" {
+		return ""
+	}
+	// 压缩连续空白与控制字符，避免换行/ANSI 序列污染 JSON 日志单行。
+	text = strings.Join(strings.Fields(text), " ")
+	if len(text) > bodyDetailLimit {
+		text = text[:bodyDetailLimit] + "…"
+	}
+	return text
+}
+
+// deliveryErrorf 组装投递错误：错误串以稳定错误码开头（如 telegram_client_error_400），
+// 有响应体详情时追加「: 详情」，便于日志阅读与 deliveryErrorCode 前缀提取。
+func deliveryErrorf(code, detail string) error {
+	if detail == "" {
+		return errors.New(code)
+	}
+	return fmt.Errorf("%s: %s", code, detail)
+}
+
+// deliveryCodeRe 限定错误码风格：小写字母开头、仅含小写字母/数字/下划线，
+// 用于从错误串中提取稳定前缀，防止响应体详情等长文本写入 last_error_code。
+var deliveryCodeRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// deliveryErrorCode 从投递错误推导稳定的错误码（写入 outbox.last_error_code，
+// 管理台「投递记录」页直接展示）：retryAfterError 用自带 code；其余错误取
+// 错误串冒号前的稳定前缀，非代码风格一律归为 delivery_failed。
+func deliveryErrorCode(err error) string {
+	var ra *retryAfterError
+	if errors.As(err, &ra) {
+		return ra.code
+	}
+	s := err.Error()
+	if i := strings.Index(s, ": "); i > 0 {
+		s = s[:i]
+	}
+	if deliveryCodeRe.MatchString(s) {
+		return s
+	}
+	return "delivery_failed"
 }
 
 // telegramTextLimit 是 Telegram 消息正文的保守上限。

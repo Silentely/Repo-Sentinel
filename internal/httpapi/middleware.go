@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -56,13 +58,22 @@ func (s *server) accessLogMiddleware(next http.Handler) http.Handler {
 func (s *server) recoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
-			if recover() == nil {
+			recovered := recover()
+			if recovered == nil {
 				return
 			}
+			// panic 值常携带关键线索（如空指针解引用对象），必须进 Error 日志；
+			// 完整堆栈较大，放 Debug 级别避免刷屏，排查时把 logging.level 调成 debug 即可复现。
 			s.dependencies.Logger.Error(
 				"http panic recovered",
 				"request_id", requestIDFromContext(r.Context()),
 				"error_code", errorCodeInternal,
+				"panic", fmt.Sprintf("%v", recovered),
+			)
+			s.dependencies.Logger.Debug(
+				"http panic stack",
+				"request_id", requestIDFromContext(r.Context()),
+				"stack", string(debug.Stack()),
 			)
 			s.writeAPIError(w, r, http.StatusInternalServerError, errorCodeInternal, nil)
 		}()

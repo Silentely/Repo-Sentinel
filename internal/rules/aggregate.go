@@ -217,7 +217,7 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 		if len(sub) == 0 {
 			continue
 		}
-		title, body := renderMergedMessage(b.repoName, b.category, sub)
+		title, body := renderMergedMessage(b.repoName, b.category, sub, time.Now().UTC())
 		variant := fmt.Sprintf("agg|%s|%s|%d", b.repoID, b.category, bucket)
 		idem := idempotencyKey(ch.ID, b.repoID, variant)
 		eventID := sub[0].ID
@@ -236,7 +236,8 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 }
 
 // renderMergedMessage 由事件子集构建合并标题与正文（对 Telegram HTML 做转义）。
-func renderMergedMessage(repoName, category string, events []*store.Event) (string, string) {
+// windowEnd 为合并窗口结束时刻，正文标注批次时间便于用户判断通知对应的窗口。
+func renderMergedMessage(repoName, category string, events []*store.Event, windowEnd time.Time) (string, string) {
 	categoryCN := categoryDisplayName(category)
 	title := fmt.Sprintf("📋 %s：%s × %d（已合并）", htmlpkg.EscapeString(repoName), htmlpkg.EscapeString(categoryCN), len(events))
 	var body strings.Builder
@@ -256,6 +257,10 @@ func renderMergedMessage(repoName, category string, events []*store.Event) (stri
 		// 状态中文放标题前，合并列表同样一眼可读。
 		body.WriteString(fmt.Sprintf("%s [%s]%s %s\n", statusEmoji, htmlpkg.EscapeString(statusLabel), numStr, htmlpkg.EscapeString(ev.Title)))
 	}
+	if !windowEnd.IsZero() {
+		body.WriteString("────────────────\n")
+		body.WriteString(fmt.Sprintf("⏰ 时间：%s\n", windowEnd.UTC().Format("2006-01-02 15:04 UTC")))
+	}
 	return title, body.String()
 }
 
@@ -266,10 +271,11 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 	}
 	bucket := timeBucket(time.Now().UTC(), a.BurstWindow)
 	categoryCN := categoryDisplayName(cat)
+	now := time.Now().UTC()
 	safeTitle := htmlpkg.EscapeString(title)
 	safeRepo := htmlpkg.EscapeString(repoName)
 	safeCat := htmlpkg.EscapeString(categoryCN)
-	body := fmt.Sprintf("<b>%s</b>\n────────────────\n📦 仓库：<code>%s</code>\n📋 类型：%s\n🔇 已降级为摘要模式，请在仪表盘查看详情", safeTitle, safeRepo, safeCat)
+	body := fmt.Sprintf("<b>%s</b>\n────────────────\n📦 仓库：<code>%s</code>\n📋 类型：%s\n🔇 已降级为摘要模式，请在仪表盘查看详情\n⏰ 时间：%s", safeTitle, safeRepo, safeCat, now.Format("2006-01-02 15:04 UTC"))
 	for _, ch := range channels {
 		// 以 sample 事件的类型判定渠道是否接收超频摘要。
 		if !ch.Enabled || !ch.AcceptsKind(sample.Kind) {
@@ -283,6 +289,8 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 			AggregateKey: repoID + "|burst", IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: safeTitle, BodyText: body, ParseMode: "HTML",
+			// 有事件链接时附带跳转按钮，用户可从摘要直达原始事件。
+			HTMLURL: sample.HTMLURL,
 		})
 		if err != nil && !errors.Is(err, store.ErrConflict) {
 			return err

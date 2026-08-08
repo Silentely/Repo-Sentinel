@@ -195,7 +195,9 @@ func (g *Generator) filteredEvents(ctx context.Context, since time.Time, limit i
 // fallback（AI 调用失败/输出为空/质量不达标，回退模板），配合 ai 层 ai request ok/failed 日志
 // （携带同一 req_id），可完整还原「有没有发请求、AI 有没有参与、失败是网络还是上游问题」。
 func (g *Generator) reportBody(ctx context.Context, title string, events []store.Event, period string) (string, bool) {
-	template := buildReportBody(title, events, period)
+	// 仓库名映射一次批量拉取，模板预览与 AI 总结共用，避免两处各自查询造成 N+1。
+	names := g.repoNames(ctx, events)
+	template := buildReportBody(title, events, period, names)
 	if g.AI == nil || !g.AI.IsDigestEnabled() || len(events) == 0 {
 		if g.Logger != nil {
 			reason := "ai_not_enabled"
@@ -209,7 +211,7 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 	// 为本次 AI 决策注入请求关联 ID：参与度日志与 ai 层调用日志共用同一 req_id。
 	ctx, reqID := ai.EnsureRequestID(ctx)
 	start := time.Now()
-	summary, err := g.AI.SummarizeEvents(ctx, events, g.repoNames(ctx, events), period)
+	summary, err := g.AI.SummarizeEvents(ctx, events, names, period)
 	duration := time.Since(start)
 	if err != nil || strings.TrimSpace(summary) == "" {
 		if g.Logger != nil {
@@ -316,11 +318,13 @@ func (g *Generator) enqueue(
 
 // buildDigestBody 保留兼容入口：每日摘要模板正文（「过去 24 小时」时段文案）。
 func buildDigestBody(title string, events []store.Event) string {
-	return buildReportBody(title, events, "过去 24 小时")
+	return buildReportBody(title, events, "过去 24 小时", nil)
 }
 
 // buildReportBody 构建分组格式的定期报告正文。
-func buildReportBody(title string, events []store.Event, period string) string {
+// repoNames 为仓库 ID → full_name 映射（可为 nil）：预览行带仓库名便于多仓用户
+// 一眼区分事件归属；映射缺失时回退原格式（不带仓库前缀）。
+func buildReportBody(title string, events []store.Event, period string, repoNames map[string]string) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
 	b.WriteString("────────────────\n")
@@ -353,7 +357,7 @@ func buildReportBody(title string, events []store.Event, period string) string {
 		b.WriteString(fmt.Sprintf("%s %s × %d\n", kindEmoji(g.kind), kindDisplayName(g.kind), g.count))
 	}
 
-	// 最近 5 条事件预览（状态中文一眼可读）
+	// 最近 5 条事件预览（状态中文一眼可读，多仓用户靠仓库名区分归属）
 	maxPreview := 5
 	b.WriteString("────────────────\n")
 	b.WriteString("最近活动：\n")
@@ -362,13 +366,29 @@ func buildReportBody(title string, events []store.Event, period string) string {
 			break
 		}
 		status := digestStatusLabel(ev)
+		repoPrefix := ""
+		if repoNames != nil && ev.RepositoryID != nil {
+			if name := repoNames[*ev.RepositoryID]; name != "" {
+				repoPrefix = name
+			}
+		}
 		numStr := ""
 		if ev.SubjectNumber != nil {
-			numStr = fmt.Sprintf(" #%d", *ev.SubjectNumber)
+			numStr = fmt.Sprintf("#%d", *ev.SubjectNumber)
 		}
 		// 标题来自 GitHub 用户输入，正文以 ParseMode=HTML 发送，必须转义，
 		// 否则 <、& 等字符会破坏消息或注入 HTML（与 renderMessage 保持一致）。
-		b.WriteString(fmt.Sprintf("• [%s]%s %s\n", status, numStr, htmlpkg.EscapeString(ev.Title)))
+		// 按段拼接避免「无仓库且无编号」时出现双空格。
+		var line strings.Builder
+		line.WriteString(fmt.Sprintf("• [%s]", status))
+		if repoPrefix != "" {
+			line.WriteString(" " + repoPrefix)
+		}
+		if numStr != "" {
+			line.WriteString(numStr)
+		}
+		line.WriteString(" " + htmlpkg.EscapeString(ev.Title))
+		b.WriteString(line.String() + "\n")
 	}
 
 	return b.String()

@@ -1,12 +1,15 @@
 package notify
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -132,8 +135,9 @@ func TestWorkerTickDeliveryFailureRetries(t *testing.T) {
 	if got[0].Status != store.OutboxPending {
 		t.Fatalf("普通失败应保持 pending 重试，实际 %s", got[0].Status)
 	}
-	if got[0].LastErrorCode != "delivery_failed" {
-		t.Fatalf("错误码 = %q, want delivery_failed", got[0].LastErrorCode)
+	// 语义化错误码：5xx 应直接展示 http_webhook_status_503，而不是笼统的 delivery_failed。
+	if got[0].LastErrorCode != "http_webhook_status_503" {
+		t.Fatalf("错误码 = %q, want http_webhook_status_503", got[0].LastErrorCode)
 	}
 	if deadFired {
 		t.Fatal("未到上限不应触发死信")
@@ -270,5 +274,65 @@ func TestWorkerTickBodyJSONPreserved(t *testing.T) {
 	w.tick(t.Context())
 	if gotEvent == nil || gotEvent["kind"] != "issue" || gotEvent["action"] != "opened" {
 		t.Fatalf("BodyJSON 未保留: %v", gotEvent)
+	}
+}
+
+// TestTickDeliveredLogCarriesAttemptAndTruncatedTitle 投递成功日志应带 attempt 计数，
+// 超长标题截断展示，避免单行日志膨胀。
+func TestTickDeliveredLogCarriesAttemptAndTruncatedTitle(t *testing.T) {
+	st := openWorkerTestStore(t)
+	ring := newWorkerKeyRing(t)
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	ch := seedWebhookChannel(t, st, ring, srv.URL)
+	longTitle := strings.Repeat("长", 300)
+	if _, err := st.Outbox().Create(t.Context(), store.NotificationOutbox{
+		ID: ulid.Make().String(), ChannelID: ch.ID, IdempotencyKey: "idem|log-title",
+		Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
+		Title: longTitle, BodyText: "b", AttemptCount: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var logBuffer bytes.Buffer
+	w := &Worker{
+		Store: st, KeyRing: ring, Client: srv.Client(), AAD: "reposentinel:notify-secret:v1",
+		Logger: slog.New(slog.NewJSONHandler(&logBuffer, nil)),
+	}
+	w.tick(t.Context())
+
+	logs := logBuffer.String()
+	if !strings.Contains(logs, "notification delivered") {
+		t.Fatalf("应记录投递成功日志，实际: %s", logs)
+	}
+	// ClaimDue 领取时递增尝试次数（2 → 3），日志应展示领取后的真实计数。
+	if !strings.Contains(logs, `"attempt":3`) {
+		t.Fatalf("投递成功日志应携带领取后的 attempt 计数，实际: %s", logs)
+	}
+	if strings.Contains(logs, longTitle) {
+		t.Fatalf("超长标题应截断展示，实际: %s", logs)
+	}
+	if !strings.Contains(logs, "…") {
+		t.Fatalf("截断标题应带省略号，实际: %s", logs)
+	}
+}
+
+// TestTruncateLogTitle 标题截断边界：短标题原样返回，超长按码点截断不产生乱码。
+func TestTruncateLogTitle(t *testing.T) {
+	short := strings.Repeat("a", logTitleLimit)
+	if got := truncateLogTitle(short); got != short {
+		t.Fatalf("等于上限的标题不应截断，got len=%d", len(got))
+	}
+	long := strings.Repeat("中", logTitleLimit+10)
+	got := truncateLogTitle(long)
+	if strings.ContainsRune(got, '\uFFFD') {
+		t.Fatal("截断结果不应包含替换字符乱码")
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("截断标题应带省略号，实际尾部: %q", got[len(got)-8:])
 	}
 }

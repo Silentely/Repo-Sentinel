@@ -111,6 +111,7 @@ func TestJSON解码拒绝未知字段非JSON与超过一MiB请求体(t *testing.
 	assertAPIError(t, oversized, http.StatusRequestEntityTooLarge, "validation_failed")
 }
 
+// TestPanic恢复返回内部错误且不泄漏堆栈或Panic内容
 func TestPanic恢复返回内部错误且不泄漏堆栈或Panic内容(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{
 		ready: ReadyCheckFunc(func(context.Context) error {
@@ -126,6 +127,29 @@ func TestPanic恢复返回内部错误且不泄漏堆栈或Panic内容(t *testin
 	}
 	if response.Header().Get("X-Request-ID") == "" {
 		t.Fatal("panic 响应仍必须包含 X-Request-ID")
+	}
+}
+
+// TestPanic日志携带Panic值与堆栈 panic 恢复日志必须同时携带 panic 值与调用堆栈，
+// 否则事故现场只剩 error_code=internal_error，无法定位 panic 源头。
+func TestPanic日志携带Panic值与堆栈(t *testing.T) {
+	var logBuffer bytes.Buffer
+	s := &server{dependencies: Dependencies{Logger: slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug}))}}
+	handler := s.recoveryMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom: nil pointer dereference")
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard", nil)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	logs := logBuffer.String()
+	if !strings.Contains(logs, "boom: nil pointer dereference") {
+		t.Fatalf("panic 日志应携带 panic 值，实际日志: %s", logs)
+	}
+	if !strings.Contains(logs, "recoveryMiddleware") {
+		t.Fatalf("panic 日志应携带调用堆栈（含 recoveryMiddleware 帧），实际日志: %s", logs)
+	}
+	if !strings.Contains(logs, "error_code=internal_error") && !strings.Contains(logs, `"error_code":"internal_error"`) {
+		t.Fatalf("panic 日志应保留 error_code=internal_error，实际日志: %s", logs)
 	}
 }
 
