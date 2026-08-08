@@ -197,7 +197,6 @@ func TestProcessRuleErrorLogCarriesRepo(t *testing.T) {
 	}
 	payload := issueOpenedPayload(t)
 	rowID := seedDelivery(t, data, "delivery-rule-log", "issues", payload)
-
 	svc.Process(rowID, "issues", "delivery-rule-log", payload)
 
 	logs := logBuffer.String()
@@ -207,6 +206,51 @@ func TestProcessRuleErrorLogCarriesRepo(t *testing.T) {
 	if !strings.Contains(logs, "acme/demo") {
 		t.Fatalf("rule 失败日志应携带仓库名 acme/demo，实际日志: %s", logs)
 	}
+}
+
+// TestProcessFailureInvokesOnFailed 规范化与规则评估失败都必须触发 OnFailed 指标回调，
+// 保证 httpapi 的 webhook_failed_total 与实际失败行一致。
+func TestProcessFailureInvokesOnFailed(t *testing.T) {
+	t.Run("normalize_failed", func(t *testing.T) {
+		data := openServiceStore(t)
+		seedActiveDemoRepo(t, data)
+		called := 0
+		svc := &webhooksvc.Service{
+			Store:      data,
+			Evaluator:  failingEvaluator{},
+			Background: t.Context(),
+			OnFailed:   func() { called++ },
+		}
+		// 非法 JSON 触发规范化失败。
+		bad := []byte(`{not-json`)
+		rowID := seedDelivery(t, data, "delivery-bad", "issues", bad)
+
+		svc.Process(rowID, "issues", "delivery-bad", bad)
+
+		if called != 1 {
+			t.Fatalf("规范化失败应触发 OnFailed 一次，实际 %d", called)
+		}
+	})
+
+	t.Run("rule_failed", func(t *testing.T) {
+		data := openServiceStore(t)
+		seedActiveDemoRepo(t, data)
+		called := 0
+		svc := &webhooksvc.Service{
+			Store:      data,
+			Evaluator:  failingEvaluator{},
+			Background: t.Context(),
+			OnFailed:   func() { called++ },
+		}
+		payload := issueOpenedPayload(t)
+		rowID := seedDelivery(t, data, "delivery-rule-cb", "issues", payload)
+
+		svc.Process(rowID, "issues", "delivery-rule-cb", payload)
+
+		if called != 1 {
+			t.Fatalf("规则评估失败应触发 OnFailed 一次，实际 %d", called)
+		}
+	})
 }
 
 // TestProcessBaselineSuppressSkipsEvaluator 新仓库（基线）→ 抑制实时通知，Evaluator 不触发，

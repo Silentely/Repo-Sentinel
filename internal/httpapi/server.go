@@ -164,6 +164,7 @@ func New(dependencies Dependencies) http.Handler {
 			Evaluator:  dependencies.Aggregator,
 			AI:         dependencies.AI,
 			Background: dependencies.Background,
+			OnFailed:   MetricsIncWebhookFailed,
 		},
 	}
 	// 若运行时 Public Base URL 来自管理台，启动后仍以当前快照为准（见 cookiesSecure）。

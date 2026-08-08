@@ -29,6 +29,17 @@ type Service struct {
 	AI *ai.Client
 	// Background 后台任务生命周期；关闭时由 App 取消。
 	Background context.Context
+	// OnFailed 可选指标回调：规范化或规则评估失败时触发（与 notify 的 OnSent 同模式，
+	// 避免 webhooksvc 反向依赖 httpapi）。
+	OnFailed func()
+}
+
+// markFailed 统一处理失败分支：标记投递失败（带语义化错误码）、记录失败指标回调。
+func (s *Service) markFailed(markCtx context.Context, rowID, errorCode string) {
+	_ = s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, errorCode)
+	if s.OnFailed != nil {
+		s.OnFailed()
+	}
 }
 
 // Process 执行规范化 → 通知 → 状态机标记的完整管线。
@@ -45,7 +56,7 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	proc := &normalizer.Processor{Store: s.Store}
 	res, err := proc.Process(ctx, eventType, deliveryID, body)
 	if err != nil {
-		_ = s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, "normalize_failed")
+		s.markFailed(markCtx, rowID, "normalize_failed")
 		// 规范化失败时仓库信息尚未解析出来，repo 留空由调用方从日志链路定位。
 		s.logError("webhook normalize failed", deliveryID, eventType, "normalize_failed", "", err.Error(), time.Since(startedAt).Milliseconds())
 		return
@@ -63,8 +74,8 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 		}
 		if err != nil {
 			// 通知已丢：状态必须可查，标记为失败而不是 processed。
+			s.markFailed(markCtx, rowID, "rule_failed")
 			s.logError("rule evaluate failed", deliveryID, eventType, "rule_failed", repoName, err.Error(), time.Since(startedAt).Milliseconds())
-			_ = s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, "rule_failed")
 			return
 		}
 	}

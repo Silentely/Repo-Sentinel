@@ -85,6 +85,7 @@ export function LoginPage({
             label="用户名"
             icon={<UserRound aria-hidden="true" size={17} />}
             autoComplete="username"
+            autoFocus
             error={errors.username?.message}
             registration={register("username")}
           />

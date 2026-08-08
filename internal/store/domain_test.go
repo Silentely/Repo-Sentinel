@@ -44,6 +44,31 @@ func TestKindDisplayName(t *testing.T) {
 	}
 }
 
+// TestWorkflowConclusionLabel 守护 workflow 结论中文标签映射：
+// rules 通知与 digest 报告共用，任何一侧的用例回归都说明映射被改坏。
+func TestWorkflowConclusionLabel(t *testing.T) {
+	cases := []struct {
+		conclusion, want string
+	}{
+		{"success", "成功"},
+		{"failure", "失败"},
+		{"startup_failure", "失败"},
+		{"timed_out", "超时"},
+		{"cancelled", "已取消"},
+		{"action_required", "需处理"},
+		{"skipped", "已跳过"},
+		{"in_progress", "进行中"},
+		{"queued", "进行中"},
+		{"pending", "进行中"},
+		{"unknown", "已完成"},
+	}
+	for _, tc := range cases {
+		if got := WorkflowConclusionLabel(tc.conclusion); got != tc.want {
+			t.Errorf("WorkflowConclusionLabel(%q) = %q, want %q", tc.conclusion, got, tc.want)
+		}
+	}
+}
+
 // TestPayloadString 守护 PayloadSummary 字符串读取：类型不符、nil、缺失键均返回空。
 func TestPayloadString(t *testing.T) {
 	m := map[string]any{"key": "value", "num": 42, "slice": []any{"a"}}

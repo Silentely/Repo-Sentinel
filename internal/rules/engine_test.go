@@ -650,7 +650,9 @@ func TestWorkflowConclusionEmoji_All(t *testing.T) {
 	}{
 		{"success", "✅"}, {"failure", "❌"}, {"cancelled", "⏹️"},
 		{"timed_out", "⏱️"}, {"action_required", "🔔"}, {"skipped", "⏭️"},
-		{"startup_failure", "💥"}, {"unknown", "📊"},
+		// startup_failure 与 failure 同属失败类，展示同一 ❌（与通知标题语义一致）；
+		// 未知结论在 IsFailureConclusion 兜底后仍失败类，否则用中性 📊。
+		{"startup_failure", "❌"}, {"unknown", "📊"},
 	}
 	for _, tc := range cases {
 		if got := workflowConclusionEmoji(tc.conclusion); got != tc.want {

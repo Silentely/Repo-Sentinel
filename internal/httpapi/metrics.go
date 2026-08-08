@@ -14,6 +14,7 @@ var (
 	metricWebhookAccepted   atomic.Uint64
 	metricWebhookDuplicate  atomic.Uint64
 	metricWebhookInvalidSig atomic.Uint64
+	metricWebhookFailed     atomic.Uint64
 	metricOutboxSent        atomic.Uint64
 	metricOutboxDead        atomic.Uint64
 	metricReconcileRuns     atomic.Uint64
@@ -27,6 +28,9 @@ func MetricsIncWebhookDuplicate() { metricWebhookDuplicate.Add(1) }
 
 // MetricsIncWebhookInvalidSig 记录验签失败。
 func MetricsIncWebhookInvalidSig() { metricWebhookInvalidSig.Add(1) }
+
+// MetricsIncWebhookFailed 记录后台处理失败（规范化或规则评估），与 WebhookDelivery 的 failed 状态对应。
+func MetricsIncWebhookFailed() { metricWebhookFailed.Add(1) }
 
 // MetricsIncOutboxSent 记录通知发送成功。
 func MetricsIncOutboxSent() { metricOutboxSent.Add(1) }
@@ -67,6 +71,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	writeMetric("reposentinel_webhook_accepted_total", "Accepted GitHub webhook deliveries", "counter", metricWebhookAccepted.Load())
 	writeMetric("reposentinel_webhook_duplicate_total", "Duplicate GitHub webhook deliveries", "counter", metricWebhookDuplicate.Load())
 	writeMetric("reposentinel_webhook_invalid_signature_total", "Webhook signature failures", "counter", metricWebhookInvalidSig.Load())
+	writeMetric("reposentinel_webhook_failed_total", "Webhook deliveries that failed processing", "counter", metricWebhookFailed.Load())
 	writeMetric("reposentinel_outbox_sent_total", "Successfully delivered notifications", "counter", metricOutboxSent.Load())
 	writeMetric("reposentinel_outbox_dead_total", "Notifications moved to dead letter", "counter", metricOutboxDead.Load())
 	writeMetric("reposentinel_reconcile_runs_total", "Reconcile job executions", "counter", metricReconcileRuns.Load())

@@ -36,6 +36,8 @@ export interface AuthFieldProps {
   icon: ReactNode;
   type?: "text" | "password";
   autoComplete?: string;
+  /** 页面载入时自动聚焦（登录页用户名）；表单在可见区域内时才有意义。 */
+  autoFocus?: boolean;
   // 校验错误消息；存在时展示红色错误提示。
   error?: string;
   // 无错误时的帮助文本（如密码强度规则）。
@@ -44,7 +46,7 @@ export interface AuthFieldProps {
 }
 
 /** 认证表单字段：label + 图标输入框 + 校验错误/帮助文本。 */
-export function AuthField({ id, label, icon, type = "text", autoComplete, error, help, registration }: AuthFieldProps) {
+export function AuthField({ id, label, icon, type = "text", autoComplete, autoFocus, error, help, registration }: AuthFieldProps) {
   const errorId = `${id}-error`;
   const helpId = `${id}-help`;
   return (
@@ -56,6 +58,7 @@ export function AuthField({ id, label, icon, type = "text", autoComplete, error,
           id={id}
           type={type}
           autoComplete={autoComplete}
+          autoFocus={autoFocus}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? errorId : help ? helpId : undefined}
           {...registration}

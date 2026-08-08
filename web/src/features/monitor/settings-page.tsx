@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CheckCircle2, CircleDashed, ExternalLink } from "lucide-react";
@@ -8,6 +8,7 @@ import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { changePassword } from "../auth/api";
 import { toApiError } from "../../lib/api/errors";
+import { useAutoDismiss } from "../../lib/use-auto-dismiss";
 import { syncStatusLabel } from "../../lib/format";
 import {
   activateRepository,
@@ -182,10 +183,10 @@ export function SettingsPage() {
   const settings = useQuery(settingsQueryOptions);
   const repos = useQuery(repositoriesQueryOptions);
   const { form, set } = useSettingsForm(settings.data);
-  const [settingsMsg, setSettingsMsg] = useState("");
-  const [featuresMsg, setFeaturesMsg] = useState("");
-  const [aiMsg, setAIMsg] = useState("");
-  const [passwordMsg, setPasswordMsg] = useState("");
+  const [settingsMsg, setSettingsMsg] = useAutoDismiss();
+  const [featuresMsg, setFeaturesMsg] = useAutoDismiss();
+  const [aiMsg, setAIMsg] = useAutoDismiss();
+  const [passwordMsg, setPasswordMsg] = useAutoDismiss();
   const [passwordError, setPasswordError] = useState<string>();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");

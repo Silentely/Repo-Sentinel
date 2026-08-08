@@ -316,25 +316,7 @@ func statusDisplay(ev *store.Event) (emoji, label string) {
 		if ev.Action == "recovered" {
 			return "🟢", "已恢复"
 		}
-		switch ev.WorkflowConclusion {
-		case "success":
-			return "✅", "成功"
-		case "failure", "startup_failure":
-			return "❌", "失败"
-		case "cancelled":
-			return "⏹️", "已取消"
-		case "timed_out":
-			return "⏱️", "超时"
-		case "action_required":
-			return "🔔", "需处理"
-		case "skipped":
-			return "⏭️", "已跳过"
-		default:
-			if store.IsFailureConclusion(ev.WorkflowConclusion) {
-				return "❌", "失败"
-			}
-			return "⚙️", "已完成"
-		}
+		return workflowConclusionEmoji(ev.WorkflowConclusion), store.WorkflowConclusionLabel(ev.WorkflowConclusion)
 	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
 		switch ev.Action {
 		case "created", "opened", "reopened":
@@ -377,6 +359,29 @@ func statusDisplay(ev *store.Event) (emoji, label string) {
 			return eventEmoji(ev), actionDisplayName(ev.Action)
 		}
 		return eventEmoji(ev), "有更新"
+	}
+}
+
+// workflowConclusionEmoji 返回 Workflow 结论的 emoji（label 由 store.WorkflowConclusionLabel 提供）。
+func workflowConclusionEmoji(conclusion string) string {
+	switch conclusion {
+	case "success":
+		return "✅"
+	case "failure", "startup_failure":
+		return "❌"
+	case "cancelled":
+		return "⏹️"
+	case "timed_out":
+		return "⏱️"
+	case "action_required":
+		return "🔔"
+	case "skipped":
+		return "⏭️"
+	default:
+		if store.IsFailureConclusion(conclusion) {
+			return "❌"
+		}
+		return "📊"
 	}
 }
 
@@ -500,28 +505,6 @@ func severityEmoji(severity string) string {
 		return "🟡"
 	default:
 		return "⚠️"
-	}
-}
-
-// workflowConclusionEmoji 根据 workflow 结论返回对应 emoji。
-func workflowConclusionEmoji(conclusion string) string {
-	switch conclusion {
-	case "success":
-		return "✅"
-	case "failure":
-		return "❌"
-	case "cancelled":
-		return "⏹️"
-	case "timed_out":
-		return "⏱️"
-	case "action_required":
-		return "🔔"
-	case "skipped":
-		return "⏭️"
-	case "startup_failure":
-		return "💥"
-	default:
-		return "📊"
 	}
 }
 

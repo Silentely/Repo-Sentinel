@@ -27,6 +27,16 @@ func TestMetricsEndpointOptionalToken(t *testing.T) {
 	if !strings.Contains(body, "reposentinel_webhook_accepted_total") {
 		t.Fatalf("body=%s", body)
 	}
+	// 处理失败计数应始终有行（含 0 值），便于监控端预置告警。
+	if !strings.Contains(body, "reposentinel_webhook_failed_total") {
+		t.Fatalf("期望包含 webhook 处理失败指标行，body=%s", body)
+	}
+	// 指标计数器累加后可观测到增量。
+	before := metricWebhookFailed.Load()
+	MetricsIncWebhookFailed()
+	if after := metricWebhookFailed.Load(); after != before+1 {
+		t.Fatalf("失败计数应 +1，before=%d after=%d", before, after)
+	}
 	// AI 指标默认输出（计数为 0 也应有行，便于监控端预置告警）。
 	if !strings.Contains(body, "reposentinel_ai_requests_total") ||
 		!strings.Contains(body, "reposentinel_ai_prompt_tokens_total") {

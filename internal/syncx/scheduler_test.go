@@ -35,6 +35,25 @@ func TestSchedulerFailureLogIncludesTaskAndDuration(t *testing.T) {
 	}
 }
 
+// TestSchedulerSuccessLogsAtDebug 成功留痕必须是 Debug 级：默认 Info 下不刷屏，
+// 开 debug 排查时能确认「任务已执行」并看到耗时。
+func TestSchedulerSuccessLogsAtDebug(t *testing.T) {
+	var logBuffer bytes.Buffer
+	s := &Scheduler{Logger: slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug}))}
+
+	s.runScheduledTask("external_poll", "scheduled external poll failed", "external_poll_failed", func() error {
+		return nil
+	})
+
+	logs := logBuffer.String()
+	if !strings.Contains(logs, `"level":"DEBUG"`) || !strings.Contains(logs, `"msg":"scheduled task ok"`) {
+		t.Fatalf("成功留痕应为 DEBUG 级 scheduled task ok，实际: %s", logs)
+	}
+	if !strings.Contains(logs, `"task":"external_poll"`) || !strings.Contains(logs, `"duration_ms":`) {
+		t.Fatalf("成功留痕应携带 task 与 duration_ms，实际: %s", logs)
+	}
+}
+
 // upsertSetting 写入系统设置（digest.Generator 的运行参数载体）。
 func upsertSetting(t *testing.T, data store.Store, key string, value any) {
 	t.Helper()
