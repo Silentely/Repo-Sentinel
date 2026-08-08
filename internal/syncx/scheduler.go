@@ -20,6 +20,21 @@ type Scheduler struct {
 	DigestEvery    time.Duration
 }
 
+// runScheduledTask 统一记录调度任务失败上下文；任务本身仍按调用方提供的顺序同步执行。
+// 只记录失败，避免按分钟级周期制造大量成功日志；duration_ms 便于区分慢任务与即时失败。
+func (s *Scheduler) runScheduledTask(task, message, errorCode string, run func() error) {
+	startedAt := time.Now()
+	if err := run(); err != nil && s.Logger != nil {
+		s.Logger.Error(
+			message,
+			"task", task,
+			"duration_ms", time.Since(startedAt).Milliseconds(),
+			"error_code", errorCode,
+			"error", err.Error(),
+		)
+	}
+}
+
 // Run 阻塞运行直到 ctx 取消。
 func (s *Scheduler) Run(ctx context.Context) {
 	if s.ReconcileEvery <= 0 {
@@ -45,32 +60,32 @@ func (s *Scheduler) Run(ctx context.Context) {
 		if s.Reconciler == nil {
 			return
 		}
-		if err := s.Reconciler.ReconcileAll(ctx, 15); err != nil && s.Logger != nil {
-			s.Logger.Error("scheduled reconcile failed", "error_code", "reconcile_failed", "error", err.Error())
-		}
+		s.runScheduledTask("reconcile", "scheduled reconcile failed", "reconcile_failed", func() error {
+			return s.Reconciler.ReconcileAll(ctx, 15)
+		})
 	}
 	runExternal := func() {
 		if s.External == nil {
 			return
 		}
-		if err := s.External.PollAll(ctx); err != nil && s.Logger != nil {
-			s.Logger.Error("scheduled external poll failed", "error_code", "external_poll_failed", "error", err.Error())
-		}
+		s.runScheduledTask("external_poll", "scheduled external poll failed", "external_poll_failed", func() error {
+			return s.External.PollAll(ctx)
+		})
 	}
 	runDigest := func() {
 		if s.Digest == nil {
 			return
 		}
 		now := time.Now()
-		if err := s.Digest.RunOnce(ctx, now); err != nil && s.Logger != nil {
-			s.Logger.Error("scheduled digest failed", "error_code", "digest_failed", "error", err.Error())
-		}
-		if err := s.Digest.RunWeekly(ctx, now); err != nil && s.Logger != nil {
-			s.Logger.Error("scheduled weekly report failed", "error_code", "weekly_report_failed", "error", err.Error())
-		}
-		if err := s.Digest.RunMonthly(ctx, now); err != nil && s.Logger != nil {
-			s.Logger.Error("scheduled monthly report failed", "error_code", "monthly_report_failed", "error", err.Error())
-		}
+		s.runScheduledTask("digest", "scheduled digest failed", "digest_failed", func() error {
+			return s.Digest.RunOnce(ctx, now)
+		})
+		s.runScheduledTask("weekly_report", "scheduled weekly report failed", "weekly_report_failed", func() error {
+			return s.Digest.RunWeekly(ctx, now)
+		})
+		s.runScheduledTask("monthly_report", "scheduled monthly report failed", "monthly_report_failed", func() error {
+			return s.Digest.RunMonthly(ctx, now)
+		})
 	}
 
 	for {

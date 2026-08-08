@@ -105,6 +105,30 @@ func TestSendHTTPHonorsRetryAfterHTTPDate(t *testing.T) {
 	}
 }
 
+// 超大的错误响应体只保留有限前缀，并明确提示已截断，避免上游错误页膨胀日志与 Outbox 错误详情。
+func TestSendHTTPTruncatesOversizedErrorBody(t *testing.T) {
+	const prefix = `{"error":"upstream exploded"}`
+	oversized := prefix + strings.Repeat("x", bodyDetailLimit*4)
+	w, ch, item := newWebhookHarness(t, func(rw http.ResponseWriter, _ *http.Request) {
+		rw.WriteHeader(http.StatusBadGateway)
+		_, _ = rw.Write([]byte(oversized))
+	})
+
+	err := w.sendHTTP(t.Context(), ch, "", item)
+	if err == nil {
+		t.Fatal("502 应返回错误")
+	}
+	if !strings.Contains(err.Error(), prefix) {
+		t.Fatalf("错误应保留响应体前缀，实际: %v", err)
+	}
+	if !strings.Contains(err.Error(), "响应体已截断") {
+		t.Fatalf("错误应说明响应体已截断，实际: %v", err)
+	}
+	if strings.Contains(err.Error(), strings.Repeat("x", bodyDetailLimit+1)) {
+		t.Fatal("错误不应携带超过响应体上限的连续内容")
+	}
+}
+
 // 出站 payload 必须同时携带 HTML 正文（body_text，兼容既有接收端）与纯文本（body_plain，
 // 供无 HTML 解析能力的接收端直接消费），且 body_plain 不含残留标签。
 func TestSendHTTPIncludesPlainBody(t *testing.T) {

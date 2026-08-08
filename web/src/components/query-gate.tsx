@@ -11,6 +11,8 @@ export interface QueryGateQuery {
   isLoading?: boolean;
   isError: boolean;
   error?: unknown;
+  /** TanStack Query 提供的重新获取动作；未提供时保持仅展示错误的兼容行为。 */
+  refetch?: () => unknown;
 }
 
 export interface QueryGateProps {
@@ -31,7 +33,20 @@ export function QueryGate({ query, errorTitle = "加载失败", skeleton, isEmpt
   const pending = query.isPending ?? query.isLoading ?? false;
   if (query.isError) {
     const apiError = toApiError(query.error);
-    return <ErrorAlert title={errorTitle} message={apiError.message} errorCode={apiError.errorCode} />;
+    return (
+      <ErrorAlert
+        title={errorTitle}
+        message={apiError.message}
+        errorCode={apiError.errorCode}
+        action={
+          query.refetch ? (
+            <button type="button" className="primary-button primary-button--inline" onClick={() => void query.refetch?.()}>
+              重试
+            </button>
+          ) : undefined
+        }
+      />
+    );
   }
   if (pending) {
     return <>{skeleton ?? <ListSkeleton />}</>;
