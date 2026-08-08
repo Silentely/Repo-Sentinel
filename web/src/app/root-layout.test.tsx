@@ -53,7 +53,7 @@ vi.mock("../features/monitor/api", () => ({
   },
 }));
 
-import { RootLayout } from "./root-layout";
+import { RootLayout, mobileTitleFor } from "./root-layout";
 
 const session: AuthenticationResponse = {
   admin: { id: "admin-1", username: "admin" },
@@ -155,5 +155,38 @@ describe("移动端抽屉导航", () => {
 
     expect(document.getElementById("app-sidebar")?.className).not.toContain("is-open");
     expect(screen.getByRole("button", { name: "打开导航菜单" })).toHaveFocus();
+  });
+});
+
+describe("移动端顶栏标题 mobileTitleFor", () => {
+  it("路由前缀映射到中文标题，且与侧栏导航文案一致", () => {
+    const cases: [string, string][] = [
+      ["/", "仪表盘"],
+      ["/repos", "仓库管理"],
+      ["/issues", "Issues"],
+      ["/pull-requests", "Pull Requests"],
+      ["/actions", "Actions"],
+      ["/security", "安全告警"],
+      ["/notifications", "渠道配置"],
+      ["/notifications/outbox", "投递记录"],
+      ["/github", "GitHub App"],
+      ["/about", "关于"],
+      ["/settings", "设置"],
+    ];
+    for (const [path, expected] of cases) {
+      expect(mobileTitleFor(path)).toBe(expected);
+    }
+  });
+
+  it("子路由继承父级标题：渠道配置子页不被误判为投递记录以外", () => {
+    // outbox 必须优先于 /notifications 前缀判定（顺序敏感回归）。
+    expect(mobileTitleFor("/notifications/outbox")).toBe("投递记录");
+    expect(mobileTitleFor("/notifications/outbox?status=dead")).toBe("投递记录");
+    expect(mobileTitleFor("/notifications")).toBe("渠道配置");
+    expect(mobileTitleFor("/repos/archive")).toBe("仓库管理");
+  });
+
+  it("未知路径回退「仪表盘」", () => {
+    expect(mobileTitleFor("/no-such-page")).toBe("仪表盘");
   });
 });

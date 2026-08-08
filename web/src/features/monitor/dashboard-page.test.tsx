@@ -245,13 +245,29 @@ describe("仪表盘", () => {
     expect(viewAll).toHaveAttribute("href", "/notifications/outbox");
   });
 
-  it("最近事件行关联仓库名，且事件面板无查看全部链接（暂无独立事件页）", async () => {
+  it("最近事件行关联仓库名，事件面板脚注提供分类快捷入口（无「查看全部」独立页）", async () => {
     renderPage();
 
     const eventsPanel = await screen.findByRole("region", { name: "最近事件" });
     await within(eventsPanel).findByText("事件 1");
     expect(within(eventsPanel).getAllByText("owner/repo-a").length).toBeGreaterThan(0);
     expect(within(eventsPanel).queryByRole("link", { name: "查看全部" })).toBeNull();
+
+    // 混合事件流提供分类快捷入口，按功能开关过滤。
+    expect(within(eventsPanel).getByRole("link", { name: "Issues" })).toHaveAttribute("href", "/issues");
+    expect(within(eventsPanel).getByRole("link", { name: "Pull Requests" })).toHaveAttribute("href", "/pull-requests");
+    expect(within(eventsPanel).getByRole("link", { name: "Actions" })).toHaveAttribute("href", "/actions");
+    expect(within(eventsPanel).getByRole("link", { name: "安全告警" })).toHaveAttribute("href", "/security");
+  });
+
+  it("事件面板快捷入口随功能开关过滤：关闭 Actions 后不再出现 Actions 链接", async () => {
+    (fixtures.settings as Record<string, unknown>)["feature.actions"] = false;
+    renderPage();
+
+    const eventsPanel = await screen.findByRole("region", { name: "最近事件" });
+    await within(eventsPanel).findByText("事件 1");
+    expect(within(eventsPanel).getByRole("link", { name: "Issues" })).toBeInTheDocument();
+    expect(within(eventsPanel).queryByRole("link", { name: "Actions" })).toBeNull();
   });
 
   it("数据量未超上限时按实际条数展示，不出现截断脚注与查看全部", async () => {

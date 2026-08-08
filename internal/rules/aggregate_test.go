@@ -26,6 +26,61 @@ func openTestStore(t *testing.T) store.Store {
 	return data
 }
 
+// renderMergedMessage 合并正文应包含批次时间，便于用户判断这批通知对应的合并窗口。
+func TestRenderMergedMessageIncludesWindowEnd(t *testing.T) {
+	ev := &store.Event{Kind: store.WorkItemKindIssue, Action: "opened", Title: "t1"}
+	windowEnd := time.Date(2026, 8, 8, 12, 34, 0, 0, time.UTC)
+	_, body := renderMergedMessage("acme/demo", "issue", []*store.Event{ev}, windowEnd)
+	if !strings.Contains(body, "2026-08-08 12:34 UTC") {
+		t.Fatalf("合并正文应包含窗口结束时间，实际: %s", body)
+	}
+	if !strings.Contains(body, "（已合并）") {
+		t.Fatalf("标题应带已合并标记，实际: %s", body)
+	}
+}
+
+// renderMergedMessage 零值时间不应输出时间行（保持向后兼容的纯列表格式）。
+func TestRenderMergedMessageZeroWindowEndOmitsTime(t *testing.T) {
+	ev := &store.Event{Kind: store.WorkItemKindIssue, Action: "opened", Title: "t1"}
+	_, body := renderMergedMessage("acme/demo", "issue", []*store.Event{ev}, time.Time{})
+	if strings.Contains(body, "⏰ 时间：") {
+		t.Fatalf("零值时间不应输出时间行，实际: %s", body)
+	}
+}
+
+// enqueueBurstSummary 超频摘要必须携带事件链接（Telegram inline 按钮）与时间行，
+// 让用户可从摘要直接跳到原始事件。
+func TestEnqueueBurstSummaryCarriesLinkAndTime(t *testing.T) {
+	data := openTestStore(t)
+	ch, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: "ch-burst", ChannelType: store.ChannelTelegram, Name: "tg", Enabled: true, Target: "chat-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sample := &store.Event{
+		ID: "ev-1", Kind: store.WorkItemKindIssue, Action: "opened",
+		HTMLURL: "https://github.com/acme/demo/issues/1",
+	}
+	a := NewAggregator(data, 60*time.Second, 15, 5*time.Minute)
+	if err := a.enqueueBurstSummary(t.Context(), "repo-1", "acme/demo", "issue", "⚠️ 通知频率超限", sample); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{ChannelIDs: []string{ch.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("期望 1 条 outbox，实际 %d", len(items))
+	}
+	if items[0].HTMLURL != "https://github.com/acme/demo/issues/1" {
+		t.Fatalf("超频摘要应携带事件链接，实际 %q", items[0].HTMLURL)
+	}
+	if !strings.Contains(items[0].BodyText, "⏰ 时间：") {
+		t.Fatalf("超频摘要正文应包含时间行，实际: %s", items[0].BodyText)
+	}
+}
+
 // waitOutboxCount 轮询等待 outbox 达到期望数量（默认 5s 超时）。
 // 聚合 flush 由 time.AfterFunc 异步触发，固定 sleep 在 CI 高负载 / -race 下
 // 可能早于 flush 完成而误报 got 0，轮询可消除此类时序 flaky。

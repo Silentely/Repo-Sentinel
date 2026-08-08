@@ -31,8 +31,9 @@ export interface RootLayoutProps {
   session: AuthenticationResponse;
 }
 
-/** 移动端顶栏标题：侧边栏收起后需要向用户明示当前位置。 */
-function mobileTitleFor(pathname: string): string {
+/** 移动端顶栏标题：侧边栏收起后需要向用户明示当前位置。
+ * 与路由树（router.tsx）一一对应，导出供单测锁定，防止路由调整后标题失配。 */
+export function mobileTitleFor(pathname: string): string {
   if (pathname.startsWith("/notifications/outbox")) return "投递记录";
   if (pathname.startsWith("/notifications")) return "渠道配置";
   if (pathname.startsWith("/repos")) return "仓库管理";

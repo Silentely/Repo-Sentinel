@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-08T09:01:00Z | 细节优化十项：①panic 恢复日志补 panic 值与调用堆栈；②outbox 领取失败日志补错误详情；③Telegram/HTTP 投递 4xx/5xx 截断响应体入错误，last_error_code 语义化（如 http_webhook_status_503）；④日报/周报/月报预览行带仓库名；⑤聚合消息补批次时间，超频摘要带事件跳转按钮；⑥功能开关守卫查询失败展示错误态；⑦仪表盘事件面板补分类快捷入口（随功能开关过滤）；⑧移动端顶栏标题函数导出并锁定单测；⑨投递成功日志补 attempt 计数、超长标题截断；⑩相关单测全部补齐 |
 | 2026-08-08T06:00:00Z | 前端导航重组：侧边栏「关于与设置」拆分为「关于」/「设置」两页；仪表盘「仓库与基线对账」面板迁入设置页，对账与基线放行集中在 /settings 维护；相关文案与文档链接同步更新 |
 | 2026-08-08T05:30:00Z | 仓库管理页新增「彻底删除」（DELETE /api/v1/repositories/{id} 级联清理），补上 repository.deleted webhook 漏投递时的手动收口 |
 | 2026-08-07T12:00:00Z | 仓库生命周期收口：GitHub 侧删除（repository.deleted webhook）级联删除本地仓库与全部关联数据（PR/Issue、事件、告警、快照、游标、待投递通知）；对账遇 404/410 兜底标记 unavailable；解析 installation_repositories 的 repositories_removed 并标记 unavailable |

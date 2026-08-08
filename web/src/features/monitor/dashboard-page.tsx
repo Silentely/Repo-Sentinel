@@ -120,6 +120,15 @@ export function DashboardPage() {
   const eventTotal = events.data?.total ?? 0;
   const outboxTotal = outbox.data?.total ?? 0;
 
+  // 最近事件是混合流（Issue/PR/Actions/告警），脚注提供分类快捷入口按需跳转；
+  // 按功能开关过滤，避免入口指向被禁用的列表页。
+  const kindQuickLinks = [
+    featureIssues && { to: "/issues", label: "Issues" },
+    featurePRs && { to: "/pull-requests", label: "Pull Requests" },
+    featureActions && { to: "/actions", label: "Actions" },
+    featureAlerts && { to: "/security", label: "安全告警" },
+  ].filter(Boolean) as { to: string; label: string }[];
+
   const cfg = githubConfig.data;
   const inboundReady = Boolean(cfg?.webhook_secret_configured);
   const outboundReady = Boolean(cfg?.app_id_configured && cfg?.private_key_configured);
@@ -372,8 +381,24 @@ export function DashboardPage() {
               );
             })}
           </ul>
-          {eventTotal > DASHBOARD_FEED_LIMIT ? (
-            <p className="panel-footnote">共 {eventTotal} 条事件，仅显示最近 {DASHBOARD_FEED_LIMIT} 条。</p>
+          {eventItems.length > 0 ? (
+            <p className="panel-footnote">
+              {eventTotal > DASHBOARD_FEED_LIMIT
+                ? `共 ${eventTotal} 条事件，仅显示最近 ${DASHBOARD_FEED_LIMIT} 条。`
+                : `共 ${eventTotal} 条事件。`}
+              {kindQuickLinks.length > 0 ? (
+                <>
+                  {" "}
+                  分类查看：
+                  {kindQuickLinks.map((link, index) => (
+                    <span key={link.to}>
+                      {index > 0 ? " · " : null}
+                      <Link to={link.to}>{link.label}</Link>
+                    </span>
+                  ))}
+                </>
+              ) : null}
+            </p>
           ) : null}
         </QueryGate>
       </CollapsiblePanel>

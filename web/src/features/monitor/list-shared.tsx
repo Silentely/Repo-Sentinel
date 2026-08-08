@@ -5,8 +5,10 @@ import { Link } from "@tanstack/react-router";
 import { EyeOff, RotateCcw } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
+import { ErrorAlert } from "../../components/error-alert";
 import { ListShell } from "../../components/list-shell";
 import { ListSkeleton } from "../../components/list-skeleton";
+import { toApiError } from "../../lib/api/errors";
 import { repoDisplayName } from "../../lib/format";
 import { repositoriesQueryOptions, settingsQueryOptions, type Repository, type SystemSettings } from "./api";
 
@@ -29,6 +31,16 @@ export function FeatureGuard({
     return (
       <ListShell eyebrow="仓库" title={featureName} description={description}>
         <ListSkeleton />
+      </ListShell>
+    );
+  }
+  // 开关查询失败不能静默按「启用」放行（可能让未订阅的页面误展示空数据），
+  // 显式报错并把错误码透出，便于按 request_id 排查。
+  if (settings.isError) {
+    const apiError = toApiError(settings.error);
+    return (
+      <ListShell eyebrow="仓库" title={featureName} description={description}>
+        <ErrorAlert title="无法加载功能开关" message={apiError.message} errorCode={apiError.errorCode} />
       </ListShell>
     );
   }
