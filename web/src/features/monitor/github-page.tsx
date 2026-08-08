@@ -182,7 +182,10 @@ export function GitHubPage() {
           <span>或：服务器上的私钥路径（二选一）</span>
           <input value={privateKeyPath} disabled={cfg?.private_key_locked || Boolean(privateKeyPEM.trim())} onChange={(e) => setPrivateKeyPath(e.target.value)} placeholder="/secrets/github-app.pem" autoComplete="off" />
         </label>
-        <p className="field-hint">推荐直接粘贴 PEM（加密入库，容器无需挂载文件）。External PAT 仅支持环境变量。</p>
+        <p className="field-hint">
+          推荐直接粘贴 PEM（加密入库，容器无需挂载文件）。External PAT 仅支持环境变量。
+          {privateKeyPEM.trim() && !cfg?.private_key_locked ? " 已粘贴 PEM，路径输入暂不可用，清空 PEM 后可改回路径方式。" : null}
+        </p>
         <button className="primary-button primary-button--inline" type="button" disabled={saveConfig.isPending || cfg?.can_edit_in_ui === false} onClick={() => { setConfigMessage(""); saveConfig.mutate(); }}>
           {saveConfig.isPending ? "保存中…" : "保存 GitHub 配置"}
         </button>
@@ -216,7 +219,13 @@ export function GitHubPage() {
         <p className="field-hint">在 GitHub App 设置中填入此 URL，Content type 选 <code>application/json</code>。</p>
         <div className="copy-row">
           <code className="copy-row__value">{webhookURL}</code>
-          <button className="quiet-button" type="button" onClick={() => void copyWebhook()}>
+          <button
+            className="quiet-button"
+            type="button"
+            onClick={() => void copyWebhook()}
+            aria-live="polite"
+            aria-label={copyState === "ok" ? "Webhook URL 已复制" : copyState === "fail" ? "复制失败，请手动复制" : "复制 Webhook URL"}
+          >
             <Copy size={15} aria-hidden="true" />
             {copyState === "ok" ? "已复制" : copyState === "fail" ? "复制失败" : "复制"}
           </button>

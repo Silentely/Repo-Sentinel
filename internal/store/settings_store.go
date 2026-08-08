@@ -11,16 +11,23 @@ import (
 
 type settingsStore struct {
 	client *entclient.Client
+	// cache 进程内短 TTL 缓存（由 storeImpl 共享同一实例）；测试直构时为 nil。
+	cache *settingsCache
 }
 
 func (s *settingsStore) Get(ctx context.Context, key string) (SystemSetting, error) {
+	if row, ok := s.cache.Get(key); ok {
+		return row, nil
+	}
 	entity, err := s.client.SystemSetting.Query().
 		Where(systemsetting.KeyEQ(key)).
 		Only(ctx)
 	if err != nil {
 		return SystemSetting{}, mapStoreError(err)
 	}
-	return settingFromEntity(entity), nil
+	row := settingFromEntity(entity)
+	s.cache.Set(key, row)
+	return row, nil
 }
 
 // GetMany 批量读取设置：单次查询按 key 集合过滤，仅返回存在的行。
@@ -61,6 +68,7 @@ func (s *settingsStore) Upsert(ctx context.Context, input SystemSetting) (System
 		SetUpdatedBy(input.UpdatedBy).
 		Save(ctx)
 	if err == nil {
+		s.cache.Invalidate(input.Key)
 		return settingFromEntity(entity), nil
 	}
 	if !entclient.IsConstraintError(err) {
@@ -88,6 +96,7 @@ func (s *settingsStore) update(
 	if err != nil {
 		return SystemSetting{}, mapStoreError(err)
 	}
+	s.cache.Invalidate(input.Key)
 	return settingFromEntity(updated), nil
 }
 

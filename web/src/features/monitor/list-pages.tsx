@@ -948,6 +948,9 @@ function ListFooter({
         >
           {fetchingNextPage ? "加载中…" : "加载更多"}
         </button>
+      ) : total > 0 && shown >= total ? (
+        // 已加载到最后一页时给出明确终点，避免用户误以为还有更多。
+        <span className="muted list-footer__end">已全部加载</span>
       ) : null}
     </div>
   );

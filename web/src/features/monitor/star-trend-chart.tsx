@@ -9,6 +9,13 @@ const RANGES = [
   { days: 0, label: "全部" },
 ] as const;
 
+/** X 轴刻度日期短格式：YYYY-MM-DD → MM-DD，避免长日期挤在一起。 */
+function formatXAxisDate(date: string): string {
+  const parts = date.split("-");
+  if (parts.length !== 3) return date;
+  return `${parts[1]}-${parts[2]}`;
+}
+
 export function StarTrendChart({
   points,
   days,
@@ -42,15 +49,28 @@ export function StarTrendChart({
         </div>
       </div>
       {points.length === 0 ? (
-        <p className="panel-footnote">
-          {loading ? "加载中…" : "暂无 star 数据。安装 GitHub App 后，对账或 star 事件会自动产生数据。"}
-        </p>
+        loading ? (
+          // 加载骨架与图表同高，替代「暂无数据」文案，避免首屏误读为空。
+          <>
+            <div className="star-trend__skeleton" aria-hidden="true" />
+            <span className="sr-only">加载中…</span>
+          </>
+        ) : (
+          <p className="panel-footnote">
+            暂无 star 数据。安装 GitHub App 后，对账或 star 事件会自动产生数据。
+          </p>
+        )
       ) : (
         <ResponsiveContainer width="100%" height={240}>
           <LineChart data={points} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-            <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 12 }}
+              minTickGap={28}
+              tickFormatter={formatXAxisDate}
+            />
             <YAxis width={44} tick={{ fontSize: 12 }} allowDecimals={false} />
-            <Tooltip />
+            <Tooltip labelFormatter={(label) => `日期：${label}`} />
             <Line
               type="monotone"
               dataKey="total"

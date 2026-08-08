@@ -22,6 +22,8 @@ const databasePingTimeout = 5 * time.Second
 type storeImpl struct {
 	client  *entclient.Client
 	closeFn func() error
+	// settingsCache 由全部 Settings() 调用共享，保证 webhook/scheduler/http 各 goroutine 读到一致缓存。
+	settingsCache *settingsCache
 }
 
 // Open 打开数据库、完成安全连通性检查并应用版本化迁移。
@@ -173,12 +175,18 @@ func sqliteDSN(rawURL string) string {
 }
 
 func newStore(client *entclient.Client, closeFn func() error) *storeImpl {
-	return &storeImpl{client: client, closeFn: closeFn}
+	return &storeImpl{
+		client:        client,
+		closeFn:       closeFn,
+		settingsCache: newSettingsCache(settingsCacheTTL),
+	}
 }
 
-func (s *storeImpl) Admins() AdminStore               { return &adminStore{client: s.client} }
-func (s *storeImpl) Sessions() SessionStore           { return &sessionStore{client: s.client} }
-func (s *storeImpl) Settings() SettingsStore          { return &settingsStore{client: s.client} }
+func (s *storeImpl) Admins() AdminStore     { return &adminStore{client: s.client} }
+func (s *storeImpl) Sessions() SessionStore { return &sessionStore{client: s.client} }
+func (s *storeImpl) Settings() SettingsStore {
+	return &settingsStore{client: s.client, cache: s.settingsCache}
+}
 func (s *storeImpl) Audits() AuditStore               { return &auditStore{client: s.client} }
 func (s *storeImpl) Installations() InstallationStore { return &installationStore{client: s.client} }
 func (s *storeImpl) Repositories() RepositoryStore    { return &repositoryStore{client: s.client} }

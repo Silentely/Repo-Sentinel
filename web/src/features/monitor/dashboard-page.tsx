@@ -258,22 +258,22 @@ export function DashboardPage() {
       <section className="status-card" aria-label="关键指标">
         <div className="status-grid">
           {featureIssues ? (
-            <Metric label="开放 Issue" value={stats?.open_issues} to="/issues" />
+            <Metric label="开放 Issue" value={stats?.open_issues} to="/issues" loading={dashboard.isPending} />
           ) : null}
-          {featurePRs ? <Metric label="开放 PR" value={stats?.open_pulls} to="/pull-requests" /> : null}
+          {featurePRs ? <Metric label="开放 PR" value={stats?.open_pulls} to="/pull-requests" loading={dashboard.isPending} /> : null}
           {featureActions ? (
-            <Metric label="失败 Actions" value={stats?.failed_actions} to="/actions" />
+            <Metric label="失败 Actions" value={stats?.failed_actions} to="/actions" loading={dashboard.isPending} />
           ) : null}
           {featureAlerts ? (
-            <Metric label="开放安全告警" value={stats?.open_security} to="/security" />
+            <Metric label="开放安全告警" value={stats?.open_security} to="/security" loading={dashboard.isPending} />
           ) : null}
-          <Metric label="24h 事件" value={stats?.events_24h} />
-          <Metric label="投递失败" value={stats?.outbox_dead} to="/notifications/outbox" />
+          <Metric label="24h 事件" value={stats?.events_24h} loading={dashboard.isPending} />
+          <Metric label="投递失败" value={stats?.outbox_dead} to="/notifications/outbox" loading={dashboard.isPending} />
         </div>
         <div className="status-grid status-grid--secondary">
-          <Metric label="活跃仓库" value={stats?.repos_active} to="/repos" />
-          <Metric label="基线中" value={stats?.repos_baseline} />
-          <Metric label="已启用渠道" value={stats?.channels_enabled} to="/notifications" />
+          <Metric label="活跃仓库" value={stats?.repos_active} to="/repos" loading={dashboard.isPending} />
+          <Metric label="基线中" value={stats?.repos_baseline} loading={dashboard.isPending} />
+          <Metric label="已启用渠道" value={stats?.channels_enabled} to="/notifications" loading={dashboard.isPending} />
         </div>
       </section>
 
@@ -567,11 +567,16 @@ function CollapsiblePanel({
   );
 }
 
-function Metric({ label, value, to }: { label: string; value?: number; to?: string }) {
+function Metric({ label, value, to, loading }: { label: string; value?: number; to?: string; loading?: boolean }) {
   const inner = (
     <>
       <span className="status-item__label">{label}</span>
-      <strong>{value === undefined ? "—" : value}</strong>
+      {/* 加载中显示骨架而非「—」：避免把"尚未加载"误读为指标为 0/无数据。 */}
+      {loading ? (
+        <span className="status-item__skeleton" aria-hidden="true" />
+      ) : (
+        <strong>{value === undefined ? "—" : value}</strong>
+      )}
     </>
   );
   if (to) {

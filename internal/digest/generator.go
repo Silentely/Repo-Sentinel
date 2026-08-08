@@ -247,22 +247,32 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 }
 
 // repoNames 解析事件涉及的仓库 ID → full_name 映射（供 AI 总结引用仓库名）。
+// 一次 List 批量拉取（仓库超 100 时翻页），避免对每个仓库单独 Get 造成 N+1 查询。
 // 查询失败或仓库不存在时跳过，不阻断总结。
 func (g *Generator) repoNames(ctx context.Context, events []store.Event) map[string]string {
-	out := make(map[string]string)
+	need := make(map[string]struct{})
 	for _, ev := range events {
-		if ev.RepositoryID == nil {
-			continue
+		if ev.RepositoryID != nil {
+			need[*ev.RepositoryID] = struct{}{}
 		}
-		id := *ev.RepositoryID
-		if _, seen := out[id]; seen {
-			continue
-		}
-		repo, err := g.Store.Repositories().Get(ctx, id)
+	}
+	out := make(map[string]string, len(need))
+	if len(need) == 0 {
+		return out
+	}
+	for page := 1; ; page++ {
+		repos, res, err := g.Store.Repositories().List(ctx, store.ListFilter{Page: page, PerPage: 100})
 		if err != nil {
-			continue
+			return out
 		}
-		out[id] = repo.FullName
+		for _, repo := range repos {
+			if _, ok := need[repo.ID]; ok {
+				out[repo.ID] = repo.FullName
+			}
+		}
+		if page*res.PerPage >= res.Total || len(repos) == 0 {
+			break
+		}
 	}
 	return out
 }

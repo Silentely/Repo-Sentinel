@@ -198,6 +198,7 @@ function AuthenticatedRoute() {
       <EmptyState
         title="无法连接服务"
         description="网络异常或实例正在重启，登录状态仍然保留，请稍后重试。"
+        actionArrow={false}
         action={
           <button type="button" className="primary-button primary-button--inline" onClick={() => void session.refetch()}>
             重新连接

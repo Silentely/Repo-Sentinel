@@ -234,7 +234,7 @@ func TestWorkerDeliverUnknownChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := &Worker{Store: st, KeyRing: ring, AAD: "reposentinel:notify-secret:v1"}
-	if err := w.deliver(t.Context(), item); err == nil {
+	if _, err := w.deliver(t.Context(), item); err == nil {
 		t.Fatal("未知渠道应报错")
 	}
 }
