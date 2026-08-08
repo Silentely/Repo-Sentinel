@@ -18,7 +18,8 @@ test("移动端抽屉导航：可开启、可跳转、多种方式关闭", async
   await menuButton.click();
   await expect(sidebar).toBeVisible();
   await expect(sidebar.getByRole("link", { name: "仪表盘" })).toBeVisible();
-  await expect(sidebar.getByRole("link", { name: "关于与设置" })).toBeVisible();
+  await expect(sidebar.getByRole("link", { name: "关于" })).toBeVisible();
+  await expect(sidebar.getByRole("link", { name: "设置" })).toBeVisible();
 
   // 点链接跳转后抽屉自动收起。
   await sidebar.getByRole("link", { name: "仓库管理" }).click();
@@ -59,6 +60,7 @@ test("移动端各主要页面无横向溢出", async ({ page }) => {
     "/notifications/outbox",
     "/github",
     "/about",
+    "/settings",
   ]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");

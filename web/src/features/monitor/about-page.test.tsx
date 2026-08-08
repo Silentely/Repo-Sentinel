@@ -2,112 +2,57 @@ import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // 页面内链接与真实路由解耦：渲染为普通锚点即可。
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children }: { to: string; children?: ReactNode }) => <a href={to}>{children}</a>,
 }));
 
-// 共享设置数据：覆盖全部保存键，便于断言参考值进入提交负载。
-const settingsFixture = {
-  "admin.timezone": "Asia/Shanghai",
-  "digest.local_time": "08:30",
-  "digest.send_empty": true,
-  "report.weekly_enabled": true,
-  "report.weekly_day": "friday",
-  "report.monthly_enabled": false,
-  "report.monthly_day": 1,
-  "notify.aggregate_window_sec": 120,
-  "notify.burst_threshold": 30,
-  "notify.burst_window_sec": 300,
-  "display.closed_limit": 50,
-  "retention.events_days": 60,
-  "retention.outbox_days": 15,
-  "retention.webhook_deliveries_days": 10,
-  "feature.issues": true,
-  "feature.pull_requests": true,
-  "feature.actions": true,
-  "feature.security_alerts": true,
-  "feature.stars": true,
-  "feature.watches": true,
+// 版本快照：覆盖「关于」页构建与运行区块的全部字段。
+const versionFixture = {
+  version: "0.3.8",
+  build_channel: "dev",
+  git_sha: "abc1234",
+  git_branch: "dev",
+  build_time: "2026-08-08T04:48:10Z",
+  go_version: "go1.26",
+  database_driver: "sqlite",
+  schema_version: "20260728000100",
+  http_addr: "0.0.0.0:8080",
+  public_base_url: "https://example.com",
+  update_check_enabled: true,
+  github: { webhook_path: "/webhooks/github" },
 };
 
-const { saveSystemSettingsMock, saveAIConfigMock, testAIConnectivityMock } = vi.hoisted(() => ({
-  saveSystemSettingsMock: vi.fn(async (body: Record<string, unknown>) => body),
-  saveAIConfigMock: vi.fn(async (body: Record<string, unknown>) => body),
-  testAIConnectivityMock: vi.fn(
-    async (body: Record<string, unknown>): Promise<{ ok: boolean; message: string; model: string; base_url: string; latency_ms: number }> => ({
-      ok: true,
-      message: "连通性测试成功：模型 gpt-4o-mini 正常回复（42 ms）",
-      model: "gpt-4o-mini",
-      base_url: "https://api.openai.com/v1",
-      latency_ms: 42,
-    }),
-  ),
+const { checkForUpdatesMock } = vi.hoisted(() => ({
+  checkForUpdatesMock: vi.fn(async () => ({
+    version: versionFixture,
+    update_check: {
+      enabled: true,
+      update_available: false,
+      latest_version: "0.3.8",
+      latest_url: "https://github.com/Silentely/Repo-Sentinel/releases",
+      cached: false,
+      error: "",
+    },
+  })),
 }));
 
-// AI 配置初始快照：全部字段可编辑（unset 来源）、密钥未配置。
-// 用 let 以便单测覆盖「后端未设置标量字段（空串 / 0）」的回退场景。
-let aiConfigFixture = {
-  enabled: false,
-  base_url: "https://api.openai.com/v1",
-  model: "gpt-4o-mini",
-  timeout_sec: 20,
-  max_tokens: 800,
-  digest_enabled: true,
-  triage_enabled: true,
-  api_key_configured: false,
-  enabled_source: "unset",
-  base_url_source: "unset",
-  model_source: "unset",
-  timeout_source: "unset",
-  max_tokens_source: "unset",
-  api_key_source: "unset",
-  digest_enabled_source: "unset",
-  triage_enabled_source: "unset",
-  enabled_locked: false,
-  base_url_locked: false,
-  model_locked: false,
-  timeout_locked: false,
-  max_tokens_locked: false,
-  api_key_locked: false,
-  digest_enabled_locked: false,
-  triage_enabled_locked: false,
-  can_edit_in_ui: true,
-  note: "",
-};
-
-// 供单个用例模拟 AI 配置查询失败（如反代瞬时故障），验证保存/测试按钮被禁用。
-let aiConfigQueryError: Error | null = null;
+// 供单个用例模拟版本查询失败，验证错误提示展示。
+let versionQueryError: Error | null = null;
 
 vi.mock("./api", () => ({
-  settingsQueryOptions: {
-    queryKey: ["test", "settings"],
-    queryFn: async () => settingsFixture,
-  },
-  aiConfigQueryOptions: {
-    queryKey: ["test", "ai-config"],
-    queryFn: async () => {
-      if (aiConfigQueryError) {
-        throw aiConfigQueryError;
-      }
-      return aiConfigFixture;
-    },
-  },
-  // 版本查询保持 pending：测试聚焦保存反馈，避免无关请求干扰。
   versionQueryOptions: {
     queryKey: ["test", "version"],
-    queryFn: () => new Promise<never>(() => undefined),
+    queryFn: async () => {
+      if (versionQueryError) {
+        throw versionQueryError;
+      }
+      return versionFixture;
+    },
   },
-  checkForUpdates: vi.fn(async () => ({})),
-  saveSystemSettings: saveSystemSettingsMock,
-  saveAIConfig: saveAIConfigMock,
-  testAIConnectivity: testAIConnectivityMock,
-}));
-
-vi.mock("../auth/api", () => ({
-  changePassword: vi.fn(async () => undefined),
+  checkForUpdates: checkForUpdatesMock,
 }));
 
 import { AboutPage } from "./about-page";
@@ -123,207 +68,69 @@ function renderPage() {
   );
 }
 
-describe("关于与设置页", () => {
-  beforeEach(() => {
-    saveSystemSettingsMock.mockClear();
-    testAIConnectivityMock.mockClear();
+describe("关于页", () => {
+  it("展示产品介绍、构建信息与运维提示区块", async () => {
+    renderPage();
+
+    // 产品区块与文档链接。
+    const product = await screen.findByRole("region", { name: "你在用什么" });
+    expect(within(product).getByText("配置参考")).toBeInTheDocument();
+    expect(within(product).getByText("常见问题")).toBeInTheDocument();
+    expect(within(product).getByRole("link", { name: "打开设置" })).toHaveAttribute("href", "/settings");
+
+    // 构建与运行区块：版本字段落定展示。
+    const build = screen.getByRole("region", { name: "构建与运行" });
+    expect(await within(build).findByText("0.3.8")).toBeInTheDocument();
+    expect(within(build).getByText("abc1234")).toBeInTheDocument();
+    expect(within(build).getByText("sqlite")).toBeInTheDocument();
+
+    // 运维提示区块。
+    expect(screen.getByRole("region", { name: "运维提示" })).toBeInTheDocument();
   });
 
-  it("保存开关成功后在功能模块区块内展示提示", async () => {
+  it("检查更新后展示已是最新提示", async () => {
     const user = userEvent.setup();
     renderPage();
 
-    // 等待设置回填后关闭 Issues，验证开关状态进入提交负载。
-    const issuesToggle = await screen.findByRole("checkbox", { name: "Issues" });
-    expect(issuesToggle).toBeChecked();
-    await user.click(issuesToggle);
+    await screen.findByRole("region", { name: "构建与运行" });
+    await user.click(screen.getByRole("button", { name: "检查更新" }));
 
-    await user.click(screen.getByRole("button", { name: "保存开关" }));
-
-    const featuresSection = screen.getByRole("region", { name: "功能模块开关" });
-    expect(await within(featuresSection).findByText("功能模块开关已保存。")).toBeInTheDocument();
-    // 提示不得落在不可见的运行偏好区块。
-    const prefsSection = screen.getByRole("region", { name: "运行偏好" });
-    expect(within(prefsSection).queryByText("功能模块开关已保存。")).toBeNull();
-
-    // 功能区块只提交 feature.*，避免覆盖运行偏好。
-    expect(saveSystemSettingsMock).toHaveBeenCalledWith({
-      "feature.issues": false,
-      "feature.pull_requests": true,
-      "feature.actions": true,
-      "feature.security_alerts": true,
-      "feature.stars": true,
-      "feature.watches": true,
-    });
+    expect(await screen.findByText(/已是最新（远程 v0\.3\.8/)).toBeInTheDocument();
+    expect(checkForUpdatesMock).toHaveBeenCalledWith(true);
   });
 
-  it("功能模块区块提供 Star 事件与 Watch 事件开关并提交对应键", async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    // 等待设置回填后两个新开关默认开启。
-    const starToggle = await screen.findByRole("checkbox", { name: "Star 事件" });
-    const watchToggle = screen.getByRole("checkbox", { name: "Watch 事件" });
-    expect(starToggle).toBeChecked();
-    expect(watchToggle).toBeChecked();
-
-    // 关闭 Star 事件后保存，验证两个键进入提交负载。
-    await user.click(starToggle);
-    await user.click(screen.getByRole("button", { name: "保存开关" }));
-
-    const featuresSection = screen.getByRole("region", { name: "功能模块开关" });
-    expect(await within(featuresSection).findByText("功能模块开关已保存。")).toBeInTheDocument();
-    expect(saveSystemSettingsMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "feature.stars": false,
-        "feature.watches": true,
-      }),
-    );
-  });
-
-  it("保存偏好成功后在运行偏好区块内展示提示", async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await screen.findByRole("checkbox", { name: "Issues" });
-    await user.click(screen.getByRole("button", { name: "保存偏好" }));
-
-    const prefsSection = screen.getByRole("region", { name: "运行偏好" });
-    expect(await within(prefsSection).findByText("系统偏好已保存。")).toBeInTheDocument();
-    expect(saveSystemSettingsMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "admin.timezone": "Asia/Shanghai",
-        "digest.local_time": "08:30",
-        "notify.burst_window_sec": 300,
-        "report.weekly_enabled": true,
-        "report.weekly_day": "friday",
-        "report.monthly_enabled": false,
-      }),
-    );
-    const prefsPayload = saveSystemSettingsMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
-    expect(prefsPayload).toBeDefined();
-    expect(prefsPayload).not.toHaveProperty("feature.issues");
-  });
-
-  it("保存失败时在功能模块区块内展示错误且不出现成功提示", async () => {
-    saveSystemSettingsMock.mockRejectedValueOnce(new Error("boom"));
-    const user = userEvent.setup();
-    renderPage();
-
-    await screen.findByRole("checkbox", { name: "Issues" });
-    await user.click(screen.getByRole("button", { name: "保存开关" }));
-
-    const featuresSection = screen.getByRole("region", { name: "功能模块开关" });
-    expect(await within(featuresSection).findByText("保存失败")).toBeInTheDocument();
-    expect(within(featuresSection).queryByText("功能模块开关已保存。")).toBeNull();
-  });
-
-  it("保存 AI 配置时提交表单字段且不回显密钥", async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
-    await user.click(within(aiSection).getByRole("checkbox", { name: /启用 AI/ }));
-    const modelInput = within(aiSection).getByLabelText("模型");
-    await user.clear(modelInput);
-    await user.type(modelInput, "llama3.1");
-    const keyInput = within(aiSection).getByLabelText(/留空保持不变/);
-    await user.type(keyInput, "sk-ui-key");
-    await user.click(within(aiSection).getByRole("button", { name: "保存 AI 配置" }));
-
-    expect(await within(aiSection).findByText("AI 配置已保存。")).toBeInTheDocument();
-    expect(saveAIConfigMock).toHaveBeenCalledWith(
-      expect.objectContaining({
+  it("发现新版本时提示并提供 Release 链接", async () => {
+    checkForUpdatesMock.mockResolvedValueOnce({
+      version: versionFixture,
+      update_check: {
         enabled: true,
-        model: "llama3.1",
-        api_key: "sk-ui-key",
-      }),
-    );
-    const payload = saveAIConfigMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
-    expect(payload).toBeDefined();
-    // 全字段可编辑时提交完整配置（timeout/max_tokens 为数值）。
-    expect(payload?.timeout_sec).toBe(20);
-    expect(payload?.max_tokens).toBe(800);
-  });
-
-  it("后端未设置标量字段（空串 / 0）时表单回退显示默认值", async () => {
-    const original = aiConfigFixture;
-    // 模拟修复后的后端：未显式配置的字段返回空串 / 0（此前因默认值被误锁，永远返回默认值）。
-    aiConfigFixture = { ...original, base_url: "", model: "", timeout_sec: 0, max_tokens: 0 };
-    try {
-      const user = userEvent.setup();
-      renderPage();
-
-      const aiSection = await screen.findByRole("region", { name: "AI 集成" });
-      expect(within(aiSection).getByLabelText("API Base URL")).toHaveValue("https://api.openai.com/v1");
-      expect(within(aiSection).getByLabelText("模型")).toHaveValue("gpt-4o-mini");
-      expect(within(aiSection).getByLabelText("请求超时（秒）")).toHaveValue(20);
-      expect(within(aiSection).getByLabelText("输出 token 上限")).toHaveValue(800);
-
-      // 未修改直接保存时，不得把 0/空串提交给后端（会触发 400 校验失败）。
-      await user.click(within(aiSection).getByRole("button", { name: "保存 AI 配置" }));
-      await within(aiSection).findByText("AI 配置已保存。");
-      const payload = saveAIConfigMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
-      expect(payload?.timeout_sec).toBe(20);
-      expect(payload?.max_tokens).toBe(800);
-    } finally {
-      aiConfigFixture = original;
-    }
-  });
-
-  it("点击测试连通性成功时展示成功提示并携带表单值", async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
-    await user.click(within(aiSection).getByRole("button", { name: /测试连通性/ }));
-
-    expect(await within(aiSection).findByText(/连通性测试成功/)).toBeInTheDocument();
-    expect(testAIConnectivityMock).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gpt-4o-mini", timeout_sec: 20, max_tokens: 800 }),
-    );
-  });
-
-  it("连通性测试失败（ok=false）时展示错误提示", async () => {
-    testAIConnectivityMock.mockResolvedValueOnce({
-      ok: false,
-      message: "连通性测试失败：ai: http 401",
-      model: "gpt-4o-mini",
-      base_url: "https://api.openai.com/v1",
-      latency_ms: 0,
+        update_available: true,
+        latest_version: "9.9.9",
+        latest_url: "https://github.com/Silentely/Repo-Sentinel/releases/tag/v9.9.9",
+        cached: false,
+        error: "",
+      },
     });
     const user = userEvent.setup();
     renderPage();
 
-    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
-    await user.click(within(aiSection).getByRole("button", { name: /测试连通性/ }));
+    await screen.findByRole("region", { name: "构建与运行" });
+    await user.click(screen.getByRole("button", { name: "检查更新" }));
 
-    expect(await within(aiSection).findByText("连通性测试失败")).toBeInTheDocument();
-    expect(within(aiSection).getByText(/ai: http 401/)).toBeInTheDocument();
+    expect(await screen.findByText(/发现新版本 v9\.9\.9/)).toBeInTheDocument();
+    const releaseLink = screen.getByRole("link", { name: "打开 Release 页面" });
+    expect(releaseLink).toHaveAttribute("href", "https://github.com/Silentely/Repo-Sentinel/releases/tag/v9.9.9");
   });
 
-  it("AI 配置加载失败时禁用保存与测试按钮，避免覆盖已有配置", async () => {
-    aiConfigQueryError = new Error("boom");
+  it("版本查询失败时展示错误提示", async () => {
+    versionQueryError = new Error("boom");
     try {
       renderPage();
 
-      const aiSection = await screen.findByRole("region", { name: "AI 集成" });
-      // 查询失败后表单持有默认回退值，此时保存/测试必须禁用，防止用默认值覆盖 DB 有效配置。
-      expect(await within(aiSection).findByText("无法加载 AI 配置")).toBeInTheDocument();
-      expect(within(aiSection).getByRole("button", { name: "保存 AI 配置" })).toBeDisabled();
-      expect(within(aiSection).getByRole("button", { name: /测试连通性/ })).toBeDisabled();
+      const build = await screen.findByRole("region", { name: "构建与运行" });
+      expect(await within(build).findByText("无法加载版本")).toBeInTheDocument();
     } finally {
-      aiConfigQueryError = null;
+      versionQueryError = null;
     }
-  });
-
-  it("AI 区块操作按钮使用与通知渠道一致的按钮容器布局", async () => {
-    renderPage();
-
-    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
-    const container = aiSection.querySelector(".channel-form__buttons");
-    expect(container).not.toBeNull();
-    expect(within(container as HTMLElement).getByRole("button", { name: "保存 AI 配置" })).toBeInTheDocument();
-    expect(within(container as HTMLElement).getByRole("button", { name: /测试连通性/ })).toBeInTheDocument();
   });
 });
