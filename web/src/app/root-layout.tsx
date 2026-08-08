@@ -233,13 +233,13 @@ export function RootLayout({ session }: RootLayoutProps) {
             <FolderGit2 aria-hidden="true" size={17} />
             <span>GitHub App</span>
           </Link>
-          <Link to="/about" activeProps={{ "aria-current": "page" }}>
-            <Info aria-hidden="true" size={17} />
-            <span>关于</span>
-          </Link>
           <Link to="/settings" activeProps={{ "aria-current": "page" }}>
             <Settings aria-hidden="true" size={17} />
             <span>设置</span>
+          </Link>
+          <Link to="/about" activeProps={{ "aria-current": "page" }}>
+            <Info aria-hidden="true" size={17} />
+            <span>关于</span>
           </Link>
         </nav>
         <span className="app-sidebar__version">{versionLabel}</span>
