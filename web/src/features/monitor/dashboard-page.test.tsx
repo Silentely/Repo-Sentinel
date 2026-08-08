@@ -175,9 +175,6 @@ vi.mock("./api", () => ({
     queryKey: ["test", "github"],
     queryFn: async () => fixtures.github,
   },
-  activateRepository: vi.fn(async () => ({})),
-  reconcileAll: vi.fn(async () => {}),
-  reconcileRepository: vi.fn(async () => {}),
   retryOutbox: vi.fn(async () => {}),
 }));
 
@@ -212,8 +209,9 @@ describe("仪表盘", () => {
     await within(metrics).findByText("3");
 
     // 等待仓库数据落定（接入进度五步全部就绪）后，卡片应整体隐藏。
-    const reposPanel = await screen.findByRole("region", { name: "仓库与基线" });
-    await within(reposPanel).findByText("owner/repo-a");
+    // 事件行展示仓库名（来自仓库查询构建的 repoNameMap），证明 repos 数据已就绪。
+    const eventsPanel = await screen.findByRole("region", { name: "最近事件" });
+    await within(eventsPanel).findAllByText("owner/repo-a");
     expect(screen.queryByText("接入进度")).toBeNull();
   });
 

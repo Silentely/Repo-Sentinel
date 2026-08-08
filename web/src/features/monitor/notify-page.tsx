@@ -284,7 +284,7 @@ export function NotifyPage() {
         <div>
           <p className="eyebrow">通知</p>
           <h1>配置投递渠道</h1>
-          <p>每种渠道最多启用 1 个实例。订阅类型决定实时推送；定期汇总时刻在「关于与设置」配置。</p>
+          <p>每种渠道最多启用 1 个实例。订阅类型决定实时推送；定期汇总时刻在「设置」配置。</p>
         </div>
       </section>
 
@@ -295,9 +295,9 @@ export function NotifyPage() {
         <h2 id="notify-digest-title">定期汇总调度</h2>
         <p className="field-hint">
           当前汇总时刻：<strong>{digestTime}</strong>（时区 <code>{digestTz}</code>）。
-          渠道勾选「接收定期汇总」后，每日到点合并过去 24 小时事件发送，周报/月报在「关于与设置 → 运行偏好」启用。
+          渠道勾选「接收定期汇总」后，每日到点合并过去 24 小时事件发送，周报/月报在「设置 → 运行偏好」启用。
           修改时刻请到{" "}
-          <Link to="/about">关于与设置 → 运行偏好</Link>。
+          <Link to="/settings">设置 → 运行偏好</Link>。
         </p>
       </section>
 

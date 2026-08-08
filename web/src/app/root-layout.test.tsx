@@ -100,7 +100,8 @@ describe("移动端抽屉导航", () => {
       "渠道配置",
       "投递记录",
       "GitHub App",
-      "关于与设置",
+      "关于",
+      "设置",
     ]) {
       expect(screen.getByRole("link", { name })).toBeInTheDocument();
     }

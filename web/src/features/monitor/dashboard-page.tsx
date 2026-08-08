@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CheckCircle2, ChevronDown, CircleDashed, ExternalLink } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
@@ -14,17 +14,13 @@ import {
   formatRelativeTime,
   outboxStatusLabel,
   severityLabel,
-  syncStatusLabel,
 } from "../../lib/format";
 import {
-  activateRepository,
   DASHBOARD_FEED_LIMIT,
   dashboardQueryOptions,
   eventsQueryOptions,
   githubConfigQueryOptions,
   outboxQueryOptions,
-  reconcileAll,
-  reconcileRepository,
   repositoriesQueryOptions,
   retryOutbox,
   settingsQueryOptions,
@@ -32,14 +28,13 @@ import {
 } from "./api";
 import { StarTrendChart } from "./star-trend-chart";
 
-type PanelKey = "outbox" | "events" | "repos" | "stars";
+type PanelKey = "outbox" | "events" | "stars";
 
 const PANEL_STORAGE_KEY = "reposentinel-dashboard-panels";
 
 const DEFAULT_OPEN_PANELS: Record<PanelKey, boolean> = {
   outbox: true,
   events: true,
-  repos: true,
   stars: true,
 };
 
@@ -52,7 +47,6 @@ function readOpenPanels(): Record<PanelKey, boolean> {
     return {
       outbox: typeof parsed.outbox === "boolean" ? parsed.outbox : DEFAULT_OPEN_PANELS.outbox,
       events: typeof parsed.events === "boolean" ? parsed.events : DEFAULT_OPEN_PANELS.events,
-      repos: typeof parsed.repos === "boolean" ? parsed.repos : DEFAULT_OPEN_PANELS.repos,
       stars: typeof parsed.stars === "boolean" ? parsed.stars : DEFAULT_OPEN_PANELS.stars,
     };
   } catch {
@@ -84,41 +78,14 @@ export function DashboardPage() {
 
   // 折叠状态从 localStorage 恢复，切换后写回。
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(readOpenPanels);
-  // 行级忙碌与对账错误：只让当前操作的行转圈，失败时在对应面板内提示。
+  // 行级忙碌：只让当前操作的行转圈。
   const [retryBusyId, setRetryBusyId] = useState<string | null>(null);
-  const [reconcileBusyId, setReconcileBusyId] = useState<string | null>(null);
-  const [reconcileError, setReconcileError] = useState<string | null>(null);
 
-  // 仓库与仪表盘数据联动失效：对账/放行/重试成功后统一刷新。
-  const invalidateReposAndDashboard = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-  };
   const invalidateOutboxAndDashboard = async () => {
     await queryClient.invalidateQueries({ queryKey: ["outbox"] });
     await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
   };
 
-  const activate = useMutation({
-    mutationFn: activateRepository,
-    onSuccess: invalidateReposAndDashboard,
-  });
-  const reconcileOne = useMutation({
-    mutationFn: reconcileRepository,
-    onMutate: (id) => {
-      setReconcileBusyId(id);
-      setReconcileError(null);
-    },
-    onSettled: () => setReconcileBusyId(null),
-    onSuccess: invalidateReposAndDashboard,
-    onError: (error) => setReconcileError(toApiError(error).message || "对账请求失败"),
-  });
-  const reconcileEverything = useMutation({
-    mutationFn: reconcileAll,
-    onMutate: () => setReconcileError(null),
-    onSuccess: invalidateReposAndDashboard,
-    onError: (error) => setReconcileError(toApiError(error).message || "对账请求失败"),
-  });
   const retry = useMutation({
     mutationFn: retryOutbox,
     onMutate: (id) => setRetryBusyId(id),
@@ -213,7 +180,7 @@ export function DashboardPage() {
         <div>
           <p className="eyebrow">值守概览</p>
           <h1>现在是否健康，今天发生了什么。</h1>
-          <p>Webhook 入库后会在此汇总。对账完成后基线会自动放行；也可手动立即放行。</p>
+          <p>Webhook 入库后会在此汇总。仓库对账与基线放行请在「设置」中操作。</p>
         </div>
       </section>
 
@@ -409,110 +376,6 @@ export function DashboardPage() {
             <p className="panel-footnote">共 {eventTotal} 条事件，仅显示最近 {DASHBOARD_FEED_LIMIT} 条。</p>
           ) : null}
         </QueryGate>
-      </CollapsiblePanel>
-
-      <CollapsiblePanel
-        id="repos"
-        title="仓库与基线"
-        count={visibleRepos.length}
-        open={openPanels.repos}
-        onToggle={() => togglePanel("repos")}
-        headerExtra={
-          <button
-            className="quiet-button quiet-button--compact"
-            type="button"
-            disabled={reconcileEverything.isPending}
-            onClick={(e) => {
-              e.stopPropagation();
-              reconcileEverything.mutate();
-            }}
-          >
-            {reconcileEverything.isPending ? "对账排队中…" : "立即对账全部自有仓"}
-          </button>
-        }
-      >
-        {reconcileError ? <ErrorAlert title="对账失败" message={reconcileError} /> : null}
-        <QueryGate
-          query={repos}
-          errorTitle="无法加载仓库与基线"
-          isEmpty={visibleRepos.length === 0}
-          emptyState={
-            <EmptyState
-              title="还没有关注中的仓库"
-              description="安装 GitHub App 并配置 Webhook 后，仓库会自动出现。已归档仓库请在「仓库管理」查看。"
-              action={
-                <span className="link-row link-row--centered">
-                  <Link to="/github">打开 GitHub App 页</Link>
-                  <span className="muted">· 安装后点「从 GitHub 同步仓库」可补拉仓库</span>
-                </span>
-              }
-            />
-          }
-        >
-          <ul className="repo-baseline-list">
-            {visibleRepos.map((repo) => {
-              const name = repo.full_name || `${repo.owner}/${repo.name}`.replace(/^\/|\/$/g, "") || repo.id;
-              const isActive = repo.sync_status === "active";
-              const isBaseline = repo.sync_status === "baseline_sync";
-              return (
-                <li key={repo.id} className="repo-baseline-row" data-state={isActive ? "done" : "next"}>
-                  <span className="repo-baseline-row__icon" aria-hidden="true">
-                    {isActive ? <CheckCircle2 size={18} /> : <CircleDashed size={18} />}
-                  </span>
-                  <div className="repo-baseline-row__body">
-                    <strong className="repo-baseline-row__name" title={name}>
-                      {name}
-                    </strong>
-                    <span className="repo-baseline-row__meta">
-                      {syncStatusLabel(repo.sync_status || "")}
-                      <span aria-hidden="true"> · </span>
-                      {repo.type === "external_public" ? "外部" : "自有"}
-                    </span>
-                  </div>
-                  <div className="repo-baseline-row__actions">
-                    {repo.html_url ? (
-                      <a className="quiet-button quiet-button--compact" href={repo.html_url} target="_blank" rel="noreferrer">
-                        <ExternalLink size={14} aria-hidden="true" />
-                        <span>GitHub</span>
-                      </a>
-                    ) : (
-                      <span className="repo-baseline-row__slot" aria-hidden="true" />
-                    )}
-                    {repo.type !== "external_public" ? (
-                      <button
-                        className="quiet-button quiet-button--compact"
-                        type="button"
-                        disabled={reconcileBusyId === repo.id}
-                        onClick={() => reconcileOne.mutate(repo.id)}
-                      >
-                        {reconcileBusyId === repo.id ? "对账中…" : "对账"}
-                      </button>
-                    ) : (
-                      <span className="repo-baseline-row__slot" aria-hidden="true" />
-                    )}
-                    {isBaseline ? (
-                      <button
-                        className="quiet-button quiet-button--compact quiet-button--primary-ghost"
-                        type="button"
-                        disabled={activate.isPending}
-                        onClick={() => activate.mutate(repo.id)}
-                      >
-                        立即放行
-                      </button>
-                    ) : (
-                      <span className="repo-baseline-row__slot" aria-hidden="true" />
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </QueryGate>
-        {baselineRepos.length > 0 ? (
-          <p className="panel-footnote">
-            基线中抑制实时通知，避免首次同步洪流。对账成功后会自动结束基线；也可点「立即放行」跳过等待。
-          </p>
-        ) : null}
       </CollapsiblePanel>
     </>
   );

@@ -32,6 +32,7 @@ const ActionsPage = lazyRouteComponent(() => import("../features/monitor/list-pa
 const SecurityPage = lazyRouteComponent(() => import("../features/monitor/list-pages"), "SecurityPage");
 const GitHubPage = lazyRouteComponent(() => import("../features/monitor/github-page"), "GitHubPage");
 const AboutPage = lazyRouteComponent(() => import("../features/monitor/about-page"), "AboutPage");
+const SettingsPage = lazyRouteComponent(() => import("../features/monitor/settings-page"), "SettingsPage");
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -119,6 +120,12 @@ const aboutRoute = createRoute({
   component: AboutPage,
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/settings",
+  component: SettingsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
@@ -133,6 +140,7 @@ const routeTree = rootRoute.addChildren([
     securityRoute,
     githubRoute,
     aboutRoute,
+    settingsRoute,
   ]),
 ]);
 

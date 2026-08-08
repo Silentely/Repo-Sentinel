@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   Send,
+  Settings,
   Shield,
   ShieldCheck,
   Workflow,
@@ -40,7 +41,8 @@ function mobileTitleFor(pathname: string): string {
   if (pathname.startsWith("/actions")) return "Actions";
   if (pathname.startsWith("/security")) return "安全告警";
   if (pathname.startsWith("/github")) return "GitHub App";
-  if (pathname.startsWith("/about")) return "关于与设置";
+  if (pathname.startsWith("/about")) return "关于";
+  if (pathname.startsWith("/settings")) return "设置";
   return "仪表盘";
 }
 
@@ -233,7 +235,11 @@ export function RootLayout({ session }: RootLayoutProps) {
           </Link>
           <Link to="/about" activeProps={{ "aria-current": "page" }}>
             <Info aria-hidden="true" size={17} />
-            <span>关于与设置</span>
+            <span>关于</span>
+          </Link>
+          <Link to="/settings" activeProps={{ "aria-current": "page" }}>
+            <Settings aria-hidden="true" size={17} />
+            <span>设置</span>
           </Link>
         </nav>
         <span className="app-sidebar__version">{versionLabel}</span>

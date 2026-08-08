@@ -38,8 +38,8 @@ export function FeatureGuard({
       <ListShell eyebrow="仓库" title={featureName} description={description}>
         <EmptyState
           title={`${featureName} 功能已禁用`}
-          description="可在「关于与设置 → 功能模块开关」中重新启用。"
-          action={<Link to="/about">打开设置</Link>}
+          description="可在「设置 → 功能模块开关」中重新启用。"
+          action={<Link to="/settings">打开设置</Link>}
         />
       </ListShell>
     );
