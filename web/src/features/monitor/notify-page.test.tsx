@@ -95,4 +95,18 @@ describe("NotifyPage", () => {
     expect(within(webhookForm).getByRole("button", { name: "🔔 发送测试通知" })).toBeEnabled();
     resolveTest();
   });
+
+  it("订阅类型提供全选/清空快捷操作并统计已选数量", async () => {
+    renderPage();
+    // 两个渠道区块各有一套全选/清空，取第一个（Telegram）作用域断言。
+    const telegramForm = screen.getByRole("heading", { name: "Telegram" }).closest("section") as HTMLElement;
+    const count = within(telegramForm).getByText(/已选 \d+ \/ 8/);
+    expect(count).toHaveTextContent("已选 8 / 8");
+
+    fireEvent.click(within(telegramForm).getByRole("button", { name: "清空" }));
+    expect(within(telegramForm).getByText("已选 0 / 8")).toBeInTheDocument();
+
+    fireEvent.click(within(telegramForm).getByRole("button", { name: "全选" }));
+    expect(within(telegramForm).getByText("已选 8 / 8")).toBeInTheDocument();
+  });
 });

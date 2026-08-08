@@ -5,6 +5,7 @@ import {
   eventActionLabel,
   eventKindLabel,
   formatRelativeTime,
+  outboxErrorHint,
   severityLabel,
   workItemStateLabel,
   workflowConclusionLabel,
@@ -121,5 +122,20 @@ describe("eventKindLabel", () => {
     expect(eventKindLabel("workflow_run")).toBe("Actions");
     expect(eventKindLabel("star")).toBe("Star");
     expect(eventKindLabel("watch")).toBe("Watch");
+  });
+});
+
+describe("outboxErrorHint", () => {
+  it("常见错误码给出中文排障提示", () => {
+    expect(outboxErrorHint("telegram_rate_limited")).toContain("限流");
+    expect(outboxErrorHint("telegram_client_error_400")).toContain("Chat ID");
+    expect(outboxErrorHint("http_webhook_status_503")).toContain("服务端错误");
+    expect(outboxErrorHint("decrypt_secret")).toContain("密钥");
+    expect(outboxErrorHint("database_unavailable")).toContain("数据库");
+  });
+
+  it("未收录错误码返回空串，不占用展示空间", () => {
+    expect(outboxErrorHint("some_unknown_code")).toBe("");
+    expect(outboxErrorHint("")).toBe("");
   });
 });

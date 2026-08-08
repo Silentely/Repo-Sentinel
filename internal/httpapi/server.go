@@ -31,6 +31,9 @@ const (
 	CSRFCookieName = "reposentinel_csrf"
 	// CSRFHeaderName 是写请求携带双提交令牌的固定 Header 名。
 	CSRFHeaderName = "X-CSRF-Token"
+	// webhookProcessConcurrency 限制 webhook 后台处理并发数：突发事件（如仓库批量推送）
+	// 不会无限起 goroutine 同时写库/调 GitHub API，超出部分排队等待而非丢弃。
+	webhookProcessConcurrency = 32
 )
 
 // ReadyChecker 报告迁移、数据库与核心依赖是否已就绪。
@@ -82,6 +85,8 @@ type server struct {
 	webhookSvc *webhooksvc.Service
 	// reconcileAllRunning 防止全量对账并发触发（对账会大量调用 GitHub API 并写库）。
 	reconcileAllRunning atomic.Bool
+	// webhookSem 控制 webhook 后台处理并发；容量见 webhookProcessConcurrency。
+	webhookSem chan struct{}
 }
 
 // safeGo 以后台 goroutine 执行 fn；panic 只记录日志，不拖垮整个进程。
@@ -102,6 +107,38 @@ func (s *server) safeGo(name string, fn func()) {
 	}()
 }
 
+// acquireWebhookSlot 领取 webhook 处理槽位；槽位满时阻塞等待（事件不丢弃）。
+// ctx 为 nil 时其 Done 通道永不就绪，等价于始终等待；关闭期间返回 false 不再排队。
+// webhookSem 未装配（直接构造的测试 server）时不限制并发。
+func (s *server) acquireWebhookSlot(ctx context.Context) bool {
+	if s.webhookSem == nil {
+		return true
+	}
+	select {
+	case s.webhookSem <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// releaseWebhookSlot 归还 webhook 处理槽位，与 acquireWebhookSlot 配对使用。
+func (s *server) releaseWebhookSlot() {
+	<-s.webhookSem
+}
+
+// processWebhookAsync 后台执行 webhook 管线（规范化 → 通知 → 状态机），带并发限流。
+// 超出并发上限的投递排队等待而非丢弃；实例关闭期间不再排队新工作，
+// 已入队行的状态标记仍由 Process 内部脱离取消的 context 完成。
+func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body []byte) {
+	s.safeGo("webhook_process", func() {
+		if s.acquireWebhookSlot(s.dependencies.Background) {
+			defer s.releaseWebhookSlot()
+			s.webhookSvc.Process(rowID, eventType, deliveryID, body)
+		}
+	})
+}
+
 // New 创建管理 API HTTP Handler。
 func New(dependencies Dependencies) http.Handler {
 	if dependencies.Logger == nil {
@@ -120,6 +157,7 @@ func New(dependencies Dependencies) http.Handler {
 	s := &server{
 		dependencies:  dependencies,
 		secureCookies: usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
+		webhookSem:    make(chan struct{}, webhookProcessConcurrency),
 		webhookSvc: &webhooksvc.Service{
 			Store:      dependencies.Store,
 			Logger:     dependencies.Logger,

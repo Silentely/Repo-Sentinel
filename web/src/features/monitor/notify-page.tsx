@@ -133,6 +133,24 @@ function ChannelForm({
   function renderKindChecks(kinds: string[], setKinds: (next: string[]) => void) {
     return (
       <div className="channel-kinds">
+        <div className="channel-kinds__toolbar">
+          <button
+            className="quiet-button quiet-button--compact"
+            type="button"
+            onClick={() =>
+              // 全选仅勾选全局开关未关闭的类型：关闭类型提交无意义，且后端会忽略。
+              setKinds(SUBSCRIBABLE_KINDS.filter((k) => kindGloballyEnabled(settings, k.featureKey)).map((k) => k.value))
+            }
+          >
+            全选
+          </button>
+          <button className="quiet-button quiet-button--compact" type="button" onClick={() => setKinds([])}>
+            清空
+          </button>
+          <span className="muted channel-kinds__count">
+            已选 {kinds.length} / {SUBSCRIBABLE_KINDS.length}
+          </span>
+        </div>
         {SUBSCRIBABLE_KINDS.map((k) => {
           const globalOn = kindGloballyEnabled(settings, k.featureKey);
           return (

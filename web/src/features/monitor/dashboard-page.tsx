@@ -6,12 +6,12 @@ import { ChevronDown } from "lucide-react";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
+import { RelativeTime } from "../../components/relative-time";
 import { toApiError } from "../../lib/api/errors";
 import {
   channelLabel,
   eventActionLabel,
   eventKindLabel,
-  formatRelativeTime,
   outboxStatusLabel,
   severityLabel,
 } from "../../lib/format";
@@ -295,7 +295,7 @@ export function DashboardPage() {
                     {item.channel_type ? (
                       <span className="muted channel-tag">{channelLabel(item.channel_type)}</span>
                     ) : null}
-                    {item.created_at ? <span className="event-time">{formatRelativeTime(item.created_at)}</span> : null}
+                    {item.created_at ? <RelativeTime date={item.created_at} className="event-time" /> : null}
                     <span className="muted">尝试 {item.attempt_count} 次</span>
                     {item.last_error_code ? <span className="error-code">{item.last_error_code}</span> : null}
                   </div>
@@ -363,7 +363,7 @@ export function DashboardPage() {
                         </span>
                       ) : null}
                       {ev.severity ? <span className={`severity severity-${ev.severity}`}>{severityLabel(ev.severity)}</span> : null}
-                      {ev.occurred_at ? <span className="event-time">{formatRelativeTime(ev.occurred_at)}</span> : null}
+                      {ev.occurred_at ? <RelativeTime date={ev.occurred_at} className="event-time" /> : null}
                       {ev.actor ? <span className="muted">· {ev.actor}</span> : null}
                     </div>
                     <strong className="feed-row__title" title={title}>

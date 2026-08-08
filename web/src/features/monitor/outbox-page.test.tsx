@@ -83,6 +83,18 @@ describe("OutboxPage", () => {
     expect(screen.getByRole("dialog", { name: "投递详情" })).toBeInTheDocument();
   });
 
+  it("详情抽屉对已收录错误码展示中文排障提示", async () => {
+    renderPage();
+
+    const title = await screen.findByText("第二条失败通知");
+    const row = title.closest("li") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "查看投递详情：第二条失败通知" }));
+
+    const dialog = screen.getByRole("dialog", { name: "投递详情" });
+    expect(within(dialog).getByText("http_webhook_status_503")).toBeInTheDocument();
+    expect(within(dialog).getByText(/服务端错误/)).toBeInTheDocument();
+  });
+
   it("批量重试遇到单条失败时仍继续，并反馈成功与失败数量", async () => {
     fixtures.apiRequest.mockImplementation(async (path: string) => {
       if (path.includes("/out-1/retry")) {

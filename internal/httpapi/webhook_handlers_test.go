@@ -242,6 +242,40 @@ func TestWebhook未配置Secret返回503(t *testing.T) {
 	assertNoDelivery(t, noConfigSecret.store, "delivery-unconfigured-fallback")
 }
 
+// TestWebhook拒绝日志携带Delivery上下文 拒绝路径（未配置/验签失败）日志必须带
+// delivery_id 与 event_type，否则 GitHub 投递失败排查只能靠请求级 request_id 反查。
+func TestWebhook拒绝日志携带Delivery上下文(t *testing.T) {
+	logBuffer := &lockedBuffer{}
+	logger := slog.New(slog.NewJSONHandler(logBuffer, nil))
+	body := []byte(`{"action":"opened"}`)
+
+	// 未配置 secret：记录 delivery/event（fixture 默认无 secret）。
+	noSecret := newWebhookTestFixture(t, webhookTestOptions{logger: logger})
+	noSecret.postWebhook(t, body, map[string]string{
+		"X-Hub-Signature-256": "sha256=whatever",
+		"X-GitHub-Delivery":   "delivery-reject-unconfigured",
+		"X-GitHub-Event":      "issues",
+	})
+
+	// 验签失败：记录 delivery/event（fixture 配置合法 secret，但请求签名错误）。
+	badSig := newWebhookTestFixture(t, webhookTestOptions{runtimeSecret: webhookTestSecret, logger: logger})
+	badSig.postWebhook(t, body, map[string]string{
+		"X-Hub-Signature-256": signWebhookBody("错误的密钥", body),
+		"X-GitHub-Delivery":   "delivery-reject-bad-sig",
+		"X-GitHub-Event":      "pull_request",
+	})
+
+	logs := logBuffer.String()
+	for _, want := range []string{
+		`"error_code":"webhook_not_configured"`, `"delivery_id":"delivery-reject-unconfigured"`, `"event_type":"issues"`,
+		`"error_code":"invalid_signature"`, `"delivery_id":"delivery-reject-bad-sig"`, `"event_type":"pull_request"`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("拒绝日志应包含 %s，实际: %s", want, logs)
+		}
+	}
+}
+
 func TestWebhook合法签名接受投递并入库accepted(t *testing.T) {
 	fixture := newWebhookTestFixture(t, webhookTestOptions{runtimeSecret: webhookTestSecret})
 	body := issueOpenedPayload(t, 1, time.Now().UTC())
@@ -358,6 +392,55 @@ func TestWebhook超大请求体返回413(t *testing.T) {
 	})
 	assertAPIError(t, resp, http.StatusRequestEntityTooLarge, "validation_failed")
 	assertNoDelivery(t, fixture.store, "delivery-oversized")
+}
+
+// TestWebhookSemaphoreLimitsConcurrentProcessing 信号量容量 1 时：
+// 首个槽位被占后第二次领取必须阻塞，释放后才能继续。
+func TestWebhookSemaphoreLimitsConcurrentProcessing(t *testing.T) {
+	srv := &server{webhookSem: make(chan struct{}, 1)}
+	ctx := context.Background()
+	if !srv.acquireWebhookSlot(ctx) {
+		t.Fatal("空信号量应可领取")
+	}
+	acquired := make(chan bool, 1)
+	go func() {
+		acquired <- srv.acquireWebhookSlot(ctx)
+	}()
+	select {
+	case <-acquired:
+		t.Fatal("容量 1 满时第二次领取不应立即成功")
+	case <-time.After(100 * time.Millisecond):
+	}
+	srv.releaseWebhookSlot()
+	select {
+	case ok := <-acquired:
+		if !ok {
+			t.Fatal("释放后应可领取")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("释放后领取应尽快成功")
+	}
+}
+
+// TestWebhookAcquireSlotAbortsOnShutdown 关闭期间领取应返回 false，不再排队新工作。
+func TestWebhookAcquireSlotAbortsOnShutdown(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	srv := &server{webhookSem: make(chan struct{}, 1)}
+	if !srv.acquireWebhookSlot(ctx) {
+		t.Fatal("初始领取应成功")
+	}
+	cancel()
+	if srv.acquireWebhookSlot(ctx) {
+		t.Fatal("取消后领取应失败")
+	}
+}
+
+// TestWebhookAcquireSlotNilSemaphoreUnlimited 未装配信号量时不应限制（直接构造的 server）。
+func TestWebhookAcquireSlotNilSemaphoreUnlimited(t *testing.T) {
+	srv := &server{}
+	if !srv.acquireWebhookSlot(context.Background()) {
+		t.Fatal("nil 信号量应视为不限制")
+	}
 }
 
 // 异步 panic 用例说明：通读 internal/normalizer/process.go 后确认 Process 对全部畸形输入

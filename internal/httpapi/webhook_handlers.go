@@ -21,6 +21,10 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, r, http.StatusRequestEntityTooLarge, errorCodeValidationFailed, nil)
 		return
 	}
+	// 提前读取投递标识：拒绝路径（未配置/签名失败）也需记录 delivery/event，
+	// 便于按投递 ID 在 GitHub 侧与本地日志间交叉定位审计线索。
+	deliveryID := strings.TrimSpace(r.Header.Get("X-GitHub-Delivery"))
+	eventType := strings.TrimSpace(r.Header.Get("X-GitHub-Event"))
 
 	var secrets []string
 	if s.dependencies.GitHubRuntime != nil {
@@ -38,6 +42,8 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		s.dependencies.Logger.Warn(
 			"github webhook rejected",
 			"request_id", requestIDFromContext(r.Context()),
+			"delivery_id", deliveryID,
+			"event_type", eventType,
 			"error_code", "webhook_not_configured",
 		)
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, "webhook_not_configured", nil)
@@ -48,30 +54,21 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		s.dependencies.Logger.Warn(
 			"github webhook rejected",
 			"request_id", requestIDFromContext(r.Context()),
+			"delivery_id", deliveryID,
+			"event_type", eventType,
 			"error_code", "invalid_signature",
 		)
 		s.writeAPIError(w, r, http.StatusUnauthorized, "invalid_signature", nil)
 		return
 	}
 
-	deliveryID := strings.TrimSpace(r.Header.Get("X-GitHub-Delivery"))
-	eventType := strings.TrimSpace(r.Header.Get("X-GitHub-Event"))
 	if deliveryID == "" || eventType == "" {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
 	}
 
 	if existing, err := s.dependencies.Store.WebhookDeliveries().GetByDeliveryID(r.Context(), deliveryID); err == nil {
-		MetricsIncWebhookDuplicate()
-		s.dependencies.Logger.Info(
-			"github webhook duplicate",
-			"delivery_id", existing.DeliveryID,
-			"event_type", eventType,
-		)
-		writeJSON(w, http.StatusAccepted, map[string]any{
-			"status":      "duplicate",
-			"delivery_id": existing.DeliveryID,
-		})
+		s.respondWebhookDuplicate(w, existing.DeliveryID, eventType)
 		return
 	}
 
@@ -81,20 +78,14 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			MetricsIncWebhookDuplicate()
-			s.dependencies.Logger.Info(
-				"github webhook duplicate",
-				"delivery_id", deliveryID,
-				"event_type", eventType,
-			)
-			writeJSON(w, http.StatusAccepted, map[string]any{"status": "duplicate", "delivery_id": deliveryID})
+			s.respondWebhookDuplicate(w, deliveryID, eventType)
 			return
 		}
 		s.writeMappedError(w, r, err)
 		return
 	}
 
-	// 尽快 202，后台规范化
+	// 尽快 202，后台规范化（带并发限流，见 processWebhookAsync）。
 	MetricsIncWebhookAccepted()
 	s.dependencies.Logger.Info(
 		"github webhook accepted",
@@ -107,7 +98,20 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		"delivery_id": deliveryID,
 	})
 
-	s.safeGo("webhook_process", func() {
-		s.webhookSvc.Process(delivery.ID, eventType, deliveryID, body)
+	s.processWebhookAsync(delivery.ID, eventType, deliveryID, body)
+}
+
+// respondWebhookDuplicate 处理重复投递：GitHub 可能重发同一 delivery_id，
+// 记录指标与日志后以 202 duplicate 幂等应答，不重复入库与处理。
+func (s *server) respondWebhookDuplicate(w http.ResponseWriter, deliveryID, eventType string) {
+	MetricsIncWebhookDuplicate()
+	s.dependencies.Logger.Info(
+		"github webhook duplicate",
+		"delivery_id", deliveryID,
+		"event_type", eventType,
+	)
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"status":      "duplicate",
+		"delivery_id": deliveryID,
 	})
 }

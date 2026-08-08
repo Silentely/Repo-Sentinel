@@ -1,5 +1,5 @@
 import { KeyRound, ShieldCheck, UserRound } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { ErrorAlert } from "../../components/error-alert";
@@ -23,6 +23,10 @@ export function LoginPage({
   version = "dev",
 }: LoginPageProps) {
   const [requestError, setRequestError] = useState<ApiError>();
+  // 登录页不在 RootLayout 内，标签页标题需独立设置。
+  useEffect(() => {
+    document.title = "登录 · RepoSentinel";
+  }, []);
   const {
     register,
     handleSubmit,
