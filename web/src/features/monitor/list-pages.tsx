@@ -272,6 +272,19 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
             </label>
           </>
         )}
+        {filtersActive ? (
+          <button
+            className="quiet-button quiet-button--compact"
+            type="button"
+            onClick={() => {
+              setRepoId("");
+              setReviewFilter("");
+              setCheckFilter("");
+            }}
+          >
+            清除筛选
+          </button>
+        ) : null}
       </div>
       <EventListBody
         query={q}
@@ -405,7 +418,9 @@ export function ReposPage() {
   const settings = useQuery(settingsQueryOptions);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [showArchived, setShowArchived] = useState(false);
+  // 归档/在库视图同步到 URL（?archived=1），刷新后保留当前视角。
+  const [archivedParam, setArchivedParam] = useUrlState("archived", "");
+  const showArchived = archivedParam === "1";
   const featureIssues = settings.data?.["feature.issues"] !== false;
   const featurePRs = settings.data?.["feature.pull_requests"] !== false;
   const featureActions = settings.data?.["feature.actions"] !== false;
@@ -496,10 +511,10 @@ export function ReposPage() {
     <ListShell eyebrow="仓库" title="仓库管理" description="「监控」为总开关；子能力受全局功能模块约束。本系统归档会停采集（可撤销），与 GitHub 侧已归档是两回事。">
       {errorMsg ? <ErrorAlert title="更新失败" message={errorMsg} /> : null}
       <div className="filter-bar">
-        <button className={`quiet-button${!showArchived ? " active" : ""}`} type="button" onClick={() => setShowArchived(false)}>
+        <button className={`quiet-button${!showArchived ? " active" : ""}`} type="button" onClick={() => setArchivedParam("")}>
           未归档 ({activeRepos.length})
         </button>
-        <button className={`quiet-button${showArchived ? " active" : ""}`} type="button" onClick={() => setShowArchived(true)}>
+        <button className={`quiet-button${showArchived ? " active" : ""}`} type="button" onClick={() => setArchivedParam("1")}>
           本系统已归档 ({archivedRepos.length})
         </button>
       </div>
@@ -776,6 +791,18 @@ function ActionsList() {
         <IgnoredToggle mode={ignoredMode} onChange={setIgnoredMode} />
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
+        {filtersActive ? (
+          <button
+            className="quiet-button quiet-button--compact"
+            type="button"
+            onClick={() => {
+              setRepoId("");
+              setConclusion("");
+            }}
+          >
+            清除筛选
+          </button>
+        ) : null}
       </div>
       <EventListBody
         query={q}
@@ -897,6 +924,18 @@ function SecurityList() {
         </label>
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
+        {filtersActive ? (
+          <button
+            className="quiet-button quiet-button--compact"
+            type="button"
+            onClick={() => {
+              setRepoId("");
+              setAlertKind("");
+            }}
+          >
+            清除筛选
+          </button>
+        ) : null}
       </div>
       <EventListBody
         query={q}

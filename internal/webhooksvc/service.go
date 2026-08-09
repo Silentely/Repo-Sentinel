@@ -93,6 +93,14 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 		if res.Event != nil {
 			attrs = append(attrs, "event_kind", res.Event.Kind)
 		}
+		// 乱序丢弃与未处理动作是"处理了但没产生通知"的两类常见原因，
+		// 带出布尔字段避免排障时把正常入库误判为通知丢失。
+		if res.StaleDiscarded {
+			attrs = append(attrs, "stale_discarded", true)
+		}
+		if res.UnhandledAction {
+			attrs = append(attrs, "unhandled_action", true)
+		}
 		s.Logger.Info("github webhook processed", attrs...)
 	}
 }

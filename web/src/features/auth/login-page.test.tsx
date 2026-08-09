@@ -55,6 +55,27 @@ describe("登录页", () => {
     expect(alert).toHaveTextContent("invalid_credentials");
   });
 
+  it("rate_limited 时给出限流说明与等待提示", async () => {
+    const user = userEvent.setup();
+    const loginAction = vi.fn(async () => {
+      throw new ApiError({
+        status: 429,
+        errorCode: "rate_limited",
+        message: "登录尝试过于频繁，请稍后再试。",
+      });
+    });
+    render(<LoginPage loginAction={loginAction} />);
+
+    await user.type(screen.getByLabelText("用户名"), "Repo Admin");
+    await user.type(screen.getByLabelText("密码"), "管理员密码一二三四五六");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("尝试过于频繁");
+    expect(alert).toHaveTextContent("稍候片刻再试");
+    expect(alert).toHaveTextContent("rate_limited");
+  });
+
   it("提交期间禁用按钮并阻止重复登录", async () => {
     const user = userEvent.setup();
     let resolveLogin: (() => void) | undefined;

@@ -8,6 +8,7 @@ import { QueryGate } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
 import { apiRequest } from "../../lib/api/client";
 import { channelLabel, outboxErrorHint, outboxStatusLabel } from "../../lib/format";
+import { useUrlState } from "../../lib/use-url-state";
 import { outboxQueryOptions, retryOutbox, type OutboxItem, type Page } from "./api";
 
 const statusFilters = [
@@ -31,7 +32,8 @@ interface BatchRetryResult {
 
 export function OutboxPage() {
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  // 状态筛选同步到 URL（?status=dead 等）：仪表盘「投递失败」跳转时直接进入对应筛选。
+  const [statusFilter, setStatusFilter] = useUrlState("status", "");
   const [channelFilter, setChannelFilter] = useState<string>("");
   const [selectedItem, setSelectedItem] = useState<OutboxItem | null>(null);
   const closeDetail = useCallback(() => setSelectedItem(null), []);

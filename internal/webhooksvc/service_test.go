@@ -253,6 +253,60 @@ func TestProcessFailureInvokesOnFailed(t *testing.T) {
 	})
 }
 
+// TestProcessSuccessLogCarriesStaleDiscarded 乱序丢弃是「处理了但没通知」的常见原因，
+// 成功日志必须带 stale_discarded 布尔，避免排障时把正常入库误判为通知丢失。
+func TestProcessSuccessLogCarriesStaleDiscarded(t *testing.T) {
+	data := openServiceStore(t)
+	repo := seedActiveDemoRepo(t, data)
+	var logBuffer bytes.Buffer
+	svc := &webhooksvc.Service{
+		Store:      data,
+		Logger:     slog.New(slog.NewJSONHandler(&logBuffer, nil)),
+		Background: t.Context(),
+	}
+	// 预置较新的 issue：之后到达的旧载荷会被 UpsertIfNewer 判定乱序丢弃。
+	if _, _, err := data.WorkItems().UpsertIfNewer(t.Context(), store.WorkItem{
+		ID: "wi-stale", RepositoryID: repo.ID, Number: 7, Kind: store.WorkItemKindIssue,
+		State: "closed", Title: "最新状态", Author: "alice",
+		HTMLURL:         "https://github.com/acme/demo/issues/7",
+		SourceUpdatedAt: time.Now().UTC().Add(time.Hour), StateHash: "h-new",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 旧时间的 opened 载荷（updated_at 远早于库内状态）。
+	old := time.Now().UTC().Add(-48 * time.Hour)
+	payload, err := json.Marshal(map[string]any{
+		"action": "opened",
+		"issue": map[string]any{
+			"number": 7, "title": "过期打开", "state": "open",
+			"html_url":   "https://github.com/acme/demo/issues/7",
+			"user":       map[string]any{"login": "alice"},
+			"updated_at": old.Format(time.RFC3339),
+			"labels":     []any{},
+			"assignees":  []any{},
+		},
+		"repository": map[string]any{
+			"id": 99, "name": "demo", "full_name": "acme/demo", "private": false,
+			"html_url": "https://github.com/acme/demo", "default_branch": "main",
+			"owner": map[string]any{"login": "acme"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rowID := seedDelivery(t, data, "delivery-stale", "issues", payload)
+
+	svc.Process(rowID, "issues", "delivery-stale", payload)
+
+	logs := logBuffer.String()
+	if !strings.Contains(logs, `"msg":"github webhook processed"`) {
+		t.Fatalf("应记录成功日志，实际: %s", logs)
+	}
+	if !strings.Contains(logs, `"stale_discarded":true`) {
+		t.Fatalf("乱序丢弃应在成功日志带 stale_discarded=true，实际: %s", logs)
+	}
+}
+
 // TestProcessBaselineSuppressSkipsEvaluator 新仓库（基线）→ 抑制实时通知，Evaluator 不触发，
 // 但行仍标记 processed（规范化本身成功）。
 func TestProcessBaselineSuppressSkipsEvaluator(t *testing.T) {

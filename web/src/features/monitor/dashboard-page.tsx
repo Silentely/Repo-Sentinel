@@ -244,7 +244,8 @@ export function DashboardPage() {
             <Metric label="开放安全告警" value={stats?.open_security} to="/security" loading={dashboard.isPending} />
           ) : null}
           <Metric label="24h 事件" value={stats?.events_24h} loading={dashboard.isPending} />
-          <Metric label="投递失败" value={stats?.outbox_dead} to="/notifications/outbox" loading={dashboard.isPending} />
+          {/* 跳转带 status=dead：outbox 页按 URL 初始筛选，直达失败投递列表。 */}
+          <Metric label="投递失败" value={stats?.outbox_dead} to="/notifications/outbox?status=dead" loading={dashboard.isPending} />
         </div>
         <div className="status-grid status-grid--secondary">
           <Metric label="活跃仓库" value={stats?.repos_active} to="/repos" loading={dashboard.isPending} />

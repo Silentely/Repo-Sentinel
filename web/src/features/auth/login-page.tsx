@@ -52,6 +52,7 @@ export function LoginPage({
   });
 
   const invalidCredentials = requestError?.errorCode === "invalid_credentials";
+  const rateLimited = requestError?.errorCode === "rate_limited";
 
   return (
     <main className="auth-shell">
@@ -69,11 +70,13 @@ export function LoginPage({
 
         {requestError ? (
           <ErrorAlert
-            title={invalidCredentials ? "用户名或密码不正确" : "暂时无法登录"}
+            title={invalidCredentials ? "用户名或密码不正确" : rateLimited ? "尝试过于频繁" : "暂时无法登录"}
             message={
               invalidCredentials
                 ? "请检查输入后重试；若凭据已遗失，请使用 CLI 重置密码。"
-                : requestError.message
+                : rateLimited
+                  ? "登录尝试过多，请稍候片刻再试。限流按来源 IP 生效，更换用户名不会重置额度。"
+                  : requestError.message
             }
             errorCode={requestError.errorCode}
           />

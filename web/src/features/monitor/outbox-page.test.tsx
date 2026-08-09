@@ -83,6 +83,16 @@ describe("OutboxPage", () => {
     expect(screen.getByRole("dialog", { name: "投递详情" })).toBeInTheDocument();
   });
 
+  it("URL 携带 status=dead 时初始进入投递失败筛选（仪表盘跳转直达）", async () => {
+    window.history.replaceState(null, "", "/notifications/outbox?status=dead");
+    try {
+      renderPage();
+      expect(await screen.findByRole("button", { name: "重试本页失败 (2)" })).toBeInTheDocument();
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
   it("详情抽屉对已收录错误码展示中文排障提示", async () => {
     renderPage();
 

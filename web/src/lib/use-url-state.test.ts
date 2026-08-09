@@ -30,10 +30,15 @@ describe("useUrlState", () => {
     expect(params.get("repo")).toBe("acme/demo");
   });
 
-  it("设置非默认值后 URL 携带新参数", () => {
+  it("set 同时更新本地状态（筛选点击即时生效），而不只是改 URL", () => {
     const { result } = renderHook(() => useUrlState("conclusion", ""));
     act(() => result.current[1]("failure"));
+    expect(result.current[0]).toBe("failure");
     expect(new URLSearchParams(window.location.search).get("conclusion")).toBe("failure");
+    // 恢复默认值：状态回退且 URL 参数被移除。
+    act(() => result.current[1](""));
+    expect(result.current[0]).toBe("");
+    expect(new URLSearchParams(window.location.search).has("conclusion")).toBe(false);
   });
 });
 
