@@ -223,6 +223,22 @@ export function alertStateLabel(state: string): string {
 }
 
 /**
+ * 把 Telegram HTML 格式正文转为纯文本（详情抽屉展示用）：
+ * 链接保留「文字 (URL)」，其余标签剔除，HTML 实体反转义。
+ * 纯文本渲染无注入风险，避免在管理台直接渲染外部输入的 HTML。
+ */
+export function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<a href="([^"]*)">([^<]*)<\/a>/g, "$2 ($1)")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+/**
  * Outbox 投递错误码 → 中文排障提示（投递记录页用）。
  * 机器码保留展示（便于对照日志），说明文字帮助普通用户判断下一步动作；
  * 未收录的错误码返回空串，不占用展示空间。

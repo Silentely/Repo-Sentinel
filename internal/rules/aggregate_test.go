@@ -245,6 +245,30 @@ func TestAggregatorBurstSummary(t *testing.T) {
 	}
 }
 
+// TestAggregatorBurstLogsWarn 超频降级必须 Warn 留痕（repo/次数）：异常流量审计信号。
+func TestAggregatorBurstLogsWarn(t *testing.T) {
+	data := openTestStore(t)
+	_ = seedChannel(t, data)
+	buf, logger := newRulesLogger(t)
+	agg := NewAggregator(data, time.Minute, 3, time.Minute)
+	agg.Logger = logger
+	repoID := ulid.Make().String()
+	ctx := context.Background()
+	for i := 0; i < 4; i++ {
+		ev := &store.Event{
+			ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened",
+			Title: "x", RepositoryID: &repoID,
+		}
+		if err := agg.Evaluate(ctx, normalizer.Result{Event: ev}, "acme/demo"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := buf.String()
+	if !strings.Contains(out, "burst summary enqueued") || !strings.Contains(out, "acme/demo") || !strings.Contains(out, "events_in_window=") {
+		t.Fatalf("超频降级应 Warn 留痕，实际: %s", out)
+	}
+}
+
 // TestHTMLEscape 守护通知文案的转义行为：合并与实时消息统一使用标准库
 // html.EscapeString（含单引号），避免自定义 replacer 与标准库行为分叉。
 func TestHTMLEscape(t *testing.T) {

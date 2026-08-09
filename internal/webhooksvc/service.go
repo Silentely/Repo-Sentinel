@@ -116,9 +116,10 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 			"suppressed", res.SuppressNotify,
 			"duration_ms", time.Since(startedAt).Milliseconds(),
 		}
-		// 有事件时带出事件类型，便于按 kind 聚合处理量与耗时。
+		// 有事件时带出事件类型与事件 ID：delivery 行 ↔ 事件可互相检索定位。
 		if res.Event != nil {
 			attrs = append(attrs, "event_kind", res.Event.Kind)
+			attrs = append(attrs, "event_id", res.Event.ID)
 		}
 		// 乱序丢弃与未处理动作是"处理了但没产生通知"的两类常见原因，
 		// 带出布尔字段避免排障时把正常入库误判为通知丢失。

@@ -336,6 +336,17 @@ export function NotifyPage() {
   };
 
   const testingType = testMut.isPending ? testMut.variables : undefined;
+  // 复制渠道目标（Chat ID / URL）：配置排查时便于粘贴；剪贴板不可用静默降级。
+  const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
+  const copyTarget = async (type: string, target: string) => {
+    try {
+      await navigator.clipboard.writeText(target);
+      setCopiedTarget(type);
+      window.setTimeout(() => setCopiedTarget(null), 1500);
+    } catch {
+      // 非安全上下文或权限受限：不打断使用。
+    }
+  };
 
   return (
     <>
@@ -377,6 +388,16 @@ export function NotifyPage() {
                 </span>
                 <strong>{ch.enabled ? "已启用" : "已禁用"}</strong>
                 <span className="channel-target">{ch.target || "（无目标）"}</span>
+                {ch.target ? (
+                  <button
+                    type="button"
+                    className="quiet-button quiet-button--compact"
+                    aria-label={`复制目标：${ch.channel_type === "telegram" ? "Chat ID" : "URL"}`}
+                    onClick={() => void copyTarget(ch.channel_type, ch.target)}
+                  >
+                    {copiedTarget === ch.channel_type ? "已复制" : "复制"}
+                  </button>
+                ) : null}
                 <span className="muted">{ch.secret_configured ? "密钥已配置" : "无密钥"}</span>
                 <span className="muted">{subscriptionSummary(ch.event_kinds, ch.digest_enabled)}</span>
                 <div className="channel-actions">

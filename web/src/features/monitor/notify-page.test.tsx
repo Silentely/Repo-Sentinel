@@ -124,4 +124,19 @@ describe("NotifyPage", () => {
     fireEvent.blur(targetInput);
     expect(within(webhookForm).queryByText(/仅允许 HTTPS URL/)).toBeNull();
   });
+
+  it("渠道行支持一键复制目标（Chat ID / URL）", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    renderPage();
+
+    const telegramRow = (await screen.findByText("📱 Telegram", { exact: true })).closest("li") as HTMLElement;
+    fireEvent.click(within(telegramRow).getByRole("button", { name: "复制目标：Chat ID" }));
+
+    expect(writeText).toHaveBeenCalledWith("123456");
+    expect(await within(telegramRow).findByText("已复制")).toBeInTheDocument();
+  });
 });

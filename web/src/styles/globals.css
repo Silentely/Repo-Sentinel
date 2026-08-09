@@ -2866,6 +2866,15 @@ a.status-item--link:focus-visible {
   margin-top: 0.1rem;
 }
 
+/* 抽屉内通知正文：保留换行与长文本折行，次级色区分于标题。 */
+.drawer-field__body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
 @media (max-width: 640px) {
   .outbox-toolbar {
     flex-direction: column;

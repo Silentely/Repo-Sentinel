@@ -347,6 +347,28 @@ func (e slowEvaluator) Evaluate(ctx context.Context, _ normalizer.Result, _ stri
 	}
 }
 
+// TestProcessSuccessLogCarriesEventID 成功日志必须带 event_id：delivery 行 ↔ 事件
+// 可互相检索定位，排查"这条投递对应哪个事件"不需要二次查询。
+func TestProcessSuccessLogCarriesEventID(t *testing.T) {
+	data := openServiceStore(t)
+	seedActiveDemoRepo(t, data)
+	var logBuffer bytes.Buffer
+	svc := &webhooksvc.Service{
+		Store:      data,
+		Logger:     slog.New(slog.NewJSONHandler(&logBuffer, nil)),
+		Background: t.Context(),
+	}
+	payload := issueOpenedPayload(t)
+	rowID := seedDelivery(t, data, "delivery-event-id", "issues", payload)
+
+	svc.Process(rowID, "issues", "delivery-event-id", payload)
+
+	logs := logBuffer.String()
+	if !strings.Contains(logs, `"event_kind":"issue"`) || !strings.Contains(logs, `"event_id":"`) {
+		t.Fatalf("成功日志应带 event_kind 与 event_id，实际: %s", logs)
+	}
+}
+
 // TestProcessBaselineSuppressSkipsEvaluator 新仓库（基线）→ 抑制实时通知，Evaluator 不触发，
 // 但行仍标记 processed（规范化本身成功）。
 func TestProcessBaselineSuppressSkipsEvaluator(t *testing.T) {
