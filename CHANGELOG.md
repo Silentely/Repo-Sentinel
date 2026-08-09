@@ -6,6 +6,13 @@
 
 ### Added
 
+- 通知渠道目标失焦即时校验：Telegram Chat ID 须为数字、HTTP Webhook 仅接受 HTTPS URL，保存前提前反馈格式问题
+- 登录被限流（`rate_limited`）后提交按钮禁用，防止连点刷掉限流窗口
+- Outbox 详情抽屉支持一键复制投递 ID，便于粘贴到日志/工单排查
+- Session 清理（15m 周期）无论删除量都 Debug 留痕：排查"过期 Session 有没有清"不依赖删除数
+- 事件去重留痕：Webhook 重复送达（指纹预查命中与唯一索引冲突）Debug 输出 repo/kind/action，与「逻辑异常没写库」区分
+- `installation_repositories` 的 `repositories_removed` 消费留痕：本地存在标记 unavailable、本地不存在也 Debug 记录（确认事件被消费而非漏处理）
+- 设置页「立即对账全部自有仓」无自有仓时禁用并提示原因
 - 仓库地址入口：登录页/初始化页右上角与顶栏新增 GitHub 图标直达源码（lucide-react 无品牌图标，内联 octocat SVG），关于页「你在用什么」补「GitHub 仓库」链接，`/auth.md` 元数据补 `- GitHub:` 行
 - HTTPS 部署（PublicBaseURL 为 https）下发 `Strict-Transport-Security`；明文部署不下发，避免锁死纯 HTTP 自托管
 - CSP 增强：新增 `form-action 'self'`，HTTPS 部署追加 `upgrade-insecure-requests`

@@ -112,8 +112,16 @@ func (a *App) runSessionCleanup(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if _, err := a.sessionService.CleanupExpired(ctx); err != nil && a.logger != nil {
-				a.logger.Error("session cleanup failed", "error_code", "database_unavailable", "error", err.Error())
+			deleted, err := a.sessionService.CleanupExpired(ctx)
+			if err != nil {
+				if a.logger != nil {
+					a.logger.Error("session cleanup failed", "error_code", "database_unavailable", "error", err.Error())
+				}
+				continue
+			}
+			if a.logger != nil {
+				// 无论删除量都留痕（Debug）：排查"过期 Session 有没有清"不依赖删除数。
+				a.logger.Debug("session cleanup ran", "deleted", deleted)
 			}
 		}
 	}

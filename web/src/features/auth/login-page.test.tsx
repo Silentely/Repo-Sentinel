@@ -103,6 +103,8 @@ describe("登录页", () => {
     expect(alert).toHaveTextContent("尝试过于频繁");
     expect(alert).toHaveTextContent("稍候片刻再试");
     expect(alert).toHaveTextContent("rate_limited");
+    // 限流期间禁用提交，防止连点刷掉限流窗口。
+    expect(screen.getByRole("button", { name: "登录" })).toBeDisabled();
   });
 
   it("提交期间禁用按钮并阻止重复登录", async () => {

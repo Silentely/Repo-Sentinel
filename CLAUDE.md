@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-09T06:00:00Z | 第六轮优化：①通知渠道目标失焦即时校验（Chat ID/HTTPS URL）；②登录限流后禁用提交；③session 清理 Debug 留痕；④事件去重 Debug 留痕（预查命中+索引冲突）；⑤installation removed 消费留痕；⑥对账按钮无自有仓禁用；⑦outbox 抽屉复制投递 ID |
 | 2026-08-09T03:30:00Z | 修复：①去除侧边栏左下角版本号；②修复仪表盘可无限向下滚动（sr-only 绝对定位元素逃逸 .app-shell 的 overflow 裁剪撑出文档滚动，为外壳补 position: relative 建立定位上下文） |
 | 2026-08-08T23:00:00Z | 仓库入口：登录/初始化页右上角与顶栏 GitHub 图标直达源码（内联 octocat SVG 补 lucide 缺的品牌图标）、关于页补「GitHub 仓库」链接、/auth.md 补 GitHub 行 |
 | 2026-08-08T22:00:00Z | 第五轮优化：①HTTPS 部署下发 HSTS、CSP 补 form-action/upgrade-insecure-requests；②healthcheck 输出 latency_ms；③列表翻页失败重试；④登录失败清空密码并聚焦；⑤HTTP webhook 出站补 User-Agent；⑥retention 无过期数据也 Debug 留痕；⑦设置页时区失焦即时校验 |

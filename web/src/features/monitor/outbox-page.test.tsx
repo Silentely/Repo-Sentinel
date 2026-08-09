@@ -105,6 +105,25 @@ describe("OutboxPage", () => {
     expect(within(dialog).getByText(/服务端错误/)).toBeInTheDocument();
   });
 
+  it("详情抽屉支持一键复制投递 ID", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    renderPage();
+
+    const title = await screen.findByText("失败通知");
+    const row = title.closest("li") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "查看投递详情：失败通知" }));
+
+    const dialog = screen.getByRole("dialog", { name: "投递详情" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "复制投递 ID" }));
+
+    expect(writeText).toHaveBeenCalledWith("out-1");
+    expect(await within(dialog).findByText("已复制")).toBeInTheDocument();
+  });
+
   it("批量重试遇到单条失败时仍继续，并反馈成功与失败数量", async () => {
     fixtures.apiRequest.mockImplementation(async (path: string) => {
       if (path.includes("/out-1/retry")) {

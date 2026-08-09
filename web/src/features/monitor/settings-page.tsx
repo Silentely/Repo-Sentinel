@@ -343,7 +343,8 @@ export function SettingsPage() {
           <button
             className="quiet-button quiet-button--compact"
             type="button"
-            disabled={reconcileEverything.isPending}
+            disabled={reconcileEverything.isPending || visibleRepos.length === 0}
+            title={visibleRepos.length === 0 ? "暂无自有仓可对账" : undefined}
             onClick={() => reconcileEverything.mutate()}
           >
             {reconcileEverything.isPending ? "对账排队中…" : "立即对账全部自有仓"}
