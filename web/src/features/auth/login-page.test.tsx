@@ -11,6 +11,14 @@ describe("登录页", () => {
     expect(document.title).toBe("登录 · RepoSentinel");
   });
 
+  it("右上角提供 GitHub 仓库入口", () => {
+    render(<LoginPage loginAction={vi.fn()} />);
+    const link = screen.getByRole("link", { name: "GitHub 仓库" });
+    expect(link).toHaveAttribute("href", "https://github.com/Silentely/Repo-Sentinel");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noreferrer");
+  });
+
   it("页面载入后用户名输入框自动聚焦", () => {
     render(<LoginPage loginAction={vi.fn()} />);
     expect(screen.getByLabelText("用户名")).toHaveFocus();

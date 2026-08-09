@@ -92,6 +92,7 @@ describe("关于页", () => {
 
     // 产品区块与文档链接。
     const product = await screen.findByRole("region", { name: "你在用什么" });
+    expect(within(product).getByText("GitHub 仓库")).toBeInTheDocument();
     expect(within(product).getByText("配置参考")).toBeInTheDocument();
     expect(within(product).getByText("常见问题")).toBeInTheDocument();
     expect(within(product).getByRole("link", { name: "打开设置" })).toHaveAttribute("href", "/settings");

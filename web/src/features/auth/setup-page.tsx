@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { ErrorAlert } from "../../components/error-alert";
+import { GithubIcon } from "../../components/github-icon";
 import { ThemeToggle } from "../../components/theme-toggle";
 import { ApiError, toApiError } from "../../lib/api/errors";
 import { AuthCardHeader, AuthField, applyZodErrors } from "./auth-card";
@@ -54,6 +55,17 @@ export function SetupPage({
   return (
     <main className="auth-shell auth-shell--setup">
       <div className="auth-shell__theme">
+        {/* 仓库入口：初始化页右上角 GitHub 图标直达源码/Issue。 */}
+        <a
+          className="auth-shell__github"
+          href="https://github.com/Silentely/Repo-Sentinel"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="GitHub 仓库"
+          title="GitHub 仓库"
+        >
+          <GithubIcon size={16} strokeWidth={1.8} />
+        </a>
         <ThemeToggle />
       </div>
       <section className="auth-card" aria-labelledby="setup-title">

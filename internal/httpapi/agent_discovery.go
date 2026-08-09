@@ -171,6 +171,10 @@ func (s *server) authMDDocument(r *http.Request) string {
 ## 作用域
 
 当前唯一作用域 read：全部 Agent 工具与查询端点均为只读。
+
+## 项目与源码
+
+- GitHub: https://github.com/Silentely/Repo-Sentinel
 `, origin)
 }
 

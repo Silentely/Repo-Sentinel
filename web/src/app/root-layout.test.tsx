@@ -88,6 +88,13 @@ describe("移动端抽屉导航", () => {
     expect(screen.getByRole("button", { name: "收起导航菜单" })).toHaveFocus();
   });
 
+  it("顶栏提供 GitHub 仓库入口", () => {
+    renderLayout();
+    const link = screen.getByRole("link", { name: "GitHub 仓库" });
+    expect(link).toHaveAttribute("href", "https://github.com/Silentely/Repo-Sentinel");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
   it("抽屉内展示完整导航入口", () => {
     renderLayout();
     for (const name of [

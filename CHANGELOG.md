@@ -6,6 +6,7 @@
 
 ### Added
 
+- 仓库地址入口：登录页/初始化页右上角与顶栏新增 GitHub 图标直达源码（lucide-react 无品牌图标，内联 octocat SVG），关于页「你在用什么」补「GitHub 仓库」链接，`/auth.md` 元数据补 `- GitHub:` 行
 - HTTPS 部署（PublicBaseURL 为 https）下发 `Strict-Transport-Security`；明文部署不下发，避免锁死纯 HTTP 自托管
 - CSP 增强：新增 `form-action 'self'`，HTTPS 部署追加 `upgrade-insecure-requests`
 - `reposentinel healthcheck` 成功输出补充 `latency_ms`：编排系统可发现"能响应但明显变慢"的实例

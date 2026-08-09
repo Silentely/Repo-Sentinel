@@ -194,6 +194,7 @@ func TestAuthMD文件包含标题与令牌获取指引(t *testing.T) {
 		"https://reposentinel.example/oauth/token",
 		"grant_type=client_credentials",
 		"Authorization: Bearer",
+		"- GitHub: https://github.com/Silentely/Repo-Sentinel",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("auth.md 缺少 %q", want)
