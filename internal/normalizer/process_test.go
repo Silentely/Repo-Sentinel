@@ -149,7 +149,8 @@ func TestProcessWorkflowRunRespectsActionsToggle(t *testing.T) {
 }
 
 // 全局 feature.actions 关闭时：即使仓库级 Actions 仍开启，也不落库、不建事件。
-func TestProcessWorkflowRunRespectsGlobalFeatureActions(t *testing.T) {	data := openProcessStore(t)
+func TestProcessWorkflowRunRespectsGlobalFeatureActions(t *testing.T) {
+	data := openProcessStore(t)
 	repo := seedActiveDemoRepo(t, data)
 	raw, _ := json.Marshal(false)
 	if _, err := data.Settings().Upsert(t.Context(), store.SystemSetting{

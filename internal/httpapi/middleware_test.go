@@ -226,12 +226,12 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		ExternalPATSource:   "unset",
 	}
 	cfg := config.Config{
-		HTTP:     config.HTTPConfig{PublicBaseURL: publicBaseURL},
-		Database: config.DatabaseConfig{Driver: "sqlite"},
-		Admin:    config.AdminBootstrapConfig{SessionTTL: time.Hour},
-		Setup:    config.SetupConfig{AllowRemote: options.allowRemote},
-		UpdateCheck: config.UpdateCheckConfig{			Enabled: false, // 单测默认不联网
-		},
+		HTTP:        config.HTTPConfig{PublicBaseURL: publicBaseURL},
+		Database:    config.DatabaseConfig{Driver: "sqlite"},
+		Admin:       config.AdminBootstrapConfig{SessionTTL: time.Hour},
+		Setup:       config.SetupConfig{AllowRemote: options.allowRemote},
+		UpdateCheck: config.UpdateCheckConfig{Enabled: false}, // 单测默认不联网
+
 		OAuth: config.OAuthConfig{
 			ClientID:     options.oauthClientID,
 			ClientSecret: config.NewSecret(options.oauthClientSecret),
