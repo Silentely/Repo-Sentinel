@@ -191,7 +191,12 @@ export function OutboxPage() {
               <button
                 className="quiet-button quiet-button--primary-ghost"
                 type="button"
-                onClick={() => retryAllDeadAcrossPages.mutate()}
+                onClick={() => {
+                  // 批量操作覆盖全部失败投递：确认防误触。
+                  if (window.confirm(`确定要重新排队全部 ${totalDead} 条失败投递吗？`)) {
+                    retryAllDeadAcrossPages.mutate();
+                  }
+                }}
                 disabled={retryAllDeadAcrossPages.isPending}
                 title={`跨页重试全部 ${totalDead} 条失败投递`}
               >

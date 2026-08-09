@@ -307,6 +307,46 @@ func TestProcessSuccessLogCarriesStaleDiscarded(t *testing.T) {
 	}
 }
 
+// TestProcessSlowLogsWarn 处理耗时超过阈值时必须 Warn 留痕（含 delivery/event/repo/duration）：
+// 数据库抖动或外部调用阻塞会拖慢 webhook 管线，慢日志便于定位。
+func TestProcessSlowLogsWarn(t *testing.T) {
+	data := openServiceStore(t)
+	seedActiveDemoRepo(t, data)
+	var logBuffer bytes.Buffer
+	svc := &webhooksvc.Service{
+		Store:         data,
+		Logger:        slog.New(slog.NewJSONHandler(&logBuffer, nil)),
+		Evaluator:     slowEvaluator{delay: 5 * time.Millisecond},
+		Background:    t.Context(),
+		SlowThreshold: time.Millisecond,
+	}
+	payload := issueOpenedPayload(t)
+	rowID := seedDelivery(t, data, "delivery-slow", "issues", payload)
+
+	svc.Process(rowID, "issues", "delivery-slow", payload)
+
+	logs := logBuffer.String()
+	for _, want := range []string{`"msg":"webhook process slow"`, `"delivery_id":"delivery-slow"`, `"repo":"acme/demo"`, `"error_code":"webhook_slow"`, `"duration_ms":`} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("慢处理日志应包含 %s，实际: %s", want, logs)
+		}
+	}
+}
+
+// slowEvaluator 延迟指定时长后成功返回，用于稳定触发慢处理阈值。
+type slowEvaluator struct {
+	delay time.Duration
+}
+
+func (e slowEvaluator) Evaluate(ctx context.Context, _ normalizer.Result, _ string) error {
+	select {
+	case <-time.After(e.delay):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // TestProcessBaselineSuppressSkipsEvaluator 新仓库（基线）→ 抑制实时通知，Evaluator 不触发，
 // 但行仍标记 processed（规范化本身成功）。
 func TestProcessBaselineSuppressSkipsEvaluator(t *testing.T) {

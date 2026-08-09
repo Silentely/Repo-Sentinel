@@ -150,6 +150,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		CheckURL: cfg.UpdateCheck.URL,
 		Token:    cfg.UpdateCheck.Token.Reveal(),
 		Current:  build.Version,
+		Logger:   logger,
 	}
 
 	handler := httpapi.New(httpapi.Dependencies{

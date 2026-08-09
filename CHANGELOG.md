@@ -6,6 +6,14 @@
 
 ### Added
 
+- 采集跳过留痕：Webhook 规范化对"收到事件但没写数据"的静默路径输出 Debug 日志并带原因（`feature_disabled` / `monitor_off` / `archived_or_unavailable` / `capability_off`），排查开关与仓库状态变化不再盲猜
+- 版本检查（updatecheck）各路径 Debug 留痕：缓存命中 / 成功（含来源与版本）/ 回退过期缓存 / 最终失败
+- Webhook 单条处理耗时超过 5s 时 Warn 留痕（`webhook_slow`，含 delivery/event/repo/duration）：数据库抖动或外部调用阻塞一目了然
+- Star 增长曲线 tooltip 展示当日增长量（较前一日 +N / -N），首日无参照只显示总数
+- 三个列表页（Issues/PR、Actions、安全告警）筛选后为空时，空态提供「清除筛选」按钮直达无筛选视图
+- 路由错误兜底页新增「返回仪表盘」快捷链接
+- Outbox「重试全部失败」为批量操作增加确认对话框，防误触
+- 主题切换时画布与文字色平滑过渡，深/浅色不再生硬跳变
 - 渠道「发送测试通知」正文带发送时刻（UTC），多条测试通知可区分收到的具体是哪一条
 - 登录失败日志补充 `username`（不含密码）与 CSRF 校验失败日志补充来源信息：暴力尝试与写请求被拒可审计
 - Webhook 处理成功日志补充 `stale_discarded` / `unhandled_action` 布尔：乱序丢弃等"处理了但没通知"的原因可直接从日志识别

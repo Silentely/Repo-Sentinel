@@ -1,11 +1,14 @@
 package normalizer_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,8 +149,7 @@ func TestProcessWorkflowRunRespectsActionsToggle(t *testing.T) {
 }
 
 // 全局 feature.actions 关闭时：即使仓库级 Actions 仍开启，也不落库、不建事件。
-func TestProcessWorkflowRunRespectsGlobalFeatureActions(t *testing.T) {
-	data := openProcessStore(t)
+func TestProcessWorkflowRunRespectsGlobalFeatureActions(t *testing.T) {	data := openProcessStore(t)
 	repo := seedActiveDemoRepo(t, data)
 	raw, _ := json.Marshal(false)
 	if _, err := data.Settings().Upsert(t.Context(), store.SystemSetting{
@@ -195,6 +197,49 @@ func TestProcessWorkflowRunRespectsGlobalFeatureActions(t *testing.T) {
 	}
 	if page.Total != 0 {
 		t.Fatalf("全局 Actions 关闭不应落库 WorkflowRun，got total=%d", page.Total)
+	}
+}
+
+// TestProcessIngestSkipLogsReason 采集跳过是"收到事件但没写数据"的静默路径：
+// 注入 Logger 后必须输出 Debug 留痕并带具体原因（feature_disabled/capability_off 等），
+// 否则用户开关与仓库状态变化无法从日志反推。
+func TestProcessIngestSkipLogsReason(t *testing.T) {
+	data := openProcessStore(t)
+	// 预置仓库使载荷能解析到 acme/demo（全局开关关闭才是跳过原因）。
+	seedActiveDemoRepo(t, data)
+	raw, _ := json.Marshal(false)
+	if _, err := data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: "set-issues-off", Key: store.SettingFeatureIssues, ValueJSON: raw,
+		UpdatedAt: time.Now().UTC(), UpdatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var logBuffer bytes.Buffer
+	proc := &normalizer.Processor{
+		Store:  data,
+		Logger: slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"action": "opened",
+		"issue": map[string]any{
+			"number": 3, "title": "hello", "state": "open",
+			"html_url":   "https://github.com/acme/demo/issues/3",
+			"user":       map[string]any{"login": "alice"},
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"labels":     []any{}, "assignees": []any{},
+		},
+		"repository": demoRepoPayload(false),
+	})
+	if _, err := proc.Process(t.Context(), "issues", "delivery-skip-log", payload); err != nil {
+		t.Fatal(err)
+	}
+
+	logs := logBuffer.String()
+	for _, want := range []string{`"msg":"webhook ingest skipped"`, `"repo":"acme/demo"`, `"kind":"issue"`, `"reason":"feature_disabled"`} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("跳过留痕应包含 %s，实际: %s", want, logs)
+		}
 	}
 }
 

@@ -16,6 +16,12 @@ function formatXAxisDate(date: string): string {
   return `${parts[1]}-${parts[2]}`;
 }
 
+/** tooltip 值格式化：总数 + 较前一日增量（首日无参照不显示增量）。 */
+export function starTotalWithDelta(value: number, delta: number | null): string {
+  if (delta == null) return String(value);
+  return `${value}（较前日 ${delta >= 0 ? "+" : ""}${delta}）`;
+}
+
 export function StarTrendChart({
   points,
   days,
@@ -62,7 +68,14 @@ export function StarTrendChart({
         )
       ) : (
         <ResponsiveContainer width="100%" height={240}>
-          <LineChart data={points} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+          <LineChart
+            data={points.map((p, i) => ({
+              ...p,
+              // 当日增量：首日无参照置 null，tooltip 据此决定是否显示。
+              delta: i > 0 ? p.total - (points[i - 1]?.total ?? 0) : null,
+            }))}
+            margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
+          >
             <XAxis
               dataKey="date"
               tick={{ fontSize: 12 }}
@@ -70,7 +83,13 @@ export function StarTrendChart({
               tickFormatter={formatXAxisDate}
             />
             <YAxis width={44} tick={{ fontSize: 12 }} allowDecimals={false} />
-            <Tooltip labelFormatter={(label) => `日期：${label}`} />
+            <Tooltip
+              labelFormatter={(label) => `日期：${label}`}
+              formatter={(value, _name, item) => {
+                const delta = (item?.payload as { delta?: number | null } | undefined)?.delta ?? null;
+                return [starTotalWithDelta(Number(value), delta), "Star 总数"];
+              }}
+            />
             <Line
               type="monotone"
               dataKey="total"

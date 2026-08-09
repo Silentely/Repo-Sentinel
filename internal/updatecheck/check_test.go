@@ -1,8 +1,10 @@
 package updatecheck
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -78,6 +80,31 @@ func TestCheckDisabled(t *testing.T) {
 	res := c.Check(context.Background(), true)
 	if res.Enabled || res.UpdateAvailable {
 		t.Fatalf("%+v", res)
+	}
+}
+
+// TestCheckLogsCacheHitAndSuccess 缓存命中与检查成功都要 Debug 留痕：
+// 排查「关于页版本检查为什么是旧值/没更新」时能区分缓存命中与真实请求。
+func TestCheckLogsCacheHitAndSuccess(t *testing.T) {
+	var logBuffer bytes.Buffer
+	c := &Checker{
+		Enabled:  true,
+		Current:  "0.3.1",
+		CacheTTL: time.Hour,
+		Now:      func() time.Time { return time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC) },
+		Logger:   slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+	c.putSuccessCache(Result{
+		Enabled: true, LatestVersion: "0.4.0",
+		LatestURL: "https://github.com/Silentely/Repo-Sentinel/releases/tag/v0.4.0",
+		Source:    "github_releases_redirect",
+	})
+
+	c.Check(context.Background(), false)
+
+	logs := logBuffer.String()
+	if !strings.Contains(logs, `"msg":"update check cache hit"`) || !strings.Contains(logs, `"cached":true`) {
+		t.Fatalf("缓存命中应 Debug 留痕，实际: %s", logs)
 	}
 }
 

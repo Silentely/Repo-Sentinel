@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,8 @@ import (
 // Processor 将 Webhook 载荷规范化为领域状态与事件。
 type Processor struct {
 	Store store.Store
+	// Logger 可选；跳过采集等静默路径留痕用（Debug 级，正常不刷屏）。
+	Logger *slog.Logger
 }
 
 // Result 描述单次规范化结果。
@@ -328,7 +331,8 @@ func (p *Processor) processStar(ctx context.Context, env envelope) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	if !p.ingestGate(ctx, repo, store.StarKind) {
+	if ok, reason := p.ingestGate(ctx, repo, store.StarKind); !ok {
+		p.logSkip(repo, store.StarKind, reason)
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	if env.Repository.StargazersCount > 0 && p.Store != nil {
@@ -385,7 +389,8 @@ func (p *Processor) processWatch(ctx context.Context, env envelope) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	if !p.ingestGate(ctx, repo, store.WatchKind) {
+	if ok, reason := p.ingestGate(ctx, repo, store.WatchKind); !ok {
+		p.logSkip(repo, store.WatchKind, reason)
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	actor := strings.TrimSpace(env.Sender.Login)
@@ -494,7 +499,8 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 // 能力门禁 → UpsertIfNewer → 指纹去重 → Event 落库。kind 由调用方按载荷形态判定。
 func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, kind string, item store.WorkItem, action string) (Result, error) {
 	// 能力门禁：对应类型开关关闭或仓库已归档时不再采集（不更新数据、不创建事件）。
-	if !p.ingestGate(ctx, repo, kind) {
+	if ok, reason := p.ingestGate(ctx, repo, kind); !ok {
+		p.logSkip(repo, kind, reason)
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	saved, updated, err := p.Store.WorkItems().UpsertIfNewer(ctx, item)
@@ -543,7 +549,8 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		return Result{}, fmt.Errorf("ensure repository: %w", err)
 	}
 	// 能力门禁：Actions 关闭或仓库已归档时不再采集。
-	if !p.ingestGate(ctx, repo, store.WorkflowRunKind) {
+	if ok, reason := p.ingestGate(ctx, repo, store.WorkflowRunKind); !ok {
+		p.logSkip(repo, store.WorkflowRunKind, reason)
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	run := env.WorkflowRun
@@ -666,7 +673,8 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 		return Result{}, err
 	}
 	// 能力门禁：告警关闭或仓库已归档时不再采集。
-	if !p.ingestGate(ctx, repo, kind) {
+	if ok, reason := p.ingestGate(ctx, repo, kind); !ok {
+		p.logSkip(repo, kind, reason)
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	a := env.Alert
@@ -738,14 +746,33 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 	return Result{Event: &created, Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
 }
 
-// ingestGate 判定该仓库是否应继续采集指定类型数据。
+// ingestGate 判定该仓库是否应继续采集指定类型数据，返回是否允许与拒绝原因。
 // 顺序：全局功能开关 → 监控总开关 → 归档/不可用 → 仓库级能力开关。
 // 关闭时直接跳过（不写领域数据、不创建事件）；基线同步中的仓库仍可采集（仅抑制通知）。
-func (p *Processor) ingestGate(ctx context.Context, repo store.Repository, kind string) bool {
+// 前置判定与 store.RepoAllowsKind 保持同步：若后者调整门禁语义，此处原因归类需一并核对。
+func (p *Processor) ingestGate(ctx context.Context, repo store.Repository, kind string) (bool, string) {
 	if p.Store != nil && !store.KindFeatureEnabled(ctx, p.Store.Settings(), kind) {
-		return false
+		return false, "feature_disabled"
 	}
-	return store.RepoAllowsKind(&repo, kind)
+	if !repo.MonitorEnabled {
+		return false, "monitor_off"
+	}
+	if repo.IsArchived || repo.SyncStatus == store.SyncStatusArchived || repo.SyncStatus == store.SyncStatusUnavailable {
+		return false, "archived_or_unavailable"
+	}
+	if !store.RepoAllowsKind(&repo, kind) {
+		return false, "capability_off"
+	}
+	return true, ""
+}
+
+// logSkip 记录采集跳过原因（Debug 级）："收到事件但没写数据"的静默路径，
+// 排查时能区分功能关闭、监控关闭、归档/不可用与能力开关四种原因。
+func (p *Processor) logSkip(repo store.Repository, kind, reason string) {
+	if p.Logger == nil {
+		return
+	}
+	p.Logger.Debug("webhook ingest skipped", "repo", repo.FullName, "kind", kind, "reason", reason)
 }
 
 func normalizeAction(action string) string {

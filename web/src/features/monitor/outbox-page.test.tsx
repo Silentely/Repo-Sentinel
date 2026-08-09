@@ -153,25 +153,32 @@ describe("OutboxPage", () => {
   });
 
   it("重试全部失败时跨页收集 dead 投递并逐个重新排队", async () => {
-    // 第二页返回空：验证跨页循环在取完时停止，不会死循环。
-    fixtures.apiRequest.mockImplementation(async (path: string) => {
-      if (path.includes("/out-1/retry") || path.includes("/out-2/retry")) {
-        return undefined;
-      }
-      const isPageTwo = path.includes("page=2");
-      return isPageTwo
-        ? { items: [], page: 2, per_page: 100, total: 2 }
-        : fixtures.outbox;
-    });
+    // 批量操作需要确认：mock confirm 返回 true。
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      // 第二页返回空：验证跨页循环在取完时停止，不会死循环。
+      fixtures.apiRequest.mockImplementation(async (path: string) => {
+        if (path.includes("/out-1/retry") || path.includes("/out-2/retry")) {
+          return undefined;
+        }
+        const isPageTwo = path.includes("page=2");
+        return isPageTwo
+          ? { items: [], page: 2, per_page: 100, total: 2 }
+          : fixtures.outbox;
+      });
 
-    renderPage();
-    const retryAllButton = await screen.findByRole("button", { name: "重试全部失败 (2)" });
-    fireEvent.click(retryAllButton);
+      renderPage();
+      const retryAllButton = await screen.findByRole("button", { name: "重试全部失败 (2)" });
+      fireEvent.click(retryAllButton);
 
-    await waitFor(() => {
-      expect(fixtures.apiRequest.mock.calls.some(([path]) => path.includes("/out-1/retry"))).toBe(true);
-      expect(fixtures.apiRequest.mock.calls.some(([path]) => path.includes("/out-2/retry"))).toBe(true);
-    });
-    expect(await screen.findByText("已重新排队 2 条失败投递。")).toBeInTheDocument();
+      expect(confirmSpy).toHaveBeenCalledWith("确定要重新排队全部 2 条失败投递吗？");
+      await waitFor(() => {
+        expect(fixtures.apiRequest.mock.calls.some(([path]) => path.includes("/out-1/retry"))).toBe(true);
+        expect(fixtures.apiRequest.mock.calls.some(([path]) => path.includes("/out-2/retry"))).toBe(true);
+      });
+      expect(await screen.findByText("已重新排队 2 条失败投递。")).toBeInTheDocument();
+    } finally {
+      confirmSpy.mockRestore();
+    }
   });
 });
