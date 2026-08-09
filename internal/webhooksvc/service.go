@@ -32,7 +32,13 @@ type Service struct {
 	// OnFailed 可选指标回调：规范化或规则评估失败时触发（与 notify 的 OnSent 同模式，
 	// 避免 webhooksvc 反向依赖 httpapi）。
 	OnFailed func()
+	// SlowThreshold 慢处理判定阈值；<=0 时用默认 slowWebhookThreshold。
+	SlowThreshold time.Duration
 }
+
+// slowWebhookThreshold 单条 webhook 处理的慢阈值：超过说明规范化/评估路径存在
+// 阻塞（数据库抖动、外部调用），以 Warn 留痕便于定位。
+const slowWebhookThreshold = 5 * time.Second
 
 // markFailed 统一处理失败分支：标记投递失败（带语义化错误码）、记录失败指标回调。
 func (s *Service) markFailed(markCtx context.Context, rowID, errorCode string) {
@@ -40,6 +46,14 @@ func (s *Service) markFailed(markCtx context.Context, rowID, errorCode string) {
 	if s.OnFailed != nil {
 		s.OnFailed()
 	}
+}
+
+// slowThreshold 返回慢处理阈值；实例未设置时用默认值。
+func (s *Service) slowThreshold() time.Duration {
+	if s.SlowThreshold > 0 {
+		return s.SlowThreshold
+	}
+	return slowWebhookThreshold
 }
 
 // Process 执行规范化 → 通知 → 状态机标记的完整管线。
@@ -50,10 +64,24 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 		return
 	}
 	startedAt := time.Now()
+	// 慢处理留痕：repoName 为变量，defer 读取 return 时的最终值。
+	repoName := ""
+	defer func() {
+		if elapsed := time.Since(startedAt); elapsed >= s.slowThreshold() && s.Logger != nil {
+			s.Logger.Warn(
+				"webhook process slow",
+				"delivery_id", deliveryID,
+				"event_type", eventType,
+				"repo", repoName,
+				"duration_ms", elapsed.Milliseconds(),
+				"error_code", "webhook_slow",
+			)
+		}
+	}()
 	// 关闭期间 Background 已取消：状态标记必须脱离取消，否则行永久停留在 accepted。
 	markCtx, markCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer markCancel()
-	proc := &normalizer.Processor{Store: s.Store}
+	proc := &normalizer.Processor{Store: s.Store, Logger: s.Logger}
 	res, err := proc.Process(ctx, eventType, deliveryID, body)
 	if err != nil {
 		s.markFailed(markCtx, rowID, "normalize_failed")
@@ -61,7 +89,6 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 		s.logError("webhook normalize failed", deliveryID, eventType, "normalize_failed", "", err.Error(), time.Since(startedAt).Milliseconds())
 		return
 	}
-	repoName := ""
 	if res.Repository != nil {
 		repoName = res.Repository.FullName
 	}

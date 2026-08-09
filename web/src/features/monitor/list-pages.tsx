@@ -233,6 +233,11 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
   const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
   // 仓库/审核/检查筛选激活时，空态需区分「筛选后为空」与「真的没有」。
   const filtersActive = repoId !== "" || reviewFilter !== "" || checkFilter !== "";
+  const clearFilters = () => {
+    setRepoId("");
+    setReviewFilter("");
+    setCheckFilter("");
+  };
 
   return (
     <ListShell eyebrow="仓库" title={title} description={description}>
@@ -273,15 +278,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
           </>
         )}
         {filtersActive ? (
-          <button
-            className="quiet-button quiet-button--compact"
-            type="button"
-            onClick={() => {
-              setRepoId("");
-              setReviewFilter("");
-              setCheckFilter("");
-            }}
-          >
+          <button className="quiet-button quiet-button--compact" type="button" onClick={clearFilters}>
             清除筛选
           </button>
         ) : null}
@@ -310,7 +307,15 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                     ? "已关闭的 Issues 或 PR 会显示在这里。"
                     : "安装 GitHub App 并完成对账后，相关数据会自动同步到这里。已归档仓库的历史项默认不显示。"
             }
-            action={<Link to="/">返回仪表盘</Link>}
+            action={
+              filtersActive ? (
+                <button type="button" className="primary-button primary-button--inline" onClick={clearFilters}>
+                  清除筛选
+                </button>
+              ) : (
+                <Link to="/">返回仪表盘</Link>
+              )
+            }
           />
         }
       >
@@ -770,6 +775,10 @@ function ActionsList() {
     },
   });
   const filtersActive = repoId !== "" || conclusion !== "";
+  const clearFilters = () => {
+    setRepoId("");
+    setConclusion("");
+  };
 
   return (
     <ListShell
@@ -792,14 +801,7 @@ function ActionsList() {
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
         {filtersActive ? (
-          <button
-            className="quiet-button quiet-button--compact"
-            type="button"
-            onClick={() => {
-              setRepoId("");
-              setConclusion("");
-            }}
-          >
+          <button className="quiet-button quiet-button--compact" type="button" onClick={clearFilters}>
             清除筛选
           </button>
         ) : null}
@@ -824,7 +826,15 @@ function ActionsList() {
                   ? "忽略的运行记录会显示在这里。"
                   : "常见原因：① GitHub App 未授予 Actions 只读权限；② 未订阅 workflow_run 事件；③ 仓库尚未对账/基线同步。可到「仓库管理」确认 Actions 开关开启，并在仪表盘触发对账。"
             }
-            action={<Link to="/github">检查 GitHub App 权限</Link>}
+            action={
+              filtersActive ? (
+                <button type="button" className="primary-button primary-button--inline" onClick={clearFilters}>
+                  清除筛选
+                </button>
+              ) : (
+                <Link to="/github">检查 GitHub App 权限</Link>
+              )
+            }
           />
         }
       >
@@ -896,6 +906,10 @@ function SecurityList() {
     },
   });
   const filtersActive = repoId !== "" || alertKind !== "";
+  const clearFilters = () => {
+    setRepoId("");
+    setAlertKind("");
+  };
 
   return (
     <ListShell eyebrow="仓库" title="安全告警" description="Dependabot / Code Scanning / Secret Scanning 安全告警。">
@@ -925,14 +939,7 @@ function SecurityList() {
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
         {filtersActive ? (
-          <button
-            className="quiet-button quiet-button--compact"
-            type="button"
-            onClick={() => {
-              setRepoId("");
-              setAlertKind("");
-            }}
-          >
+          <button className="quiet-button quiet-button--compact" type="button" onClick={clearFilters}>
             清除筛选
           </button>
         ) : null}
@@ -961,7 +968,15 @@ function SecurityList() {
                     ? "GitHub 侧已忽略的告警会显示在这里。"
                     : "开启 GitHub 仓库的安全功能后，告警会自动同步到这里。"
             }
-            action={<Link to="/github">查看权限配置</Link>}
+            action={
+              filtersActive ? (
+                <button type="button" className="primary-button primary-button--inline" onClick={clearFilters}>
+                  清除筛选
+                </button>
+              ) : (
+                <Link to="/github">查看权限配置</Link>
+              )
+            }
           />
         }
       >

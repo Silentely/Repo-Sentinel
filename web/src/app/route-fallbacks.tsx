@@ -18,6 +18,9 @@ export function RouteErrorFallback({ error, reset }: ErrorComponentProps) {
         <button type="button" className="quiet-button" onClick={() => window.location.reload()}>
           刷新页面
         </button>
+        <Link className="quiet-button" to="/">
+          返回仪表盘
+        </Link>
       </div>
     </section>
   );

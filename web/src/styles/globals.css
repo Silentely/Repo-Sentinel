@@ -66,6 +66,9 @@ body {
   font-size: 16px;
   line-height: 1.55;
   text-rendering: optimizeLegibility;
+  /* 主题切换时平滑过渡画布与文字色，避免深/浅色生硬跳变；
+     主题在首帧前已由 theme-init.js 落定，不会引入首帧闪色。 */
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 button,

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -48,6 +49,8 @@ type Checker struct {
 	HTTPClient *http.Client
 	CacheTTL   time.Duration
 	Now        func() time.Time
+	// Logger 可选；检查成败 Debug 留痕（默认不输出）。
+	Logger *slog.Logger
 
 	mu    sync.Mutex
 	cache *cachedPayload
@@ -59,6 +62,7 @@ type cachedPayload struct {
 }
 
 // Check 执行远程检查；force 时跳过未过期缓存，失败仍可复用过期成功缓存。
+// 各路径 Debug 留痕：缓存命中、成功（含来源与版本）、回退过期缓存、最终失败。
 func (c *Checker) Check(ctx context.Context, force bool) Result {
 	now := c.now()
 	checkedAt := now.UTC().Format(time.RFC3339)
@@ -71,6 +75,7 @@ func (c *Checker) Check(ctx context.Context, force bool) Result {
 	}
 	if !force {
 		if hit := c.getCache(false); hit != nil {
+			c.logf("update check cache hit", "cached", true)
 			return *hit
 		}
 	}
@@ -94,6 +99,7 @@ func (c *Checker) Check(ctx context.Context, force bool) Result {
 			res.CheckedAt = checkedAt
 			res.UpdateAvailable = IsUpdateAvailable(c.Current, res.LatestVersion)
 			c.putSuccessCache(res)
+			c.logf("update check ok", "version", res.LatestVersion, "source", res.Source, "cached", false)
 			return res
 		}
 		lastErr = err
@@ -104,6 +110,7 @@ func (c *Checker) Check(ctx context.Context, force bool) Result {
 		res.CheckedAt = checkedAt
 		res.UpdateAvailable = IsUpdateAvailable(c.Current, res.LatestVersion)
 		c.putSuccessCache(res)
+		c.logf("update check ok", "version", res.LatestVersion, "source", res.Source, "cached", false)
 		return res
 	}
 	if lastErr == nil {
@@ -113,13 +120,22 @@ func (c *Checker) Check(ctx context.Context, force bool) Result {
 	if stale := c.getCache(true); stale != nil {
 		stale.Source = strings.TrimSuffix(stale.Source, "_stale") + "_stale"
 		stale.Cached = true
+		c.logf("update check stale", "version", stale.LatestVersion, "source", stale.Source)
 		return *stale
 	}
+	c.logf("update check failed", "error", friendlyError(lastErr))
 	return Result{
 		Enabled:   true,
 		CheckedAt: checkedAt,
 		Error:     friendlyError(lastErr),
 		Source:    "github_releases",
+	}
+}
+
+// logf Debug 级输出检查路径；Logger 未注入时静默。
+func (c *Checker) logf(msg string, attrs ...any) {
+	if c.Logger != nil {
+		c.Logger.Debug(msg, attrs...)
 	}
 }
 

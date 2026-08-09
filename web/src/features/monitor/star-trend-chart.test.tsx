@@ -2,12 +2,23 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { StarTrendChart } from "./star-trend-chart";
+import { starTotalWithDelta, StarTrendChart } from "./star-trend-chart";
 
 const points = [
   { date: "2026-08-01", total: 10 },
   { date: "2026-08-02", total: 15 },
 ];
+
+describe("starTotalWithDelta", () => {
+  it("首日无参照只显示总数", () => {
+    expect(starTotalWithDelta(10, null)).toBe("10");
+  });
+
+  it("增长/回落都带符号展示", () => {
+    expect(starTotalWithDelta(15, 5)).toBe("15（较前日 +5）");
+    expect(starTotalWithDelta(12, -3)).toBe("12（较前日 -3）");
+  });
+});
 
 describe("StarTrendChart", () => {
   it("渲染标题、当前值与范围切换按钮", () => {

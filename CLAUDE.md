@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-08T20:00:00Z | 第四轮优化：①采集跳过留痕（normalizer 注入 Logger，跳过原因 feature_disabled/monitor_off/archived_or_unavailable/capability_off Debug 输出）；②updatecheck 各路径 Debug 留痕；③webhook 慢处理（>5s）Warn 留痕；④Star 图 tooltip 显示日增量；⑤列表空态内联「清除筛选」；⑥路由错误兜底加「返回仪表盘」；⑦outbox 重试全部加确认；⑧主题切换颜色过渡 |
 | 2026-08-08T18:00:00Z | 第三轮优化：①测试通知正文带发送时刻；②登录失败日志补 username、CSRF 失败日志补来源（不含密码/令牌）；③webhook 成功日志补 stale_discarded/unhandled_action；④列表页「清除筛选」按钮；⑤仓库页归档视图 URL 同步；⑥outbox 状态筛选 URL 同步 + 仪表盘跳转直达；⑦关于页 Git SHA 复制；⑧登录页限流特殊文案；⑨修复 useUrlState 只写 URL 不更新状态的缺陷 |
 | 2026-08-08T16:00:00Z | 第二轮优化：①列表页筛选同步到 URL（useUrlState hook）；②设置页成功提示 3s 自动消退；③登录页用户名自动聚焦；④outbox「重试全部失败」跨页收集重试；⑤webhook 失败计数指标；⑥workflow 结论中文标签收敛到 store（rules/digest 共用）；⑦调度器成功留痕 Debug 级；⑧outbox 单批领取 20→50；⑨webhook 未配置 503 补 Retry-After |
 | 2026-08-08T14:30:00Z | 优化轮：①管理台按路由更新标签页标题（登录/初始化页独立标题）；②相对时间统一收敛为 RelativeTime 组件并 hover 显示绝对时间；③投递记录错误码中文排障提示（全选/清空订阅类型快捷操作）；④webhook 拒绝日志补 delivery_id/event_type；⑤日/周/月报告补「生成时间」页脚（UTC 与规则通知一致）；⑥webhook 后台处理信号量限流（32 并发，关闭期间不排队）；⑦重复投递响应/日志收敛为单一函数 |
