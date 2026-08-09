@@ -396,6 +396,9 @@ a.primary-button {
 }
 
 .app-shell {
+  /* 定位上下文：把 sr-only 等绝对定位后代锚定到本容器，
+     避免它们逃逸 overflow 裁剪把文档撑出多余滚动（仪表盘此前可无限下滚）。 */
+  position: relative;
   display: grid;
   grid-template-columns: 236px minmax(0, 1fr);
   height: 100vh;
@@ -523,15 +526,6 @@ a.primary-button {
   color: var(--danger);
   background: color-mix(in oklch, var(--danger) 15%, var(--bg-surface));
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--danger) 30%, transparent);
-}
-
-.app-sidebar__version {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
-  color: var(--text-muted);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.7rem;
 }
 
 .app-main {
@@ -1207,8 +1201,7 @@ a.status-item--link:focus-visible {
 
   .app-brand span:not(.app-brand__mark),
   .app-nav__label,
-  .app-nav a > span:not(.nav-badge),
-  .app-sidebar__version {
+  .app-nav a > span:not(.nav-badge) {
     display: none;
   }
 
@@ -1295,8 +1288,7 @@ a.status-item--link:focus-visible {
     display: inline;
   }
 
-  .app-nav__label,
-  .app-sidebar__version {
+  .app-nav__label {
     display: block;
   }
 
