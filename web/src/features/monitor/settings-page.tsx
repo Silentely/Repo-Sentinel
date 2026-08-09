@@ -344,6 +344,7 @@ export function SettingsPage() {
             className="quiet-button quiet-button--compact"
             type="button"
             disabled={reconcileEverything.isPending || visibleRepos.length === 0}
+            aria-busy={reconcileEverything.isPending}
             title={visibleRepos.length === 0 ? "暂无自有仓可对账" : undefined}
             onClick={() => reconcileEverything.mutate()}
           >

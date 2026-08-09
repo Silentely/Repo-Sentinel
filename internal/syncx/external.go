@@ -136,6 +136,10 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		// 游标推进失败会让下次轮询重拉本轮数据（幂等键兜底），记录日志便于排查重复。
 		p.Logger.Warn("external issues cursor advance failed", "repo", repo.FullName, "error_code", "cursor_upsert_failed", "error", err.Error())
 	}
+	if p.Logger != nil {
+		// 单仓轮询成功留痕（Debug）：排查"外部仓到底轮询过没有"不必依赖调度成功日志。
+		p.Logger.Debug("external poll ok", "repo", repo.FullName, "baseline", isBaseline)
+	}
 	return nil
 }
 

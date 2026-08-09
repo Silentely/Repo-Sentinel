@@ -139,6 +139,7 @@ function StateFilterButtons({
           key={opt.value}
           className={`quiet-button${value === opt.value ? " active" : ""}`}
           type="button"
+          aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
         >
           {opt.label}
@@ -163,7 +164,7 @@ function ItemActions({
   return (
     <div className="item-actions">
       {htmlUrl ? (
-        <a className="quiet-button" href={htmlUrl} target="_blank" rel="noreferrer">
+        <a className="quiet-button" href={htmlUrl} target="_blank" rel="noreferrer" title="在新窗口打开">
           在 GitHub 查看
         </a>
       ) : null}
@@ -518,10 +519,10 @@ export function ReposPage() {
     <ListShell eyebrow="仓库" title="仓库管理" description="「监控」为总开关；子能力受全局功能模块约束。本系统归档会停采集（可撤销），与 GitHub 侧已归档是两回事。">
       {errorMsg ? <ErrorAlert title="更新失败" message={errorMsg} /> : null}
       <div className="filter-bar">
-        <button className={`quiet-button${!showArchived ? " active" : ""}`} type="button" onClick={() => setArchivedParam("")}>
+        <button className={`quiet-button${!showArchived ? " active" : ""}`} type="button" aria-pressed={!showArchived} onClick={() => setArchivedParam("")}>
           未归档 ({activeRepos.length})
         </button>
-        <button className={`quiet-button${showArchived ? " active" : ""}`} type="button" onClick={() => setArchivedParam("1")}>
+        <button className={`quiet-button${showArchived ? " active" : ""}`} type="button" aria-pressed={showArchived} onClick={() => setArchivedParam("1")}>
           本系统已归档 ({archivedRepos.length})
         </button>
       </div>
@@ -1062,7 +1063,16 @@ function ListFooter({
         </button>
       ) : total > 0 && shown >= total ? (
         // 已加载到最后一页时给出明确终点，避免用户误以为还有更多。
-        <span className="muted list-footer__end">已全部加载</span>
+        <span className="muted list-footer__end">
+          已全部加载
+          <button
+            className="quiet-button quiet-button--compact"
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          >
+            回到顶部
+          </button>
+        </span>
       ) : null}
     </div>
   );

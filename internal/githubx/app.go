@@ -300,6 +300,8 @@ func (c *AppClient) doJSON(ctx context.Context, method, path, token string, out 
 	if err != nil {
 		return 0, "", err
 	}
+	// 出站标识：GitHub 要求 UA 识别客户端来源，未设置会命中默认 Go UA。
+	req.Header.Set("User-Agent", githubClientUA)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -344,6 +346,9 @@ func (c *AppClient) doJSON(ctx context.Context, method, path, token string, out 
 func statusError(status int, _ []byte) error {
 	return &HTTPStatusError{StatusCode: status}
 }
+
+// githubClientUA GitHub REST 出站请求的 User-Agent 标识。
+const githubClientUA = "RepoSentinel-GitHubClient/1.0"
 
 var errNotModified = fmt.Errorf("not_modified")
 

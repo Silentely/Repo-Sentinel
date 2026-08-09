@@ -41,8 +41,14 @@ type Service struct {
 const slowWebhookThreshold = 5 * time.Second
 
 // markFailed 统一处理失败分支：标记投递失败（带语义化错误码）、记录失败指标回调。
+// 标记失败会让行残留 accepted/中间态，影响状态机与重放判断，必须留痕。
 func (s *Service) markFailed(markCtx context.Context, rowID, errorCode string) {
-	_ = s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, errorCode)
+	if err := s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, errorCode); err != nil && s.Logger != nil {
+		s.Logger.Warn("webhook mark failed error",
+			"delivery_row_id", rowID,
+			"error_code", "mark_failed",
+			"error", err.Error())
+	}
 	if s.OnFailed != nil {
 		s.OnFailed()
 	}

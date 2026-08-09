@@ -291,6 +291,12 @@ func (p *Processor) processRepositoryEvent(ctx context.Context, env envelope) (R
 	if err != nil {
 		return Result{}, err
 	}
+	// 仓库生命周期事件（归档/取消归档/删除/转移）是重要变更：Info 留痕便于审计。
+	defer func() {
+		if env.Action != "" && p.Logger != nil {
+			p.Logger.Info("repository lifecycle event", "repo", repo.FullName, "action", env.Action)
+		}
+	}()
 	switch env.Action {
 	case "archived":
 		// 归档走 UpdateSettings 联动：sync_status、is_archived 与全部能力开关一起收口，

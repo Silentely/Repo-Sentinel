@@ -176,6 +176,14 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 			r.Logger.Warn("issues cursor advance failed", "repo", repo.FullName, "error_code", "cursor_upsert_failed", "error", err.Error())
 		}
 	}
+	if r.Logger != nil {
+		// 单仓对账成功留痕（Debug）：排查"某仓到底对账过没有"不必依赖调度成功日志。
+		r.Logger.Debug("reconcile ok",
+			"repo", repo.FullName,
+			"baseline", isBaseline,
+			"issues_synced", issuesSynced,
+			"soft_failed", softFailed)
+	}
 	return nil
 }
 
