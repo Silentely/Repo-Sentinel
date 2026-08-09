@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 
 import { ErrorAlert } from "../../components/error-alert";
 import { GithubIcon } from "../../components/github-icon";
+import { RelativeTime } from "../../components/relative-time";
 import { toApiError } from "../../lib/api/errors";
 import { checkForUpdates, versionQueryOptions } from "./api";
 
@@ -105,7 +106,7 @@ export function AboutPage() {
             </button>
           ) : null}</dd></div>
           <div><dt>分支</dt><dd>{v.git_branch || "—"}</dd></div>
-          <div><dt>构建时间</dt><dd>{v.build_time || "—"}</dd></div>
+          <div><dt>构建时间</dt><dd>{v.build_time ? <RelativeTime date={v.build_time} /> : "—"}</dd></div>
           <div><dt>Go</dt><dd>{v.go_version || "—"}</dd></div>
           <div><dt>数据库</dt><dd>{v.database_driver || "—"}</dd></div>
           <div><dt>Schema</dt><dd className="mono">{v.schema_version || "—"}</dd></div>

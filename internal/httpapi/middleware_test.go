@@ -161,6 +161,8 @@ type httpTestOptions struct {
 	keyRing       *cryptox.KeyRing
 	// logger 注入日志断言；nil 时默认丢弃输出。
 	logger *slog.Logger
+	// metricsEnabled 启用 /metrics 路由（指标端点测试用）。
+	metricsEnabled bool
 	// oauthClientID / oauthClientSecret 装配到 Config.OAuth，用于 Agent Bearer 认证测试。
 	oauthClientID     string
 	oauthClientSecret string
@@ -230,6 +232,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		Database:    config.DatabaseConfig{Driver: "sqlite"},
 		Admin:       config.AdminBootstrapConfig{SessionTTL: time.Hour},
 		Setup:       config.SetupConfig{AllowRemote: options.allowRemote},
+		Metrics:     config.MetricsConfig{Enabled: options.metricsEnabled},
 		UpdateCheck: config.UpdateCheckConfig{Enabled: false}, // 单测默认不联网
 
 		OAuth: config.OAuthConfig{

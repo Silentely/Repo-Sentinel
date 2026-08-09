@@ -57,3 +57,21 @@ func TestMetricsEndpointOptionalToken(t *testing.T) {
 		t.Fatalf("expected 200 with token, got %d", rec3.Code)
 	}
 }
+
+// TestMetricsEndpointExposesOutboxQueueDepth 指标端点应暴露待投递/发送中队列深度：
+// 投递积压可监控（行始终存在，含 0 值）。
+func TestMetricsEndpointExposesOutboxQueueDepth(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{metricsEnabled: true})
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "reposentinel_outbox_pending_gauge") ||
+		!strings.Contains(body, "reposentinel_outbox_sending_gauge") {
+		t.Fatalf("期望包含 outbox 队列深度指标行，body=%s", body)
+	}
+}
