@@ -54,11 +54,13 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	admin, err := s.dependencies.AdminService.Authenticate(r.Context(), request.Username, request.Password)
 	if err != nil {
 		// 凭据错误记 Warn；其它错误交 writeMappedError 记 Error，避免重复。
+		// username 用于审计暴力尝试的账号维度，绝不记录密码。
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			s.dependencies.Logger.Warn(
 				"login failed",
 				"request_id", requestID,
 				"remote_ip", remoteIP,
+				"username", request.Username,
 				"error_code", errorCodeInvalidCredentials,
 			)
 		}

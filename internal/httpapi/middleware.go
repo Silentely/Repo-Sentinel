@@ -126,15 +126,30 @@ func (s *server) csrfMiddleware(next http.Handler) http.Handler {
 		}
 		cookie, err := r.Cookie(CSRFCookieName)
 		if err != nil {
+			s.logCSRFFailure(r)
 			s.writeAPIError(w, r, http.StatusForbidden, errorCodeCSRFFailed, nil)
 			return
 		}
 		if err := s.dependencies.CSRF.Validate(cookie.Value, r.Header.Get(CSRFHeaderName), session.CSRFHash); err != nil {
+			s.logCSRFFailure(r)
 			s.writeMappedError(w, r, err)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// logCSRFFailure 记录 CSRF 校验失败：写请求被拒通常是安全事件（跨站请求伪造尝试），
+// 留痕 request_id 与来源 IP 便于审计，不暴露令牌内容。
+func (s *server) logCSRFFailure(r *http.Request) {
+	s.dependencies.Logger.Warn(
+		"csrf validation failed",
+		"request_id", requestIDFromContext(r.Context()),
+		"remote_ip", remoteIPFromContext(r.Context()),
+		"method", r.Method,
+		"path", r.URL.Path,
+		"error_code", errorCodeCSRFFailed,
+	)
 }
 
 func requestIDFromContext(ctx context.Context) string {

@@ -14,6 +14,7 @@ const DOCS_CHANGELOG = "https://github.com/Silentely/Repo-Sentinel/blob/main/CHA
 export function AboutPage() {
   const version = useQuery(versionQueryOptions);
   const [checking, setChecking] = useState(false);
+  const [copiedSha, setCopiedSha] = useState(false);
   const [banner, setBanner] = useState<{
     kind: "update" | "latest" | "error" | "info";
     text: string;
@@ -21,6 +22,19 @@ export function AboutPage() {
   } | null>(null);
 
   const v = version.data || {};
+
+  // 复制 Git SHA 便于在 Issue / 讨论中粘贴版本定位信息；剪贴板不可用时静默降级。
+  const copySha = async () => {
+    const sha = v.git_sha;
+    if (!sha) return;
+    try {
+      await navigator.clipboard.writeText(sha);
+      setCopiedSha(true);
+      window.setTimeout(() => setCopiedSha(false), 1500);
+    } catch {
+      // 非安全上下文或权限受限：不打断页面使用。
+    }
+  };
 
   const checkUpdate = async (force = true) => {
     setChecking(true);
@@ -82,7 +96,11 @@ export function AboutPage() {
         <dl className="meta-grid">
           <div><dt>版本</dt><dd>{v.version || "—"}</dd></div>
           <div><dt>构建渠道</dt><dd>{v.build_channel || "—"}</dd></div>
-          <div><dt>Git SHA</dt><dd className="mono">{v.git_sha || "—"}</dd></div>
+          <div><dt>Git SHA</dt><dd className="mono">{v.git_sha || "—"}{v.git_sha ? (
+            <button type="button" className="quiet-button quiet-button--compact" onClick={() => void copySha()} aria-label="复制 Git SHA">
+              {copiedSha ? "已复制" : "复制"}
+            </button>
+          ) : null}</dd></div>
           <div><dt>分支</dt><dd>{v.git_branch || "—"}</dd></div>
           <div><dt>构建时间</dt><dd>{v.build_time || "—"}</dd></div>
           <div><dt>Go</dt><dd>{v.go_version || "—"}</dd></div>

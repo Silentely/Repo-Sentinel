@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -69,6 +69,24 @@ function renderPage() {
 }
 
 describe("关于页", () => {
+  it("Git SHA 可一键复制，复制后反馈状态", async () => {
+    const writeText = vi.fn(async () => undefined);
+    // jsdom 的 navigator.clipboard 会随 user-event 交互被重置：用 defineProperty 注入
+    // 一次性 mock，并以 fireEvent 触发（fireEvent 不触碰 navigator）。
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    renderPage();
+
+    const build = screen.getByRole("region", { name: "构建与运行" });
+    await within(build).findByText("abc1234");
+    fireEvent.click(within(build).getByRole("button", { name: "复制 Git SHA" }));
+
+    expect(writeText).toHaveBeenCalledWith("abc1234");
+    expect(await within(build).findByText("已复制")).toBeInTheDocument();
+  });
+
   it("展示产品介绍、构建信息与运维提示区块", async () => {
     renderPage();
 

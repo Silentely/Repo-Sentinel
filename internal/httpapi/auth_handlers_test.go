@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
@@ -33,6 +35,57 @@ func Test登录错误统一且第六次尝试被限流(t *testing.T) {
 		nil,
 	)
 	assertAPIError(t, sixth, http.StatusTooManyRequests, "rate_limited")
+}
+
+// TestLoginFailureLogsUsername 凭据错误日志必须带 username 与 remote_ip（不含密码）：
+// 审计暴力尝试需要账号维度；密码一旦入日志即泄露，绝不能记。
+func TestLoginFailureLogsUsername(t *testing.T) {
+	logBuffer := &lockedBuffer{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		logger: slog.New(slog.NewJSONHandler(logBuffer, nil)),
+	})
+	fixture.bootstrapAdmin(t)
+
+	fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/auth/login",
+		`{"username":"attacker-bot","password":"错误管理员密码一二三四五六"}`,
+		"198.51.100.66:42003",
+		nil,
+		nil,
+	)
+
+	logs := logBuffer.String()
+	for _, want := range []string{`"msg":"login failed"`, `"username":"attacker-bot"`, `"remote_ip":"198.51.100.66"`} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("登录失败日志应包含 %s，实际: %s", want, logs)
+		}
+	}
+	if strings.Contains(logs, "错误管理员密码") {
+		t.Fatal("登录失败日志绝不能包含密码")
+	}
+}
+
+// TestCSRFFailureLogsRequestContext CSRF 校验失败必须留痕来源信息（写请求被拒常是安全事件），
+// 日志只含 request_id/remote_ip 与路径，不暴露令牌内容。
+func TestCSRFFailureLogsRequestContext(t *testing.T) {
+	logBuffer := &lockedBuffer{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		logger: slog.New(slog.NewJSONHandler(logBuffer, nil)),
+	})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	// 带 Session Cookie 但缺 CSRF Cookie 的写请求 → csrf_failed。
+	fixture.request(t, http.MethodPost, "/api/v1/auth/logout", "", "127.0.0.1:42201", cookies, nil)
+
+	logs := logBuffer.String()
+	for _, want := range []string{`"msg":"csrf validation failed"`, `"remote_ip":"127.0.0.1"`, `"error_code":"csrf_failed"`, `"path":"/api/v1/auth/logout"`} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("CSRF 失败日志应包含 %s，实际: %s", want, logs)
+		}
+	}
 }
 
 func Test登录设置安全Cookie并返回当前Session(t *testing.T) {

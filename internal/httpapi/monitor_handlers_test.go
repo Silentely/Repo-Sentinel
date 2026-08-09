@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -694,4 +695,41 @@ func TestDeleteRepositoryCascadeViaAPI(t *testing.T) {
 	again := fixture.request(t, http.MethodDelete, "/api/v1/repositories/"+repo.ID,
 		"", "127.0.0.1:45104", cookies, map[string]string{CSRFHeaderName: csrf.Value})
 	assertAPIError(t, again, http.StatusNotFound, "not_found")
+}
+
+// TestTestChannelCreatesDatedOutbox 测试通知必须写入 outbox 且正文带发送时刻：
+// 多条测试通知内容相同会让人无法确认收到的是哪一条。
+func TestTestChannelCreatesDatedOutbox(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	csrfHeader := map[string]string{CSRFHeaderName: csrf.Value}
+
+	created := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"Telegram","enabled":true,"target":"-1001"}`,
+		"127.0.0.1:45110", cookies, csrfHeader)
+	if created.Code != http.StatusOK {
+		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
+	}
+
+	resp := fixture.request(t, http.MethodPost, "/api/v1/notifications/channels/telegram/test",
+		`{}`, "127.0.0.1:45111", cookies, csrfHeader)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("test status=%d body=%s", resp.Code, resp.Body.String())
+	}
+
+	items, _, err := fixture.store.Outbox().List(t.Context(), store.ListFilter{PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("期望 1 条测试通知，got %d", len(items))
+	}
+	if items[0].Title != "🔔 测试通知" {
+		t.Fatalf("标题不符: %q", items[0].Title)
+	}
+	if !strings.Contains(items[0].BodyText, "发送于 ") || !strings.Contains(items[0].BodyText, " UTC") {
+		t.Fatalf("测试通知正文应带发送时刻（UTC），实际: %q", items[0].BodyText)
+	}
 }

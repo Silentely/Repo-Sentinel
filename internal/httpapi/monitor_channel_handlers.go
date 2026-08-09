@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -153,12 +154,18 @@ func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	// 幂等键必须唯一：idempotency_key 有 NOT NULL + UNIQUE 约束，
 	// 留空会让第二次测试通知撞唯一索引返回 409。
+	now := time.Now().UTC()
 	_, err = s.dependencies.Store.Outbox().Create(r.Context(), store.NotificationOutbox{
 		ID: ulid.Make().String(), ChannelID: ch.ID,
 		IdempotencyKey: "test|" + ulid.Make().String(),
-		Status:         store.OutboxPending, NextAttemptAt: time.Now().UTC(),
-		Title:     "🔔 测试通知",
-		BodyText:  "🔔 <b>测试通知</b>\n────────────────\n来自 RepoSentinel 的测试消息。\n如果您收到了这条消息，说明通知渠道配置正确！",
+		Status:         store.OutboxPending, NextAttemptAt: now,
+		Title: "🔔 测试通知",
+		// 正文带发送时刻（UTC，与规则通知时间格式一致）：多条测试通知时
+		// 用户能确认收到的是哪一条，而不是内容完全相同的重复消息。
+		BodyText: fmt.Sprintf(
+			"🔔 <b>测试通知</b>\n────────────────\n来自 RepoSentinel 的测试消息，发送于 %s。\n如果您收到了这条消息，说明通知渠道配置正确！",
+			now.Format("2006-01-02 15:04 UTC"),
+		),
 		ParseMode: "HTML",
 	})
 	if err != nil {

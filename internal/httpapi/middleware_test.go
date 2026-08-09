@@ -159,6 +159,8 @@ type httpTestOptions struct {
 	ready         ReadyChecker
 	frontend      fs.FS
 	keyRing       *cryptox.KeyRing
+	// logger 注入日志断言；nil 时默认丢弃输出。
+	logger *slog.Logger
 	// oauthClientID / oauthClientSecret 装配到 Config.OAuth，用于 Agent Bearer 认证测试。
 	oauthClientID     string
 	oauthClientSecret string
@@ -228,8 +230,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		Database: config.DatabaseConfig{Driver: "sqlite"},
 		Admin:    config.AdminBootstrapConfig{SessionTTL: time.Hour},
 		Setup:    config.SetupConfig{AllowRemote: options.allowRemote},
-		UpdateCheck: config.UpdateCheckConfig{
-			Enabled: false, // 单测默认不联网
+		UpdateCheck: config.UpdateCheckConfig{			Enabled: false, // 单测默认不联网
 		},
 		OAuth: config.OAuthConfig{
 			ClientID:     options.oauthClientID,
@@ -240,6 +241,10 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		cfg.GitHub.AppID = options.envAppID
 		ghRuntime.AppID = options.envAppID
 		ghRuntime.AppIDSource = "env"
+	}
+	logger := options.logger
+	if logger == nil {
+		logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 	}
 	// decorateStore 仅包装 handler 持有的 Store；登录、会话与 CSRF 依赖的
 	// AdminService/SessionService 继续使用原始 opened，保证鉴权路径不受注入故障影响。
@@ -264,7 +269,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 			GoVersion:    "go1.26.4",
 		},
 		Ready:         ready,
-		Logger:        slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Logger:        logger,
 		SchemaVersion: "202607270001",
 		Frontend:      options.frontend,
 		KeyRing:       options.keyRing,
