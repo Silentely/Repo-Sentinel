@@ -289,6 +289,7 @@ func (g *Generator) enqueue(
 	if err != nil {
 		return err
 	}
+	enqueued := 0
 	for _, ch := range channels {
 		if !ch.Enabled || !ch.DigestEnabled {
 			continue
@@ -303,6 +304,11 @@ func (g *Generator) enqueue(
 		if err != nil && !errors.Is(err, store.ErrConflict) {
 			return err
 		}
+		enqueued++
+	}
+	if enqueued == 0 && g.Logger != nil {
+		// 报告生成了但无渠道接收（未启用或未勾选定期汇总）：用户看不到是常见困惑点，Debug 留痕。
+		g.Logger.Debug("digest enqueued to no channel", "title", title, "ledger_key", lastKey)
 	}
 	// 记账与渠道无关：即使暂无可投递渠道也落账，避免之后开启订阅时当日补发。
 	raw, _ := json.Marshal(dateKey)

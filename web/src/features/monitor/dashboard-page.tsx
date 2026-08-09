@@ -12,6 +12,7 @@ import {
   channelLabel,
   eventActionLabel,
   eventKindLabel,
+  outboxErrorHint,
   outboxStatusLabel,
   severityLabel,
 } from "../../lib/format";
@@ -298,7 +299,11 @@ export function DashboardPage() {
                     ) : null}
                     {item.created_at ? <RelativeTime date={item.created_at} className="event-time" /> : null}
                     <span className="muted">尝试 {item.attempt_count} 次</span>
-                    {item.last_error_code ? <span className="error-code">{item.last_error_code}</span> : null}
+                    {item.last_error_code ? (
+                      <span className="error-code" title={outboxErrorHint(item.last_error_code) || undefined}>
+                        {item.last_error_code}
+                      </span>
+                    ) : null}
                   </div>
                   <strong className="feed-row__title" title={item.title || item.id}>
                     {item.title || item.id}
@@ -373,7 +378,7 @@ export function DashboardPage() {
                   </div>
                   <div className="feed-row__actions">
                     {ev.html_url ? (
-                      <a className="quiet-button quiet-button--compact" href={ev.html_url} target="_blank" rel="noreferrer">
+                      <a className="quiet-button quiet-button--compact" href={ev.html_url} target="_blank" rel="noreferrer" title="在新窗口打开">
                         打开
                       </a>
                     ) : null}

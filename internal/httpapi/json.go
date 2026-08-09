@@ -56,6 +56,13 @@ func (s *server) decodeRequestJSON(w http.ResponseWriter, r *http.Request, desti
 	if errors.As(err, &decodeError) {
 		status = decodeError.status
 	}
+	if status == http.StatusRequestEntityTooLarge {
+		// 明确说明上限：413 只靠通用校验文案会让客户端误以为是格式问题。
+		s.writeAPIError(w, r, status, errorCodeValidationFailed, map[string]any{
+			"message": "请求体超过 1 MiB 上限。",
+		})
+		return false
+	}
 	s.writeAPIError(w, r, status, errorCodeValidationFailed, nil)
 	return false
 }

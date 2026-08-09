@@ -77,6 +77,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"request_id", requestID,
 		"admin_id", admin.ID,
 		"remote_ip", remoteIP,
+		"user_agent", r.UserAgent(),
 		"session_id", created.Session.ID,
 	)
 	s.setAuthCookies(w, created)

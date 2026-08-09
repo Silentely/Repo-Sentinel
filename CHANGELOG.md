@@ -6,6 +6,15 @@
 
 ### Added
 
+- 列表页底部「已全部加载」处新增「回到顶部」按钮，长列表滚动后一键回顶
+- 对账与外部轮询单仓成功留痕（Debug，`reconcile ok` / `external poll ok`）：排查"某仓对账过没有"不依赖调度成功日志
+- 登录成功日志补充 `user_agent`：登录来源可审计
+- 仓库生命周期事件（归档/取消归档/删除/转移）Info 留痕
+- Webhook 状态标记失败（`mark_failed`）Warn 留痕：标记失败会让行残留中间态，影响状态机与重放判断
+- 定期报告生成了但没有启用且勾选汇总的渠道时 Debug 留痕（用户看不到报告是常见困惑点）
+- GitHub REST 出站请求补充 `User-Agent: RepoSentinel-GitHubClient/1.0`（GitHub 要求 UA 识别来源）
+- JSON 请求体超过 1 MiB 上限时响应携带具体说明（不再只给通用校验文案）
+- 可访问性：列表/outbox/仓库归档筛选按钮补 `aria-pressed`；对账按钮补 `aria-busy`；dashboard 错误码 hover 展示中文说明（与投递记录页一致）；多处新窗口链接补 title 提示
 - Star 增长曲线在深色主题下适配设计令牌：Tooltip 背景/边框/文字与刻度颜色随主题切换，不再白底刺眼
 - 全局滚动条样式适配深/浅主题（WebKit），深色下滚动条不再刺眼
 - 关于页「构建时间」改为相对时间展示（hover 仍显示精确时刻）

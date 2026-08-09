@@ -145,6 +145,7 @@ export function OutboxPage() {
                 key={f.value}
                 className={`quiet-button ${statusFilter === f.value ? "quiet-button--active" : ""}`}
                 type="button"
+                aria-pressed={statusFilter === f.value}
                 onClick={() => setStatusFilter(f.value)}
               >
                 {f.label}
@@ -376,7 +377,7 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
           {item.html_url && (
             <div className="drawer-field">
               <dt>关联链接</dt>
-              <dd><a href={item.html_url} target="_blank" rel="noreferrer">{item.html_url}</a></dd>
+              <dd><a href={item.html_url} target="_blank" rel="noreferrer" title="在新窗口打开">{item.html_url}</a></dd>
             </div>
           )}
           <div className="drawer-field">
