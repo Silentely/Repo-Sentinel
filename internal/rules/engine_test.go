@@ -410,6 +410,44 @@ func TestEvaluateSkipsTriageForIssue(t *testing.T) {
 	}
 }
 
+// TestEvaluateLogsNotifySkipped 事件已入库但未产生实时通知的三类静默路径
+// （抑制 / 能力关闭 / 非实时范围）应 Debug 留痕并带 reason，排查漏通知不再盲猜。
+func TestEvaluateLogsNotifySkipped(t *testing.T) {
+	cases := []struct {
+		name   string
+		res    normalizer.Result
+		reason string
+	}{
+		{
+			name: "suppressed",
+			res: normalizer.Result{Event: &store.Event{
+				Kind: store.WorkItemKindIssue, Action: "opened", Title: "x",
+			}, SuppressNotify: true},
+			reason: "suppressed",
+		},
+		{
+			name: "not_realtime",
+			res: normalizer.Result{Event: &store.Event{
+				Kind: store.WorkItemKindIssue, Action: "edited", Title: "x",
+			}},
+			reason: "not_realtime",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf, logger := newRulesLogger(t)
+			e := &Engine{Logger: logger}
+			if err := e.Evaluate(t.Context(), tc.res, "acme/web"); err != nil {
+				t.Fatal(err)
+			}
+			out := buf.String()
+			if !strings.Contains(out, "notification skipped") || !strings.Contains(out, "reason="+tc.reason) {
+				t.Fatalf("应留痕 notification skipped reason=%s，实际: %s", tc.reason, out)
+			}
+		})
+	}
+}
+
 // 无渠道订阅该告警类型时，AI 分诊不应被调用（避免无效的外部调用）。
 func TestEvaluateSkipsTriageWithoutSubscriber(t *testing.T) {
 	data := openEngineStore(t)

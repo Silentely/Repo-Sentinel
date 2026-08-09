@@ -29,16 +29,30 @@ type Engine struct {
 // aiTriageTimeout 分诊调用预算上限：告警通知应尽快入库，AI 慢则放弃分诊。
 const aiTriageTimeout = 15 * time.Second
 
+// logNotifySkipped 记录"事件已入库但未产生实时通知"的决策留痕（Debug）：
+// 静默路径包括抑制、能力开关关闭与不在实时通知范围，排查漏通知时不再盲猜。
+func (e *Engine) logNotifySkipped(res normalizer.Result, repoFullName, reason string) {
+	if e.Logger == nil || res.Event == nil {
+		return
+	}
+	e.Logger.Debug("notification skipped",
+		"event_id", res.Event.ID, "kind", res.Event.Kind, "action", res.Event.Action,
+		"repo", repoFullName, "reason", reason)
+}
+
 // Evaluate 根据规范化结果创建通知。
 func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullName string) error {
 	if res.Event == nil || res.SuppressNotify || res.Event.SuppressNotification {
+		e.logNotifySkipped(res, repoFullName, "suppressed")
 		return nil
 	}
 	// 能力开关兜底：全局功能 + 仓库级开关；存量/间隙事件也不能外发。
 	if !allowsEventKind(ctx, e.Store, res.Repository, res.Event.Kind) {
+		e.logNotifySkipped(res, repoFullName, "capability_off")
 		return nil
 	}
 	if !shouldNotifyRealtime(res.Event) {
+		e.logNotifySkipped(res, repoFullName, "not_realtime")
 		return nil
 	}
 	channels, err := e.Store.Channels().List(ctx)

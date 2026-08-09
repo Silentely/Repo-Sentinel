@@ -320,6 +320,8 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 			"last_error_code": item.LastErrorCode, "html_url": item.HTMLURL,
 			"created_at": item.CreatedAt, "updated_at": item.UpdatedAt,
 			"channel_type": chMap[item.ChannelID],
+			// 正文随列表返回：详情抽屉展示通知内容（管理台内部，不做明文过滤）。
+			"body_text": item.BodyText,
 		}
 		enriched = append(enriched, entry)
 	}

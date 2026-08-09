@@ -5,6 +5,7 @@ import {
   eventActionLabel,
   eventKindLabel,
   formatRelativeTime,
+  htmlToPlainText,
   outboxErrorHint,
   severityLabel,
   workItemStateLabel,
@@ -137,5 +138,15 @@ describe("outboxErrorHint", () => {
   it("未收录错误码返回空串，不占用展示空间", () => {
     expect(outboxErrorHint("some_unknown_code")).toBe("");
     expect(outboxErrorHint("")).toBe("");
+  });
+});
+
+describe("htmlToPlainText", () => {
+  it("剔除标签、保留链接 URL、反转义实体", () => {
+    const html = `<b>标题</b>\n<code>x &lt; y</code> <a href="https://example.com/a?b=1&amp;c=2">链接</a>`;
+    const got = htmlToPlainText(html);
+    expect(got).not.toContain("<b>");
+    expect(got).toContain("x < y");
+    expect(got).toContain("链接 (https://example.com/a?b=1&c=2)");
   });
 });

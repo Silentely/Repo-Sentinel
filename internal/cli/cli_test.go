@@ -15,6 +15,9 @@ func Test版本命令输出当前开发版本(t *testing.T) {
 		!bytes.Contains([]byte(got), []byte("build_channel=local")) {
 		t.Fatalf("version 输出=%q，期望包含开发版本与 local 渠道", got)
 	}
+	if !bytes.Contains([]byte(stdout.String()), []byte("repository=https://github.com/Silentely/Repo-Sentinel")) {
+		t.Fatalf("version 输出应包含仓库地址，实际: %q", stdout.String())
+	}
 }
 
 func Test缺少命令会失败(t *testing.T) {

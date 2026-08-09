@@ -14,6 +14,7 @@ const fixtures = vi.hoisted(() => ({
         attempt_count: 8,
         last_error_code: "telegram_status_500",
         html_url: "https://github.com/example/repo/issues/1",
+        body_text: "<b>🟢 已打开｜修复登录 Bug</b>\n📦 仓库：<code>org/repo</code>",
         created_at: "2026-08-08T09:00:00Z",
         updated_at: "2026-08-08T09:01:00Z",
       },
@@ -122,6 +123,20 @@ describe("OutboxPage", () => {
 
     expect(writeText).toHaveBeenCalledWith("out-1");
     expect(await within(dialog).findByText("已复制")).toBeInTheDocument();
+  });
+
+  it("详情抽屉以纯文本展示通知正文（剔除 HTML 标签）", async () => {
+    renderPage();
+
+    const title = await screen.findByText("失败通知");
+    const row = title.closest("li") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "查看投递详情：失败通知" }));
+
+    const dialog = screen.getByRole("dialog", { name: "投递详情" });
+    expect(within(dialog).getByText(/修复登录 Bug/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/org\/repo/)).toBeInTheDocument();
+    // 不应渲染原始 HTML 标签。
+    expect(within(dialog).queryByText(/<b>/)).toBeNull();
   });
 
   it("批量重试遇到单条失败时仍继续，并反馈成功与失败数量", async () => {

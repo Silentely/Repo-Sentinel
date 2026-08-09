@@ -7,7 +7,7 @@ import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
 import { apiRequest } from "../../lib/api/client";
-import { channelLabel, outboxErrorHint, outboxStatusLabel } from "../../lib/format";
+import { channelLabel, htmlToPlainText, outboxErrorHint, outboxStatusLabel } from "../../lib/format";
 import { useUrlState } from "../../lib/use-url-state";
 import { outboxQueryOptions, retryOutbox, type OutboxItem, type Page } from "./api";
 
@@ -343,6 +343,13 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
             <dt>标题</dt>
             <dd>{item.title || "（无标题）"}</dd>
           </div>
+          {item.body_text ? (
+            <div className="drawer-field">
+              <dt>通知正文</dt>
+              {/* 纯文本化展示：外部输入 HTML 不直接渲染，避免注入。 */}
+              <dd className="drawer-field__body">{htmlToPlainText(item.body_text)}</dd>
+            </div>
+          ) : null}
           <div className="drawer-field">
             <dt>状态</dt>
             <dd><span className={`event-kind status-${item.status}`}>{outboxStatusLabel(item.status)}</span></dd>

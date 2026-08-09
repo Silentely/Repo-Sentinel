@@ -156,6 +156,11 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 		}
 		a.mu.Unlock()
 		// 降级：只写一条速率限制摘要（必须在锁外访问 Store）
+		if a.Logger != nil {
+			// 超频是异常流量信号：Warn 留痕便于审计与告警，摘要本身也会通知用户。
+			a.Logger.Warn("burst summary enqueued",
+				"repo", repoFullName, "category", cat, "events_in_window", len(filtered))
+		}
 		return a.enqueueBurstSummary(ctx, repoID, repoFullName, cat, title, sample)
 	}
 
@@ -189,6 +194,11 @@ func (a *Aggregator) flush(key string) {
 	if len(b.events) == 1 {
 		_ = (&Engine{Store: a.Store, AI: a.AI, Logger: a.Logger}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName)
 		return
+	}
+	if a.Logger != nil {
+		// 合并投递留痕：多事件合并为一条，便于按合并量评估聚合窗口配置是否合理。
+		a.Logger.Debug("aggregate flushed",
+			"repo", b.repoName, "category", b.category, "events", len(b.events))
 	}
 	_ = a.enqueueMerged(ctx, b)
 }

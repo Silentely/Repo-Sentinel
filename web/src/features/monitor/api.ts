@@ -60,6 +60,8 @@ export interface OutboxItem {
   html_url: string;
   created_at: string;
   updated_at: string;
+  /** Telegram HTML 格式正文（详情抽屉纯文本化展示）。 */
+  body_text?: string;
 }
 
 /** 通知渠道类型字面量（后端仅两种，收窄后无需再断言）。 */

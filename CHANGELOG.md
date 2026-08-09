@@ -6,6 +6,12 @@
 
 ### Added
 
+- 通知决策留痕：实时通知被抑制 / 能力开关关闭 / 不在实时范围时 Debug 输出原因，排查漏通知不再盲猜
+- 聚合器超频降级 Warn 留痕（repo/窗口内事件数）与合并投递 Debug 留痕（合并量可评估聚合窗口配置）
+- Webhook 处理成功日志补充 `event_id`：delivery 行 ↔ 事件可互相检索定位
+- Outbox 详情抽屉展示通知正文（纯文本化，外部 HTML 不直接渲染避免注入）
+- 通知渠道行支持一键复制目标（Chat ID / URL），配置排查时便于粘贴
+- `reposentinel version` 输出补充 `repository=` 仓库地址
 - 通知渠道目标失焦即时校验：Telegram Chat ID 须为数字、HTTP Webhook 仅接受 HTTPS URL，保存前提前反馈格式问题
 - 登录被限流（`rate_limited`）后提交按钮禁用，防止连点刷掉限流窗口
 - Outbox 详情抽屉支持一键复制投递 ID，便于粘贴到日志/工单排查
