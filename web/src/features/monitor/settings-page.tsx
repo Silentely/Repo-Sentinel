@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CheckCircle2, CircleDashed, ExternalLink } from "lucide-react";
 
+import { CollapsiblePanel } from "../../components/collapsible-panel";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
@@ -295,6 +296,8 @@ export function SettingsPage() {
   // 行级忙碌与对账错误：只让当前操作的行转圈，失败时在对应区块内提示。
   const [reconcileBusyId, setReconcileBusyId] = useState<string | null>(null);
   const [reconcileError, setReconcileError] = useState<string | null>(null);
+  // 面板折叠状态：默认展开，方便直接看到对账入口与仓库列表。
+  const [reposOpen, setReposOpen] = useState(true);
 
   const invalidateReposAndDashboard = async () => {
     await queryClient.invalidateQueries({ queryKey: ["repositories"] });
@@ -331,9 +334,12 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="onboarding-card" aria-labelledby="settings-repos-title">
-        <div className="onboarding-card__header">
-          <h2 id="settings-repos-title">仓库与基线对账</h2>
+      <CollapsiblePanel
+        id="repos"
+        title="仓库与基线对账"
+        open={reposOpen}
+        onToggle={() => setReposOpen((prev) => !prev)}
+        headerExtra={
           <button
             className="quiet-button quiet-button--compact"
             type="button"
@@ -342,7 +348,8 @@ export function SettingsPage() {
           >
             {reconcileEverything.isPending ? "对账排队中…" : "立即对账全部自有仓"}
           </button>
-        </div>
+        }
+      >
         <p className="field-hint">基线中的仓库抑制实时通知，对账成功会自动结束基线；也可单仓「立即放行」。仓库状态与开关在「仓库管理」维护。</p>
         {reconcileError ? <ErrorAlert title="对账失败" message={reconcileError} /> : null}
         <QueryGate
@@ -426,7 +433,7 @@ export function SettingsPage() {
             基线中抑制实时通知，避免首次同步洪流。对账成功后会自动结束基线；也可点「立即放行」跳过等待。
           </p>
         ) : null}
-      </section>
+      </CollapsiblePanel>
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-prefs-title">
         <h2 id="settings-prefs-title">运行偏好</h2>

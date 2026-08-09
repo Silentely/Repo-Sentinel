@@ -400,6 +400,28 @@ describe("设置页", () => {
     expect(within(reposSection).getByText(/基线中/, { selector: ".repo-baseline-row__meta" })).toBeInTheDocument();
   });
 
+  it("仓库与基线对账面板可折叠：收起卸载列表，展开恢复，标题行操作按钮常驻", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const reposSection = await screen.findByRole("region", { name: "仓库与基线对账" });
+    await within(reposSection).findByText("owner/repo-a");
+
+    // 点击标题行收起：CollapsiblePanel 仅在展开时渲染 body，仓库列表应卸载。
+    await user.click(within(reposSection).getByRole("button", { name: "仓库与基线对账" }));
+    await waitFor(() => {
+      expect(screen.queryByText("owner/repo-a")).toBeNull();
+    });
+    // 收起后标题行的「立即对账全部自有仓」仍在，随时可触发对账。
+    expect(screen.getByRole("button", { name: "立即对账全部自有仓" })).toBeInTheDocument();
+
+    // 再次点击展开：列表恢复渲染。
+    await user.click(screen.getByRole("button", { name: "仓库与基线对账" }));
+    await waitFor(() => {
+      expect(screen.getByText("owner/repo-a")).toBeInTheDocument();
+    });
+  });
+
   it("「立即对账全部自有仓」触发 reconcileAll", async () => {
     const user = userEvent.setup();
     renderPage();
