@@ -47,10 +47,6 @@ vi.mock("../features/monitor/api", () => ({
     queryKey: ["test", "settings"],
     queryFn: () => new Promise<never>(() => undefined),
   },
-  versionQueryOptions: {
-    queryKey: ["test", "version"],
-    queryFn: () => new Promise<never>(() => undefined),
-  },
 }));
 
 import { RootLayout, mobileTitleFor, pageTitleFor } from "./root-layout";
@@ -68,6 +64,15 @@ function renderLayout() {
     </QueryClientProvider>,
   );
 }
+
+describe("应用外壳布局", () => {
+  it("侧边栏不再展示版本号", () => {
+    renderLayout();
+    // 版本号曾固定在侧边栏左下角；移除后侧栏内不应再出现版本元素。
+    expect(document.querySelector(".app-sidebar__version")).toBeNull();
+    expect(document.querySelector(".app-sidebar")?.textContent).not.toContain("v");
+  });
+});
 
 describe("移动端抽屉导航", () => {
   it("默认收起，点击菜单按钮展开抽屉并锁定背景滚动", async () => {

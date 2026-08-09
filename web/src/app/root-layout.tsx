@@ -26,7 +26,7 @@ import {
   readyStatusQueryOptions,
   type AuthenticationResponse,
 } from "../features/auth/api";
-import { dashboardQueryOptions, settingsQueryOptions, versionQueryOptions } from "../features/monitor/api";
+import { dashboardQueryOptions, settingsQueryOptions } from "../features/monitor/api";
 
 export interface RootLayoutProps {
   session: AuthenticationResponse;
@@ -60,7 +60,6 @@ export function RootLayout({ session }: RootLayoutProps) {
   const ready = useQuery(readyStatusQueryOptions);
   const dashboard = useQuery(dashboardQueryOptions);
   const settings = useQuery(settingsQueryOptions);
-  const version = useQuery(versionQueryOptions);
 
   // 移动端抽屉导航：≤640px 时侧边栏变为离屏抽屉，由顶栏菜单按钮唤起。
   const [navOpen, setNavOpen] = useState(false);
@@ -154,8 +153,6 @@ export function RootLayout({ session }: RootLayoutProps) {
   const failedActions = featureActions ? (stats?.failed_actions ?? 0) : 0;
   const openSecurity = featureAlerts ? (stats?.open_security ?? 0) : 0;
   const outboxDead = stats?.outbox_dead ?? 0;
-  // 侧栏版本号：自托管应用惯例展示真实版本；查询未就绪时回退产品名。
-  const versionLabel = version.data?.version ? `v${version.data.version}` : "RepoSentinel";
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -254,7 +251,6 @@ export function RootLayout({ session }: RootLayoutProps) {
             <span>关于</span>
           </Link>
         </nav>
-        <span className="app-sidebar__version">{versionLabel}</span>
       </aside>
 
       {navOpen && <div className="app-scrim" aria-hidden="true" onClick={closeNav} />}

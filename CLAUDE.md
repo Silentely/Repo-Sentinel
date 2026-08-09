@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-09T03:30:00Z | 修复：①去除侧边栏左下角版本号；②修复仪表盘可无限向下滚动（sr-only 绝对定位元素逃逸 .app-shell 的 overflow 裁剪撑出文档滚动，为外壳补 position: relative 建立定位上下文） |
 | 2026-08-08T23:00:00Z | 仓库入口：登录/初始化页右上角与顶栏 GitHub 图标直达源码（内联 octocat SVG 补 lucide 缺的品牌图标）、关于页补「GitHub 仓库」链接、/auth.md 补 GitHub 行 |
 | 2026-08-08T22:00:00Z | 第五轮优化：①HTTPS 部署下发 HSTS、CSP 补 form-action/upgrade-insecure-requests；②healthcheck 输出 latency_ms；③列表翻页失败重试；④登录失败清空密码并聚焦；⑤HTTP webhook 出站补 User-Agent；⑥retention 无过期数据也 Debug 留痕；⑦设置页时区失焦即时校验 |
 | 2026-08-08T20:00:00Z | 第四轮优化：①采集跳过留痕（normalizer 注入 Logger，跳过原因 feature_disabled/monitor_off/archived_or_unavailable/capability_off Debug 输出）；②updatecheck 各路径 Debug 留痕；③webhook 慢处理（>5s）Warn 留痕；④Star 图 tooltip 显示日增量；⑤列表空态内联「清除筛选」；⑥路由错误兜底加「返回仪表盘」；⑦outbox 重试全部加确认；⑧主题切换颜色过渡 |
