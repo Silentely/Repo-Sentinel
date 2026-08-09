@@ -119,7 +119,7 @@ export function LoginPage({
             registration={register("password")}
           />
 
-          <button className="primary-button" type="submit" disabled={isSubmitting}>
+          <button className="primary-button" type="submit" disabled={isSubmitting || rateLimited}>
             {isSubmitting ? "正在登录…" : "登录"}
           </button>
         </form>

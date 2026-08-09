@@ -865,6 +865,30 @@ func TestProcessStarCreated(t *testing.T) {
 	}
 }
 
+// TestProcessStarDuplicateLogsDebug 相同 star 载荷二次送达（同指纹）触发事件唯一索引冲突，
+// 属预期去重：Debug 留痕便于与「逻辑异常没写库」区分。
+func TestProcessStarDuplicateLogsDebug(t *testing.T) {
+	st := openProcessStore(t)
+	var logBuffer bytes.Buffer
+	p := &normalizer.Processor{
+		Store:  st,
+		Logger: slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+	payload := starPayload("created", "alice", "2026-08-01T10:00:00Z", 42)
+	if _, err := p.Process(context.Background(), "star", "dlv-dup-1", payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Process(context.Background(), "star", "dlv-dup-2", payload); err != nil {
+		t.Fatal(err)
+	}
+	logs := logBuffer.String()
+	for _, want := range []string{`"msg":"webhook event duplicate skipped"`, `"kind":"star"`, `"action":"created"`, `"repo":`} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("去重留痕应包含 %s，实际: %s", want, logs)
+		}
+	}
+}
+
 func TestProcessStarSameSecondDifferentUsers(t *testing.T) {
 	st := openProcessStore(t)
 	p := &normalizer.Processor{Store: st}

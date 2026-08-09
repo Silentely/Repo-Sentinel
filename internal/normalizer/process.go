@@ -257,7 +257,8 @@ func (p *Processor) processInstallation(ctx context.Context, eventType string, e
 		return Result{}, err
 	}
 	// repositories_removed：仓库被移出安装（授权收回）。GitHub 侧仓库仍存在，保留历史数据
-	// 但暂停采集，等待重新授权后经对账或 added 事件恢复；本地不存在的条目静默跳过。
+	// 但暂停采集，等待重新授权后经对账或 added 事件恢复；本地不存在的条目属正常（未同步过），
+	// Debug 留痕便于确认移除事件确实被消费而非漏处理。
 	for i := range extra.RepositoriesRemoved {
 		name := strings.TrimSpace(extra.RepositoriesRemoved[i].FullName)
 		if name == "" {
@@ -265,6 +266,11 @@ func (p *Processor) processInstallation(ctx context.Context, eventType string, e
 		}
 		if r, err := p.Store.Repositories().GetByFullName(ctx, name); err == nil {
 			_ = p.Store.Repositories().UpdateSyncStatus(ctx, r.ID, store.SyncStatusUnavailable)
+			if p.Logger != nil {
+				p.Logger.Debug("installation repository removed", "repo", r.FullName)
+			}
+		} else if p.Logger != nil {
+			p.Logger.Debug("installation repository removed unknown locally", "repo", name)
 		}
 	}
 	return Result{Repository: repo, Updated: true, SuppressNotify: true}, nil
@@ -360,6 +366,7 @@ func (p *Processor) processStar(ctx context.Context, env envelope) (Result, erro
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
 	fp := Fingerprint("webhook", repo.FullName, store.StarKind, ResourceIdentity(store.StarKind, 0, 0), action, starredAt, hash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		p.eventDuplicate(repo, store.StarKind, action)
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
 	}
 	title := repo.FullName
@@ -373,6 +380,7 @@ func (p *Processor) processStar(ctx context.Context, env envelope) (Result, erro
 	created, err := p.Store.Events().Create(ctx, ev)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
+			p.eventDuplicate(repo, ev.Kind, ev.Action)
 			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
 		}
 		return Result{}, err
@@ -403,6 +411,7 @@ func (p *Processor) processWatch(ctx context.Context, env envelope) (Result, err
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
 	fp := Fingerprint("webhook", repo.FullName, store.WatchKind, ResourceIdentity(store.WatchKind, 0, 0), action, occurredAt, hash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		p.eventDuplicate(repo, store.WatchKind, action)
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
 	}
 	title := repo.FullName
@@ -416,6 +425,7 @@ func (p *Processor) processWatch(ctx context.Context, env envelope) (Result, err
 	created, err := p.Store.Events().Create(ctx, ev)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
+			p.eventDuplicate(repo, ev.Kind, ev.Action)
 			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
 		}
 		return Result{}, err
@@ -513,6 +523,7 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
 	fp := Fingerprint("webhook", repo.FullName, kind, ResourceIdentity(kind, saved.Number, 0), action, saved.SourceUpdatedAt, item.StateHash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		p.eventDuplicate(repo, kind, normalizeAction(action))
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
 	}
 	num := saved.Number
@@ -530,6 +541,7 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 	created, err := p.Store.Events().Create(ctx, ev)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
+			p.eventDuplicate(repo, ev.Kind, ev.Action)
 			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
 		}
 		return Result{}, err
@@ -634,6 +646,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
 	fp := Fingerprint("webhook", repo.FullName, store.WorkflowRunKind, ResourceIdentity("workflow_run", 0, run.ID), *run.Conclusion, run.UpdatedAt, hash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		p.eventDuplicate(repo, store.WorkflowRunKind, "completed")
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
 	}
 	runID := run.ID
@@ -657,6 +670,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	created, err := p.Store.Events().Create(ctx, ev)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
+			p.eventDuplicate(repo, ev.Kind, ev.Action)
 			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
 		}
 		return Result{}, err
@@ -725,6 +739,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
 	fp := Fingerprint("webhook", repo.FullName, kind, ResourceIdentity(kind, a.Number, 0), env.Action, updatedAt, hash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		p.eventDuplicate(repo, kind, normalizeAction(env.Action))
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
 	}
 	num := a.Number
@@ -739,6 +754,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 	created, err := p.Store.Events().Create(ctx, ev)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
+			p.eventDuplicate(repo, ev.Kind, ev.Action)
 			return Result{Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
 		}
 		return Result{}, err
@@ -773,6 +789,15 @@ func (p *Processor) logSkip(repo store.Repository, kind, reason string) {
 		return
 	}
 	p.Logger.Debug("webhook ingest skipped", "repo", repo.FullName, "kind", kind, "reason", reason)
+}
+
+// eventDuplicate 记录事件指纹冲突（重复 webhook 送达）留痕：去重是预期行为，
+// 但需要与"逻辑异常没写库"区分，Debug 输出便于排查。
+func (p *Processor) eventDuplicate(repo store.Repository, kind, action string) {
+	if p.Logger == nil {
+		return
+	}
+	p.Logger.Debug("webhook event duplicate skipped", "repo", repo.FullName, "kind", kind, "action", action)
 }
 
 func normalizeAction(action string) string {

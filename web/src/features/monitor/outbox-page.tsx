@@ -287,6 +287,17 @@ export function OutboxPage() {
 function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () => void }) {
   const panelRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  // 复制投递 ID：排查时便于粘贴到日志/工单；剪贴板不可用静默降级。
+  const [copiedId, setCopiedId] = useState(false);
+  const copyId = async () => {
+    try {
+      await navigator.clipboard.writeText(item.id);
+      setCopiedId(true);
+      window.setTimeout(() => setCopiedId(false), 1500);
+    } catch {
+      // 非安全上下文或权限受限：不打断使用。
+    }
+  };
 
   // 抽屉生命周期：记录触发焦点、锁定背景滚动、支持 Escape 关闭，
   // 关闭后归还焦点给触发元素（与移动端导航抽屉行为一致）。
@@ -371,7 +382,12 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
           </div>
           <div className="drawer-field">
             <dt>投递 ID</dt>
-            <dd><code>{item.id}</code></dd>
+            <dd>
+              <code>{item.id}</code>{" "}
+              <button type="button" className="quiet-button quiet-button--compact" onClick={() => void copyId()} aria-label="复制投递 ID">
+                {copiedId ? "已复制" : "复制"}
+              </button>
+            </dd>
           </div>
         </dl>
       </aside>

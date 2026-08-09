@@ -130,6 +130,34 @@ function ChannelForm({
     },
   });
 
+  // 目标字段失焦即时校验：与后端保存校验一致，提前反馈格式问题。
+  const [targetHint, setTargetHint] = useState("");
+  const validateTarget = (value: string) => {
+    const v = value.trim();
+    if (v === "") {
+      setTargetHint("");
+      return;
+    }
+    if (type === "telegram") {
+      if (!/^-?\d+$/.test(v)) {
+        setTargetHint("Chat ID 应为数字；群组通常以 -100 开头。");
+        return;
+      }
+    } else {
+      try {
+        const u = new URL(v);
+        if (u.protocol !== "https:") {
+          setTargetHint("出站投递仅允许 HTTPS URL。");
+          return;
+        }
+      } catch {
+        setTargetHint("URL 格式无法解析，请检查是否完整。");
+        return;
+      }
+    }
+    setTargetHint("");
+  };
+
   function renderKindChecks(kinds: string[], setKinds: (next: string[]) => void) {
     return (
       <div className="channel-kinds">
@@ -193,8 +221,14 @@ function ChannelForm({
       )}
       <label className="field--plain">
         <span>{targetLabel}{channel ? "（留空保留原值）" : ""}</span>
-        <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder={targetPlaceholder} />
+        <input
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          onBlur={(e) => validateTarget(e.target.value)}
+          placeholder={targetPlaceholder}
+        />
       </label>
+      {targetHint ? <p className="field-hint" role="status">{targetHint}</p> : null}
       {showSecret ? (
         <label className="field--plain">
           <span>{secretLabel}</span>

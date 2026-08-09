@@ -109,4 +109,19 @@ describe("NotifyPage", () => {
     fireEvent.click(within(telegramForm).getByRole("button", { name: "全选" }));
     expect(within(telegramForm).getByText("已选 8 / 8")).toBeInTheDocument();
   });
+
+  it("HTTP Webhook 目标失焦时校验 https 并提示格式问题", async () => {
+    renderPage();
+    const webhookForm = screen.getByRole("heading", { name: "HTTP Webhook" }).closest("section") as HTMLElement;
+    // 已有渠道时 label 带「（留空保留原值）」后缀：用正则匹配目标输入框。
+    const targetInput = within(webhookForm).getByLabelText(/^HTTPS URL/);
+
+    fireEvent.change(targetInput, { target: { value: "http://hooks.example.com/notify" } });
+    fireEvent.blur(targetInput);
+    expect(await within(webhookForm).findByText(/仅允许 HTTPS URL/)).toBeInTheDocument();
+
+    fireEvent.change(targetInput, { target: { value: "https://hooks.example.com/notify" } });
+    fireEvent.blur(targetInput);
+    expect(within(webhookForm).queryByText(/仅允许 HTTPS URL/)).toBeNull();
+  });
 });
