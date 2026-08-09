@@ -78,12 +78,27 @@ export function StarTrendChart({
           >
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 12 }}
+              tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
+              stroke="var(--border-subtle)"
               minTickGap={28}
               tickFormatter={formatXAxisDate}
             />
-            <YAxis width={44} tick={{ fontSize: 12 }} allowDecimals={false} />
+            <YAxis
+              width={44}
+              tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
+              stroke="var(--border-subtle)"
+              allowDecimals={false}
+            />
             <Tooltip
+              // 深色主题下 recharts 默认白底/黑字刺眼：跟随设计令牌渲染。
+              contentStyle={{
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: "8px",
+                color: "var(--text-primary)",
+                fontSize: "12px",
+              }}
+              labelStyle={{ color: "var(--text-secondary)" }}
               labelFormatter={(label) => `日期：${label}`}
               formatter={(value, _name, item) => {
                 const delta = (item?.payload as { delta?: number | null } | undefined)?.delta ?? null;

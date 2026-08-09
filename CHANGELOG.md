@@ -6,6 +6,11 @@
 
 ### Added
 
+- Star 增长曲线在深色主题下适配设计令牌：Tooltip 背景/边框/文字与刻度颜色随主题切换，不再白底刺眼
+- 全局滚动条样式适配深/浅主题（WebKit），深色下滚动条不再刺眼
+- 关于页「构建时间」改为相对时间展示（hover 仍显示精确时刻）
+- `/metrics` 新增 `reposentinel_outbox_pending_gauge` 与 `reposentinel_outbox_sending_gauge`：投递队列深度与在途量可监控
+- FAQ 补充「收不到通知怎么排查」：按链路逐段确认，并给出 Debug 日志关键词
 - 通知决策留痕：实时通知被抑制 / 能力开关关闭 / 不在实时范围时 Debug 输出原因，排查漏通知不再盲猜
 - 聚合器超频降级 Warn 留痕（repo/窗口内事件数）与合并投递 Debug 留痕（合并量可评估聚合窗口配置）
 - Webhook 处理成功日志补充 `event_id`：delivery 行 ↔ 事件可互相检索定位

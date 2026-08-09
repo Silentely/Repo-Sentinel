@@ -27,6 +27,17 @@
 
 可在环境变量中设置 `REPOSENTINEL_TELEGRAM_TOKEN` 与 `REPOSENTINEL_TELEGRAM_CHAT_ID`（启动时写入渠道），或在「渠道配置」页保存。Token 使用主密钥加密存储。
 
+### 收不到通知怎么排查？
+
+按链路逐段确认：
+
+1. 渠道是否**启用**并订阅了对应事件类型（「渠道配置」页勾选；全局功能模块关闭时勾选会灰显）。
+2. 事件是否**入库**：仪表盘「最近事件」面板有记录则已入库，可点「打开」核对 GitHub 侧。
+3. 投递是否成功：「投递记录」页查看状态；失败有条目展示错误码与中文说明，可单条或批量重试。
+4. 事件被**跳过**的原因可查服务端 Debug 日志（`REPOSENTINEL_LOG_LEVEL=debug`），关键词：`webhook ingest skipped`（采集被功能/监控/归档开关拦下）、`notification skipped`（已入库但不在实时通知范围）、`webhook event duplicate skipped`（重复送达去重）。
+
+新仓库先确认是否处于基线抑制（见「为什么新仓库一开始不发 Telegram？」）。
+
 ### `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` 和页面里的「签名 Secret」是一回事吗？
 
 **不是。** 两套 Secret 方向相反：

@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
 // 进程内计数器（单实例 Prometheus 文本暴露；多副本各自独立）。
@@ -99,6 +100,13 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			writeMetric("reposentinel_outbox_dead_gauge", "Current dead-letter outbox count", "gauge", uint64(stats.OutboxDead))
 			writeMetric("reposentinel_repos_active", "Active repositories", "gauge", uint64(stats.ReposActive))
 			writeMetric("reposentinel_repos_baseline", "Repositories in baseline sync", "gauge", uint64(stats.ReposBaseline))
+		}
+		// 待投递队列深度：积压可监控（独立查询，失败不影响其他指标）。
+		if pending, err := s.dependencies.Store.Outbox().CountByStatus(r.Context(), store.OutboxPending); err == nil {
+			writeMetric("reposentinel_outbox_pending_gauge", "Pending outbox notifications awaiting delivery", "gauge", uint64(pending))
+		}
+		if sending, err := s.dependencies.Store.Outbox().CountByStatus(r.Context(), store.OutboxSending); err == nil {
+			writeMetric("reposentinel_outbox_sending_gauge", "Outbox notifications currently in flight", "gauge", uint64(sending))
 		}
 	}
 

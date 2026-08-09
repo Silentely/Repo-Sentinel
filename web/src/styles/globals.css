@@ -2884,3 +2884,26 @@ a.status-item--link:focus-visible {
     width: 100vw;
   }
 }
+
+/* 滚动条适配深/浅主题：WebKit 默认滚动条在深色下刺眼，改用设计令牌渲染。 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
