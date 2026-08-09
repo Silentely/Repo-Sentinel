@@ -37,6 +37,9 @@ func TestRunner健康检查探针就绪时成功(t *testing.T) {
 	if !strings.Contains(stdout.String(), "ready=ok") {
 		t.Fatalf("成功输出缺少 ready=ok: %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "latency_ms=") {
+		t.Fatalf("成功输出应带探针耗时 latency_ms: %q", stdout.String())
+	}
 	if stderr.Len() != 0 {
 		t.Fatalf("healthcheck stderr=%q，期望为空", stderr.String())
 	}

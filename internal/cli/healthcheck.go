@@ -29,15 +29,18 @@ func (r Runner) runHealthcheck(ctx context.Context, args []string) error {
 	if err != nil {
 		return cliError{code: "healthcheck_failed", message: "健康检查请求构造失败。"}
 	}
+	startedAt := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		return cliError{code: "healthcheck_failed", message: "就绪探针不可达。"}
 	}
 	defer resp.Body.Close()
+	latency := time.Since(startedAt)
 	if resp.StatusCode != http.StatusOK {
 		return cliError{code: "healthcheck_failed", message: fmt.Sprintf("就绪探针状态码=%d。", resp.StatusCode)}
 	}
-	fmt.Fprintf(r.stdout, "ready=ok url=%s\n", url)
+	// 输出探针耗时：编排系统可据此发现「能响应但明显变慢」的实例。
+	fmt.Fprintf(r.stdout, "ready=ok url=%s latency_ms=%d\n", url, latency.Milliseconds())
 	return nil
 }
 

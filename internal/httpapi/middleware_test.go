@@ -384,11 +384,36 @@ func assertSecurityHeaders(t *testing.T, header http.Header) {
 	if !strings.Contains(header.Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 		t.Fatal("CSP 缺少 frame-ancestors 'none'")
 	}
+	if !strings.Contains(header.Get("Content-Security-Policy"), "form-action 'self'") {
+		t.Fatal("CSP 缺少 form-action 'self'")
+	}
 	if strings.Contains(header.Get("Content-Security-Policy"), "'unsafe-inline'") {
 		t.Fatal("CSP 不应为计划中的外部样式资源开放 unsafe-inline")
 	}
 	if !strings.Contains(header.Get("Permissions-Policy"), "camera=()") {
 		t.Fatal("Permissions-Policy 未禁用无关传感器")
+	}
+	if header.Get("Strict-Transport-Security") == "" {
+		t.Fatal("HTTPS 部署应下发 Strict-Transport-Security")
+	}
+	if !strings.Contains(header.Get("Content-Security-Policy"), "upgrade-insecure-requests") {
+		t.Fatal("HTTPS 部署 CSP 应含 upgrade-insecure-requests")
+	}
+}
+
+// TestPlainHTTPNoHSTS 明文部署（PublicBaseURL 非 https）不下发 HSTS：
+// 否则浏览器会强制升级后续请求，把纯 HTTP 自托管部署锁死。
+func TestPlainHTTPNoHSTS(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{publicBaseURL: "http://reposentinel.local"})
+	resp := fixture.request(t, http.MethodGet, "/health/live", "", "127.0.0.1:42501", nil, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("live status=%d", resp.Code)
+	}
+	if got := resp.Header().Get("Strict-Transport-Security"); got != "" {
+		t.Fatalf("明文部署不应下发 HSTS，实际: %q", got)
+	}
+	if strings.Contains(resp.Header().Get("Content-Security-Policy"), "upgrade-insecure-requests") {
+		t.Fatal("明文部署 CSP 不应含 upgrade-insecure-requests")
 	}
 }
 

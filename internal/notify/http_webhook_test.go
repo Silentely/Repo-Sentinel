@@ -166,9 +166,24 @@ func TestSendHTTPIncludesPlainBody(t *testing.T) {
 	}
 }
 
+// TestSendHTTPSetsUserAgent 出站投递必须携带明确 User-Agent：
+// 接收端日志/过滤据此识别 RepoSentinel，而非 Go 默认客户端 UA。
+func TestSendHTTPSetsUserAgent(t *testing.T) {
+	var gotUA string
+	w, ch, item := newWebhookHarness(t, func(rw http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		rw.WriteHeader(http.StatusOK)
+	})
+	if err := w.sendHTTP(t.Context(), ch, "", item); err != nil {
+		t.Fatalf("不期望错误: %v", err)
+	}
+	if gotUA != "RepoSentinel-Webhook/1.0" {
+		t.Fatalf("User-Agent=%q，期望 RepoSentinel-Webhook/1.0", gotUA)
+	}
+}
+
 // htmlToPlainText 标签剔除与实体反转义的正确性。
-func TestHTMLToPlainText(t *testing.T) {
-	got := htmlToPlainText(`<b>标题</b> &amp; <code>x &lt; y</code> <a href="https://example.com/a?b=1&amp;c=2">链接</a>`)
+func TestHTMLToPlainText(t *testing.T) {	got := htmlToPlainText(`<b>标题</b> &amp; <code>x &lt; y</code> <a href="https://example.com/a?b=1&amp;c=2">链接</a>`)
 	// 标签被剔除；&lt; 反转义后的 < 属于正文内容而非标签。
 	if strings.Contains(got, "<b>") || strings.Contains(got, "<code>") || strings.Contains(got, "</") {
 		t.Fatalf("结果不应残留标签: %q", got)

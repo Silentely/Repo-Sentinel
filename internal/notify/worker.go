@@ -40,6 +40,9 @@ var defaultBackoff = [...]time.Duration{
 
 const maxAttempts = 8
 
+// webhookUserAgent HTTP Webhook 出站投递的 User-Agent：接收端据此识别来源。
+const webhookUserAgent = "RepoSentinel-Webhook/1.0"
+
 // claimBatchSize 每 tick 领取的投递条目上限：突发积压（如 GitHub 批量推送）时
 // 单轮消化更多，避免队列长期堆积；单实例顺序投递，batch 内无并发放大。
 const claimBatchSize = 50
@@ -261,6 +264,8 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 	}
 	ts := now.Format(time.RFC3339)
 	req.Header.Set("Content-Type", "application/json")
+	// 明确来源：接收端日志/过滤可识别 RepoSentinel 出站投递，而非 Go 默认客户端 UA。
+	req.Header.Set("User-Agent", webhookUserAgent)
 	req.Header.Set("X-GitHub-Monitor-Event", "notification")
 	req.Header.Set("X-GitHub-Monitor-Delivery", item.ID)
 	req.Header.Set("X-GitHub-Monitor-Timestamp", ts)

@@ -6,6 +6,13 @@
 
 ### Added
 
+- HTTPS 部署（PublicBaseURL 为 https）下发 `Strict-Transport-Security`；明文部署不下发，避免锁死纯 HTTP 自托管
+- CSP 增强：新增 `form-action 'self'`，HTTPS 部署追加 `upgrade-insecure-requests`
+- `reposentinel healthcheck` 成功输出补充 `latency_ms`：编排系统可发现"能响应但明显变慢"的实例
+- 列表页翻页失败时底部展示「加载失败，点击重试」（首屏失败仍由 QueryGate 兜底）
+- 登录凭据失败后自动清空密码框并聚焦：避免旧输入残留被误提交
+- HTTP Webhook 出站投递携带明确 `User-Agent: RepoSentinel-Webhook/1.0`，接收端日志/过滤可识别来源
+- 设置页时区输入失焦即时校验：非法 IANA 时区提前提示，保存后后端仍强校验
 - 采集跳过留痕：Webhook 规范化对"收到事件但没写数据"的静默路径输出 Debug 日志并带原因（`feature_disabled` / `monitor_off` / `archived_or_unavailable` / `capability_off`），排查开关与仓库状态变化不再盲猜
 - 版本检查（updatecheck）各路径 Debug 留痕：缓存命中 / 成功（含来源与版本）/ 回退过期缓存 / 最终失败
 - Webhook 单条处理耗时超过 5s 时 Warn 留痕（`webhook_slow`，含 delivery/event/repo/duration）：数据库抖动或外部调用阻塞一目了然
@@ -42,6 +49,7 @@
 
 ### Changed
 
+- 历史数据清理（retention）无过期数据时也留痕（Debug，含删除量与保留策略）：排查"清理到底跑没跑"不依赖删除量
 - Workflow 结论中文标签（成功/失败/超时/…）收敛到 store 领域层 `WorkflowConclusionLabel`：rules 实时通知与 digest 定期报告共用同一映射，消除两处维护漂移；emoji 逻辑同步收拢
 - 调度器成功执行留痕为 Debug 级（task + duration_ms）：正常周期不刷屏，排查「任务有没有跑」时开 debug 即可确认
 - Outbox 每 tick 领取批量由 20 提升到 50（`claimBatchSize`）：突发积压（如 GitHub 批量推送）时单轮消化更多，避免队列长期堆积
