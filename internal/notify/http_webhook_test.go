@@ -183,7 +183,8 @@ func TestSendHTTPSetsUserAgent(t *testing.T) {
 }
 
 // htmlToPlainText 标签剔除与实体反转义的正确性。
-func TestHTMLToPlainText(t *testing.T) {	got := htmlToPlainText(`<b>标题</b> &amp; <code>x &lt; y</code> <a href="https://example.com/a?b=1&amp;c=2">链接</a>`)
+func TestHTMLToPlainText(t *testing.T) {
+	got := htmlToPlainText(`<b>标题</b> &amp; <code>x &lt; y</code> <a href="https://example.com/a?b=1&amp;c=2">链接</a>`)
 	// 标签被剔除；&lt; 反转义后的 < 属于正文内容而非标签。
 	if strings.Contains(got, "<b>") || strings.Contains(got, "<code>") || strings.Contains(got, "</") {
 		t.Fatalf("结果不应残留标签: %q", got)
