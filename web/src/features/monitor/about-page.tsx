@@ -4,9 +4,11 @@ import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 
 import { ErrorAlert } from "../../components/error-alert";
+import { GithubIcon } from "../../components/github-icon";
 import { toApiError } from "../../lib/api/errors";
 import { checkForUpdates, versionQueryOptions } from "./api";
 
+const REPO_URL = "https://github.com/Silentely/Repo-Sentinel";
 const DOCS_CONFIG = "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/reference/configuration.md";
 const DOCS_FAQ = "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/faq.md";
 const DOCS_CHANGELOG = "https://github.com/Silentely/Repo-Sentinel/blob/main/CHANGELOG.md";
@@ -70,6 +72,7 @@ export function AboutPage() {
         <h2 id="about-product-title">你在用什么</h2>
         <p>单管理员实例，数据与密钥都在你控制的环境中。</p>
         <div className="link-row">
+          <a className="quiet-button" href={REPO_URL} target="_blank" rel="noreferrer"><GithubIcon size={14} aria-hidden="true" /> GitHub 仓库</a>
           <a className="quiet-button" href={DOCS_CONFIG} target="_blank" rel="noreferrer"><ExternalLink size={14} aria-hidden="true" /> 配置参考</a>
           <a className="quiet-button" href={DOCS_FAQ} target="_blank" rel="noreferrer"><ExternalLink size={14} aria-hidden="true" /> 常见问题</a>
           <a className="quiet-button" href={DOCS_CHANGELOG} target="_blank" rel="noreferrer"><ExternalLink size={14} aria-hidden="true" /> 变更日志</a>

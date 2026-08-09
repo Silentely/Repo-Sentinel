@@ -10,6 +10,13 @@ describe("首次设置页", () => {
     expect(document.title).toBe("初始化 · RepoSentinel");
   });
 
+  it("右上角提供 GitHub 仓库入口", () => {
+    render(<SetupPage setupAction={vi.fn()} />);
+    const link = screen.getByRole("link", { name: "GitHub 仓库" });
+    expect(link).toHaveAttribute("href", "https://github.com/Silentely/Repo-Sentinel");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
   it("按 Unicode 字符数拒绝不足 12 字符的密码", async () => {
     const user = userEvent.setup();
     const setupAction = vi.fn(async () => undefined);

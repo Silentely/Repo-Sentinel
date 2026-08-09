@@ -2,8 +2,8 @@ import {
   Activity,
   Archive,
   Bell,
-  GitPullRequest,
   FolderGit2,
+  GitPullRequest,
   Info,
   ListTodo,
   LogOut,
@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 
+import { GithubIcon } from "../components/github-icon";
 import { ThemeToggle } from "../components/theme-toggle";
 import {
   logout,
@@ -278,6 +279,17 @@ export function RootLayout({ session }: RootLayoutProps) {
             </p>
           </div>
           <div className="app-topbar__actions">
+            {/* 仓库入口：顶栏 GitHub 图标直达源码/Issue。 */}
+            <a
+              className="quiet-button quiet-button--compact"
+              href="https://github.com/Silentely/Repo-Sentinel"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="GitHub 仓库"
+              title="GitHub 仓库"
+            >
+              <GithubIcon aria-hidden="true" size={16} strokeWidth={1.8} />
+            </a>
             <span className={`health-pill health-pill--${healthState}`} role="status" aria-label={`服务状态：${healthLabel}`}>
               <span className="health-pill__label">{healthLabel}</span>
             </span>

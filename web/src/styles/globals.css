@@ -140,6 +140,28 @@ button:disabled {
   position: absolute;
   top: 20px;
   right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 登录/初始化页右上角 GitHub 仓库入口：与主题切换并排的图标按钮。 */
+.auth-shell__github {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in oklch, var(--bg-surface) 80%, transparent);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.auth-shell__github:hover {
+  color: var(--text-primary);
+  border-color: var(--border);
 }
 
 .auth-card {
