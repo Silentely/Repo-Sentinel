@@ -55,6 +55,27 @@ describe("登录页", () => {
     expect(alert).toHaveTextContent("invalid_credentials");
   });
 
+  it("凭据失败后清空密码并聚焦密码框，避免旧输入残留", async () => {
+    const user = userEvent.setup();
+    const loginAction = vi.fn(async () => {
+      throw new ApiError({
+        status: 401,
+        errorCode: "invalid_credentials",
+        message: "凭据无效。",
+      });
+    });
+    render(<LoginPage loginAction={loginAction} />);
+
+    const password = screen.getByLabelText("密码");
+    await user.type(screen.getByLabelText("用户名"), "Repo Admin");
+    await user.type(password, "错误密码一二三四五六");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    await screen.findByRole("alert");
+    expect(password).toHaveValue("");
+    expect(password).toHaveFocus();
+  });
+
   it("rate_limited 时给出限流说明与等待提示", async () => {
     const user = userEvent.setup();
     const loginAction = vi.fn(async () => {

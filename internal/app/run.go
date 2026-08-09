@@ -150,6 +150,17 @@ func (a *App) runRetentionCleanup(ctx context.Context) {
 				"outbox_days", policy.OutboxDays,
 				"webhook_deliveries_days", policy.WebhookDeliveriesDays,
 			)
+		} else if a.logger != nil {
+			// 无过期数据也留痕（Debug）：排查"清理到底跑没跑、策略是什么"时不必依赖删除量。
+			a.logger.Debug(
+				"retention cleanup ran",
+				"events_deleted", result.EventsDeleted,
+				"outbox_deleted", result.OutboxDeleted,
+				"webhook_deliveries_deleted", result.WebhookDeliveriesDeleted,
+				"events_days", policy.EventsDays,
+				"outbox_days", policy.OutboxDays,
+				"webhook_deliveries_days", policy.WebhookDeliveriesDays,
+			)
 		}
 	}
 

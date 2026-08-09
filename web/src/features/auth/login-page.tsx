@@ -32,6 +32,7 @@ export function LoginPage({
     handleSubmit,
     clearErrors,
     setError,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<LoginCredentials>({ defaultValues: { username: "", password: "" } });
 
@@ -48,6 +49,9 @@ export function LoginPage({
       onAuthenticated?.("/");
     } catch (error) {
       setRequestError(toApiError(error));
+      // 重试安全：凭据失败后清空密码并聚焦，避免旧输入残留被误提交。
+      setValue("password", "");
+      document.getElementById("login-password")?.focus();
     }
   });
 

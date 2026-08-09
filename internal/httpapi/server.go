@@ -173,7 +173,7 @@ func New(dependencies Dependencies) http.Handler {
 	router.Use(s.realIPMiddleware)
 	router.Use(s.accessLogMiddleware)
 	router.Use(s.recoveryMiddleware)
-	router.Use(securityHeadersMiddleware)
+	router.Use(s.securityHeadersMiddleware)
 	router.Use(agentLinkHeadersMiddleware)
 
 	router.Get("/health/live", s.handleLive)

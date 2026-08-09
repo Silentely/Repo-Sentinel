@@ -183,6 +183,22 @@ export function SettingsPage() {
   const settings = useQuery(settingsQueryOptions);
   const repos = useQuery(repositoriesQueryOptions);
   const { form, set } = useSettingsForm(settings.data);
+  // 时区输入即时校验提示：保存后后端会再强校验，这里在失焦时提前反馈。
+  const [timezoneHint, setTimezoneHint] = useState("");
+  const validateTimezone = (value: string) => {
+    const v = value.trim();
+    if (v === "") {
+      setTimezoneHint("时区为空将回退 UTC。");
+      return;
+    }
+    try {
+      // Intl 对非法 IANA 时区抛 RangeError：与后端 time.LoadLocation 判定一致。
+      new Intl.DateTimeFormat("en-US", { timeZone: v }).format();
+      setTimezoneHint("");
+    } catch {
+      setTimezoneHint("无法识别的时区，请使用 IANA 名称（如 Asia/Shanghai）。");
+    }
+  };
   const [settingsMsg, setSettingsMsg] = useAutoDismiss();
   const [featuresMsg, setFeaturesMsg] = useAutoDismiss();
   const [aiMsg, setAIMsg] = useAutoDismiss();
@@ -418,7 +434,8 @@ export function SettingsPage() {
         {settingsMsg ? <p className="success-banner" role="status">{settingsMsg}</p> : null}
         {settings.isError ? <ErrorAlert title="无法加载设置" message={toApiError(settings.error).message} errorCode={toApiError(settings.error).errorCode} /> : null}
         <div className="form-grid">
-          <label className="field--plain"><span>管理员时区</span><input value={form.timezone} onChange={(e) => set("timezone", e.target.value)} placeholder="UTC 或 Asia/Shanghai" /></label>
+          <label className="field--plain"><span>管理员时区</span><input value={form.timezone} onChange={(e) => set("timezone", e.target.value)} onBlur={(e) => validateTimezone(e.target.value)} placeholder="UTC 或 Asia/Shanghai" /></label>
+          {timezoneHint ? <p className="field-hint" role="status">{timezoneHint}</p> : null}
           <label className="field--plain"><span>每日摘要本地时间</span><input value={form.digestTime} onChange={(e) => set("digestTime", e.target.value)} placeholder="09:00" /></label>
           <label className="field--plain"><span>通知聚合窗口（秒）</span><input type="number" min={1} max={86400} value={form.aggregateSec} onChange={(e) => set("aggregateSec", Number(e.target.value) || 1)} /></label>
           <label className="field--plain"><span>超频阈值</span><input type="number" min={1} value={form.burstThreshold} onChange={(e) => set("burstThreshold", Number(e.target.value) || 1)} /></label>

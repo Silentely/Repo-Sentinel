@@ -167,6 +167,30 @@ describe("设置页", () => {
     reconcileRepositoryMock.mockClear();
   });
 
+  it("时区输入失焦时即时校验：非法值提示、合法值静默", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const prefsSection = screen.getByRole("region", { name: "运行偏好" });
+    const timezoneInput = await within(prefsSection).findByLabelText("管理员时区");
+    // 等待设置回填（表单初值来自默认，查询落定后更新为 Asia/Shanghai）。
+    await waitFor(() => expect(timezoneInput).toHaveValue("Asia/Shanghai"));
+
+    // 非法时区：失焦后提示，保存后后端仍会强校验。
+    await user.clear(timezoneInput);
+    await user.type(timezoneInput, "Mars/Olympus");
+    await user.tab();
+    expect(await within(prefsSection).findByText(/无法识别的时区/)).toBeInTheDocument();
+
+    // 合法时区：提示消失。
+    await user.clear(timezoneInput);
+    await user.type(timezoneInput, "Asia/Shanghai");
+    await user.tab();
+    await waitFor(() => {
+      expect(within(prefsSection).queryByText(/无法识别的时区/)).toBeNull();
+    });
+  });
+
   it("保存开关成功后在功能模块区块内展示提示", async () => {
     const user = userEvent.setup();
     renderPage();
