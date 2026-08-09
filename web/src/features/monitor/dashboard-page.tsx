@@ -1,8 +1,8 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
 
+import { CollapsiblePanel } from "../../components/collapsible-panel";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
@@ -404,55 +404,6 @@ export function DashboardPage() {
         </QueryGate>
       </CollapsiblePanel>
     </>
-  );
-}
-
-function CollapsiblePanel({
-  id,
-  title,
-  count,
-  open,
-  onToggle,
-  headerExtra,
-  children,
-}: {
-  id: string;
-  title: string;
-  count?: ReactNode;
-  open: boolean;
-  onToggle: () => void;
-  headerExtra?: ReactNode;
-  children: ReactNode;
-}) {
-  const headingId = `${id}-title`;
-  const panelId = `${id}-panel`;
-  return (
-    <section className={`onboarding-card collapsible-panel${open ? " is-open" : ""}`} aria-labelledby={headingId}>
-      <div className="collapsible-panel__header">
-        {/* 标题以 sr-only 承载语义与可访问名称；视觉标题由按钮内 span 呈现（button 内容模型不允许 h2）。 */}
-        <h2 id={headingId} className="sr-only">
-          {title}
-        </h2>
-        <button
-          type="button"
-          className="collapsible-panel__toggle"
-          aria-expanded={open}
-          aria-controls={panelId}
-          aria-labelledby={headingId}
-          onClick={onToggle}
-        >
-          <ChevronDown className="collapsible-panel__chevron" size={18} aria-hidden="true" />
-          <span className="collapsible-panel__title">{title}</span>
-          {count != null ? <span className="collapsible-panel__count">{count}</span> : null}
-        </button>
-        {headerExtra ? <div className="collapsible-panel__extra">{headerExtra}</div> : null}
-      </div>
-      {open ? (
-        <div id={panelId} className="collapsible-panel__body">
-          {children}
-        </div>
-      ) : null}
-    </section>
   );
 }
 
