@@ -2,6 +2,7 @@ package rules
 
 import (
 	"bytes"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -58,6 +59,177 @@ func TestShouldNotifyRealtime(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestShouldNotifyRealtimeRelease 守护 release 事件实时通知判定。
+func TestShouldNotifyRealtimeRelease(t *testing.T) {
+	if !shouldNotifyRealtime(&store.Event{Kind: store.ReleaseKind, Action: "published"}) {
+		t.Fatal("release published 应实时通知")
+	}
+	if shouldNotifyRealtime(&store.Event{Kind: store.ReleaseKind, Action: "edited"}) {
+		t.Fatal("release edited 不应通知")
+	}
+}
+
+// TestReleaseAnalysis 覆盖成功、未启用、无渠道、AI 失败各分支。
+func TestReleaseAnalysis(t *testing.T) {
+	ev := &store.Event{
+		Kind: store.ReleaseKind, Action: "published", Title: "Hello-World v2.0.0",
+		HTMLURL: "https://github.com/o/r/releases/tag/v2.0.0",
+		PayloadSummary: map[string]any{
+			"tag_name": "v2.0.0", "prerelease": false, "notes": "Some English notes",
+		},
+	}
+	subscribed := []store.NotificationChannel{{Enabled: true}}
+	t.Run("启用返回总结", func(t *testing.T) {
+		client := aiStub(t, `{"choices":[{"message":{"content":"新增 X，修复 Y；⚠️ 破坏性变更：Z。"}}]}`)
+		client.ReleaseSummaryEnabled = true
+		e := &Engine{AI: client}
+		got := e.releaseAnalysis(t.Context(), ev, "o/r", subscribed)
+		if !strings.Contains(got, "新增 X") {
+			t.Fatalf("期望包含总结，实际: %q", got)
+		}
+	})
+	t.Run("未启用返回空", func(t *testing.T) {
+		// aiStub 构造的 Client 未开 ReleaseSummaryEnabled。
+		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"不应调用"}}]}`)}
+		if got := e.releaseAnalysis(t.Context(), ev, "o/r", subscribed); got != "" {
+			t.Fatalf("未启用应返回空，实际: %q", got)
+		}
+	})
+	t.Run("无订阅渠道返回空", func(t *testing.T) {
+		client := aiStub(t, `{"choices":[{"message":{"content":"不应调用"}}]}`)
+		client.ReleaseSummaryEnabled = true
+		e := &Engine{AI: client}
+		if got := e.releaseAnalysis(t.Context(), ev, "o/r", nil); got != "" {
+			t.Fatalf("无渠道应返回空，实际: %q", got)
+		}
+	})
+	t.Run("AI 失败返回空", func(t *testing.T) {
+		client := aiStub(t, `internal error`)
+		client.ReleaseSummaryEnabled = true
+		e := &Engine{AI: client}
+		if got := e.releaseAnalysis(t.Context(), ev, "o/r", subscribed); got != "" {
+			t.Fatalf("AI 失败应返回空，实际: %q", got)
+		}
+	})
+	t.Run("非 release 事件返回空", func(t *testing.T) {
+		client := aiStub(t, `{"choices":[{"message":{"content":"x"}}]}`)
+		client.ReleaseSummaryEnabled = true
+		issue := &store.Event{Kind: store.WorkItemKindIssue, Action: "opened", Title: "t"}
+		if got := (&Engine{AI: client}).releaseAnalysis(t.Context(), issue, "o/r", subscribed); got != "" {
+			t.Fatalf("issue 不应触发 release 总结，实际: %q", got)
+		}
+	})
+}
+
+// TestEvaluateReleaseOutbox 验证 release 事件经 Evaluate 写入 Outbox，且 feature 关闭时静默。
+func TestEvaluateReleaseOutbox(t *testing.T) {
+	data := openEngineStore(t)
+	ctx := t.Context()
+	ch, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: "telegram", Name: "tg", Target: "123",
+		Enabled: true, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	releaseID := 42
+	ev := store.Event{
+		ID: ulid.Make().String(), Kind: store.ReleaseKind, Action: "published",
+		Title: "Hello-World v2.0.0", SubjectNumber: &releaseID,
+		OccurredAt: now, HTMLURL: "https://github.com/o/r/releases/tag/v2.0.0",
+		PayloadSummary: map[string]any{"tag_name": "v2.0.0"},
+	}
+	e := &Engine{Store: data}
+	if err := e.Evaluate(ctx, normalizer.Result{Event: &ev}, "o/r"); err != nil {
+		t.Fatal(err)
+	}
+	outbox, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outbox) != 1 || outbox[0].ChannelID != ch.ID {
+		t.Fatalf("应写入 1 条 outbox: %+v", outbox)
+	}
+	if !strings.Contains(outbox[0].Title, "🚀") {
+		t.Fatalf("outbox 标题应含 🚀: %s", outbox[0].Title)
+	}
+	// 关闭全局开关后不再投递
+	raw, _ := json.Marshal(false)
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: ulid.Make().String(), Key: store.SettingFeatureStarredReleases,
+		ValueJSON: raw, UpdatedAt: time.Now().UTC(), UpdatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ev2 := ev
+	ev2.ID = ulid.Make().String()
+	if err := e.Evaluate(ctx, normalizer.Result{Event: &ev2}, "o/r"); err != nil {
+		t.Fatal(err)
+	}
+	outbox, _, _ = data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if len(outbox) != 1 {
+		t.Fatalf("开关关闭后不应新增投递，got %d", len(outbox))
+	}
+}
+
+// TestEvaluateReleaseAIInjection 验证 AI 总结注入正文与失败降级（不丢通知）。
+func TestEvaluateReleaseAIInjection(t *testing.T) {
+	data := openEngineStore(t)
+	ctx := t.Context()
+	if _, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: "telegram", Name: "tg", Target: "123",
+		Enabled: true, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	releaseID := 42
+	ev := store.Event{
+		ID: ulid.Make().String(), Kind: store.ReleaseKind, Action: "published",
+		Title: "Hello-World v2.0.0", SubjectNumber: &releaseID,
+		OccurredAt: now, HTMLURL: "https://github.com/o/r/releases/tag/v2.0.0",
+		PayloadSummary: map[string]any{"tag_name": "v2.0.0", "notes": "English notes"},
+	}
+	t.Run("AI 成功注入总结", func(t *testing.T) {
+		client := aiStub(t, `{"choices":[{"message":{"content":"新增 X 功能，修复 Y。"}}]}`)
+		client.ReleaseSummaryEnabled = true
+		e := &Engine{Store: data, AI: client}
+		if err := e.Evaluate(ctx, normalizer.Result{Event: &ev}, "o/r"); err != nil {
+			t.Fatal(err)
+		}
+		outbox, _, _ := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+		if len(outbox) == 0 {
+			t.Fatal("应写入 outbox")
+		}
+		if !strings.Contains(outbox[len(outbox)-1].BodyText, "🤖 AI 总结") {
+			t.Fatalf("正文应含 AI 总结段: %s", outbox[len(outbox)-1].BodyText)
+		}
+	})
+	t.Run("AI 失败仍通知", func(t *testing.T) {
+		client := aiStub(t, `internal error`)
+		client.ReleaseSummaryEnabled = true
+		ev2 := ev
+		ev2.ID = ulid.Make().String()
+		e := &Engine{Store: data, AI: client}
+		if err := e.Evaluate(ctx, normalizer.Result{Event: &ev2}, "o/r"); err != nil {
+			t.Fatal(err)
+		}
+		outbox, _, _ := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+		// 按内容断言（不依赖 outbox 排序）：AI 失败时通知仍在且不带总结段。
+		found := false
+		for _, o := range outbox {
+			if strings.Contains(o.BodyText, "🔗 在 GitHub 中查看") && !strings.Contains(o.BodyText, "🤖 AI 总结") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("AI 失败时应有原文链接兜底且无 AI 段: %+v", outbox)
+		}
+	})
 }
 
 // TestShouldNotifyRealtimeStarWatch 守护 star/watch 实时通知判定：创建/删除/关注

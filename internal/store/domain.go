@@ -141,6 +141,8 @@ func KindDisplayName(kind string) string {
 		return "Star"
 	case WatchKind:
 		return "Watch"
+	case ReleaseKind:
+		return "Release"
 	default:
 		return kind
 	}
