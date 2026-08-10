@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -126,5 +127,41 @@ func TestListReleasesNotFound(t *testing.T) {
 	var stErr *HTTPStatusError
 	if !errors.As(err, &stErr) || stErr.StatusCode != 404 {
 		t.Fatalf("want HTTPStatusError 404, got %v", err)
+	}
+}
+
+// TestListUserStarred 验证匿名枚举用户公开 star 的分页与字段解析。
+func TestListUserStarred(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/users/octocat/starred" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Fatalf("匿名请求不应带 Authorization: %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("X-RateLimit-Remaining", "59")
+		if r.URL.Query().Get("page") == "2" {
+			w.Write([]byte(`[]`))
+			return
+		}
+		w.Header().Set("Link", `<https://api.github.com/user/starred?page=2>; rel="next"`)
+		w.Write([]byte(`[{"full_name":"octocat/Hello-World","private":false,"fork":false,"archived":false},{"full_name":"o/f","fork":true}]`))
+	}))
+	defer srv.Close()
+	p := &PublicClient{HTTP: srv.Client(), BaseURL: srv.URL}
+
+	items, link, remaining, err := p.ListUserStarred(context.Background(), "octocat", 1)
+	if err != nil || len(items) != 2 || items[0].FullName != "octocat/Hello-World" {
+		t.Fatalf("page1: items=%v link=%q remaining=%d err=%v", items, link, remaining, err)
+	}
+	if !strings.Contains(link, "page=2") {
+		t.Fatalf("应有 next link: %q", link)
+	}
+	if items[1].Fork != true {
+		t.Fatalf("fork 标记应解析: %+v", items[1])
+	}
+	items2, link2, _, err := p.ListUserStarred(context.Background(), "octocat", 2)
+	if err != nil || len(items2) != 0 || link2 != "" {
+		t.Fatalf("page2: items=%v link=%q err=%v", items2, link2, err)
 	}
 }

@@ -378,6 +378,36 @@ type PublicClient struct {
 	BaseURL string
 }
 
+// StarredRepoItem 用户 star 列表条目（匿名公开枚举用）。
+type StarredRepoItem struct {
+	FullName string `json:"full_name"`
+	Private  bool   `json:"private"`
+	Fork     bool   `json:"fork"`
+	Archived bool   `json:"archived"`
+}
+
+// ListUserStarred 匿名拉取用户公开 star 单页（per_page=100）。
+// 返回 link（Link 响应头）供翻页，空串表示末页；匿名访问不携带 PAT。
+func (c *PublicClient) ListUserStarred(ctx context.Context, username string, page int) ([]StarredRepoItem, string, int, error) {
+	app := &AppClient{
+		HTTP:    c.HTTP,
+		BaseURL: c.BaseURL,
+	}
+	if app.HTTP == nil {
+		app.HTTP = &http.Client{Timeout: 30 * time.Second}
+	}
+	if app.BaseURL == "" {
+		app.BaseURL = "https://api.github.com"
+	}
+	if page <= 0 {
+		page = 1
+	}
+	path := fmt.Sprintf("/users/%s/starred?per_page=100&page=%d", username, page)
+	var items []StarredRepoItem
+	remaining, link, err := app.DoJSONPage(ctx, "GET", path, "", &items)
+	return items, link, remaining, err
+}
+
 // ListPublicIssues 列出公开仓 issues。
 func (c *PublicClient) ListPublicIssues(ctx context.Context, owner, repo string, since *time.Time, page int) ([]IssueItem, int, error) {
 	app := &AppClient{
