@@ -93,3 +93,30 @@ func TestKindFeatureKeyStarWatch(t *testing.T) {
 		t.Fatalf("watch kind key = %q, want %q", got, store.SettingFeatureWatches)
 	}
 }
+
+// TestReleaseKindFeature 守护 release 事件类型到全局功能开关的映射与订阅白名单。
+func TestReleaseKindFeature(t *testing.T) {
+	data := openTestStore(t)
+	ctx := t.Context()
+
+	if !store.IsSubscribableKind(store.ReleaseKind) {
+		t.Fatal("release 应在渠道订阅白名单内")
+	}
+	if got := store.KindFeatureKey(store.ReleaseKind); got != store.SettingFeatureStarredReleases {
+		t.Fatalf("KindFeatureKey(release) = %q, want %q", got, store.SettingFeatureStarredReleases)
+	}
+	if !store.KindFeatureEnabled(ctx, data.Settings(), store.ReleaseKind) {
+		t.Fatal("键缺失默认应开启")
+	}
+	putFeature(t, data, store.SettingFeatureStarredReleases, false)
+	if store.KindFeatureEnabled(ctx, data.Settings(), store.ReleaseKind) {
+		t.Fatal("关闭后应生效")
+	}
+	flags := store.LoadFeatureFlags(ctx, data.Settings())
+	if flags.StarredReleases {
+		t.Fatal("LoadFeatureFlags 应反映关闭状态")
+	}
+	if flags.AllowsKind(store.ReleaseKind) {
+		t.Fatal("AllowsKind 应拦截关闭的 release")
+	}
+}
