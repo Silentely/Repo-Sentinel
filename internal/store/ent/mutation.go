@@ -23,6 +23,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repostatsnapshot"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/starredrepotracker"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
@@ -49,6 +50,7 @@ const (
 	TypeRepoStatSnapshot    = "RepoStatSnapshot"
 	TypeRepository          = "Repository"
 	TypeSecurityAlert       = "SecurityAlert"
+	TypeStarredRepoTracker  = "StarredRepoTracker"
 	TypeSyncCursor          = "SyncCursor"
 	TypeSystemSetting       = "SystemSetting"
 	TypeWebhookDelivery     = "WebhookDelivery"
@@ -9920,6 +9922,1085 @@ func (m *SecurityAlertMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SecurityAlertMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown SecurityAlert edge %s", name)
+}
+
+// StarredRepoTrackerMutation represents an operation that mutates the StarredRepoTracker nodes in the graph.
+type StarredRepoTrackerMutation struct {
+	config
+	op                        Op
+	typ                       string
+	id                        *string
+	full_name                 *string
+	state                     *string
+	etag                      *string
+	last_release_id           *int64
+	addlast_release_id        *int64
+	last_release_tag          *string
+	last_release_published_at *time.Time
+	no_release_since          *time.Time
+	no_release_recheck_at     *time.Time
+	first_seen_at             *time.Time
+	last_poll_at              *time.Time
+	created_at                *time.Time
+	updated_at                *time.Time
+	clearedFields             map[string]struct{}
+	done                      bool
+	oldValue                  func(context.Context) (*StarredRepoTracker, error)
+	predicates                []predicate.StarredRepoTracker
+}
+
+var _ ent.Mutation = (*StarredRepoTrackerMutation)(nil)
+
+// starredrepotrackerOption allows management of the mutation configuration using functional options.
+type starredrepotrackerOption func(*StarredRepoTrackerMutation)
+
+// newStarredRepoTrackerMutation creates new mutation for the StarredRepoTracker entity.
+func newStarredRepoTrackerMutation(c config, op Op, opts ...starredrepotrackerOption) *StarredRepoTrackerMutation {
+	m := &StarredRepoTrackerMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeStarredRepoTracker,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withStarredRepoTrackerID sets the ID field of the mutation.
+func withStarredRepoTrackerID(id string) starredrepotrackerOption {
+	return func(m *StarredRepoTrackerMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *StarredRepoTracker
+		)
+		m.oldValue = func(ctx context.Context) (*StarredRepoTracker, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().StarredRepoTracker.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withStarredRepoTracker sets the old StarredRepoTracker of the mutation.
+func withStarredRepoTracker(node *StarredRepoTracker) starredrepotrackerOption {
+	return func(m *StarredRepoTrackerMutation) {
+		m.oldValue = func(context.Context) (*StarredRepoTracker, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m StarredRepoTrackerMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m StarredRepoTrackerMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of StarredRepoTracker entities.
+func (m *StarredRepoTrackerMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *StarredRepoTrackerMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *StarredRepoTrackerMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().StarredRepoTracker.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetFullName sets the "full_name" field.
+func (m *StarredRepoTrackerMutation) SetFullName(s string) {
+	m.full_name = &s
+}
+
+// FullName returns the value of the "full_name" field in the mutation.
+func (m *StarredRepoTrackerMutation) FullName() (r string, exists bool) {
+	v := m.full_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFullName returns the old "full_name" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldFullName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFullName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFullName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFullName: %w", err)
+	}
+	return oldValue.FullName, nil
+}
+
+// ResetFullName resets all changes to the "full_name" field.
+func (m *StarredRepoTrackerMutation) ResetFullName() {
+	m.full_name = nil
+}
+
+// SetState sets the "state" field.
+func (m *StarredRepoTrackerMutation) SetState(s string) {
+	m.state = &s
+}
+
+// State returns the value of the "state" field in the mutation.
+func (m *StarredRepoTrackerMutation) State() (r string, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldState returns the old "state" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// ResetState resets all changes to the "state" field.
+func (m *StarredRepoTrackerMutation) ResetState() {
+	m.state = nil
+}
+
+// SetEtag sets the "etag" field.
+func (m *StarredRepoTrackerMutation) SetEtag(s string) {
+	m.etag = &s
+}
+
+// Etag returns the value of the "etag" field in the mutation.
+func (m *StarredRepoTrackerMutation) Etag() (r string, exists bool) {
+	v := m.etag
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEtag returns the old "etag" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldEtag(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEtag is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEtag requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEtag: %w", err)
+	}
+	return oldValue.Etag, nil
+}
+
+// ClearEtag clears the value of the "etag" field.
+func (m *StarredRepoTrackerMutation) ClearEtag() {
+	m.etag = nil
+	m.clearedFields[starredrepotracker.FieldEtag] = struct{}{}
+}
+
+// EtagCleared returns if the "etag" field was cleared in this mutation.
+func (m *StarredRepoTrackerMutation) EtagCleared() bool {
+	_, ok := m.clearedFields[starredrepotracker.FieldEtag]
+	return ok
+}
+
+// ResetEtag resets all changes to the "etag" field.
+func (m *StarredRepoTrackerMutation) ResetEtag() {
+	m.etag = nil
+	delete(m.clearedFields, starredrepotracker.FieldEtag)
+}
+
+// SetLastReleaseID sets the "last_release_id" field.
+func (m *StarredRepoTrackerMutation) SetLastReleaseID(i int64) {
+	m.last_release_id = &i
+	m.addlast_release_id = nil
+}
+
+// LastReleaseID returns the value of the "last_release_id" field in the mutation.
+func (m *StarredRepoTrackerMutation) LastReleaseID() (r int64, exists bool) {
+	v := m.last_release_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastReleaseID returns the old "last_release_id" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldLastReleaseID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastReleaseID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastReleaseID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastReleaseID: %w", err)
+	}
+	return oldValue.LastReleaseID, nil
+}
+
+// AddLastReleaseID adds i to the "last_release_id" field.
+func (m *StarredRepoTrackerMutation) AddLastReleaseID(i int64) {
+	if m.addlast_release_id != nil {
+		*m.addlast_release_id += i
+	} else {
+		m.addlast_release_id = &i
+	}
+}
+
+// AddedLastReleaseID returns the value that was added to the "last_release_id" field in this mutation.
+func (m *StarredRepoTrackerMutation) AddedLastReleaseID() (r int64, exists bool) {
+	v := m.addlast_release_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLastReleaseID resets all changes to the "last_release_id" field.
+func (m *StarredRepoTrackerMutation) ResetLastReleaseID() {
+	m.last_release_id = nil
+	m.addlast_release_id = nil
+}
+
+// SetLastReleaseTag sets the "last_release_tag" field.
+func (m *StarredRepoTrackerMutation) SetLastReleaseTag(s string) {
+	m.last_release_tag = &s
+}
+
+// LastReleaseTag returns the value of the "last_release_tag" field in the mutation.
+func (m *StarredRepoTrackerMutation) LastReleaseTag() (r string, exists bool) {
+	v := m.last_release_tag
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastReleaseTag returns the old "last_release_tag" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldLastReleaseTag(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastReleaseTag is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastReleaseTag requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastReleaseTag: %w", err)
+	}
+	return oldValue.LastReleaseTag, nil
+}
+
+// ClearLastReleaseTag clears the value of the "last_release_tag" field.
+func (m *StarredRepoTrackerMutation) ClearLastReleaseTag() {
+	m.last_release_tag = nil
+	m.clearedFields[starredrepotracker.FieldLastReleaseTag] = struct{}{}
+}
+
+// LastReleaseTagCleared returns if the "last_release_tag" field was cleared in this mutation.
+func (m *StarredRepoTrackerMutation) LastReleaseTagCleared() bool {
+	_, ok := m.clearedFields[starredrepotracker.FieldLastReleaseTag]
+	return ok
+}
+
+// ResetLastReleaseTag resets all changes to the "last_release_tag" field.
+func (m *StarredRepoTrackerMutation) ResetLastReleaseTag() {
+	m.last_release_tag = nil
+	delete(m.clearedFields, starredrepotracker.FieldLastReleaseTag)
+}
+
+// SetLastReleasePublishedAt sets the "last_release_published_at" field.
+func (m *StarredRepoTrackerMutation) SetLastReleasePublishedAt(t time.Time) {
+	m.last_release_published_at = &t
+}
+
+// LastReleasePublishedAt returns the value of the "last_release_published_at" field in the mutation.
+func (m *StarredRepoTrackerMutation) LastReleasePublishedAt() (r time.Time, exists bool) {
+	v := m.last_release_published_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastReleasePublishedAt returns the old "last_release_published_at" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldLastReleasePublishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastReleasePublishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastReleasePublishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastReleasePublishedAt: %w", err)
+	}
+	return oldValue.LastReleasePublishedAt, nil
+}
+
+// ClearLastReleasePublishedAt clears the value of the "last_release_published_at" field.
+func (m *StarredRepoTrackerMutation) ClearLastReleasePublishedAt() {
+	m.last_release_published_at = nil
+	m.clearedFields[starredrepotracker.FieldLastReleasePublishedAt] = struct{}{}
+}
+
+// LastReleasePublishedAtCleared returns if the "last_release_published_at" field was cleared in this mutation.
+func (m *StarredRepoTrackerMutation) LastReleasePublishedAtCleared() bool {
+	_, ok := m.clearedFields[starredrepotracker.FieldLastReleasePublishedAt]
+	return ok
+}
+
+// ResetLastReleasePublishedAt resets all changes to the "last_release_published_at" field.
+func (m *StarredRepoTrackerMutation) ResetLastReleasePublishedAt() {
+	m.last_release_published_at = nil
+	delete(m.clearedFields, starredrepotracker.FieldLastReleasePublishedAt)
+}
+
+// SetNoReleaseSince sets the "no_release_since" field.
+func (m *StarredRepoTrackerMutation) SetNoReleaseSince(t time.Time) {
+	m.no_release_since = &t
+}
+
+// NoReleaseSince returns the value of the "no_release_since" field in the mutation.
+func (m *StarredRepoTrackerMutation) NoReleaseSince() (r time.Time, exists bool) {
+	v := m.no_release_since
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNoReleaseSince returns the old "no_release_since" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldNoReleaseSince(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNoReleaseSince is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNoReleaseSince requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNoReleaseSince: %w", err)
+	}
+	return oldValue.NoReleaseSince, nil
+}
+
+// ClearNoReleaseSince clears the value of the "no_release_since" field.
+func (m *StarredRepoTrackerMutation) ClearNoReleaseSince() {
+	m.no_release_since = nil
+	m.clearedFields[starredrepotracker.FieldNoReleaseSince] = struct{}{}
+}
+
+// NoReleaseSinceCleared returns if the "no_release_since" field was cleared in this mutation.
+func (m *StarredRepoTrackerMutation) NoReleaseSinceCleared() bool {
+	_, ok := m.clearedFields[starredrepotracker.FieldNoReleaseSince]
+	return ok
+}
+
+// ResetNoReleaseSince resets all changes to the "no_release_since" field.
+func (m *StarredRepoTrackerMutation) ResetNoReleaseSince() {
+	m.no_release_since = nil
+	delete(m.clearedFields, starredrepotracker.FieldNoReleaseSince)
+}
+
+// SetNoReleaseRecheckAt sets the "no_release_recheck_at" field.
+func (m *StarredRepoTrackerMutation) SetNoReleaseRecheckAt(t time.Time) {
+	m.no_release_recheck_at = &t
+}
+
+// NoReleaseRecheckAt returns the value of the "no_release_recheck_at" field in the mutation.
+func (m *StarredRepoTrackerMutation) NoReleaseRecheckAt() (r time.Time, exists bool) {
+	v := m.no_release_recheck_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNoReleaseRecheckAt returns the old "no_release_recheck_at" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldNoReleaseRecheckAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNoReleaseRecheckAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNoReleaseRecheckAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNoReleaseRecheckAt: %w", err)
+	}
+	return oldValue.NoReleaseRecheckAt, nil
+}
+
+// ClearNoReleaseRecheckAt clears the value of the "no_release_recheck_at" field.
+func (m *StarredRepoTrackerMutation) ClearNoReleaseRecheckAt() {
+	m.no_release_recheck_at = nil
+	m.clearedFields[starredrepotracker.FieldNoReleaseRecheckAt] = struct{}{}
+}
+
+// NoReleaseRecheckAtCleared returns if the "no_release_recheck_at" field was cleared in this mutation.
+func (m *StarredRepoTrackerMutation) NoReleaseRecheckAtCleared() bool {
+	_, ok := m.clearedFields[starredrepotracker.FieldNoReleaseRecheckAt]
+	return ok
+}
+
+// ResetNoReleaseRecheckAt resets all changes to the "no_release_recheck_at" field.
+func (m *StarredRepoTrackerMutation) ResetNoReleaseRecheckAt() {
+	m.no_release_recheck_at = nil
+	delete(m.clearedFields, starredrepotracker.FieldNoReleaseRecheckAt)
+}
+
+// SetFirstSeenAt sets the "first_seen_at" field.
+func (m *StarredRepoTrackerMutation) SetFirstSeenAt(t time.Time) {
+	m.first_seen_at = &t
+}
+
+// FirstSeenAt returns the value of the "first_seen_at" field in the mutation.
+func (m *StarredRepoTrackerMutation) FirstSeenAt() (r time.Time, exists bool) {
+	v := m.first_seen_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstSeenAt returns the old "first_seen_at" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldFirstSeenAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstSeenAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstSeenAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstSeenAt: %w", err)
+	}
+	return oldValue.FirstSeenAt, nil
+}
+
+// ResetFirstSeenAt resets all changes to the "first_seen_at" field.
+func (m *StarredRepoTrackerMutation) ResetFirstSeenAt() {
+	m.first_seen_at = nil
+}
+
+// SetLastPollAt sets the "last_poll_at" field.
+func (m *StarredRepoTrackerMutation) SetLastPollAt(t time.Time) {
+	m.last_poll_at = &t
+}
+
+// LastPollAt returns the value of the "last_poll_at" field in the mutation.
+func (m *StarredRepoTrackerMutation) LastPollAt() (r time.Time, exists bool) {
+	v := m.last_poll_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastPollAt returns the old "last_poll_at" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldLastPollAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastPollAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastPollAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastPollAt: %w", err)
+	}
+	return oldValue.LastPollAt, nil
+}
+
+// ClearLastPollAt clears the value of the "last_poll_at" field.
+func (m *StarredRepoTrackerMutation) ClearLastPollAt() {
+	m.last_poll_at = nil
+	m.clearedFields[starredrepotracker.FieldLastPollAt] = struct{}{}
+}
+
+// LastPollAtCleared returns if the "last_poll_at" field was cleared in this mutation.
+func (m *StarredRepoTrackerMutation) LastPollAtCleared() bool {
+	_, ok := m.clearedFields[starredrepotracker.FieldLastPollAt]
+	return ok
+}
+
+// ResetLastPollAt resets all changes to the "last_poll_at" field.
+func (m *StarredRepoTrackerMutation) ResetLastPollAt() {
+	m.last_poll_at = nil
+	delete(m.clearedFields, starredrepotracker.FieldLastPollAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *StarredRepoTrackerMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *StarredRepoTrackerMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *StarredRepoTrackerMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *StarredRepoTrackerMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *StarredRepoTrackerMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the StarredRepoTracker entity.
+// If the StarredRepoTracker object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StarredRepoTrackerMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *StarredRepoTrackerMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the StarredRepoTrackerMutation builder.
+func (m *StarredRepoTrackerMutation) Where(ps ...predicate.StarredRepoTracker) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the StarredRepoTrackerMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *StarredRepoTrackerMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.StarredRepoTracker, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *StarredRepoTrackerMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *StarredRepoTrackerMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (StarredRepoTracker).
+func (m *StarredRepoTrackerMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *StarredRepoTrackerMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.full_name != nil {
+		fields = append(fields, starredrepotracker.FieldFullName)
+	}
+	if m.state != nil {
+		fields = append(fields, starredrepotracker.FieldState)
+	}
+	if m.etag != nil {
+		fields = append(fields, starredrepotracker.FieldEtag)
+	}
+	if m.last_release_id != nil {
+		fields = append(fields, starredrepotracker.FieldLastReleaseID)
+	}
+	if m.last_release_tag != nil {
+		fields = append(fields, starredrepotracker.FieldLastReleaseTag)
+	}
+	if m.last_release_published_at != nil {
+		fields = append(fields, starredrepotracker.FieldLastReleasePublishedAt)
+	}
+	if m.no_release_since != nil {
+		fields = append(fields, starredrepotracker.FieldNoReleaseSince)
+	}
+	if m.no_release_recheck_at != nil {
+		fields = append(fields, starredrepotracker.FieldNoReleaseRecheckAt)
+	}
+	if m.first_seen_at != nil {
+		fields = append(fields, starredrepotracker.FieldFirstSeenAt)
+	}
+	if m.last_poll_at != nil {
+		fields = append(fields, starredrepotracker.FieldLastPollAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, starredrepotracker.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, starredrepotracker.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *StarredRepoTrackerMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case starredrepotracker.FieldFullName:
+		return m.FullName()
+	case starredrepotracker.FieldState:
+		return m.State()
+	case starredrepotracker.FieldEtag:
+		return m.Etag()
+	case starredrepotracker.FieldLastReleaseID:
+		return m.LastReleaseID()
+	case starredrepotracker.FieldLastReleaseTag:
+		return m.LastReleaseTag()
+	case starredrepotracker.FieldLastReleasePublishedAt:
+		return m.LastReleasePublishedAt()
+	case starredrepotracker.FieldNoReleaseSince:
+		return m.NoReleaseSince()
+	case starredrepotracker.FieldNoReleaseRecheckAt:
+		return m.NoReleaseRecheckAt()
+	case starredrepotracker.FieldFirstSeenAt:
+		return m.FirstSeenAt()
+	case starredrepotracker.FieldLastPollAt:
+		return m.LastPollAt()
+	case starredrepotracker.FieldCreatedAt:
+		return m.CreatedAt()
+	case starredrepotracker.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *StarredRepoTrackerMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case starredrepotracker.FieldFullName:
+		return m.OldFullName(ctx)
+	case starredrepotracker.FieldState:
+		return m.OldState(ctx)
+	case starredrepotracker.FieldEtag:
+		return m.OldEtag(ctx)
+	case starredrepotracker.FieldLastReleaseID:
+		return m.OldLastReleaseID(ctx)
+	case starredrepotracker.FieldLastReleaseTag:
+		return m.OldLastReleaseTag(ctx)
+	case starredrepotracker.FieldLastReleasePublishedAt:
+		return m.OldLastReleasePublishedAt(ctx)
+	case starredrepotracker.FieldNoReleaseSince:
+		return m.OldNoReleaseSince(ctx)
+	case starredrepotracker.FieldNoReleaseRecheckAt:
+		return m.OldNoReleaseRecheckAt(ctx)
+	case starredrepotracker.FieldFirstSeenAt:
+		return m.OldFirstSeenAt(ctx)
+	case starredrepotracker.FieldLastPollAt:
+		return m.OldLastPollAt(ctx)
+	case starredrepotracker.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case starredrepotracker.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown StarredRepoTracker field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *StarredRepoTrackerMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case starredrepotracker.FieldFullName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFullName(v)
+		return nil
+	case starredrepotracker.FieldState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetState(v)
+		return nil
+	case starredrepotracker.FieldEtag:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEtag(v)
+		return nil
+	case starredrepotracker.FieldLastReleaseID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastReleaseID(v)
+		return nil
+	case starredrepotracker.FieldLastReleaseTag:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastReleaseTag(v)
+		return nil
+	case starredrepotracker.FieldLastReleasePublishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastReleasePublishedAt(v)
+		return nil
+	case starredrepotracker.FieldNoReleaseSince:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNoReleaseSince(v)
+		return nil
+	case starredrepotracker.FieldNoReleaseRecheckAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNoReleaseRecheckAt(v)
+		return nil
+	case starredrepotracker.FieldFirstSeenAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstSeenAt(v)
+		return nil
+	case starredrepotracker.FieldLastPollAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastPollAt(v)
+		return nil
+	case starredrepotracker.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case starredrepotracker.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown StarredRepoTracker field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *StarredRepoTrackerMutation) AddedFields() []string {
+	var fields []string
+	if m.addlast_release_id != nil {
+		fields = append(fields, starredrepotracker.FieldLastReleaseID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *StarredRepoTrackerMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case starredrepotracker.FieldLastReleaseID:
+		return m.AddedLastReleaseID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *StarredRepoTrackerMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case starredrepotracker.FieldLastReleaseID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLastReleaseID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown StarredRepoTracker numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *StarredRepoTrackerMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(starredrepotracker.FieldEtag) {
+		fields = append(fields, starredrepotracker.FieldEtag)
+	}
+	if m.FieldCleared(starredrepotracker.FieldLastReleaseTag) {
+		fields = append(fields, starredrepotracker.FieldLastReleaseTag)
+	}
+	if m.FieldCleared(starredrepotracker.FieldLastReleasePublishedAt) {
+		fields = append(fields, starredrepotracker.FieldLastReleasePublishedAt)
+	}
+	if m.FieldCleared(starredrepotracker.FieldNoReleaseSince) {
+		fields = append(fields, starredrepotracker.FieldNoReleaseSince)
+	}
+	if m.FieldCleared(starredrepotracker.FieldNoReleaseRecheckAt) {
+		fields = append(fields, starredrepotracker.FieldNoReleaseRecheckAt)
+	}
+	if m.FieldCleared(starredrepotracker.FieldLastPollAt) {
+		fields = append(fields, starredrepotracker.FieldLastPollAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *StarredRepoTrackerMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *StarredRepoTrackerMutation) ClearField(name string) error {
+	switch name {
+	case starredrepotracker.FieldEtag:
+		m.ClearEtag()
+		return nil
+	case starredrepotracker.FieldLastReleaseTag:
+		m.ClearLastReleaseTag()
+		return nil
+	case starredrepotracker.FieldLastReleasePublishedAt:
+		m.ClearLastReleasePublishedAt()
+		return nil
+	case starredrepotracker.FieldNoReleaseSince:
+		m.ClearNoReleaseSince()
+		return nil
+	case starredrepotracker.FieldNoReleaseRecheckAt:
+		m.ClearNoReleaseRecheckAt()
+		return nil
+	case starredrepotracker.FieldLastPollAt:
+		m.ClearLastPollAt()
+		return nil
+	}
+	return fmt.Errorf("unknown StarredRepoTracker nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *StarredRepoTrackerMutation) ResetField(name string) error {
+	switch name {
+	case starredrepotracker.FieldFullName:
+		m.ResetFullName()
+		return nil
+	case starredrepotracker.FieldState:
+		m.ResetState()
+		return nil
+	case starredrepotracker.FieldEtag:
+		m.ResetEtag()
+		return nil
+	case starredrepotracker.FieldLastReleaseID:
+		m.ResetLastReleaseID()
+		return nil
+	case starredrepotracker.FieldLastReleaseTag:
+		m.ResetLastReleaseTag()
+		return nil
+	case starredrepotracker.FieldLastReleasePublishedAt:
+		m.ResetLastReleasePublishedAt()
+		return nil
+	case starredrepotracker.FieldNoReleaseSince:
+		m.ResetNoReleaseSince()
+		return nil
+	case starredrepotracker.FieldNoReleaseRecheckAt:
+		m.ResetNoReleaseRecheckAt()
+		return nil
+	case starredrepotracker.FieldFirstSeenAt:
+		m.ResetFirstSeenAt()
+		return nil
+	case starredrepotracker.FieldLastPollAt:
+		m.ResetLastPollAt()
+		return nil
+	case starredrepotracker.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case starredrepotracker.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown StarredRepoTracker field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *StarredRepoTrackerMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *StarredRepoTrackerMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *StarredRepoTrackerMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *StarredRepoTrackerMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *StarredRepoTrackerMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *StarredRepoTrackerMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *StarredRepoTrackerMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown StarredRepoTracker unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *StarredRepoTrackerMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown StarredRepoTracker edge %s", name)
 }
 
 // SyncCursorMutation represents an operation that mutates the SyncCursor nodes in the graph.

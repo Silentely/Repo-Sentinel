@@ -394,6 +394,40 @@ var (
 			},
 		},
 	}
+	// StarredRepoTrackersColumns holds the columns for the "starred_repo_trackers" table.
+	StarredRepoTrackersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "full_name", Type: field.TypeString},
+		{Name: "state", Type: field.TypeString},
+		{Name: "etag", Type: field.TypeString, Nullable: true},
+		{Name: "last_release_id", Type: field.TypeInt64, Default: 0},
+		{Name: "last_release_tag", Type: field.TypeString, Nullable: true},
+		{Name: "last_release_published_at", Type: field.TypeTime, Nullable: true},
+		{Name: "no_release_since", Type: field.TypeTime, Nullable: true},
+		{Name: "no_release_recheck_at", Type: field.TypeTime, Nullable: true},
+		{Name: "first_seen_at", Type: field.TypeTime},
+		{Name: "last_poll_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// StarredRepoTrackersTable holds the schema information for the "starred_repo_trackers" table.
+	StarredRepoTrackersTable = &schema.Table{
+		Name:       "starred_repo_trackers",
+		Columns:    StarredRepoTrackersColumns,
+		PrimaryKey: []*schema.Column{StarredRepoTrackersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "starredrepotracker_full_name",
+				Unique:  true,
+				Columns: []*schema.Column{StarredRepoTrackersColumns[1]},
+			},
+			{
+				Name:    "starredrepotracker_state_last_poll_at",
+				Unique:  false,
+				Columns: []*schema.Column{StarredRepoTrackersColumns[2], StarredRepoTrackersColumns[10]},
+			},
+		},
+	}
 	// SyncCursorsColumns holds the columns for the "sync_cursors" table.
 	SyncCursorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -611,6 +645,7 @@ var (
 		RepoStatSnapshotsTable,
 		RepositoriesTable,
 		SecurityAlertsTable,
+		StarredRepoTrackersTable,
 		SyncCursorsTable,
 		SystemSettingsTable,
 		WebhookDeliveriesTable,
@@ -641,6 +676,9 @@ func init() {
 	}
 	SecurityAlertsTable.Annotation = &entsql.Annotation{
 		Table: "security_alerts",
+	}
+	StarredRepoTrackersTable.Annotation = &entsql.Annotation{
+		Table: "starred_repo_trackers",
 	}
 	SyncCursorsTable.Annotation = &entsql.Annotation{
 		Table: "sync_cursors",

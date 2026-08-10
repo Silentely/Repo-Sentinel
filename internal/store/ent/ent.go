@@ -22,6 +22,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repostatsnapshot"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/starredrepotracker"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
@@ -97,6 +98,7 @@ func checkColumn(t, c string) error {
 			repostatsnapshot.Table:    repostatsnapshot.ValidColumn,
 			repository.Table:          repository.ValidColumn,
 			securityalert.Table:       securityalert.ValidColumn,
+			starredrepotracker.Table:  starredrepotracker.ValidColumn,
 			synccursor.Table:          synccursor.ValidColumn,
 			systemsetting.Table:       systemsetting.ValidColumn,
 			webhookdelivery.Table:     webhookdelivery.ValidColumn,

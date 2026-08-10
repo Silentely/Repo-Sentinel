@@ -129,6 +129,18 @@ func (f SecurityAlertFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SecurityAlertMutation", m)
 }
 
+// The StarredRepoTrackerFunc type is an adapter to allow the use of ordinary
+// function as StarredRepoTracker mutator.
+type StarredRepoTrackerFunc func(context.Context, *ent.StarredRepoTrackerMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f StarredRepoTrackerFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.StarredRepoTrackerMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.StarredRepoTrackerMutation", m)
+}
+
 // The SyncCursorFunc type is an adapter to allow the use of ordinary
 // function as SyncCursor mutator.
 type SyncCursorFunc func(context.Context, *ent.SyncCursorMutation) (ent.Value, error)
