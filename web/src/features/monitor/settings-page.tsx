@@ -7,6 +7,7 @@ import { CollapsiblePanel } from "../../components/collapsible-panel";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
+import { StarredReleasesSection } from "./starred-releases-section";
 import { changePassword } from "../auth/api";
 import { toApiError } from "../../lib/api/errors";
 import { useAutoDismiss } from "../../lib/use-auto-dismiss";
@@ -131,6 +132,7 @@ interface AIFormState {
   retries: number;
   digest: boolean;
   triage: boolean;
+  releaseSummary: boolean;
   apiKey: string;
 }
 
@@ -147,6 +149,7 @@ function aiFormFromConfig(data: AIConfig | undefined): AIFormState {
     retries: data?.retries ?? 1,
     digest: data?.digest_enabled !== false,
     triage: data?.triage_enabled !== false,
+    releaseSummary: data?.release_summary_enabled !== false,
     apiKey: "",
   };
 }
@@ -162,6 +165,7 @@ function aiBody(form: AIFormState, cfg: AIConfig | undefined): AIConfigInput {
   if (!cfg?.retries_locked) body.retries = form.retries;
   if (!cfg?.digest_enabled_locked) body.digest_enabled = form.digest;
   if (!cfg?.triage_enabled_locked) body.triage_enabled = form.triage;
+  if (!cfg?.release_summary_enabled_locked) body.release_summary_enabled = form.releaseSummary;
   if (!cfg?.api_key_locked && form.apiKey.trim()) body.api_key = form.apiKey.trim();
   return body;
 }
@@ -528,6 +532,10 @@ export function SettingsPage() {
           <input type="checkbox" checked={aiForm.triage} disabled={aiConfig.data?.triage_enabled_locked} onChange={(e) => setAI("triage", e.target.checked)} />
           <span>安全告警分诊</span>
         </label>
+        <label className="check-row">
+          <input type="checkbox" checked={aiForm.releaseSummary} disabled={aiConfig.data?.release_summary_enabled_locked} onChange={(e) => setAI("releaseSummary", e.target.checked)} />
+          <span>Release 中文总结（star 仓库新版本通知附 AI 翻译摘要）</span>
+        </label>
         <div className="channel-form__buttons">
           <button className="primary-button primary-button--inline" type="button" disabled={saveAIConfigMut.isPending || aiConfig.isLoading || aiConfig.isError} onClick={submitAIConfig}>
             {saveAIConfigMut.isPending ? "保存中…" : "保存 AI 配置"}
@@ -550,6 +558,8 @@ export function SettingsPage() {
         ) : null}
         {saveAIConfigMut.isError ? <ErrorAlert title="保存失败" message={toApiError(saveAIConfigMut.error).message} errorCode={toApiError(saveAIConfigMut.error).errorCode} /> : null}
       </section>
+
+      <StarredReleasesSection />
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-password-title">
         <h2 id="settings-password-title">修改管理员密码</h2>

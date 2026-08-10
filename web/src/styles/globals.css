@@ -2907,3 +2907,76 @@ a.status-item--link:focus-visible {
   border: 2px solid transparent;
   background-clip: padding-box;
 }
+
+/* ---- Star Release 追踪 ---- */
+.channel-form__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.channel-form__header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.channel-form__header select {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.tracker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.55rem;
+  background: var(--bg-surface);
+}
+
+.tracker-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.tracker-row__main code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.tracker-row__meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.pager-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
