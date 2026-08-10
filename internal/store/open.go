@@ -202,6 +202,11 @@ func (s *storeImpl) Events() EventStore                 { return &eventStore{cli
 func (s *storeImpl) RepoStatSnapshots() RepoStatSnapshotStore {
 	return &repoStatSnapshotStore{client: s.client}
 }
+
+// StarredTrackers 返回 star 仓库 release 追踪存储访问器。
+func (s *storeImpl) StarredTrackers() StarredTrackerStore {
+	return &starredTrackerStore{client: s.client}
+}
 func (s *storeImpl) Channels() ChannelStore { return &channelStore{client: s.client} }
 func (s *storeImpl) Outbox() OutboxStore    { return &outboxStore{client: s.client} }
 func (s *storeImpl) Cursors() CursorStore   { return &cursorStore{client: s.client} }

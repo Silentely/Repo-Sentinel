@@ -415,6 +415,31 @@ type SyncCursor struct {
 	UpdatedAt     time.Time
 }
 
+// StarredRepoTracker 状态常量。
+const (
+	TrackerStateTracking    = "tracking"    // 正常轮询 release
+	TrackerStateInactive    = "inactive"    // 从未发布 release，7 天复查
+	TrackerStateDisabled    = "disabled"    // 用户停用或用户 unstar，保留记录
+	TrackerStateUnavailable = "unavailable" // 404/410 删仓或转私有
+)
+
+// StarredRepoTracker 用户 star 仓库的 release 追踪记录。
+type StarredRepoTracker struct {
+	ID                     string
+	FullName               string
+	State                  string
+	ETag                   string
+	LastReleaseID          int64
+	LastReleaseTag         string
+	LastReleasePublishedAt *time.Time
+	NoReleaseSince         *time.Time
+	NoReleaseRecheckAt     *time.Time
+	FirstSeenAt            time.Time
+	LastPollAt             *time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
 // ListFilter 通用列表筛选。
 type ListFilter struct {
 	Page    int
@@ -545,6 +570,23 @@ type EventStore interface {
 type RepoStatSnapshotStore interface {
 	Upsert(context.Context, RepoStatSnapshot) (RepoStatSnapshot, error)
 	ListInRange(context.Context, []string, string, string, string) ([]RepoStatSnapshot, error)
+}
+
+// StarredTrackerStore 用户 star 仓库的 release 追踪记录。
+type StarredTrackerStore interface {
+	// Upsert 按 full_name 幂等写入：已存在则更新，否则创建。
+	Upsert(context.Context, StarredRepoTracker) error
+	GetByFullName(context.Context, string) (StarredRepoTracker, error)
+	// ListPollCandidates 返回 state=tracking 的候选，按 last_poll_at 升序（未轮询过优先），limit 截断。
+	ListPollCandidates(context.Context, int) ([]StarredRepoTracker, error)
+	// UpdatePollResult 推进 release 轮询结果（etag 与最新 release 信息），并更新 last_poll_at。
+	UpdatePollResult(context.Context, string, string, int64, string, *time.Time) error
+	// UpdateNoRelease 标记仓库无 release（进入 inactive），并设置下次复查时间。
+	UpdateNoRelease(context.Context, string, time.Time) error
+	UpdateState(context.Context, string, string) error
+	// CountByState 按 state 统计数量，供管理台状态概览。
+	CountByState(context.Context) (map[string]int, error)
+	List(context.Context, ListFilter) ([]StarredRepoTracker, PageResult, error)
 }
 
 // ChannelStore 通知渠道。
