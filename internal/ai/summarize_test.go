@@ -66,6 +66,53 @@ func TestSummarizeEventsEmpty(t *testing.T) {
 	}
 }
 
+func TestReleaseSummary(t *testing.T) {
+	client, capture := stubClient(t, `{"choices":[{"message":{"content":"新增 X 功能，修复 Y；⚠️ 破坏性变更：Z"}}]}`)
+	out, err := client.ReleaseSummary(t.Context(), "octocat/Hello-World", "v2.0.0", "Some English notes", "https://github.com/o/r/releases/tag/v2.0.0")
+	if err != nil {
+		t.Fatalf("ReleaseSummary 应成功: %v", err)
+	}
+	if !strings.Contains(out, "X 功能") {
+		t.Fatalf("期望包含总结内容，实际: %q", out)
+	}
+	req := capture()
+	if len(req.Messages) != 2 {
+		t.Fatalf("期望 system/user 双消息，实际 %d 条", len(req.Messages))
+	}
+	user := req.Messages[1].Content
+	for _, want := range []string{"octocat/Hello-World", "v2.0.0", "Some English notes", "https://github.com/o/r/releases/tag/v2.0.0"} {
+		if !strings.Contains(user, want) {
+			t.Errorf("用户消息应包含 %q，实际: %s", want, user)
+		}
+	}
+	if !strings.Contains(req.Messages[0].Content, "发布说明摘要器") {
+		t.Errorf("系统消息应为发布说明摘要 prompt，实际: %s", req.Messages[0].Content)
+	}
+}
+
+func TestReleaseSummaryTruncatesLongNotes(t *testing.T) {
+	client, capture := stubClient(t, `{"choices":[{"message":{"content":"ok"}}]}`)
+	long := strings.Repeat("x", 12000)
+	if _, err := client.ReleaseSummary(t.Context(), "o/r", "v1", long, ""); err != nil {
+		t.Fatal(err)
+	}
+	req := capture()
+	if len(req.Messages[1].Content) > maxReleaseNotesChars+100 {
+		t.Fatalf("notes 应被截断到上限附近，实际 %d 字符", len(req.Messages[1].Content))
+	}
+}
+
+func TestReleaseSummaryNotEnabled(t *testing.T) {
+	c := &Client{Enabled: true, APIKey: "k", DigestEnabled: true}
+	if c.IsReleaseSummaryEnabled() {
+		t.Fatal("ReleaseSummaryEnabled 缺省 false 时应不可用")
+	}
+	c2 := &Client{Enabled: true, APIKey: "k", ReleaseSummaryEnabled: true}
+	if !c2.IsReleaseSummaryEnabled() {
+		t.Fatal("ReleaseSummaryEnabled true 时应可用")
+	}
+}
+
 func TestSummarizeEventsError(t *testing.T) {
 	client, _ := stubClient(t, `not-json`)
 	if _, err := client.SummarizeEvents(t.Context(), []store.Event{{Kind: store.WorkItemKindIssue, Title: "t"}}, nil, "过去 24 小时"); err == nil {

@@ -24,15 +24,16 @@ const (
 // StoredConfig 是数据库中的可编辑 AI 配置（API Key 为密钥信封）。
 // bool/int 字段用指针区分「未设置」与「显式值」，支持 env 优先、DB 补缺语义。
 type StoredConfig struct {
-	Enabled        *bool  `json:"enabled,omitempty"`
-	BaseURL        string `json:"base_url,omitempty"`
-	Model          string `json:"model,omitempty"`
-	TimeoutSec     *int64 `json:"timeout_sec,omitempty"`
-	MaxTokens      *int   `json:"max_tokens,omitempty"`
-	Retries        *int   `json:"retries,omitempty"`
-	APIKeyEnvelope string `json:"api_key_envelope,omitempty"`
-	DigestEnabled  *bool  `json:"digest_enabled,omitempty"`
-	TriageEnabled  *bool  `json:"triage_enabled,omitempty"`
+	Enabled               *bool  `json:"enabled,omitempty"`
+	BaseURL               string `json:"base_url,omitempty"`
+	Model                 string `json:"model,omitempty"`
+	TimeoutSec            *int64 `json:"timeout_sec,omitempty"`
+	MaxTokens             *int   `json:"max_tokens,omitempty"`
+	Retries               *int   `json:"retries,omitempty"`
+	APIKeyEnvelope        string `json:"api_key_envelope,omitempty"`
+	DigestEnabled         *bool  `json:"digest_enabled,omitempty"`
+	TriageEnabled         *bool  `json:"triage_enabled,omitempty"`
+	ReleaseSummaryEnabled *bool  `json:"release_summary_enabled,omitempty"`
 }
 
 // RuntimeConfig 持有进程内可热更新的 AI 配置。
@@ -40,26 +41,28 @@ type StoredConfig struct {
 type RuntimeConfig struct {
 	mu sync.RWMutex
 
-	Enabled       bool
-	BaseURL       string
-	Model         string
-	Timeout       time.Duration
-	MaxTokens     int
-	Retries       int
-	APIKey        string
-	DigestEnabled bool
-	TriageEnabled bool
+	Enabled               bool
+	BaseURL               string
+	Model                 string
+	Timeout               time.Duration
+	MaxTokens             int
+	Retries               int
+	APIKey                string
+	DigestEnabled         bool
+	TriageEnabled         bool
+	ReleaseSummaryEnabled bool
 
 	// 字段来源：env | database | unset（仅状态展示，不回显密钥）。
-	EnabledSource       string
-	BaseURLSource       string
-	ModelSource         string
-	TimeoutSource       string
-	MaxTokensSource     string
-	RetriesSource       string
-	APIKeySource        string
-	DigestEnabledSource string
-	TriageEnabledSource string
+	EnabledSource               string
+	BaseURLSource               string
+	ModelSource                 string
+	TimeoutSource               string
+	MaxTokensSource             string
+	RetriesSource               string
+	APIKeySource                string
+	DigestEnabledSource         string
+	TriageEnabledSource         string
+	ReleaseSummaryEnabledSource string
 }
 
 // RuntimeFromEnv 从环境变量配置构建运行时基线并标记来源。
@@ -67,24 +70,26 @@ type RuntimeConfig struct {
 // 避免把默认值误判为 env 锁定导致管理台无法覆盖；Retries 同为「偏离默认（1）」判定。
 func RuntimeFromEnv(cfg config.AIConfig) *RuntimeConfig {
 	return &RuntimeConfig{
-		Enabled:             cfg.Enabled,
-		BaseURL:             strings.TrimSpace(cfg.BaseURL),
-		Model:               strings.TrimSpace(cfg.Model),
-		Timeout:             cfg.Timeout,
-		MaxTokens:           cfg.MaxTokens,
-		Retries:             cfg.Retries,
-		APIKey:              cfg.APIKey.Reveal(),
-		DigestEnabled:       cfg.DigestEnabled,
-		TriageEnabled:       cfg.TriageEnabled,
-		EnabledSource:       sourceLabel(cfg.Enabled, "env"),
-		BaseURLSource:       sourceLabel(strings.TrimSpace(cfg.BaseURL) != "", "env"),
-		ModelSource:         sourceLabel(strings.TrimSpace(cfg.Model) != "", "env"),
-		TimeoutSource:       sourceLabel(cfg.Timeout > 0, "env"),
-		MaxTokensSource:     sourceLabel(cfg.MaxTokens > 0, "env"),
-		RetriesSource:       sourceLabel(cfg.Retries != DefaultRetries, "env"),
-		APIKeySource:        sourceLabel(cfg.APIKey.Reveal() != "", "env"),
-		DigestEnabledSource: sourceLabel(!cfg.DigestEnabled, "env"),
-		TriageEnabledSource: sourceLabel(!cfg.TriageEnabled, "env"),
+		Enabled:                     cfg.Enabled,
+		BaseURL:                     strings.TrimSpace(cfg.BaseURL),
+		Model:                       strings.TrimSpace(cfg.Model),
+		Timeout:                     cfg.Timeout,
+		MaxTokens:                   cfg.MaxTokens,
+		Retries:                     cfg.Retries,
+		APIKey:                      cfg.APIKey.Reveal(),
+		DigestEnabled:               cfg.DigestEnabled,
+		TriageEnabled:               cfg.TriageEnabled,
+		ReleaseSummaryEnabled:       cfg.ReleaseSummaryEnabled,
+		EnabledSource:               sourceLabel(cfg.Enabled, "env"),
+		BaseURLSource:               sourceLabel(strings.TrimSpace(cfg.BaseURL) != "", "env"),
+		ModelSource:                 sourceLabel(strings.TrimSpace(cfg.Model) != "", "env"),
+		TimeoutSource:               sourceLabel(cfg.Timeout > 0, "env"),
+		MaxTokensSource:             sourceLabel(cfg.MaxTokens > 0, "env"),
+		RetriesSource:               sourceLabel(cfg.Retries != DefaultRetries, "env"),
+		APIKeySource:                sourceLabel(cfg.APIKey.Reveal() != "", "env"),
+		DigestEnabledSource:         sourceLabel(!cfg.DigestEnabled, "env"),
+		TriageEnabledSource:         sourceLabel(!cfg.TriageEnabled, "env"),
+		ReleaseSummaryEnabledSource: sourceLabel(!cfg.ReleaseSummaryEnabled, "env"),
 	}
 }
 
@@ -96,24 +101,26 @@ func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return RuntimeConfig{
-		Enabled:             r.Enabled,
-		BaseURL:             r.BaseURL,
-		Model:               r.Model,
-		Timeout:             r.Timeout,
-		MaxTokens:           r.MaxTokens,
-		Retries:             r.Retries,
-		APIKey:              r.APIKey,
-		DigestEnabled:       r.DigestEnabled,
-		TriageEnabled:       r.TriageEnabled,
-		EnabledSource:       r.EnabledSource,
-		BaseURLSource:       r.BaseURLSource,
-		ModelSource:         r.ModelSource,
-		TimeoutSource:       r.TimeoutSource,
-		MaxTokensSource:     r.MaxTokensSource,
-		RetriesSource:       r.RetriesSource,
-		APIKeySource:        r.APIKeySource,
-		DigestEnabledSource: r.DigestEnabledSource,
-		TriageEnabledSource: r.TriageEnabledSource,
+		Enabled:                     r.Enabled,
+		BaseURL:                     r.BaseURL,
+		Model:                       r.Model,
+		Timeout:                     r.Timeout,
+		MaxTokens:                   r.MaxTokens,
+		Retries:                     r.Retries,
+		APIKey:                      r.APIKey,
+		DigestEnabled:               r.DigestEnabled,
+		TriageEnabled:               r.TriageEnabled,
+		ReleaseSummaryEnabled:       r.ReleaseSummaryEnabled,
+		EnabledSource:               r.EnabledSource,
+		BaseURLSource:               r.BaseURLSource,
+		ModelSource:                 r.ModelSource,
+		TimeoutSource:               r.TimeoutSource,
+		MaxTokensSource:             r.MaxTokensSource,
+		RetriesSource:               r.RetriesSource,
+		APIKeySource:                r.APIKeySource,
+		DigestEnabledSource:         r.DigestEnabledSource,
+		TriageEnabledSource:         r.TriageEnabledSource,
+		ReleaseSummaryEnabledSource: r.ReleaseSummaryEnabledSource,
 	}
 }
 
@@ -133,6 +140,7 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.APIKey = next.APIKey
 	r.DigestEnabled = next.DigestEnabled
 	r.TriageEnabled = next.TriageEnabled
+	r.ReleaseSummaryEnabled = next.ReleaseSummaryEnabled
 	r.EnabledSource = next.EnabledSource
 	r.BaseURLSource = next.BaseURLSource
 	r.ModelSource = next.ModelSource
@@ -142,21 +150,23 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.APIKeySource = next.APIKeySource
 	r.DigestEnabledSource = next.DigestEnabledSource
 	r.TriageEnabledSource = next.TriageEnabledSource
+	r.ReleaseSummaryEnabledSource = next.ReleaseSummaryEnabledSource
 }
 
 // Client 将当前运行时配置物化为可用的 AI 客户端。
 func (r *RuntimeConfig) Client() *Client {
 	snap := r.Snapshot()
 	return &Client{
-		Enabled:       snap.Enabled,
-		BaseURL:       snap.BaseURL,
-		APIKey:        snap.APIKey,
-		Model:         snap.Model,
-		Timeout:       snap.Timeout,
-		MaxTokens:     snap.MaxTokens,
-		Retries:       snap.Retries,
-		DigestEnabled: snap.DigestEnabled,
-		TriageEnabled: snap.TriageEnabled,
+		Enabled:               snap.Enabled,
+		BaseURL:               snap.BaseURL,
+		APIKey:                snap.APIKey,
+		Model:                 snap.Model,
+		Timeout:               snap.Timeout,
+		MaxTokens:             snap.MaxTokens,
+		Retries:               snap.Retries,
+		DigestEnabled:         snap.DigestEnabled,
+		TriageEnabled:         snap.TriageEnabled,
+		ReleaseSummaryEnabled: snap.ReleaseSummaryEnabled,
 	}
 }
 
@@ -266,6 +276,10 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 	if snap.TriageEnabledSource != "env" && stored.TriageEnabled != nil {
 		snap.TriageEnabled = *stored.TriageEnabled
 		snap.TriageEnabledSource = "database"
+	}
+	if snap.ReleaseSummaryEnabledSource != "env" && stored.ReleaseSummaryEnabled != nil {
+		snap.ReleaseSummaryEnabled = *stored.ReleaseSummaryEnabled
+		snap.ReleaseSummaryEnabledSource = "database"
 	}
 
 	rt.Replace(&snap)

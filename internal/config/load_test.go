@@ -595,6 +595,24 @@ func TestAI环境变量解析与默认值(t *testing.T) {
 	if !cfg.AI.TriageEnabled {
 		t.Fatal("期望 triage_enabled 默认 true")
 	}
+	if !cfg.AI.ReleaseSummaryEnabled {
+		t.Fatal("期望 release_summary_enabled 默认 true")
+	}
+}
+
+// TestAIReleaseSummaryEnv 验证 release_summary_enabled 环境变量覆盖。
+func TestAIReleaseSummaryEnv(t *testing.T) {
+	cfg, err := Load(context.Background(), LoadOptions{
+		LookupEnv: lookupFromMap(map[string]string{
+			"REPOSENTINEL_AI_RELEASE_SUMMARY_ENABLED": "false",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("加载失败: %v", err)
+	}
+	if cfg.AI.ReleaseSummaryEnabled {
+		t.Fatal("期望 release_summary_enabled=false")
+	}
 }
 
 func TestAI默认关闭(t *testing.T) {

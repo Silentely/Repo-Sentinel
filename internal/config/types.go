@@ -52,6 +52,8 @@ type AIConfig struct {
 	DigestEnabled bool `yaml:"digest_enabled"`
 	// TriageEnabled 是否启用实时安全告警 AI 分诊，默认 true。
 	TriageEnabled bool `yaml:"triage_enabled"`
+	// ReleaseSummaryEnabled 是否启用 star 仓库新 release 的 AI 中文总结，默认 true。
+	ReleaseSummaryEnabled bool `yaml:"release_summary_enabled"`
 }
 
 // MetricsConfig 描述 Prometheus /metrics 暴露策略。

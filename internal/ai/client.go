@@ -56,9 +56,10 @@ type Client struct {
 	// Retries 瞬时失败（超时/网络/5xx/空响应）自动重试次数；0 表示不重试。
 	// 运行时归一为配置值，直接构造（测试/连通性探测）时 0 即不重试。
 	Retries int
-	// DigestEnabled / TriageEnabled 分别控制摘要与分诊功能开关。
-	DigestEnabled bool
-	TriageEnabled bool
+	// DigestEnabled / TriageEnabled / ReleaseSummaryEnabled 分别控制摘要、分诊与 release 总结功能开关。
+	DigestEnabled         bool
+	TriageEnabled         bool
+	ReleaseSummaryEnabled bool
 
 	// HTTP 可注入自定义客户端（测试/代理场景）。
 	HTTP *http.Client
@@ -107,17 +108,18 @@ func (c *Client) Snapshot() Client {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return Client{
-		Enabled:       c.Enabled,
-		BaseURL:       c.BaseURL,
-		APIKey:        c.APIKey,
-		Model:         c.Model,
-		Timeout:       c.Timeout,
-		MaxTokens:     c.MaxTokens,
-		Retries:       c.Retries,
-		DigestEnabled: c.DigestEnabled,
-		TriageEnabled: c.TriageEnabled,
-		HTTP:          c.HTTP,
-		Logger:        c.Logger,
+		Enabled:               c.Enabled,
+		BaseURL:               c.BaseURL,
+		APIKey:                c.APIKey,
+		Model:                 c.Model,
+		Timeout:               c.Timeout,
+		MaxTokens:             c.MaxTokens,
+		Retries:               c.Retries,
+		DigestEnabled:         c.DigestEnabled,
+		TriageEnabled:         c.TriageEnabled,
+		ReleaseSummaryEnabled: c.ReleaseSummaryEnabled,
+		HTTP:                  c.HTTP,
+		Logger:                c.Logger,
 	}
 }
 
@@ -162,6 +164,12 @@ func (c *Client) IsDigestEnabled() bool {
 func (c *Client) IsTriageEnabled() bool {
 	s := c.Snapshot()
 	return s.Enabled && s.APIKey != "" && s.TriageEnabled
+}
+
+// IsReleaseSummaryEnabled 判定 star 仓库新 release 的 AI 中文总结是否可用。
+func (c *Client) IsReleaseSummaryEnabled() bool {
+	s := c.Snapshot()
+	return s.Enabled && s.APIKey != "" && s.ReleaseSummaryEnabled
 }
 
 // defaultHTTPClient 包级共享默认客户端：复用连接池，避免每次请求新建。
