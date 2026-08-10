@@ -177,6 +177,9 @@ type httpTestOptions struct {
 	// aiRuntime / aiClient 装配到 Dependencies，供 AI 配置 API 测试。
 	aiRuntime *ai.RuntimeConfig
 	aiClient  *ai.Client
+	// aiConfig 装配到 Dependencies.Config.AI，供 PUT 热更新路径使用；
+	// 需与 aiRuntime 同源（默认值一致），避免 RuntimeFromEnv 把零值误判为 env 锁定。
+	aiConfig config.AIConfig
 }
 
 type httpTestFixture struct {
@@ -234,6 +237,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		Setup:       config.SetupConfig{AllowRemote: options.allowRemote},
 		Metrics:     config.MetricsConfig{Enabled: options.metricsEnabled},
 		UpdateCheck: config.UpdateCheckConfig{Enabled: false}, // 单测默认不联网
+		AI:          options.aiConfig,
 
 		OAuth: config.OAuthConfig{
 			ClientID:     options.oauthClientID,

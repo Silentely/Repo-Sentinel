@@ -373,6 +373,13 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 		}
 		cfg.AI.MaxTokens = n
 	}
+	if value, ok := lookup("REPOSENTINEL_AI_RETRIES"); ok {
+		n, err := parseIntEnvironment("REPOSENTINEL_AI_RETRIES", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.AI.Retries = n
+	}
 	if value, ok := lookup("REPOSENTINEL_AI_DIGEST_ENABLED"); ok {
 		parsed, err := parseBoolEnvironment("REPOSENTINEL_AI_DIGEST_ENABLED", value)
 		if err != nil {

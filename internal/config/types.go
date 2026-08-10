@@ -46,6 +46,8 @@ type AIConfig struct {
 	Timeout time.Duration `yaml:"timeout"`
 	// MaxTokens 输出 token 上限，默认 800。
 	MaxTokens int `yaml:"max_tokens"`
+	// Retries 瞬时失败（超时/网络/5xx/空响应）自动重试次数，默认 1；0 表示不重试。
+	Retries int `yaml:"retries"`
 	// DigestEnabled 是否启用 AI 摘要（每日/周报/月报），默认 true。
 	DigestEnabled bool `yaml:"digest_enabled"`
 	// TriageEnabled 是否启用实时安全告警 AI 分诊，默认 true。

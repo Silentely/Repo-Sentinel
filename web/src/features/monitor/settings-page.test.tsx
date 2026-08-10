@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -89,6 +89,7 @@ let aiConfigFixture = {
   model: "gpt-4o-mini",
   timeout_sec: 20,
   max_tokens: 800,
+  retries: 1,
   digest_enabled: true,
   triage_enabled: true,
   api_key_configured: false,
@@ -97,6 +98,7 @@ let aiConfigFixture = {
   model_source: "unset",
   timeout_source: "unset",
   max_tokens_source: "unset",
+  retries_source: "unset",
   api_key_source: "unset",
   digest_enabled_source: "unset",
   triage_enabled_source: "unset",
@@ -105,6 +107,7 @@ let aiConfigFixture = {
   model_locked: false,
   timeout_locked: false,
   max_tokens_locked: false,
+  retries_locked: false,
   api_key_locked: false,
   digest_enabled_locked: false,
   triage_enabled_locked: false,
@@ -303,9 +306,49 @@ describe("设置页", () => {
     );
     const payload = saveAIConfigMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
     expect(payload).toBeDefined();
-    // 全字段可编辑时提交完整配置（timeout/max_tokens 为数值）。
+    // 全字段可编辑时提交完整配置（timeout/max_tokens/retries 为数值）。
     expect(payload?.timeout_sec).toBe(20);
     expect(payload?.max_tokens).toBe(800);
+    expect(payload?.retries).toBe(1);
+  });
+
+  it("重试次数输入框可修改并随保存提交（0 表示不重试）", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    const retriesInput = within(aiSection).getByLabelText("重试次数");
+    // 默认值与后端 DefaultRetries 一致。
+    expect(retriesInput).toHaveValue(1);
+    // 等 AI 配置查询落定（保存按钮随 isLoading 解禁），避免后续输入被数据回填的
+    // useEffect 重置覆盖——真实用户操作时表单早已加载完成。
+    await waitFor(() => {
+      expect(within(aiSection).getByRole("button", { name: "保存 AI 配置" })).toBeEnabled();
+    });
+    // number input 用 change 直接设值，规避 jsdom 中 clear 后光标位置导致的字符拼接。
+    fireEvent.change(retriesInput, { target: { value: "3" } });
+    await user.click(within(aiSection).getByRole("button", { name: "保存 AI 配置" }));
+
+    expect(await within(aiSection).findByText("AI 配置已保存。")).toBeInTheDocument();
+    expect(saveAIConfigMock).toHaveBeenCalledWith(expect.objectContaining({ retries: 3 }));
+
+    // 0（不重试）为合法显式值。
+    fireEvent.change(retriesInput, { target: { value: "0" } });
+    await user.click(within(aiSection).getByRole("button", { name: "保存 AI 配置" }));
+    expect(saveAIConfigMock).toHaveBeenLastCalledWith(expect.objectContaining({ retries: 0 }));
+  });
+
+  it("重试次数被环境变量锁定时输入框禁用", async () => {
+    const original = aiConfigFixture;
+    aiConfigFixture = { ...original, retries_locked: true };
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    const retriesInput = within(aiSection).getByLabelText("重试次数");
+    // 禁用状态依赖 AI 配置查询结果，等待数据落定后再断言。
+    await waitFor(() => expect(retriesInput).toBeDisabled());
+
+    aiConfigFixture = original;
   });
 
   it("后端未设置标量字段（空串 / 0）时表单回退显示默认值", async () => {

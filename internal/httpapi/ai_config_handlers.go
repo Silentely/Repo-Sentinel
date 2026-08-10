@@ -19,6 +19,7 @@ type aiConfigResponse struct {
 	Model            string `json:"model"`
 	TimeoutSec       int64  `json:"timeout_sec"`
 	MaxTokens        int    `json:"max_tokens"`
+	Retries          int    `json:"retries"`
 	DigestEnabled    bool   `json:"digest_enabled"`
 	TriageEnabled    bool   `json:"triage_enabled"`
 	APIKeyConfigured bool   `json:"api_key_configured"`
@@ -28,6 +29,7 @@ type aiConfigResponse struct {
 	ModelSource         string `json:"model_source"`
 	TimeoutSource       string `json:"timeout_source"`
 	MaxTokensSource     string `json:"max_tokens_source"`
+	RetriesSource       string `json:"retries_source"`
 	APIKeySource        string `json:"api_key_source"`
 	DigestEnabledSource string `json:"digest_enabled_source"`
 	TriageEnabledSource string `json:"triage_enabled_source"`
@@ -37,6 +39,7 @@ type aiConfigResponse struct {
 	ModelLocked         bool `json:"model_locked"`
 	TimeoutLocked       bool `json:"timeout_locked"`
 	MaxTokensLocked     bool `json:"max_tokens_locked"`
+	RetriesLocked       bool `json:"retries_locked"`
 	APIKeyLocked        bool `json:"api_key_locked"`
 	DigestEnabledLocked bool `json:"digest_enabled_locked"`
 	TriageEnabledLocked bool `json:"triage_enabled_locked"`
@@ -51,6 +54,7 @@ type aiConfigPutRequest struct {
 	Model         *string `json:"model"`
 	TimeoutSec    *int64  `json:"timeout_sec"`
 	MaxTokens     *int    `json:"max_tokens"`
+	Retries       *int    `json:"retries"`
 	DigestEnabled *bool   `json:"digest_enabled"`
 	TriageEnabled *bool   `json:"triage_enabled"`
 	APIKey        *string `json:"api_key"`
@@ -63,12 +67,16 @@ const (
 	maxAITimeoutSec int64 = 3600
 	minAIMaxTokens  int   = 100
 	maxAIMaxTokens  int   = 8000
+	minAIMaxRetries int   = 0
+	maxAIMaxRetries int   = 5
 )
 
-// aiTestProbeMax 连通性测试探测时长上限。探测是同步阻塞 HTTP handler 的，必须远小于
-// HTTP Server WriteTimeout（30s）与常见反代超时，否则连接会在写响应前被掐断，
-// 前端只能看到反代的「connection termination」而非真实错误。设为 var 便于测试缩短。
-var aiTestProbeMax = 15 * time.Second
+// aiTestProbeMax 连通性测试探测时长上限。探测是同步阻塞 HTTP handler 的，
+// 取值低于 HTTP Server WriteTimeout（45s）与常见反代超时：probe 自身超时即
+// 快速失败并写响应，实际占用远小于写超时，不会被掐断；若再放宽则可能与
+// WriteTimeout 竞争导致前端只见「connection termination」而非真实错误。
+// 设为 var 便于测试缩短。
+var aiTestProbeMax = 30 * time.Second
 
 // aiTestResponse AI 连通性测试结果：一律 200，ok 区分可达性，message 为人话描述。
 type aiTestResponse struct {
@@ -108,6 +116,7 @@ func (s *server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 		Model:               snap.Model,
 		TimeoutSec:          int64(snap.Timeout / time.Second),
 		MaxTokens:           snap.MaxTokens,
+		Retries:             snap.Retries,
 		DigestEnabled:       snap.DigestEnabled,
 		TriageEnabled:       snap.TriageEnabled,
 		APIKeyConfigured:    snap.APIKey != "",
@@ -116,6 +125,7 @@ func (s *server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 		ModelSource:         snap.ModelSource,
 		TimeoutSource:       snap.TimeoutSource,
 		MaxTokensSource:     snap.MaxTokensSource,
+		RetriesSource:       snap.RetriesSource,
 		APIKeySource:        snap.APIKeySource,
 		DigestEnabledSource: snap.DigestEnabledSource,
 		TriageEnabledSource: snap.TriageEnabledSource,
@@ -124,6 +134,7 @@ func (s *server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 		ModelLocked:         snap.ModelSource == "env",
 		TimeoutLocked:       snap.TimeoutSource == "env",
 		MaxTokensLocked:     snap.MaxTokensSource == "env",
+		RetriesLocked:       snap.RetriesSource == "env",
 		APIKeyLocked:        snap.APIKeySource == "env",
 		DigestEnabledLocked: snap.DigestEnabledSource == "env",
 		TriageEnabledLocked: snap.TriageEnabledSource == "env",
@@ -193,6 +204,16 @@ func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		stored.MaxTokens = body.MaxTokens
+	}
+	if body.Retries != nil {
+		if s.rejectAILockedField(w, r, snap.RetriesSource, "retries") {
+			return
+		}
+		if *body.Retries < minAIMaxRetries || *body.Retries > maxAIMaxRetries {
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "retries"})
+			return
+		}
+		stored.Retries = body.Retries
 	}
 	if body.DigestEnabled != nil {
 		if s.rejectAILockedField(w, r, snap.DigestEnabledSource, "digest_enabled") {
@@ -299,6 +320,11 @@ func (s *server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		maxTokens = *body.MaxTokens
+	}
+	// 重试次数对连通性探测无意义（探测不重试），但覆盖值仍须通过范围校验，与 PUT 一致。
+	if body.Retries != nil && (*body.Retries < minAIMaxRetries || *body.Retries > maxAIMaxRetries) {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "retries"})
+		return
 	}
 	apiKey := snap.APIKey
 	if body.APIKey != nil && snap.APIKeySource != "env" {

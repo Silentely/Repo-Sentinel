@@ -55,9 +55,9 @@ func TestRuntimeFromEnvSources(t *testing.T) {
 	}
 
 	// 全默认配置（bool 均为默认值）下字段应可被管理台编辑。
-	empty := RuntimeFromEnv(config.AIConfig{DigestEnabled: true, TriageEnabled: true})
+	empty := RuntimeFromEnv(config.AIConfig{Retries: 1, DigestEnabled: true, TriageEnabled: true})
 	if empty.EnabledSource != "unset" || empty.APIKeySource != "unset" || empty.BaseURLSource != "unset" ||
-		empty.DigestEnabledSource != "unset" || empty.TriageEnabledSource != "unset" {
+		empty.DigestEnabledSource != "unset" || empty.TriageEnabledSource != "unset" || empty.RetriesSource != "unset" {
 		t.Fatalf("全默认配置应全部 unset：%+v", empty)
 	}
 }
@@ -135,16 +135,17 @@ func TestMergeFromStore(t *testing.T) {
 	off := false
 	timeout := int64(45)
 	maxTokens := 512
+	retries := 3
 	if err := SaveStoredConfig(t.Context(), data, StoredConfig{
 		Enabled: &on, BaseURL: "http://db.example/v1", Model: "db-model",
-		TimeoutSec: &timeout, MaxTokens: &maxTokens, APIKeyEnvelope: env,
+		TimeoutSec: &timeout, MaxTokens: &maxTokens, Retries: &retries, APIKeyEnvelope: env,
 		DigestEnabled: &off, TriageEnabled: &on,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	// env 只设置了 BaseURL 与 Model，其余由 DB 补缺（bool 保持默认值以免被判定为显式设置）。
-	rt := RuntimeFromEnv(config.AIConfig{BaseURL: "http://env.example/v1", Model: "env-model", DigestEnabled: true, TriageEnabled: true})
+	// env 只设置了 BaseURL 与 Model，其余由 DB 补缺（bool/Retries 保持默认值以免被判定为显式设置）。
+	rt := RuntimeFromEnv(config.AIConfig{BaseURL: "http://env.example/v1", Model: "env-model", Retries: 1, DigestEnabled: true, TriageEnabled: true})
 	if err := MergeFromStore(t.Context(), data, ring, rt); err != nil {
 		t.Fatal(err)
 	}
@@ -163,6 +164,9 @@ func TestMergeFromStore(t *testing.T) {
 	}
 	if snap.Timeout != 45*time.Second || snap.MaxTokens != 512 {
 		t.Fatalf("timeout/max_tokens 应由 DB 补缺：%+v", &snap)
+	}
+	if snap.Retries != 3 || snap.RetriesSource != "database" {
+		t.Fatalf("retries 应由 DB 补缺：%+v", &snap)
 	}
 	if snap.DigestEnabled || !snap.TriageEnabled {
 		t.Fatalf("digest/triage 布尔应由 DB 补缺：%+v", &snap)
@@ -185,5 +189,35 @@ func TestEncryptDecryptAPIKeyRoundTrip(t *testing.T) {
 	plain, err := DecryptAPIKey(t.Context(), ring, env)
 	if err != nil || plain != "sk-plain" {
 		t.Fatalf("解密还原失败：plain=%q err=%v", plain, err)
+	}
+}
+
+// Retries 来源判定：默认 1 视为 unset（管理台可编辑），显式偏离默认（含 0）标记 env。
+func TestRuntimeRetriesSource(t *testing.T) {
+	// 默认配置加载：Retries 注入默认 1，来源 unset。
+	cfg, err := config.Load(t.Context(), config.LoadOptions{
+		LookupEnv: func(string) (string, bool) { return "", false },
+	})
+	if err != nil {
+		t.Fatalf("加载默认配置失败: %v", err)
+	}
+	snap := RuntimeFromEnv(cfg.AI).Snapshot()
+	if snap.Retries != 1 {
+		t.Fatalf("默认重试应为 1，实际 %d", snap.Retries)
+	}
+	if snap.RetriesSource != "unset" {
+		t.Fatalf("默认重试来源应 unset（管理台可编辑），实际 %s", snap.RetriesSource)
+	}
+
+	// env 显式设置 3 → env 锁定。
+	env3 := RuntimeFromEnv(config.AIConfig{Retries: 3})
+	if env3.Snapshot().RetriesSource != "env" {
+		t.Fatalf("env 显式 3 应标记 env，实际 %s", env3.Snapshot().RetriesSource)
+	}
+
+	// env 显式设置 0（不重试）同样是偏离默认 → env 锁定。
+	env0 := RuntimeFromEnv(config.AIConfig{Retries: 0})
+	if env0.Snapshot().RetriesSource != "env" {
+		t.Fatalf("env 显式 0 应标记 env，实际 %s", env0.Snapshot().RetriesSource)
 	}
 }

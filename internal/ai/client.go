@@ -27,7 +27,13 @@ const (
 	DefaultModel     = "gpt-4o-mini"
 	DefaultTimeout   = 30 * time.Second
 	DefaultMaxTokens = 800
+	// DefaultRetries 未配置时的默认重试次数：网络波动瞬时失败（超时/5xx/空响应）
+	// 自动重试 1 次，降低免费模型上游抖动导致的摘要/分诊降级。
+	DefaultRetries = 1
 )
+
+// retryDelay 每次重试前的固定等待间隔；设为 var 便于测试缩短。
+var retryDelay = time.Second
 
 // Client 是 OpenAI 兼容 Chat Completions 客户端（BYOK）。
 // 通过可配置的 BaseURL 可接入任意 OpenAI 兼容网关（含 Ollama / vLLM 等本地模型）。
@@ -47,6 +53,9 @@ type Client struct {
 	Timeout time.Duration
 	// MaxTokens 输出 token 上限；为空时使用 800。
 	MaxTokens int
+	// Retries 瞬时失败（超时/网络/5xx/空响应）自动重试次数；0 表示不重试。
+	// 运行时归一为配置值，直接构造（测试/连通性探测）时 0 即不重试。
+	Retries int
 	// DigestEnabled / TriageEnabled 分别控制摘要与分诊功能开关。
 	DigestEnabled bool
 	TriageEnabled bool
@@ -104,6 +113,7 @@ func (c *Client) Snapshot() Client {
 		Model:         c.Model,
 		Timeout:       c.Timeout,
 		MaxTokens:     c.MaxTokens,
+		Retries:       c.Retries,
 		DigestEnabled: c.DigestEnabled,
 		TriageEnabled: c.TriageEnabled,
 		HTTP:          c.HTTP,
@@ -125,6 +135,7 @@ func (c *Client) Replace(next *Client) {
 	c.Model = next.Model
 	c.Timeout = next.Timeout
 	c.MaxTokens = next.MaxTokens
+	c.Retries = next.Retries
 	c.DigestEnabled = next.DigestEnabled
 	c.TriageEnabled = next.TriageEnabled
 	if next.HTTP != nil {
@@ -189,6 +200,29 @@ func (c *Client) timeout() time.Duration {
 		return DefaultTimeout
 	}
 	return c.Timeout
+}
+
+// retries 返回瞬时失败自动重试次数：0 表示不重试。
+// 运行时路径（RuntimeConfig.Client）已把未设置归一为 DefaultRetries，
+// 直接构造（测试/连通性探测）时 0 即不重试。
+func (c *Client) retries() int {
+	return c.Retries
+}
+
+// retryableCallError 判定失败是否值得重试：网络层失败（超时/连接错误）、
+// 上游 5xx 与空/损坏响应多为瞬时问题，重试可能成功；4xx 为确定性错误
+// （鉴权/权限/限流），编码错误与并发预算排队超限重试无意义，均不重试。
+func retryableCallError(err error) bool {
+	code, _ := classifyCallError(err)
+	switch {
+	case code == "timeout" || code == "network":
+		return true
+	case strings.HasPrefix(code, "upstream_5"):
+		return true
+	case code == "empty_response" || code == "bad_response":
+		return true
+	}
+	return false
 }
 
 type chatMessage struct {
@@ -289,11 +323,15 @@ func classifyCallError(err error) (code, detail string) {
 
 // Complete 执行单轮对话并返回助手文本。
 // 未配置、网络失败、HTTP 非 2xx、响应缺内容均返回错误，调用方负责降级。
-// 请求成败统一留痕（Logger 注入时）：DEBUG 记录发起，INFO 记录成功与输出长度
-// 及 token 用量，WARN 记录失败并附 error_code 分类（timeout/network/upstream_<status>
-// 等），便于区分网络问题与上游服务问题；所有日志携带 req_id（context 未注入时自动生成），
+// 瞬时失败（超时/网络/上游 5xx/空或损坏响应）按 Retries 配置自动重试，
+// 每次重试前等待 retryDelay；外层 context 预算到期（如分诊 15s）立即放弃，
+// 避免重试拖垮实时链路。请求成败统一留痕（Logger 注入时）：DEBUG 记录发起，
+// INFO 记录成功与输出长度及 token 用量，WARN 记录最终失败并附 error_code 分类
+// （timeout/network/upstream_<status> 等），重试过程以 DEBUG ai request retry 留痕，
+// 便于区分网络问题与上游服务问题；所有日志携带 req_id（context 未注入时自动生成），
 // 与上层参与度日志串联。未配置时不发起请求也不留痕（上层按降级处理）。
-// 指标与日志同源：成功/失败/耗时/token 在出口统一累计（见 metrics.go）。
+// 指标与日志同源：成功/失败/耗时/token 在出口统一累计（见 metrics.go），
+// 重试只计最终结果，耗时含全部尝试。
 func (c *Client) Complete(ctx context.Context, system, user string) (content string, err error) {
 	s := c.Snapshot()
 	if !s.Enabled || s.APIKey == "" {
@@ -328,16 +366,7 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(ctx, s.timeout())
-	defer cancel()
-
-	// 并发预算：超出上限时排队，等待计入总时长（受 ctx 预算约束）。
-	release, err := c.acquireSlot(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer release()
-
+	// 请求体与 endpoint 与尝试次数无关，仅构造一次。
 	payload, err := json.Marshal(chatRequest{
 		Model: model,
 		Messages: []chatMessage{
@@ -360,11 +389,50 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 			"max_tokens", s.maxTokens(),
 			"timeout_ms", s.timeout().Milliseconds(),
 			"input_bytes", len(system)+len(user),
+			"retries", s.retries(),
 		)
 	}
+
+	maxRetries := s.retries()
+	for attempt := 0; ; attempt++ {
+		attemptCtx, cancel := context.WithTimeout(ctx, s.timeout())
+		content, promptTok, completionTok, err = c.doAttempt(attemptCtx, &s, payload, endpoint)
+		cancel()
+		if err == nil {
+			return content, nil
+		}
+		if attempt >= maxRetries || !retryableCallError(err) {
+			return "", err
+		}
+		// 等待重试间隔；外层预算到期（如分诊 15s）则放弃，不再发起新尝试。
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(retryDelay):
+		}
+		if logger != nil {
+			code, detail := classifyCallError(err)
+			logger.Debug("ai request retry",
+				"req_id", reqID, "model", model, "attempt", attempt+1,
+				"error_code", code, "error", detail, "delay_ms", retryDelay.Milliseconds())
+		}
+	}
+}
+
+// doAttempt 执行单次 Chat Completions 尝试：占用并发槽位、发送请求并解析响应。
+// s 为调用方快照（指针避免按值复制锁），只读使用；错误均以 callError 分类，
+// 供重试判定与日志留痕；并发预算排队超限返回 concurrency_limit（不重试）。
+func (c *Client) doAttempt(ctx context.Context, s *Client, payload []byte, endpoint string) (content string, promptTok, completionTok int, err error) {
+	// 并发预算：超出上限时排队，等待计入该次尝试时长（受 ctx 预算约束）。
+	release, err := c.acquireSlot(ctx)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	defer release()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return "", &callError{code: "internal", err: fmt.Errorf("ai: build request: %w", err)}
+		return "", 0, 0, &callError{code: "internal", err: fmt.Errorf("ai: build request: %w", err)}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.APIKey)
@@ -372,34 +440,33 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 	resp, err := s.httpClient().Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return "", &callError{code: "timeout", err: fmt.Errorf("ai: request timeout after %s: %w", s.timeout(), err)}
+			return "", 0, 0, &callError{code: "timeout", err: fmt.Errorf("ai: request timeout after %s: %w", s.timeout(), err)}
 		}
-		return "", &callError{code: "network", err: fmt.Errorf("ai: request failed: %w", err)}
+		return "", 0, 0, &callError{code: "network", err: fmt.Errorf("ai: request failed: %w", err)}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", &callError{code: "upstream", status: resp.StatusCode, err: fmt.Errorf("ai: http %d: %s", resp.StatusCode, errorDetail(resp))}
+		return "", 0, 0, &callError{code: "upstream", status: resp.StatusCode, err: fmt.Errorf("ai: http %d: %s", resp.StatusCode, errorDetail(resp))}
 	}
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return "", &callError{code: "bad_response", err: fmt.Errorf("ai: read response: %w", err)}
+		return "", 0, 0, &callError{code: "bad_response", err: fmt.Errorf("ai: read response: %w", err)}
 	}
 	if len(raw) > maxResponseBytes {
-		return "", &callError{
+		return "", 0, 0, &callError{
 			code: "bad_response",
 			err:  fmt.Errorf("ai: response body exceeds %d bytes", maxResponseBytes),
 		}
 	}
 	var out chatResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", &callError{code: "bad_response", err: fmt.Errorf("ai: decode response: %w", err)}
+		return "", 0, 0, &callError{code: "bad_response", err: fmt.Errorf("ai: decode response: %w", err)}
 	}
 	if len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
-		return "", &callError{code: "empty_response", err: errors.New("ai: empty response")}
+		return "", 0, 0, &callError{code: "empty_response", err: errors.New("ai: empty response")}
 	}
-	promptTok, completionTok = out.Usage.PromptTokens, out.Usage.CompletionTokens
-	return truncateOutput(strings.TrimSpace(out.Choices[0].Message.Content)), nil
+	return truncateOutput(strings.TrimSpace(out.Choices[0].Message.Content)), out.Usage.PromptTokens, out.Usage.CompletionTokens, nil
 }
 
 // AI 响应体大小上限：防御异常大响应消耗内存；错误明细单独使用更小的上限。

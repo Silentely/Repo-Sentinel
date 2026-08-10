@@ -128,6 +128,7 @@ interface AIFormState {
   model: string;
   timeoutSec: number;
   maxTokens: number;
+  retries: number;
   digest: boolean;
   triage: boolean;
   apiKey: string;
@@ -135,6 +136,7 @@ interface AIFormState {
 
 // 从服务端 AI 配置快照构造表单初值；查询未完成或字段未设置（空串 / 0）时
 // 回退到与后端 ai.Client 一致的显示默认值，避免把 0/空提交给后端触发校验失败。
+// 重试次数默认 1（与后端 DefaultRetries 一致），0 为合法显式值（不重试）。
 function aiFormFromConfig(data: AIConfig | undefined): AIFormState {
   return {
     enabled: Boolean(data?.enabled),
@@ -142,6 +144,7 @@ function aiFormFromConfig(data: AIConfig | undefined): AIFormState {
     model: data?.model || "gpt-4o-mini",
     timeoutSec: Number(data?.timeout_sec || 20),
     maxTokens: Number(data?.max_tokens || 800),
+    retries: data?.retries ?? 1,
     digest: data?.digest_enabled !== false,
     triage: data?.triage_enabled !== false,
     apiKey: "",
@@ -156,6 +159,7 @@ function aiBody(form: AIFormState, cfg: AIConfig | undefined): AIConfigInput {
   if (!cfg?.model_locked) body.model = form.model.trim() || undefined;
   if (!cfg?.timeout_locked) body.timeout_sec = form.timeoutSec;
   if (!cfg?.max_tokens_locked) body.max_tokens = form.maxTokens;
+  if (!cfg?.retries_locked) body.retries = form.retries;
   if (!cfg?.digest_enabled_locked) body.digest_enabled = form.digest;
   if (!cfg?.triage_enabled_locked) body.triage_enabled = form.triage;
   if (!cfg?.api_key_locked && form.apiKey.trim()) body.api_key = form.apiKey.trim();
@@ -499,6 +503,7 @@ export function SettingsPage() {
         <h2 id="settings-ai-title">AI 集成</h2>
         <p className="field-hint">
           可选能力：每日/周/月报告正文由模型总结，新安全告警附带影响分析与处理建议。
+          网络波动瞬时失败（超时/5xx 等）按「重试次数」自动重试，0 表示不重试。
           环境变量（<code>REPOSENTINEL_AI_*</code>）已设置的字段在此锁定；API Key 加密存储，不回显明文。
         </p>
         {aiMsg ? <p className="success-banner" role="status">{aiMsg}</p> : null}
@@ -511,6 +516,7 @@ export function SettingsPage() {
           <label className="field--plain"><span>API Base URL</span><input value={aiForm.baseURL} disabled={aiConfig.data?.base_url_locked} onChange={(e) => setAI("baseURL", e.target.value)} placeholder="https://api.openai.com/v1" /></label>
           <label className="field--plain"><span>模型</span><input value={aiForm.model} disabled={aiConfig.data?.model_locked} onChange={(e) => setAI("model", e.target.value)} placeholder="gpt-4o-mini" /></label>
           <label className="field--plain"><span>请求超时（秒）</span><input type="number" min={1} max={3600} value={aiForm.timeoutSec} disabled={aiConfig.data?.timeout_locked} onChange={(e) => setAI("timeoutSec", Math.min(3600, Math.max(1, Number(e.target.value) || 1)))} /></label>
+          <label className="field--plain"><span>重试次数</span><input type="number" min={0} max={5} value={aiForm.retries} disabled={aiConfig.data?.retries_locked} onChange={(e) => setAI("retries", Math.min(5, Math.max(0, Math.trunc(Number(e.target.value) || 0))))} /></label>
           <label className="field--plain"><span>输出 token 上限</span><input type="number" min={100} max={8000} value={aiForm.maxTokens} disabled={aiConfig.data?.max_tokens_locked} onChange={(e) => setAI("maxTokens", Math.min(8000, Math.max(100, Number(e.target.value) || 100)))} /></label>
           <label className="field--plain"><span>API Key（留空保持不变）</span><input type="password" autoComplete="off" value={aiForm.apiKey} disabled={aiConfig.data?.api_key_locked} onChange={(e) => setAI("apiKey", e.target.value)} placeholder={aiConfig.data?.api_key_configured ? "••••••••（已配置）" : "sk-…"} /></label>
         </div>

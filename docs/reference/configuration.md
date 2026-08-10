@@ -183,6 +183,7 @@ AI 用于三处：每日摘要 / 周报 / 月报正文生成（`digest_enabled`�
 | `REPOSENTINEL_AI_MODEL` | 模型名，默认 `gpt-4o-mini` |
 | `REPOSENTINEL_AI_TIMEOUT` | 单次请求超时，默认 `30s` |
 | `REPOSENTINEL_AI_MAX_TOKENS` | 输出 token 上限，默认 `800` |
+| `REPOSENTINEL_AI_RETRIES` | 瞬时失败自动重试次数，默认 `1`（0 表示不重试） |
 | `REPOSENTINEL_AI_DIGEST_ENABLED` | 是否启用 AI 摘要，默认 `true` |
 | `REPOSENTINEL_AI_TRIAGE_ENABLED` | 是否启用安全告警分诊，默认 `true` |
 

@@ -29,6 +29,7 @@ type StoredConfig struct {
 	Model          string `json:"model,omitempty"`
 	TimeoutSec     *int64 `json:"timeout_sec,omitempty"`
 	MaxTokens      *int   `json:"max_tokens,omitempty"`
+	Retries        *int   `json:"retries,omitempty"`
 	APIKeyEnvelope string `json:"api_key_envelope,omitempty"`
 	DigestEnabled  *bool  `json:"digest_enabled,omitempty"`
 	TriageEnabled  *bool  `json:"triage_enabled,omitempty"`
@@ -44,6 +45,7 @@ type RuntimeConfig struct {
 	Model         string
 	Timeout       time.Duration
 	MaxTokens     int
+	Retries       int
 	APIKey        string
 	DigestEnabled bool
 	TriageEnabled bool
@@ -54,6 +56,7 @@ type RuntimeConfig struct {
 	ModelSource         string
 	TimeoutSource       string
 	MaxTokensSource     string
+	RetriesSource       string
 	APIKeySource        string
 	DigestEnabledSource string
 	TriageEnabledSource string
@@ -61,7 +64,7 @@ type RuntimeConfig struct {
 
 // RuntimeFromEnv 从环境变量配置构建运行时基线并标记来源。
 // bool 开关以「偏离默认值」判定显式设置（enabled 默认 false、digest/triage 默认 true），
-// 避免把默认值误判为 env 锁定导致管理台无法覆盖。
+// 避免把默认值误判为 env 锁定导致管理台无法覆盖；Retries 同为「偏离默认（1）」判定。
 func RuntimeFromEnv(cfg config.AIConfig) *RuntimeConfig {
 	return &RuntimeConfig{
 		Enabled:             cfg.Enabled,
@@ -69,6 +72,7 @@ func RuntimeFromEnv(cfg config.AIConfig) *RuntimeConfig {
 		Model:               strings.TrimSpace(cfg.Model),
 		Timeout:             cfg.Timeout,
 		MaxTokens:           cfg.MaxTokens,
+		Retries:             cfg.Retries,
 		APIKey:              cfg.APIKey.Reveal(),
 		DigestEnabled:       cfg.DigestEnabled,
 		TriageEnabled:       cfg.TriageEnabled,
@@ -77,6 +81,7 @@ func RuntimeFromEnv(cfg config.AIConfig) *RuntimeConfig {
 		ModelSource:         sourceLabel(strings.TrimSpace(cfg.Model) != "", "env"),
 		TimeoutSource:       sourceLabel(cfg.Timeout > 0, "env"),
 		MaxTokensSource:     sourceLabel(cfg.MaxTokens > 0, "env"),
+		RetriesSource:       sourceLabel(cfg.Retries != DefaultRetries, "env"),
 		APIKeySource:        sourceLabel(cfg.APIKey.Reveal() != "", "env"),
 		DigestEnabledSource: sourceLabel(!cfg.DigestEnabled, "env"),
 		TriageEnabledSource: sourceLabel(!cfg.TriageEnabled, "env"),
@@ -96,6 +101,7 @@ func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 		Model:               r.Model,
 		Timeout:             r.Timeout,
 		MaxTokens:           r.MaxTokens,
+		Retries:             r.Retries,
 		APIKey:              r.APIKey,
 		DigestEnabled:       r.DigestEnabled,
 		TriageEnabled:       r.TriageEnabled,
@@ -104,6 +110,7 @@ func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 		ModelSource:         r.ModelSource,
 		TimeoutSource:       r.TimeoutSource,
 		MaxTokensSource:     r.MaxTokensSource,
+		RetriesSource:       r.RetriesSource,
 		APIKeySource:        r.APIKeySource,
 		DigestEnabledSource: r.DigestEnabledSource,
 		TriageEnabledSource: r.TriageEnabledSource,
@@ -122,6 +129,7 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.Model = next.Model
 	r.Timeout = next.Timeout
 	r.MaxTokens = next.MaxTokens
+	r.Retries = next.Retries
 	r.APIKey = next.APIKey
 	r.DigestEnabled = next.DigestEnabled
 	r.TriageEnabled = next.TriageEnabled
@@ -130,6 +138,7 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.ModelSource = next.ModelSource
 	r.TimeoutSource = next.TimeoutSource
 	r.MaxTokensSource = next.MaxTokensSource
+	r.RetriesSource = next.RetriesSource
 	r.APIKeySource = next.APIKeySource
 	r.DigestEnabledSource = next.DigestEnabledSource
 	r.TriageEnabledSource = next.TriageEnabledSource
@@ -145,6 +154,7 @@ func (r *RuntimeConfig) Client() *Client {
 		Model:         snap.Model,
 		Timeout:       snap.Timeout,
 		MaxTokens:     snap.MaxTokens,
+		Retries:       snap.Retries,
 		DigestEnabled: snap.DigestEnabled,
 		TriageEnabled: snap.TriageEnabled,
 	}
@@ -238,6 +248,10 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 	if snap.MaxTokens <= 0 && stored.MaxTokens != nil && *stored.MaxTokens > 0 {
 		snap.MaxTokens = *stored.MaxTokens
 		snap.MaxTokensSource = "database"
+	}
+	if snap.RetriesSource != "env" && stored.Retries != nil {
+		snap.Retries = *stored.Retries
+		snap.RetriesSource = "database"
 	}
 	if strings.TrimSpace(snap.APIKey) == "" && strings.TrimSpace(stored.APIKeyEnvelope) != "" && keyRing != nil {
 		if plain, err := DecryptAPIKey(ctx, keyRing, stored.APIKeyEnvelope); err == nil && plain != "" {

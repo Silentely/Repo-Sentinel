@@ -561,6 +561,7 @@ func TestAI环境变量解析与默认值(t *testing.T) {
 			"REPOSENTINEL_AI_MODEL":          "llama3.1",
 			"REPOSENTINEL_AI_TIMEOUT":        "45s",
 			"REPOSENTINEL_AI_MAX_TOKENS":     "1024",
+			"REPOSENTINEL_AI_RETRIES":        "3",
 			"REPOSENTINEL_AI_DIGEST_ENABLED": "false",
 		}),
 	})
@@ -584,6 +585,9 @@ func TestAI环境变量解析与默认值(t *testing.T) {
 	}
 	if cfg.AI.MaxTokens != 1024 {
 		t.Fatalf("MaxTokens=%d", cfg.AI.MaxTokens)
+	}
+	if cfg.AI.Retries != 3 {
+		t.Fatalf("Retries=%d", cfg.AI.Retries)
 	}
 	if cfg.AI.DigestEnabled {
 		t.Fatal("期望 digest_enabled=false")
@@ -615,6 +619,9 @@ func TestAI默认关闭(t *testing.T) {
 	}
 	if cfg.AI.MaxTokens != 0 {
 		t.Fatalf("默认 MaxTokens 应留空，实际 %d", cfg.AI.MaxTokens)
+	}
+	if cfg.AI.Retries != 1 {
+		t.Fatalf("默认 Retries 应为 1，实际 %d", cfg.AI.Retries)
 	}
 }
 

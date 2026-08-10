@@ -420,6 +420,7 @@ export interface AIConfig {
   model: string;
   timeout_sec: number;
   max_tokens: number;
+  retries: number;
   digest_enabled: boolean;
   triage_enabled: boolean;
   api_key_configured: boolean;
@@ -428,6 +429,7 @@ export interface AIConfig {
   model_source: string;
   timeout_source: string;
   max_tokens_source: string;
+  retries_source: string;
   api_key_source: string;
   digest_enabled_source: string;
   triage_enabled_source: string;
@@ -436,6 +438,7 @@ export interface AIConfig {
   model_locked: boolean;
   timeout_locked: boolean;
   max_tokens_locked: boolean;
+  retries_locked: boolean;
   api_key_locked: boolean;
   digest_enabled_locked: boolean;
   triage_enabled_locked: boolean;
@@ -449,6 +452,7 @@ export interface AIConfigInput {
   model?: string;
   timeout_sec?: number;
   max_tokens?: number;
+  retries?: number;
   digest_enabled?: boolean;
   triage_enabled?: boolean;
   api_key?: string;

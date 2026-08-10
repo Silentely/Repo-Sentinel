@@ -46,8 +46,10 @@ func defaultBuildDependencies() buildDependencies {
 				Handler:           handler,
 				ReadHeaderTimeout: 10 * time.Second,
 				ReadTimeout:       30 * time.Second,
-				WriteTimeout:      30 * time.Second,
-				IdleTimeout:       60 * time.Second,
+				// WriteTimeout 45s：为 AI 连通性测试（同步 handler，探测上限 30s）与
+				// 慢响应留出余量；读侧仍由 ReadTimeout（30s）保护，无需同步放宽。
+				WriteTimeout: 45 * time.Second,
+				IdleTimeout:  60 * time.Second,
 			}
 		},
 	}
