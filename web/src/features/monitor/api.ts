@@ -423,6 +423,7 @@ export interface AIConfig {
   retries: number;
   digest_enabled: boolean;
   triage_enabled: boolean;
+  release_summary_enabled: boolean;
   api_key_configured: boolean;
   enabled_source: string;
   base_url_source: string;
@@ -433,6 +434,7 @@ export interface AIConfig {
   api_key_source: string;
   digest_enabled_source: string;
   triage_enabled_source: string;
+  release_summary_enabled_source: string;
   enabled_locked: boolean;
   base_url_locked: boolean;
   model_locked: boolean;
@@ -442,6 +444,7 @@ export interface AIConfig {
   api_key_locked: boolean;
   digest_enabled_locked: boolean;
   triage_enabled_locked: boolean;
+  release_summary_enabled_locked: boolean;
   can_edit_in_ui: boolean;
   note: string;
 }
@@ -455,6 +458,7 @@ export interface AIConfigInput {
   retries?: number;
   digest_enabled?: boolean;
   triage_enabled?: boolean;
+  release_summary_enabled?: boolean;
   api_key?: string;
   clear_api_key?: boolean;
 }
@@ -469,6 +473,89 @@ export async function saveAIConfig(body: AIConfigInput): Promise<AIConfig> {
   return apiRequest<AIConfig>("/api/v1/ai/config", {
     method: "PUT",
     body: JSON.stringify(body),
+  });
+}
+
+// ---- Star Release 追踪 ----
+
+export interface StarredReleasesConfig {
+  username: string;
+  star_sync_interval: string;
+  release_poll_interval: string;
+  max_trackers: number;
+  notify_prerelease: boolean;
+  enabled: boolean;
+  ai_release_summary_enabled: boolean;
+  counts: {
+    tracking: number;
+    inactive: number;
+    disabled: number;
+    unavailable: number;
+  };
+}
+
+export interface StarredReleasesConfigInput {
+  username?: string;
+  star_sync_interval?: string;
+  release_poll_interval?: string;
+  max_trackers?: number;
+  notify_prerelease?: boolean;
+  enabled?: boolean;
+}
+
+export interface StarredTrackerItem {
+  id: string;
+  full_name: string;
+  state: "tracking" | "inactive" | "disabled" | "unavailable";
+  last_release_tag?: string;
+  last_release_published_at?: string;
+  last_poll_at?: string;
+  first_seen_at: string;
+}
+
+export interface StarredTrackerList {
+  items: StarredTrackerItem[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export const starredReleasesConfigQueryOptions = queryOptions({
+  queryKey: ["starred-releases-config"] as const,
+  queryFn: () => apiRequest<StarredReleasesConfig>("/api/v1/starred-releases/config"),
+  staleTime: 10_000,
+});
+
+export async function saveStarredReleasesConfig(body: StarredReleasesConfigInput): Promise<StarredReleasesConfig> {
+  return apiRequest<StarredReleasesConfig>("/api/v1/starred-releases/config", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function syncStarredReleases(): Promise<{ started: boolean }> {
+  return apiRequest<{ started: boolean }>("/api/v1/starred-releases/sync", {
+    method: "POST",
+  });
+}
+
+export async function listStarredTrackers(params: {
+  page?: number;
+  per_page?: number;
+  state?: string;
+} = {}): Promise<StarredTrackerList> {
+  const query = new URLSearchParams();
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.per_page != null) query.set("per_page", String(params.per_page));
+  if (params.state) query.set("state", params.state);
+  const qs = query.toString();
+  return apiRequest<StarredTrackerList>(`/api/v1/starred-releases/trackers${qs ? `?${qs}` : ""}`);
+}
+
+export async function setStarredTrackerState(id: string, state: "disabled" | "tracking"): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/api/v1/starred-releases/trackers/${id}/state`, {
+    method: "POST",
+    body: JSON.stringify({ state }),
   });
 }
 
