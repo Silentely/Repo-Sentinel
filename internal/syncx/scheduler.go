@@ -12,6 +12,7 @@ import (
 type Scheduler struct {
 	Reconciler *Reconciler
 	External   *ExternalPoller
+	Starred    *StarredReleasePoller
 	Digest     *digest.Generator
 	Logger     *slog.Logger
 
@@ -59,10 +60,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 	startup := time.NewTimer(45 * time.Second)
 	reconcileT := time.NewTicker(s.ReconcileEvery)
 	externalT := time.NewTicker(s.ExternalEvery)
+	starredT := time.NewTicker(time.Minute)
 	digestT := time.NewTicker(s.DigestEvery)
 	defer startup.Stop()
 	defer reconcileT.Stop()
 	defer externalT.Stop()
+	defer starredT.Stop()
 	defer digestT.Stop()
 
 	runReconcile := func() {
@@ -104,12 +107,30 @@ func (s *Scheduler) Run(ctx context.Context) {
 		case <-startup.C:
 			runReconcile()
 			runExternal()
+			s.runStarred(ctx)
 		case <-reconcileT.C:
 			runReconcile()
 		case <-externalT.C:
 			runExternal()
+		case <-starredT.C:
+			s.runStarred(ctx)
 		case <-digestT.C:
 			runDigest()
 		}
 	}
+}
+
+// runStarred 驱动 star 列表同步与 release 轮询。
+// 双周期（star 同步低频 / release 轮询高频）由 Poller 按 system_settings 自判到期，
+// 本方法以 1m 基础节拍被调用，天然支持设置热更新。
+func (s *Scheduler) runStarred(ctx context.Context) {
+	if s.Starred == nil {
+		return
+	}
+	s.runScheduledTask("star_sync", "scheduled star sync failed", "star_sync_failed", func() error {
+		return s.Starred.SyncStars(ctx)
+	})
+	s.runScheduledTask("release_poll", "scheduled release poll failed", "release_poll_failed", func() error {
+		return s.Starred.PollReleases(ctx)
+	})
 }

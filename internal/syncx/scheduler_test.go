@@ -54,6 +54,29 @@ func TestSchedulerSuccessLogsAtDebug(t *testing.T) {
 	}
 }
 
+// TestSchedulerStarredTasksLogged 验证 star 同步与 release 轮询经调度留痕。
+func TestSchedulerStarredTasksLogged(t *testing.T) {
+	var logBuffer bytes.Buffer
+	// Store 为 nil 时 Poller 快速跳过，仅验证调度包装与留痕。
+	s := &Scheduler{
+		Starred: &StarredReleasePoller{},
+		Logger:  slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+	s.runStarred(context.Background())
+	logs := logBuffer.String()
+	for _, want := range []string{`"task":"star_sync"`, `"task":"release_poll"`, `"level":"DEBUG"`} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("starred 调度留痕应包含 %s，实际: %s", want, logs)
+		}
+	}
+}
+
+// TestSchedulerStarredNilSafe 验证 Starred 未装配时不 panic。
+func TestSchedulerStarredNilSafe(t *testing.T) {
+	s := &Scheduler{}
+	s.runStarred(context.Background()) // 不应 panic
+}
+
 // upsertSetting 写入系统设置（digest.Generator 的运行参数载体）。
 func upsertSetting(t *testing.T, data store.Store, key string, value any) {
 	t.Helper()
