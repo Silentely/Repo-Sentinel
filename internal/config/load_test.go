@@ -615,6 +615,21 @@ func TestAIReleaseSummaryEnv(t *testing.T) {
 	}
 }
 
+// TestStarredUsernameEnv 验证 star 追踪用户名环境变量解析。
+func TestStarredUsernameEnv(t *testing.T) {
+	cfg, err := Load(context.Background(), LoadOptions{
+		LookupEnv: lookupFromMap(map[string]string{
+			"REPOSENTINEL_STARRED_USERNAME": "octocat",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("加载失败: %v", err)
+	}
+	if cfg.GitHub.StarredUsername != "octocat" {
+		t.Fatalf("期望 starred_username=octocat，实际 %q", cfg.GitHub.StarredUsername)
+	}
+}
+
 func TestAI默认关闭(t *testing.T) {
 	cfg, err := Load(context.Background(), LoadOptions{
 		LookupEnv: func(string) (string, bool) { return "", false },

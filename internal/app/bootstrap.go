@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"log/slog"
@@ -24,6 +25,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 	webassets "github.com/Silentely/Repo-Sentinel/web"
+	"github.com/oklog/ulid/v2"
 )
 
 type buildDependencies struct {
@@ -120,6 +122,22 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		Client: &githubx.PublicClient{PAT: cfg.GitHub.ExternalPAT.Reveal()},
 		Logger: logger,
 	}
+	starred := &syncx.StarredReleasePoller{
+		Store:  data,
+		GitHub: ghClient,
+		Public: &githubx.PublicClient{},
+		Logger: logger,
+	}
+	// 用户名初始值：settings 优先，配置（env/yaml）兜底并写入 settings 供设置页回显。
+	if syncx.StarredUsername(ctx, data.Settings()) == "" && strings.TrimSpace(cfg.GitHub.StarredUsername) != "" {
+		raw, _ := json.Marshal(strings.TrimSpace(cfg.GitHub.StarredUsername))
+		if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+			ID: ulid.Make().String(), Key: syncx.SettingStarredUsername,
+			ValueJSON: raw, UpdatedAt: time.Now().UTC(), UpdatedBy: "bootstrap",
+		}); err != nil {
+			return nil, newPublicError("database_unavailable", "无法写入 star 追踪用户名。", err)
+		}
+	}
 	aggWindow := cfg.Aggregation.Window
 	if aggWindow <= 0 {
 		aggWindow = 60 * time.Second
@@ -144,7 +162,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	aggregator.Logger = logger
 	digestGen := &digest.Generator{Store: data, AI: aiClient, Logger: logger}
 	scheduler := &syncx.Scheduler{
-		Reconciler: reconciler, External: external, Digest: digestGen, Logger: logger,
+		Reconciler: reconciler, External: external, Starred: starred, Digest: digestGen, Logger: logger,
 	}
 	build := buildinfo.Current()
 	updateChecker := &updatecheck.Checker{
@@ -176,6 +194,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		Background:     workerCtx,
 		AI:             aiClient,
 		AIRuntime:      aiRuntime,
+		StarredPoller:  starred,
 	})
 	if err := bootstrapNotifyChannels(ctx, data, keyRing, cfg); err != nil {
 		return nil, err

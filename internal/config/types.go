@@ -131,6 +131,9 @@ type GitHubConfig struct {
 	WebhookSecret         Secret `yaml:"webhook_secret"`
 	WebhookPreviousSecret Secret `yaml:"webhook_previous_secret"`
 	ExternalPAT           Secret `yaml:"external_pat"`
+	// StarredUsername 管理台 star release 追踪的 GitHub 用户名初始值
+	// （也可在管理台设置页填写；此处为 env/配置文件兜底）。
+	StarredUsername string `yaml:"starred_username"`
 }
 
 // NotifyConfig 汇总 Telegram 与 HTTP Webhook 通知配置。

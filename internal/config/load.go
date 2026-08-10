@@ -267,6 +267,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 	if value, ok := lookup("REPOSENTINEL_EXTERNAL_PAT"); ok {
 		cfg.GitHub.ExternalPAT = NewSecret(value)
 	}
+	if value, ok := lookup("REPOSENTINEL_STARRED_USERNAME"); ok {
+		cfg.GitHub.StarredUsername = value
+	}
 	if value, ok := lookup("REPOSENTINEL_TELEGRAM_TOKEN"); ok {
 		cfg.Notify.Telegram.Token = NewSecret(value)
 	}
