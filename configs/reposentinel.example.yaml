@@ -41,6 +41,12 @@ github:
   # 入站：GitHub → 本服务。Secret 通过 REPOSENTINEL_GITHUB_WEBHOOK_SECRET 提供。
   # 上一把入站 Secret 通过 REPOSENTINEL_GITHUB_WEBHOOK_PREVIOUS_SECRET 提供。
   # 外部仓库 PAT 通过 REPOSENTINEL_EXTERNAL_PAT 提供。
+  # Star Release 追踪的 GitHub 用户名初始值（也可在管理台设置页填写，
+  # 设置页保存后以数据库为准）。通过 REPOSENTINEL_STARRED_USERNAME 提供。
+  # starred_username: ""
+  # 网络受限（如国内 VPS）时设置 HTTPS_PROXY / NO_PROXY 环境变量即可：
+  # 客户端（Go 默认 Transport）自动走代理，无需额外配置。
+  # -e HTTPS_PROXY=http://proxy:7890 -e NO_PROXY=localhost,127.0.0.1
 
 notify:
   telegram:
@@ -102,6 +108,8 @@ ai:
   digest_enabled: true
   # 是否启用实时安全告警 AI 分诊。
   triage_enabled: true
+  # 是否启用 star 仓库新 Release 的 AI 中文总结（英文 notes 自动翻译摘要）。
+  release_summary_enabled: true
   # API Key 通过 REPOSENTINEL_AI_API_KEY 注入；enabled=true 时必须提供。
 
 oauth:
