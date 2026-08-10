@@ -102,6 +102,8 @@ export function eventKindLabel(kind: string): string {
       return "Star";
     case "watch":
       return "Watch";
+    case "release":
+      return "Release";
     default:
       return alertKindLabel(kind);
   }
@@ -115,6 +117,9 @@ export function eventActionLabel(action: string, kind?: string): string {
   }
   if (kind === "watch") {
     if (action === "started") return "已关注";
+  }
+  if (kind === "release") {
+    if (action === "published") return "发布";
   }
   switch (action) {
     case "opened":

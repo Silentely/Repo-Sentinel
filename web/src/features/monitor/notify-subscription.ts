@@ -9,7 +9,8 @@ export const SUBSCRIBABLE_KINDS: Array<{
     | "feature.actions"
     | "feature.security_alerts"
     | "feature.stars"
-    | "feature.watches";
+    | "feature.watches"
+    | "feature.starred_releases";
 }> = [
   { value: "issue", label: "Issue", featureKey: "feature.issues" },
   { value: "pull_request", label: "PR", featureKey: "feature.pull_requests" },
@@ -19,6 +20,7 @@ export const SUBSCRIBABLE_KINDS: Array<{
   { value: "secret_scanning", label: "Secret Scanning", featureKey: "feature.security_alerts" },
   { value: "star", label: "Star", featureKey: "feature.stars" },
   { value: "watch", label: "Watch", featureKey: "feature.watches" },
+  { value: "release", label: "Release", featureKey: "feature.starred_releases" },
 ];
 
 // uiCheckedKinds 将后端的 event_kinds（null=订阅全部）映射为 UI 勾选态数组。

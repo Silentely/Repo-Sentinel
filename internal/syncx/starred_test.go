@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
+	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
@@ -366,5 +367,52 @@ func TestStarredPollReleases_功能开关关闭(t *testing.T) {
 	}
 	if events := listReleaseEvents(t, env.data); len(events) != 0 {
 		t.Fatalf("开关关闭不应建事件，got %d", len(events))
+	}
+}
+
+// TestStarredPollReleases_通知链路 验证新 release 事件经 rules.Engine 写入 Outbox（实时通知）。
+func TestStarredPollReleases_通知链路(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	ctx := t.Context()
+	// 启用渠道（EventKinds 为 nil = 全部订阅）。
+	if _, err := env.data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg", Target: "123",
+		Enabled: true, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	env.poller.Engine = &rules.Engine{Store: env.data}
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// 发布 v2.0（新 release id）→ 应产生事件且写入 Outbox。
+	env.mu.Lock()
+	env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(43, "v2.0", false)}
+	env.mu.Unlock()
+	env.poller.lastReleasePoll = time.Time{}
+	if err := env.poller.PollReleases(ctx); err != nil {
+		t.Fatal(err)
+	}
+	outbox, _, err := env.data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outbox) != 1 {
+		t.Fatalf("新 release 应写入 1 条 outbox，got %d", len(outbox))
+	}
+	if !strings.Contains(outbox[0].Title, "🚀") || !strings.Contains(outbox[0].Title, "新版本发布") {
+		t.Fatalf("outbox 标题应为 release 通知文案: %s", outbox[0].Title)
+	}
+	// 幂等：重复轮询同 release 不重复投递。
+	env.poller.lastReleasePoll = time.Time{}
+	if err := env.poller.PollReleases(ctx); err != nil {
+		t.Fatal(err)
+	}
+	outbox, _, _ = env.data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if len(outbox) != 1 {
+		t.Fatalf("重复轮询不应重复投递，got %d", len(outbox))
 	}
 }

@@ -132,6 +132,9 @@ openssl rand -hex 32
 | `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` | **入站**：GitHub → 本服务 Webhook 签名 Secret（`X-Hub-Signature-256`） |
 | `REPOSENTINEL_GITHUB_WEBHOOK_PREVIOUS_SECRET` | 轮换中的上一把入站 Secret |
 | `REPOSENTINEL_EXTERNAL_PAT` | 外部公开仓访问用 PAT（可选） |
+| `REPOSENTINEL_STARRED_USERNAME` | Star Release 追踪的 GitHub 用户名初始值（设置页保存后以数据库为准） |
+
+> 网络受限环境（如国内 VPS）：设置 `HTTPS_PROXY` / `NO_PROXY` 环境变量即可让全部 GitHub 出站请求走代理（Go 客户端默认读系统代理，无需额外配置）。
 
 ### 通知
 
@@ -186,6 +189,7 @@ AI 用于三处：每日摘要 / 周报 / 月报正文生成（`digest_enabled`�
 | `REPOSENTINEL_AI_RETRIES` | 瞬时失败自动重试次数，默认 `1`（0 表示不重试） |
 | `REPOSENTINEL_AI_DIGEST_ENABLED` | 是否启用 AI 摘要，默认 `true` |
 | `REPOSENTINEL_AI_TRIAGE_ENABLED` | 是否启用安全告警分诊，默认 `true` |
+| `REPOSENTINEL_AI_RELEASE_SUMMARY_ENABLED` | 是否启用 star 仓库新 Release 的 AI 中文总结，默认 `true` |
 
 AI 不可用（未配置、超时、服务端错误）时自动降级：摘要回退模板正文、告警保持原文，不影响通知投递。接入本地模型的 YAML 示例见下节。
 

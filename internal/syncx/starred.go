@@ -12,6 +12,7 @@ import (
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
+	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
@@ -50,6 +51,8 @@ type StarredReleasePoller struct {
 	Store  store.Store
 	GitHub *githubx.AppClient
 	Public *githubx.PublicClient
+	// Engine 可选；注入后新 release 事件经实时通知决策写入 Outbox（不聚合、立即）。
+	Engine *rules.Engine
 	Logger *slog.Logger
 
 	// lastStarSync / lastReleasePoll 内存记账：进程重启后零值立即触发首轮。
@@ -402,7 +405,8 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 	return nil
 }
 
-// createReleaseEvent 将新 release 事件化并落库（指纹幂等，重复轮询不重复通知）。
+// createReleaseEvent 将新 release 事件化并落库（指纹幂等，重复轮询不重复通知），
+// 随后触发实时通知决策（rules.Engine 直连，不聚合：release 低频单条，避免 60s 窗口延迟）。
 func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName string, rel githubx.ReleaseItem) error {
 	stateHash := fmt.Sprintf("id:%d", rel.ID)
 	fp := normalizer.Fingerprint(
@@ -423,7 +427,7 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 	if len(notes) > maxReleaseNotesStored {
 		notes = notes[:maxReleaseNotesStored]
 	}
-	_, err := p.Store.Events().Create(ctx, store.Event{
+	ev := store.Event{
 		ID: ulid.Make().String(), Source: "starred_releases", Kind: store.ReleaseKind, Action: "published",
 		Title: title, SubjectNumber: &num, Actor: rel.Author.Login,
 		OccurredAt: rel.PublishedAt, SourceUpdatedAt: &src, HTMLURL: rel.HTMLURL,
@@ -431,8 +435,17 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 		PayloadSummary: map[string]any{
 			"tag_name": rel.TagName, "prerelease": rel.Prerelease, "notes": notes,
 		},
-	})
-	return err
+	}
+	if _, err := p.Store.Events().Create(ctx, ev); err != nil {
+		return err
+	}
+	if p.Engine != nil {
+		// Outbox 幂等键以 event_id 派生，重复 Evaluate 不会重复投递。
+		if err := p.Engine.Evaluate(ctx, normalizer.Result{Event: &ev}, fullName); err != nil {
+			p.warn("release notify evaluate failed", "repo", fullName, "error_code", "notify_evaluate_failed", "error", err.Error())
+		}
+	}
+	return nil
 }
 
 // installationToken 取任一安装的令牌；App 未配置或无安装时留痕并返回空串。

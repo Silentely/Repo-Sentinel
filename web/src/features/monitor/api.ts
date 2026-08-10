@@ -346,6 +346,7 @@ export interface SystemSettings {
   "feature.security_alerts"?: boolean;
   "feature.stars"?: boolean;
   "feature.watches"?: boolean;
+  "feature.starred_releases"?: boolean;
   "report.weekly_enabled"?: boolean;
   "report.weekly_day"?: string;
   "report.monthly_enabled"?: boolean;

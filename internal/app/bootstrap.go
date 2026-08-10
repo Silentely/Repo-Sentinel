@@ -122,22 +122,6 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		Client: &githubx.PublicClient{PAT: cfg.GitHub.ExternalPAT.Reveal()},
 		Logger: logger,
 	}
-	starred := &syncx.StarredReleasePoller{
-		Store:  data,
-		GitHub: ghClient,
-		Public: &githubx.PublicClient{},
-		Logger: logger,
-	}
-	// 用户名初始值：settings 优先，配置（env/yaml）兜底并写入 settings 供设置页回显。
-	if syncx.StarredUsername(ctx, data.Settings()) == "" && strings.TrimSpace(cfg.GitHub.StarredUsername) != "" {
-		raw, _ := json.Marshal(strings.TrimSpace(cfg.GitHub.StarredUsername))
-		if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
-			ID: ulid.Make().String(), Key: syncx.SettingStarredUsername,
-			ValueJSON: raw, UpdatedAt: time.Now().UTC(), UpdatedBy: "bootstrap",
-		}); err != nil {
-			return nil, newPublicError("database_unavailable", "无法写入 star 追踪用户名。", err)
-		}
-	}
 	aggWindow := cfg.Aggregation.Window
 	if aggWindow <= 0 {
 		aggWindow = 60 * time.Second
@@ -161,6 +145,25 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	aggregator.AI = aiClient
 	aggregator.Logger = logger
 	digestGen := &digest.Generator{Store: data, AI: aiClient, Logger: logger}
+
+	starred := &syncx.StarredReleasePoller{
+		Store:  data,
+		GitHub: ghClient,
+		Public: &githubx.PublicClient{},
+		// Engine 直连实时通知决策（不聚合：release 低频单条，立即投递）。
+		Engine: &rules.Engine{Store: data, AI: aiClient, Logger: logger},
+		Logger: logger,
+	}
+	// 用户名初始值：settings 优先，配置（env/yaml）兜底并写入 settings 供设置页回显。
+	if syncx.StarredUsername(ctx, data.Settings()) == "" && strings.TrimSpace(cfg.GitHub.StarredUsername) != "" {
+		raw, _ := json.Marshal(strings.TrimSpace(cfg.GitHub.StarredUsername))
+		if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+			ID: ulid.Make().String(), Key: syncx.SettingStarredUsername,
+			ValueJSON: raw, UpdatedAt: time.Now().UTC(), UpdatedBy: "bootstrap",
+		}); err != nil {
+			return nil, newPublicError("database_unavailable", "无法写入 star 追踪用户名。", err)
+		}
+	}
 	scheduler := &syncx.Scheduler{
 		Reconciler: reconciler, External: external, Starred: starred, Digest: digestGen, Logger: logger,
 	}
