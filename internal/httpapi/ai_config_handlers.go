@@ -14,51 +14,55 @@ import (
 
 // aiConfigResponse 管理台 AI 配置视图：不返回密钥明文，仅返回已配置状态与来源。
 type aiConfigResponse struct {
-	Enabled          bool   `json:"enabled"`
-	BaseURL          string `json:"base_url"`
-	Model            string `json:"model"`
-	TimeoutSec       int64  `json:"timeout_sec"`
-	MaxTokens        int    `json:"max_tokens"`
-	Retries          int    `json:"retries"`
-	DigestEnabled    bool   `json:"digest_enabled"`
-	TriageEnabled    bool   `json:"triage_enabled"`
-	APIKeyConfigured bool   `json:"api_key_configured"`
+	Enabled               bool   `json:"enabled"`
+	BaseURL               string `json:"base_url"`
+	Model                 string `json:"model"`
+	TimeoutSec            int64  `json:"timeout_sec"`
+	MaxTokens             int    `json:"max_tokens"`
+	Retries               int    `json:"retries"`
+	DigestEnabled         bool   `json:"digest_enabled"`
+	TriageEnabled         bool   `json:"triage_enabled"`
+	ReleaseSummaryEnabled bool   `json:"release_summary_enabled"`
+	APIKeyConfigured      bool   `json:"api_key_configured"`
 
-	EnabledSource       string `json:"enabled_source"`
-	BaseURLSource       string `json:"base_url_source"`
-	ModelSource         string `json:"model_source"`
-	TimeoutSource       string `json:"timeout_source"`
-	MaxTokensSource     string `json:"max_tokens_source"`
-	RetriesSource       string `json:"retries_source"`
-	APIKeySource        string `json:"api_key_source"`
-	DigestEnabledSource string `json:"digest_enabled_source"`
-	TriageEnabledSource string `json:"triage_enabled_source"`
+	EnabledSource               string `json:"enabled_source"`
+	BaseURLSource               string `json:"base_url_source"`
+	ModelSource                 string `json:"model_source"`
+	TimeoutSource               string `json:"timeout_source"`
+	MaxTokensSource             string `json:"max_tokens_source"`
+	RetriesSource               string `json:"retries_source"`
+	APIKeySource                string `json:"api_key_source"`
+	DigestEnabledSource         string `json:"digest_enabled_source"`
+	TriageEnabledSource         string `json:"triage_enabled_source"`
+	ReleaseSummaryEnabledSource string `json:"release_summary_enabled_source"`
 
-	EnabledLocked       bool `json:"enabled_locked"`
-	BaseURLLocked       bool `json:"base_url_locked"`
-	ModelLocked         bool `json:"model_locked"`
-	TimeoutLocked       bool `json:"timeout_locked"`
-	MaxTokensLocked     bool `json:"max_tokens_locked"`
-	RetriesLocked       bool `json:"retries_locked"`
-	APIKeyLocked        bool `json:"api_key_locked"`
-	DigestEnabledLocked bool `json:"digest_enabled_locked"`
-	TriageEnabledLocked bool `json:"triage_enabled_locked"`
+	EnabledLocked               bool `json:"enabled_locked"`
+	BaseURLLocked               bool `json:"base_url_locked"`
+	ModelLocked                 bool `json:"model_locked"`
+	TimeoutLocked               bool `json:"timeout_locked"`
+	MaxTokensLocked             bool `json:"max_tokens_locked"`
+	RetriesLocked               bool `json:"retries_locked"`
+	APIKeyLocked                bool `json:"api_key_locked"`
+	DigestEnabledLocked         bool `json:"digest_enabled_locked"`
+	TriageEnabledLocked         bool `json:"triage_enabled_locked"`
+	ReleaseSummaryEnabledLocked bool `json:"release_summary_enabled_locked"`
 
 	CanEditInUI bool   `json:"can_edit_in_ui"`
 	Note        string `json:"note"`
 }
 
 type aiConfigPutRequest struct {
-	Enabled       *bool   `json:"enabled"`
-	BaseURL       *string `json:"base_url"`
-	Model         *string `json:"model"`
-	TimeoutSec    *int64  `json:"timeout_sec"`
-	MaxTokens     *int    `json:"max_tokens"`
-	Retries       *int    `json:"retries"`
-	DigestEnabled *bool   `json:"digest_enabled"`
-	TriageEnabled *bool   `json:"triage_enabled"`
-	APIKey        *string `json:"api_key"`
-	ClearAPIKey   bool    `json:"clear_api_key"`
+	Enabled               *bool   `json:"enabled"`
+	BaseURL               *string `json:"base_url"`
+	Model                 *string `json:"model"`
+	TimeoutSec            *int64  `json:"timeout_sec"`
+	MaxTokens             *int    `json:"max_tokens"`
+	Retries               *int    `json:"retries"`
+	DigestEnabled         *bool   `json:"digest_enabled"`
+	TriageEnabled         *bool   `json:"triage_enabled"`
+	ReleaseSummaryEnabled *bool   `json:"release_summary_enabled"`
+	APIKey                *string `json:"api_key"`
+	ClearAPIKey           bool    `json:"clear_api_key"`
 }
 
 // aiConfigPutRequest 可写标量字段的取值范围（PUT 保存与连通性测试共用）。
@@ -111,35 +115,38 @@ func (s *server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	snap := rt.Snapshot()
 	writeJSON(w, http.StatusOK, aiConfigResponse{
-		Enabled:             snap.Enabled,
-		BaseURL:             snap.BaseURL,
-		Model:               snap.Model,
-		TimeoutSec:          int64(snap.Timeout / time.Second),
-		MaxTokens:           snap.MaxTokens,
-		Retries:             snap.Retries,
-		DigestEnabled:       snap.DigestEnabled,
-		TriageEnabled:       snap.TriageEnabled,
-		APIKeyConfigured:    snap.APIKey != "",
-		EnabledSource:       snap.EnabledSource,
-		BaseURLSource:       snap.BaseURLSource,
-		ModelSource:         snap.ModelSource,
-		TimeoutSource:       snap.TimeoutSource,
-		MaxTokensSource:     snap.MaxTokensSource,
-		RetriesSource:       snap.RetriesSource,
-		APIKeySource:        snap.APIKeySource,
-		DigestEnabledSource: snap.DigestEnabledSource,
-		TriageEnabledSource: snap.TriageEnabledSource,
-		EnabledLocked:       snap.EnabledSource == "env",
-		BaseURLLocked:       snap.BaseURLSource == "env",
-		ModelLocked:         snap.ModelSource == "env",
-		TimeoutLocked:       snap.TimeoutSource == "env",
-		MaxTokensLocked:     snap.MaxTokensSource == "env",
-		RetriesLocked:       snap.RetriesSource == "env",
-		APIKeyLocked:        snap.APIKeySource == "env",
-		DigestEnabledLocked: snap.DigestEnabledSource == "env",
-		TriageEnabledLocked: snap.TriageEnabledSource == "env",
-		CanEditInUI:         true,
-		Note:                "环境变量设置的字段在管理台锁定；API Key 加密存储，不回显明文。",
+		Enabled:                     snap.Enabled,
+		BaseURL:                     snap.BaseURL,
+		Model:                       snap.Model,
+		TimeoutSec:                  int64(snap.Timeout / time.Second),
+		MaxTokens:                   snap.MaxTokens,
+		Retries:                     snap.Retries,
+		DigestEnabled:               snap.DigestEnabled,
+		TriageEnabled:               snap.TriageEnabled,
+		ReleaseSummaryEnabled:       snap.ReleaseSummaryEnabled,
+		APIKeyConfigured:            snap.APIKey != "",
+		EnabledSource:               snap.EnabledSource,
+		BaseURLSource:               snap.BaseURLSource,
+		ModelSource:                 snap.ModelSource,
+		TimeoutSource:               snap.TimeoutSource,
+		MaxTokensSource:             snap.MaxTokensSource,
+		RetriesSource:               snap.RetriesSource,
+		APIKeySource:                snap.APIKeySource,
+		DigestEnabledSource:         snap.DigestEnabledSource,
+		TriageEnabledSource:         snap.TriageEnabledSource,
+		ReleaseSummaryEnabledSource: snap.ReleaseSummaryEnabledSource,
+		EnabledLocked:               snap.EnabledSource == "env",
+		BaseURLLocked:               snap.BaseURLSource == "env",
+		ModelLocked:                 snap.ModelSource == "env",
+		TimeoutLocked:               snap.TimeoutSource == "env",
+		MaxTokensLocked:             snap.MaxTokensSource == "env",
+		RetriesLocked:               snap.RetriesSource == "env",
+		APIKeyLocked:                snap.APIKeySource == "env",
+		DigestEnabledLocked:         snap.DigestEnabledSource == "env",
+		TriageEnabledLocked:         snap.TriageEnabledSource == "env",
+		ReleaseSummaryEnabledLocked: snap.ReleaseSummaryEnabledSource == "env",
+		CanEditInUI:                 true,
+		Note:                        "环境变量设置的字段在管理台锁定；API Key 加密存储，不回显明文。",
 	})
 }
 
@@ -226,6 +233,12 @@ func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		stored.TriageEnabled = body.TriageEnabled
+	}
+	if body.ReleaseSummaryEnabled != nil {
+		if s.rejectAILockedField(w, r, snap.ReleaseSummaryEnabledSource, "release_summary_enabled") {
+			return
+		}
+		stored.ReleaseSummaryEnabled = body.ReleaseSummaryEnabled
 	}
 	if body.APIKey != nil {
 		if s.rejectAILockedField(w, r, snap.APIKeySource, "api_key") {

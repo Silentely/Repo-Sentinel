@@ -23,6 +23,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 )
 
@@ -180,6 +181,8 @@ type httpTestOptions struct {
 	// aiConfig 装配到 Dependencies.Config.AI，供 PUT 热更新路径使用；
 	// 需与 aiRuntime 同源（默认值一致），避免 RuntimeFromEnv 把零值误判为 env 锁定。
 	aiConfig config.AIConfig
+	// starPoller 装配到 Dependencies.StarredPoller，供 star release 追踪 API 测试。
+	starPoller *syncx.StarredReleasePoller
 }
 
 type httpTestFixture struct {
@@ -284,6 +287,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		UpdateChecker: options.updateChecker,
 		AI:            options.aiClient,
 		AIRuntime:     options.aiRuntime,
+		StarredPoller: options.starPoller,
 	}
 	return &httpTestFixture{
 		handler:        New(dependencies),
