@@ -1,10 +1,14 @@
 package githubx
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -85,6 +89,80 @@ type RepositoryMeta struct {
 	StargazersCount int64 `json:"stargazers_count"`
 	ForksCount      int64 `json:"forks_count"`
 	OpenIssuesCount int   `json:"open_issues_count"`
+}
+
+// ReleaseItem GitHub release 条目（star 仓库 release 追踪用）。
+type ReleaseItem struct {
+	ID          int64     `json:"id"`
+	TagName     string    `json:"tag_name"`
+	Name        string    `json:"name"`
+	Draft       bool      `json:"draft"`
+	Prerelease  bool      `json:"prerelease"`
+	PublishedAt time.Time `json:"published_at"`
+	HTMLURL     string    `json:"html_url"`
+	Body        string    `json:"body"`
+	Author      struct {
+		Login string `json:"login"`
+	} `json:"author"`
+}
+
+// ListReleases 拉取仓库最新 release（per_page=1）。
+// ifNoneMatch 非空时带 If-None-Match 条件请求；304 时 modified=false、items 为空。
+// 返回响应 ETag 供下次条件请求；错误分类与 doJSON 一致（限流 / HTTPStatusError）。
+func (c *AppClient) ListReleases(ctx context.Context, token, owner, repo, ifNoneMatch string) ([]ReleaseItem, string, bool, int, error) {
+	if c.HTTP == nil {
+		c.HTTP = &http.Client{Timeout: 30 * time.Second}
+	}
+	if c.BaseURL == "" {
+		c.BaseURL = "https://api.github.com"
+	}
+	full := c.BaseURL + fmt.Sprintf("/repos/%s/%s/releases?per_page=1", owner, repo)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
+	if err != nil {
+		return nil, "", false, 0, err
+	}
+	// 出站标识与鉴权头与 doJSON 保持一致。
+	req.Header.Set("User-Agent", githubClientUA)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if ifNoneMatch != "" {
+		req.Header.Set("If-None-Match", ifNoneMatch)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, "", false, 0, err
+	}
+	defer resp.Body.Close()
+	var remaining int
+	if v := resp.Header.Get("X-RateLimit-Remaining"); v != "" {
+		remaining, _ = strconv.Atoi(v)
+	}
+	etag := resp.Header.Get("ETag")
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if resp.StatusCode == http.StatusNotModified {
+		return nil, etag, false, remaining, nil
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, etag, false, remaining, &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		// 403 需区分限流与权限/功能未开启：主限流响应携带 X-RateLimit-Remaining: 0。
+		if resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")) {
+			return nil, etag, false, remaining, &RateLimitError{RetryAfter: resetDelta(resp.Header.Get("X-RateLimit-Reset"))}
+		}
+		return nil, etag, false, remaining, statusError(resp.StatusCode, body)
+	}
+	if resp.StatusCode >= 300 {
+		return nil, etag, false, remaining, statusError(resp.StatusCode, body)
+	}
+	var items []ReleaseItem
+	if err := json.Unmarshal(body, &items); err != nil {
+		return nil, etag, false, remaining, err
+	}
+	return items, etag, true, remaining, nil
 }
 
 // ListIssues 分页拉取 issues（含 PR）。

@@ -2,6 +2,7 @@ package githubx
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -76,5 +77,54 @@ func TestGetRepositoryParsesStargazers(t *testing.T) {
 	}
 	if remaining != 4999 {
 		t.Fatalf("remaining = %d", remaining)
+	}
+}
+
+// TestListReleasesConditional 验证 release 拉取、ETag 条件请求与 304 判定。
+func TestListReleasesConditional(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if r.URL.Path != "/repos/o/r/releases" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("ETag", `"rel-1"`)
+		w.Header().Set("X-RateLimit-Remaining", "4999")
+		if r.Header.Get("If-None-Match") == `"rel-1"` {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Write([]byte(`[{"id":42,"tag_name":"v1.0","name":"First","draft":false,"prerelease":false,"published_at":"2026-08-01T00:00:00Z","html_url":"https://github.com/o/r/releases/tag/v1.0","body":"notes"}]`))
+	}))
+	defer srv.Close()
+	c := &AppClient{HTTP: srv.Client(), BaseURL: srv.URL}
+
+	items, etag, modified, _, err := c.ListReleases(context.Background(), "tok", "o", "r", "")
+	if err != nil || len(items) != 1 || !modified || etag != `"rel-1"` {
+		t.Fatalf("first: items=%v etag=%q modified=%v err=%v", items, etag, modified, err)
+	}
+	if items[0].ID != 42 || items[0].TagName != "v1.0" || items[0].Prerelease {
+		t.Fatalf("unexpected item: %+v", items[0])
+	}
+	items, _, modified, _, err = c.ListReleases(context.Background(), "tok", "o", "r", etag)
+	if err != nil || modified || len(items) != 0 {
+		t.Fatalf("conditional: modified=%v items=%v err=%v", modified, items, err)
+	}
+	if hits != 2 {
+		t.Fatalf("hits = %d, want 2", hits)
+	}
+}
+
+// TestListReleasesNotFound 验证 404 归类为 HTTPStatusError，供调用方标记仓库不可用。
+func TestListReleasesNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	c := &AppClient{HTTP: srv.Client(), BaseURL: srv.URL}
+	_, _, _, _, err := c.ListReleases(context.Background(), "tok", "o", "r", "")
+	var stErr *HTTPStatusError
+	if !errors.As(err, &stErr) || stErr.StatusCode != 404 {
+		t.Fatalf("want HTTPStatusError 404, got %v", err)
 	}
 }
