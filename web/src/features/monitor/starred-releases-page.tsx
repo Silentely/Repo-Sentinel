@@ -100,9 +100,9 @@ export function StarredReleasesPage() {
     onError: (err) => setError(toApiError(err).message),
   });
 
-  // 追踪列表：分页 + state 筛选。
+  // 追踪列表：分页 + state 筛选。默认只看「追踪中」，无 Release/停用/不可用需手动切换。
   const [page, setPage] = useState(1);
-  const [stateFilter, setStateFilter] = useState("");
+  const [stateFilter, setStateFilter] = useState("tracking");
   const trackers = useQuery({
     queryKey: ["starred-releases-trackers", page, stateFilter] as const,
     queryFn: () => listStarredTrackers({ page, per_page: 20, state: stateFilter || undefined }),
