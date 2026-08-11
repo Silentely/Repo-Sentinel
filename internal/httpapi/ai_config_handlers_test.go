@@ -168,7 +168,7 @@ func TestAIConfigValidation(t *testing.T) {
 	}
 }
 
-// 未装配 AI 运行时（旧部署/降级路径）时 GET/PUT 返回 503。
+// 未装配 AI 运行时（旧部署/降级路径）时 GET/PUT 返回 503（service_unavailable 语义码）。
 func TestAIConfigUnavailable(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
 	fixture.bootstrapAdmin(t)
@@ -176,15 +176,15 @@ func TestAIConfigUnavailable(t *testing.T) {
 	csrf := cookieByName(t, cookies, CSRFCookieName)
 
 	get := fixture.request(t, http.MethodGet, "/api/v1/ai/config", "", "127.0.0.1:45201", cookies, nil)
-	assertAPIError(t, get, http.StatusServiceUnavailable, errorCodeInternal)
+	assertAPIError(t, get, http.StatusServiceUnavailable, errorCodeServiceUnavailable)
 
 	put := fixture.request(t, http.MethodPut, "/api/v1/ai/config", `{"enabled":true}`,
 		"127.0.0.1:45202", cookies, map[string]string{CSRFHeaderName: csrf.Value})
-	assertAPIError(t, put, http.StatusServiceUnavailable, errorCodeInternal)
+	assertAPIError(t, put, http.StatusServiceUnavailable, errorCodeServiceUnavailable)
 
 	test := fixture.request(t, http.MethodPost, "/api/v1/ai/test", `{}`,
 		"127.0.0.1:45203", cookies, map[string]string{CSRFHeaderName: csrf.Value})
-	assertAPIError(t, test, http.StatusServiceUnavailable, errorCodeInternal)
+	assertAPIError(t, test, http.StatusServiceUnavailable, errorCodeServiceUnavailable)
 }
 
 // 视图的 timeout_sec 应与运行时时长一致（秒为单位往返）。

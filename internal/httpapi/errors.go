@@ -19,6 +19,12 @@ const (
 	errorCodeConflict           = "conflict"
 	errorCodeCSRFFailed         = "csrf_failed"
 	errorCodeInternal           = "internal_error"
+	// service_unavailable 表示「依赖未装配/不可用」（如 Store 缺失）：
+	// 与 internal_error（处理过程异常）区分，前端可据此提示服务端状态而非重试。
+	errorCodeServiceUnavailable = "service_unavailable"
+
+	// loginRetryAfterSeconds 登录限流响应的 Retry-After 秒数。
+	loginRetryAfterSeconds = "12"
 )
 
 type apiErrorResponse struct {
@@ -63,9 +69,10 @@ func (s *server) writeAPIError(
 ) {
 	w.Header().Set("Cache-Control", "no-store")
 	if status == http.StatusTooManyRequests {
-		w.Header().Set("Retry-After", "12")
+		w.Header().Set("Retry-After", loginRetryAfterSeconds)
 	}
-	if errorCode == errorCodeInternal && details == nil {
+	// 内部错误与未装配错误都附 request_id，便于对照服务端日志定位。
+	if (errorCode == errorCodeInternal || errorCode == errorCodeServiceUnavailable) && details == nil {
 		details = map[string]any{"request_id": requestIDFromContext(r.Context())}
 	}
 	writeJSON(w, status, apiErrorResponse{
@@ -99,6 +106,8 @@ func apiErrorMessage(errorCode string) string {
 		return "Webhook 签名校验失败。"
 	case "reconcile_unavailable":
 		return "仓库同步服务当前不可用。"
+	case errorCodeServiceUnavailable:
+		return "服务当前不可用，请稍后重试。"
 	case "encryption_unavailable":
 		return "加密主密钥不可用，无法保存敏感配置。"
 	case "external_repo_limit":

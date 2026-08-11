@@ -62,11 +62,11 @@ func (s *server) handleGetGitHubConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.GitHubRuntime == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	if s.dependencies.Store == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	var body githubConfigPutRequest

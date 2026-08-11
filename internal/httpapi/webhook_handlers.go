@@ -14,6 +14,10 @@ import (
 
 const maxWebhookBody = 1 << 20 // 1 MiB
 
+// webhookNotConfiguredRetryAfter 未配置 Webhook Secret 时 503 响应的 Retry-After 秒数：
+// GitHub 对 5xx 按此窗口退避重试，避免高频重试打满日志与入库。
+const webhookNotConfiguredRetryAfter = "60"
+
 func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxWebhookBody)
 	body, err := io.ReadAll(r.Body)
@@ -47,7 +51,8 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 			"error_code", "webhook_not_configured",
 		)
 		// GitHub 对 5xx 会按退避重试：给出明确窗口，避免配置未就绪期间高频重试打满日志与入库。
-		w.Header().Set("Retry-After", "60")
+		// webhookNotConfiguredRetryAfter 与 errors.go 的登录限流窗口同语义（秒）。
+		w.Header().Set("Retry-After", webhookNotConfiguredRetryAfter)
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, "webhook_not_configured", nil)
 		return
 	}

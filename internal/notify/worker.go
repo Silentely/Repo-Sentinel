@@ -96,8 +96,23 @@ func (w *Worker) tick(ctx context.Context) {
 		}
 		return
 	}
+	if len(items) == 0 {
+		return
+	}
+	// 一次性加载全部渠道建 ID→渠道映射：避免每批 50 条逐条 Channels().Get 的 N+1
+	// 往返（实际渠道通常仅 1-2 个）。加载失败降级逐条查询并留痕。
+	channelMap := make(map[string]store.NotificationChannel)
+	if channels, err := w.Store.Channels().List(ctx); err != nil {
+		if w.Logger != nil {
+			w.Logger.Warn("outbox channel map load failed", "error_code", "channel_map_load_failed", "error", err.Error())
+		}
+	} else {
+		for _, ch := range channels {
+			channelMap[ch.ID] = ch
+		}
+	}
 	for _, item := range items {
-		channelType, err := w.deliver(ctx, item)
+		channelType, err := w.deliver(ctx, item, channelMap)
 		if err != nil {
 			if w.Logger != nil {
 				w.Logger.Warn(
@@ -106,6 +121,8 @@ func (w *Worker) tick(ctx context.Context) {
 					"channel_id", item.ChannelID,
 					"channel_type", channelType,
 					"attempt", item.AttemptCount,
+					// 与 outbox 行写入的 last_error_code 同源，便于按码聚合告警与对照排障文案。
+					"error_code", deliveryErrorCode(err),
 					"error", err.Error(),
 				)
 			}
@@ -143,10 +160,15 @@ func (w *Worker) tick(ctx context.Context) {
 	}
 }
 
-func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox) (string, error) {
-	ch, err := w.Store.Channels().Get(ctx, item.ChannelID)
-	if err != nil {
-		return "", err
+func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, channelMap map[string]store.NotificationChannel) (string, error) {
+	ch, ok := channelMap[item.ChannelID]
+	if !ok {
+		// 映射加载失败时降级单查（与映射命中保持同一语义）。
+		var err error
+		ch, err = w.Store.Channels().Get(ctx, item.ChannelID)
+		if err != nil {
+			return "", err
+		}
 	}
 	secret, err := w.decryptSecret(ctx, ch.SecretEnvelope)
 	if err != nil {
@@ -201,7 +223,7 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 	if htmlURL != "" {
 		payload["reply_markup"] = map[string]any{
 			"inline_keyboard": [][]map[string]string{
-				{{"text": "🔗 在 GitHub 中查看", "url": htmlURL}},
+				{{"text": store.GitHubViewLabel, "url": htmlURL}},
 			},
 		}
 	}
@@ -294,6 +316,12 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 
 func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbox, err error) {
 	code := deliveryErrorCode(err)
+	// 配置/数据类确定性错误：重试不可能成功（脏渠道类型、缺 Token/Chat ID、密钥问题），
+	// 直接进入死信，避免无意义重试打满 8 次后才暴露（最长约 30 小时）。
+	if isPermanentDeliveryError(code) {
+		w.markDead(ctx, item.ID, code)
+		return
+	}
 	var ra *retryAfterError
 	if errors.As(err, &ra) {
 		// 限流退避同样受重试上限约束，否则目标长期 429 时条目会无限重投。
@@ -417,6 +445,16 @@ func deliveryErrorCode(err error) string {
 		return s
 	}
 	return "delivery_failed"
+}
+
+// isPermanentDeliveryError 判定确定性错误码：配置/数据问题重试不可能成功，
+// 直接死信而非按退避阶梯重试（见 handleFailure）。
+func isPermanentDeliveryError(code string) bool {
+	switch code {
+	case "unknown_channel", "telegram_not_configured", "missing_keyring", "decrypt_secret":
+		return true
+	}
+	return false
 }
 
 // telegramTextLimit 是 Telegram 消息正文的保守上限。

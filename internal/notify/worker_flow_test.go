@@ -238,7 +238,8 @@ func TestWorkerDeliverUnknownChannel(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := &Worker{Store: st, KeyRing: ring, AAD: "reposentinel:notify-secret:v1"}
-	if _, err := w.deliver(t.Context(), item); err == nil {
+	// 空映射触发降级单查：渠道类型未知应报错（与 tick 内预加载映射命中同一语义）。
+	if _, err := w.deliver(t.Context(), item, map[string]store.NotificationChannel{}); err == nil {
 		t.Fatal("未知渠道应报错")
 	}
 }

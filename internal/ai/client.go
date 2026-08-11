@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -187,6 +188,17 @@ func (c *Client) baseURL() string {
 		return DefaultBaseURL
 	}
 	return strings.TrimRight(c.BaseURL, "/")
+}
+
+// redactURL 去除 URL 中的 userinfo 段（如 https://user:pass@host/path → https://host/path），
+// 防止带内嵌凭据的网关地址随 Debug 日志泄出；解析失败原样返回。
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	u.User = nil
+	return u.String()
 }
 
 func (c *Client) model() string {
@@ -393,7 +405,8 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 		logger.Debug("ai request start",
 			"req_id", reqID,
 			"model", model,
-			"endpoint", endpoint,
+			// 只记 host+path：BaseURL 若带内嵌凭据（如 https://user:pass@…）不能进日志。
+			"endpoint", redactURL(endpoint),
 			"max_tokens", s.maxTokens(),
 			"timeout_ms", s.timeout().Milliseconds(),
 			"input_bytes", len(system)+len(user),

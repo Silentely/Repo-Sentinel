@@ -301,9 +301,15 @@ func (s *server) handleMCPToolCall(ctx context.Context, request mcpJSONRPCReques
 		}
 		result, err := tool.execute(ctx, arguments)
 		if err != nil {
+			reqID := requestIDFromContext(ctx)
+			if s.dependencies.Logger != nil {
+				// 完整错误进日志：DB/网络细节不对 MCP 客户端透出，避免暴露内部结构。
+				s.dependencies.Logger.Warn("mcp tool call failed",
+					"tool", name, "request_id", reqID, "error_code", "mcp_tool_failed", "error", err.Error())
+			}
 			return mcpJSONResult(request.ID, map[string]any{
 				"content": []any{
-					map[string]any{"type": "text", "text": "工具执行失败: " + err.Error()},
+					map[string]any{"type": "text", "text": "工具执行失败，请稍后重试。"},
 				},
 				"isError": true,
 			})

@@ -16,7 +16,7 @@ import (
 
 func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	stats, err := s.dependencies.Store.Dashboard(r.Context())
@@ -30,7 +30,7 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 // handleStarTrend 返回 star 总数按日趋势；days 支持 7/30/90/0（0=全部），非法或缺省回退 30。
 func (s *server) handleStarTrend(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	days := 30
@@ -361,7 +361,7 @@ func (s *server) handleListInstallations(w http.ResponseWriter, r *http.Request)
 // 同步逻辑在 syncx.Reconciler.SyncInstallations，handler 仅做配置校验与结果映射。
 func (s *server) handleSyncInstallationRepositories(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	// Reconciler 持有 GitHub App client；nil 视为未装配/未配置。

@@ -110,7 +110,7 @@ func (s *server) rejectAILockedField(w http.ResponseWriter, r *http.Request, sou
 func (s *server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 	rt := s.aiRuntime()
 	if rt == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	snap := rt.Snapshot()
@@ -153,7 +153,7 @@ func (s *server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 	rt := s.aiRuntime()
 	if rt == nil || s.dependencies.Store == nil || s.dependencies.KeyRing == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	var body aiConfigPutRequest
@@ -296,7 +296,7 @@ func validAIBaseURL(value string) bool {
 func (s *server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
 	rt := s.aiRuntime()
 	if rt == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	var body aiConfigPutRequest

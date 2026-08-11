@@ -46,7 +46,7 @@ func normalizeUsername(v string) string {
 // handleGetStarredReleasesConfig 返回配置与追踪状态概览。
 func (s *server) handleGetStarredReleasesConfig(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	ctx := r.Context()
@@ -74,7 +74,7 @@ func (s *server) handleGetStarredReleasesConfig(w http.ResponseWriter, r *http.R
 // handlePutStarredReleasesConfig 保存配置；用户名变更后立即触发一轮 star 同步。
 func (s *server) handlePutStarredReleasesConfig(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	var body starredReleasesConfigPutRequest
@@ -187,7 +187,7 @@ type starredTrackerItem struct {
 // handleListStarredTrackers 追踪列表（分页 + state 筛选）。
 func (s *server) handleListStarredTrackers(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	f := listFilterFromRequest(r)
@@ -213,7 +213,7 @@ func (s *server) handleListStarredTrackers(w http.ResponseWriter, r *http.Reques
 // handleSetStarredTrackerState 单仓停用 / 恢复（仅允许 disabled 与 tracking 两个目标态）。
 func (s *server) handleSetStarredTrackerState(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	var body struct {

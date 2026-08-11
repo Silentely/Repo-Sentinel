@@ -37,7 +37,7 @@
 日志均携带 `req_id`（context 未注入时自动生成，digest/rules 层经 `EnsureRequestID` 注入后
 参与度日志与调用日志共用同一 ID，可按单次决策端到端串联）：
 
-- `DEBUG ai request start` — 发起请求：req_id、model、endpoint、max_tokens、timeout_ms、input_bytes、retries
+- `DEBUG ai request start` — 发起请求：req_id、model、endpoint（URL 的 userinfo 段已打码，防内嵌凭据泄出）、max_tokens、timeout_ms、input_bytes、retries
 - `DEBUG ai request retry` — 瞬时失败后重试：req_id、model、attempt、error_code、error、delay_ms
 - `INFO ai request ok` — 成功：req_id、model、duration_ms、output_chars、prompt_tokens、completion_tokens
 - `WARN ai request failed` — 最终失败：error_code 分类 + error 详情

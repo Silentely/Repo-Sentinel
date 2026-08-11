@@ -265,7 +265,11 @@ func (p *Processor) processInstallation(ctx context.Context, eventType string, e
 			continue
 		}
 		if r, err := p.Store.Repositories().GetByFullName(ctx, name); err == nil {
-			_ = p.Store.Repositories().UpdateSyncStatus(ctx, r.ID, store.SyncStatusUnavailable)
+			if err := p.Store.Repositories().UpdateSyncStatus(ctx, r.ID, store.SyncStatusUnavailable); err != nil && p.Logger != nil {
+				// 状态推进失败会留下「GitHub 已收回授权但本地仍正常采集」的不一致，Warn 留痕。
+				p.Logger.Warn("installation repository removed state update failed",
+					"repo", r.FullName, "error_code", "repo_state_update_failed", "error", err.Error())
+			}
 			if p.Logger != nil {
 				p.Logger.Debug("installation repository removed", "repo", r.FullName)
 			}
@@ -302,12 +306,18 @@ func (p *Processor) processRepositoryEvent(ctx context.Context, env envelope) (R
 		// 归档走 UpdateSettings 联动：sync_status、is_archived 与全部能力开关一起收口，
 		// 与设置页手动归档的结果完全一致。
 		archived := true
-		_ = p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived})
+		if err := p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived}); err != nil && p.Logger != nil {
+			p.Logger.Warn("repository lifecycle state update failed",
+				"repo", repo.FullName, "action", env.Action, "error_code", "repo_state_update_failed", "error", err.Error())
+		}
 		repo.SyncStatus = store.SyncStatusArchived
 		repo.IsArchived = true
 	case "unarchived":
 		archived := false
-		_ = p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived})
+		if err := p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived}); err != nil && p.Logger != nil {
+			p.Logger.Warn("repository lifecycle state update failed",
+				"repo", repo.FullName, "action", env.Action, "error_code", "repo_state_update_failed", "error", err.Error())
+		}
 		repo.SyncStatus = store.SyncStatusActive
 		repo.IsArchived = false
 	case "deleted":
@@ -321,7 +331,10 @@ func (p *Processor) processRepositoryEvent(ctx context.Context, env envelope) (R
 	case "transferred":
 		// 转移后 App 可能失去访问权：GitHub 侧仓库仍存在，保留数据但暂停采集，
 		// 等待对账 404 兜底或后续事件恢复。
-		_ = p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable)
+		if err := p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable); err != nil && p.Logger != nil {
+			p.Logger.Warn("repository lifecycle state update failed",
+				"repo", repo.FullName, "action", env.Action, "error_code", "repo_state_update_failed", "error", err.Error())
+		}
 		repo.SyncStatus = store.SyncStatusUnavailable
 	case "privatized":
 		repo.IsPrivate = true

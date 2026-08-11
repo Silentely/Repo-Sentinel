@@ -20,6 +20,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// ErrAppNotConfigured GitHub App 未配置或不可用（App ID/私钥缺失）。
+// 定义为包级 sentinel：syncx 与 HTTP 层通过 errors.Is 统一判定，避免字符串错误漂移。
+var ErrAppNotConfigured = errors.New("github_app_not_configured")
+
 // AppClient 使用 GitHub App 私钥签发 JWT，并缓存 Installation Token。
 type AppClient struct {
 	AppID          int64
@@ -165,7 +169,7 @@ func ValidatePrivateKeyPEM(pemText string) error {
 // AppJWT 签发短时 App JWT（约 9 分钟）。
 func (c *AppClient) AppJWT() (string, error) {
 	if !c.Configured() {
-		return "", fmt.Errorf("github_app_not_configured")
+		return "", ErrAppNotConfigured
 	}
 	key, err := c.loadKey()
 	if err != nil {
