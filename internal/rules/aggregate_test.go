@@ -34,8 +34,8 @@ func TestRenderMergedMessageIncludesWindowEnd(t *testing.T) {
 	if !strings.Contains(body, "2026-08-08 12:34 UTC") {
 		t.Fatalf("合并正文应包含窗口结束时间，实际: %s", body)
 	}
-	if !strings.Contains(body, "（已合并）") {
-		t.Fatalf("标题应带已合并标记，实际: %s", body)
+	if !strings.Contains(body, "（已聚合）") {
+		t.Fatalf("标题应带已聚合标记，实际: %s", body)
 	}
 }
 

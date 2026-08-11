@@ -249,7 +249,9 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 // windowEnd 为合并窗口结束时刻，正文标注批次时间便于用户判断通知对应的窗口。
 func renderMergedMessage(repoName, category string, events []*store.Event, windowEnd time.Time) (string, string) {
 	categoryCN := categoryDisplayName(category)
-	title := fmt.Sprintf("📋 %s：%s × %d（已合并）", htmlpkg.EscapeString(repoName), htmlpkg.EscapeString(categoryCN), len(events))
+	// 「已聚合」而非「已合并」：避免与 PR 的「已合并」状态语义混淆
+	//（同一条通知里既可能包含已合并的 PR，也可能表示本通知是聚合产物）。
+	title := fmt.Sprintf("📋 %s：%s × %d（已聚合）", htmlpkg.EscapeString(repoName), htmlpkg.EscapeString(categoryCN), len(events))
 	var body strings.Builder
 	body.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
 	body.WriteString("────────────────\n")

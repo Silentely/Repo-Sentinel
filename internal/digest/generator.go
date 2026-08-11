@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
@@ -322,11 +323,6 @@ func (g *Generator) enqueue(
 	return nil
 }
 
-// buildDigestBody 保留兼容入口：每日摘要模板正文（「过去 24 小时」时段文案）。
-func buildDigestBody(title string, events []store.Event, generatedAt time.Time) string {
-	return buildReportBody(title, events, "过去 24 小时", nil, generatedAt)
-}
-
 // buildReportBody 构建分组格式的定期报告正文。
 // repoNames 为仓库 ID → full_name 映射（可为 nil）：预览行带仓库名便于多仓用户
 // 一眼区分事件归属；映射缺失时回退原格式（不带仓库前缀）。
@@ -339,7 +335,8 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 
 	if len(events) == 0 {
 		// 空事件文案带上周期（过去 24 小时/7 天/30 天），避免三类报告共用一句含糊的「期间」。
-		b.WriteString(fmt.Sprintf("🎉 %s无新事件\n", period))
+		// 用 📭 而非庆祝 emoji：无事发生不宜用庆祝语气。
+		b.WriteString(fmt.Sprintf("📭 %s无新事件\n", period))
 		appendReportFooter(&b, generatedAt)
 		return b.String()
 	}
@@ -363,7 +360,7 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 	}
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].count > sorted[j].count })
 	for _, g := range sorted {
-		b.WriteString(fmt.Sprintf("%s %s × %d\n", kindEmoji(g.kind), kindDisplayName(g.kind), g.count))
+		b.WriteString(fmt.Sprintf("%s %s × %d\n", kindEmoji(g.kind), store.KindDisplayName(g.kind), g.count))
 	}
 
 	// 最近 5 条事件预览（状态中文一眼可读，多仓用户靠仓库名区分归属）
@@ -452,61 +449,9 @@ func kindEmoji(kind string) string {
 	}
 }
 
-// kindDisplayName 返回事件类别的显示名（与前端标签一致）。
-func kindDisplayName(kind string) string {
-	switch kind {
-	case store.WorkItemKindIssue:
-		return "Issue"
-	case store.WorkItemKindPR:
-		return "PR"
-	case store.AlertKindDependabot:
-		return "Dependabot"
-	case store.AlertKindCodeScanning:
-		return "Code Scanning"
-	case store.AlertKindSecretScanning:
-		return "Secret Scanning"
-	case store.WorkflowRunKind:
-		return "Actions"
-	default:
-		return kind
-	}
-}
-
-// digestStatusLabel 摘要预览用的短状态文案，避免 raw action 难读。
+// digestStatusLabel 摘要预览用的短状态文案：直接复用 rules.EventStatusLabel，
+// 与实时通知（engine.go）的状态语义同源，避免第二套映射漂移；
+// 语义差异（报告预览不需要 emoji）由该函数收敛。
 func digestStatusLabel(ev store.Event) string {
-	switch ev.Kind {
-	case store.WorkItemKindIssue, store.WorkItemKindPR:
-		switch ev.Action {
-		case "opened":
-			return "已打开"
-		case "reopened":
-			return "重新打开"
-		case "closed":
-			return "已关闭"
-		case "merged":
-			return "已合并"
-		case "ready_for_review":
-			return "待审核"
-		}
-	case store.WorkflowRunKind:
-		if ev.Action == "recovered" {
-			return "已恢复"
-		}
-		return store.WorkflowConclusionLabel(ev.WorkflowConclusion)
-	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
-		switch ev.Action {
-		case "created", "opened", "reopened":
-			return "新告警"
-		case "fixed", "resolved":
-			return "已修复"
-		case "dismissed", "closed", "auto_dismissed":
-			return "已忽略"
-		default:
-			return "告警更新"
-		}
-	}
-	if ev.Action != "" {
-		return ev.Action
-	}
-	return "更新"
+	return rules.EventStatusLabel(&ev)
 }

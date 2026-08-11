@@ -195,7 +195,7 @@ func TestBuildDigestBody_WithEvents(t *testing.T) {
 		{Kind: store.AlertKindDependabot, Action: "opened", Title: "bump lodash"},
 		{Kind: "workflow_run", Action: "completed", Title: "CI"},
 	}
-	body := buildDigestBody("📊 每日摘要 2026-07-30", events, reportGeneratedAt)
+	body := buildReportBody("📊 每日摘要 2026-07-30", events, "过去 24 小时", nil, reportGeneratedAt)
 
 	if !strings.Contains(body, "共 5 条事件") {
 		t.Errorf("期望包含事件总数，实际: %s", body)
@@ -206,8 +206,8 @@ func TestBuildDigestBody_WithEvents(t *testing.T) {
 	if !strings.Contains(body, "PR × 1") {
 		t.Errorf("期望 PR × 1，实际: %s", body)
 	}
-	if !strings.Contains(body, "Dependabot × 1") {
-		t.Errorf("期望 Dependabot × 1，实际: %s", body)
+	if !strings.Contains(body, "Dependabot 依赖告警 × 1") {
+		t.Errorf("期望 Dependabot 依赖告警 × 1（复用 store.KindDisplayName），实际: %s", body)
 	}
 	if !strings.Contains(body, "#8") {
 		t.Errorf("期望包含 #8，实际: %s", body)
@@ -227,7 +227,7 @@ func TestBuildDigestBody_WithEvents(t *testing.T) {
 }
 
 func TestBuildDigestBody_Empty(t *testing.T) {
-	body := buildDigestBody("📊 每日摘要 2026-07-30", nil, reportGeneratedAt)
+	body := buildReportBody("📊 每日摘要 2026-07-30", nil, "过去 24 小时", nil, reportGeneratedAt)
 
 	if !strings.Contains(body, "无新事件") {
 		t.Errorf("期望无事件提示，实际: %s", body)
@@ -242,7 +242,7 @@ func TestBuildDigestBody_ManyEvents(t *testing.T) {
 	for i := range events {
 		events[i] = store.Event{Kind: store.WorkItemKindIssue, Action: "opened", Title: "test"}
 	}
-	body := buildDigestBody("test", events, reportGeneratedAt)
+	body := buildReportBody("test", events, "过去 24 小时", nil, reportGeneratedAt)
 
 	if !strings.Contains(body, "共 10 条事件") {
 		t.Errorf("期望包含总数，实际: %s", body)
@@ -260,7 +260,7 @@ func TestBuildDigestBody_SortedByCount(t *testing.T) {
 		{Kind: "workflow_run", Title: "c"},
 		{Kind: store.WorkItemKindIssue, Title: "d"},
 	}
-	body := buildDigestBody("test", events, reportGeneratedAt)
+	body := buildReportBody("test", events, "过去 24 小时", nil, reportGeneratedAt)
 
 	idxWorkflow := strings.Index(body, "Actions")
 	idxIssue := strings.Index(body, "Issue")
@@ -288,24 +288,8 @@ func TestKindEmoji(t *testing.T) {
 	}
 }
 
-func TestKindDisplayName(t *testing.T) {
-	cases := []struct {
-		kind, want string
-	}{
-		{store.WorkItemKindIssue, "Issue"},
-		{store.WorkItemKindPR, "PR"},
-		{store.AlertKindDependabot, "Dependabot"},
-		{store.AlertKindCodeScanning, "Code Scanning"},
-		{store.AlertKindSecretScanning, "Secret Scanning"},
-		{"workflow_run", "Actions"},
-		{"custom_kind", "custom_kind"},
-	}
-	for _, tc := range cases {
-		if got := kindDisplayName(tc.kind); got != tc.want {
-			t.Errorf("kind=%q: 期望 %s，实际 %s", tc.kind, tc.want, got)
-		}
-	}
-}
+// TestKindDisplayName 已由 internal/store/domain_test.go 守护（digest 直接复用
+// store.KindDisplayName，不再维护本地副本，避免两处映射漂移）。
 
 func TestRunOnce渠道关闭汇总时不投递(t *testing.T) {
 	data := openDigestStore(t)
@@ -666,7 +650,7 @@ func TestBuildReportBody_EscapesEventTitle(t *testing.T) {
 // buildReportBody 空事件文案应带上周期，避免日/周/月报共用含糊的「期间」。
 func TestBuildReportBody_EmptyUsesPeriod(t *testing.T) {
 	body := buildReportBody("📊 月度报告 2026-08", nil, "过去 30 天", nil, reportGeneratedAt)
-	if !strings.Contains(body, "🎉 过去 30 天无新事件") {
+	if !strings.Contains(body, "📭 过去 30 天无新事件") {
 		t.Fatalf("空事件文案应包含周期，实际: %s", body)
 	}
 }

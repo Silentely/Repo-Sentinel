@@ -122,6 +122,10 @@ func RepoAllowsKind(repo *Repository, kind string) bool {
 	return true
 }
 
+// GitHubViewLabel 通知正文与 Telegram inline keyboard 的 GitHub 跳转按钮文案。
+// 收敛到领域层单一来源：engine（HTML 链接）与 notify（inline button）共用，避免两处漂移。
+const GitHubViewLabel = "🔗 在 GitHub 中查看"
+
 // KindDisplayName 事件类型中文/友好名（推送正文与 AI 分诊输入用，避免 raw kind）。
 func KindDisplayName(kind string) string {
 	switch kind {
@@ -579,6 +583,9 @@ type StarredTrackerStore interface {
 	// Upsert 按 full_name 幂等写入：已存在则更新，否则创建。
 	Upsert(context.Context, StarredRepoTracker) error
 	GetByFullName(context.Context, string) (StarredRepoTracker, error)
+	// ListAll 返回全部追踪记录（不分状态），供 star 同步一次性建 full_name→tracker
+	// 映射，避免逐仓 GetByFullName 的 N+1 查询；limit 截断（配合追踪上限配置）。
+	ListAll(context.Context, int) ([]StarredRepoTracker, error)
 	// ListPollCandidates 返回 state=tracking 的候选，按 last_poll_at 升序（未轮询过优先），limit 截断。
 	ListPollCandidates(context.Context, int) ([]StarredRepoTracker, error)
 	// UpdatePollResult 推进 release 轮询结果（etag 与最新 release 信息），并更新 last_poll_at。
