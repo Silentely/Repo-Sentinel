@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
@@ -55,7 +56,9 @@ type StarredReleasePoller struct {
 	Engine *rules.Engine
 	Logger *slog.Logger
 
-	// lastStarSync / lastReleasePoll 内存记账：进程重启后零值立即触发首轮。
+	// mu 串行化 SyncStars/PollReleases：Scheduler 节拍与 HTTP「立即同步」可能并发触发，
+	// 无锁会导致 lastStarSync/lastReleasePoll 数据竞争与双重枚举/轮询。
+	mu              sync.Mutex
 	lastStarSync    time.Time
 	lastReleasePoll time.Time
 }
@@ -157,6 +160,8 @@ func NotifyPrerelease(ctx context.Context, s store.SettingsStore) bool {
 // 枚举用户公开 star → fork/archived 预过滤 → 新仓注册追踪并做首次基线探测；
 // 完整拉全分页后才执行 unstar 移除（中途限流不误删）。
 func (p *StarredReleasePoller) SyncStars(ctx context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	now := time.Now().UTC()
 	if p.Store == nil {
 		return nil
@@ -164,10 +169,11 @@ func (p *StarredReleasePoller) SyncStars(ctx context.Context) error {
 	if !p.lastStarSync.IsZero() && now.Sub(p.lastStarSync) < StarSyncInterval(ctx, p.Store.Settings()) {
 		return nil
 	}
-	p.lastStarSync = now
 
 	username := StarredUsername(ctx, p.Store.Settings())
 	if username == "" {
+		// 未配置：推进记账避免每 1m 空转，6h 后再检查。
+		p.lastStarSync = now
 		p.debug("star sync skipped", "reason", "username_not_set")
 		return nil
 	}
@@ -188,9 +194,12 @@ func (p *StarredReleasePoller) SyncStars(ctx context.Context) error {
 		items, link, _, err := client.ListUserStarred(ctx, username, page)
 		if err != nil {
 			if githubx.IsRateLimited(err) {
+				// 限流：推进记账避免刷屏，6h 后再试（限流窗口远小于此）。
+				p.lastStarSync = now
 				p.warn("star sync rate limited, stop round", "error_code", "rate_limited_round_stopped")
 				return nil
 			}
+			// 临时故障：不推进记账，下轮 Scheduler 节拍快速重试。
 			p.warn("star sync list failed", "page", page, "error_code", "star_sync_list_failed", "error", err.Error())
 			return err
 		}
@@ -210,6 +219,8 @@ func (p *StarredReleasePoller) SyncStars(ctx context.Context) error {
 	if full {
 		p.removeUnstarred(ctx, seen)
 	}
+	// 完整成功（含确定性跳过）后才推进记账：失败路径下轮立即重试。
+	p.lastStarSync = time.Now().UTC()
 	p.debug("star sync ok", "username", username, "seen", len(seen), "added", added)
 	return nil
 }
@@ -311,6 +322,8 @@ func (p *StarredReleasePoller) removeUnstarred(ctx context.Context, seen map[str
 // PollReleases 按周期自判执行：未到期直接返回。
 // 对 tracking 仓以 ETag 条件请求轮询最新 release；新 release 事件化（走通知管线）。
 func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	now := time.Now().UTC()
 	if p.Store == nil {
 		return nil
@@ -318,12 +331,14 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 	if !p.lastReleasePoll.IsZero() && now.Sub(p.lastReleasePoll) < ReleasePollInterval(ctx, p.Store.Settings()) {
 		return nil
 	}
-	p.lastReleasePoll = now
 
 	if p.GitHub == nil || !p.GitHub.Configured() {
+		// 未配置：推进记账避免每 1m 空转（重开后按周期自愈）。
+		p.lastReleasePoll = now
 		p.debug("release poll skipped", "reason", "app_not_configured")
 		return nil
 	}
+	// feature 关闭时不推进记账：重开后下个节拍立即恢复轮询。
 	if !store.LoadFeatureFlags(ctx, p.Store.Settings()).StarredReleases {
 		p.debug("release poll skipped", "reason", "feature_disabled")
 		return nil
@@ -332,6 +347,7 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// 无候选时不推进记账：新仓注册后下个节拍立即接管。
 	if len(candidates) == 0 {
 		p.debug("release poll skipped", "reason", "no_trackers")
 		return nil
@@ -339,6 +355,8 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 	notifyPrerelease := NotifyPrerelease(ctx, p.Store.Settings())
 	token := p.installationToken(ctx)
 	if token == "" {
+		// 令牌不可用（多为 App 未配置/无安装的确定性状态）：推进记账避免每 1m 刷屏。
+		p.lastReleasePoll = now
 		return nil // 原因已留痕
 	}
 	backfill := 0
@@ -352,6 +370,8 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 			var stErr *githubx.HTTPStatusError
 			switch {
 			case githubx.IsRateLimited(err):
+				// 限流：推进记账避免刷屏，下个周期再试。
+				p.lastReleasePoll = now
 				p.warn("release poll rate limited, stop round", "error_code", "rate_limited_round_stopped")
 				return nil
 			case errors.As(err, &stErr) && (stErr.StatusCode == http.StatusNotFound || stErr.StatusCode == http.StatusGone):
@@ -402,6 +422,8 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 		_ = p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, newEtag, rel.ID, rel.TagName, &published)
 		p.debug("release poll ok", "repo", tk.FullName, "tag", rel.TagName, "event_created", true)
 	}
+	// 完整轮询成功后才推进记账：失败/限流路径下轮节拍快速重试。
+	p.lastReleasePoll = time.Now().UTC()
 	return nil
 }
 

@@ -370,6 +370,30 @@ func TestStarredPollReleases_功能开关关闭(t *testing.T) {
 	}
 }
 
+// TestStarredPollReleases_并发安全 验证 Scheduler 节拍与 HTTP 立即同步并发触发时无竞态。
+func TestStarredPollReleases_并发安全(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	ctx := t.Context()
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = env.poller.SyncStars(ctx)
+			_ = env.poller.PollReleases(ctx)
+		}()
+	}
+	wg.Wait()
+	// 并发下不 panic、不产生重复事件（Upsert/幂等兜底）。
+	events := listReleaseEvents(t, env.data)
+	if len(events) != 0 {
+		t.Fatalf("基线并发不应建事件，got %d", len(events))
+	}
+}
+
 // TestStarredPollReleases_通知链路 验证新 release 事件经 rules.Engine 写入 Outbox（实时通知）。
 func TestStarredPollReleases_通知链路(t *testing.T) {
 	env := newStarredTestEnv(t, func(env *starredTestEnv) {
