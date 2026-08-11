@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { starTotalWithDelta, StarTrendChart } from "./star-trend-chart";
+import { starTotalWithDelta, starTrendYDomain, StarTrendChart } from "./star-trend-chart";
 
 const points = [
   { date: "2026-08-01", total: 10 },
@@ -17,6 +17,47 @@ describe("starTotalWithDelta", () => {
   it("增长/回落都带符号展示", () => {
     expect(starTotalWithDelta(15, 5)).toBe("15（较前日 +5）");
     expect(starTotalWithDelta(12, -3)).toBe("12（较前日 -3）");
+  });
+});
+
+describe("starTrendYDomain", () => {
+  it("大基数小波动：围绕数据外扩，不再从 0 起压平", () => {
+    expect(starTrendYDomain([
+      { date: "2026-08-01", total: 2995 },
+      { date: "2026-08-02", total: 3000 },
+    ])).toEqual([2975, 3020]);
+  });
+
+  it("波动只有个位数时收紧窗口，保证增长可见", () => {
+    expect(starTrendYDomain([
+      { date: "2026-08-01", total: 3000 },
+      { date: "2026-08-02", total: 3001 },
+    ])).toEqual([2980, 3021]);
+  });
+
+  it("大跨度历史（全部范围）保持整条曲线可见", () => {
+    expect(starTrendYDomain([
+      { date: "2025-01-01", total: 0 },
+      { date: "2026-08-01", total: 3000 },
+    ])).toEqual([0, 3100]);
+  });
+
+  it("下限不低于 0", () => {
+    expect(starTrendYDomain([
+      { date: "2026-08-01", total: 10 },
+      { date: "2026-08-02", total: 15 },
+    ])).toEqual([0, 35]);
+  });
+
+  it("波动超过 50 时贴近上下 100 的常规观感", () => {
+    expect(starTrendYDomain([
+      { date: "2026-08-01", total: 2900 },
+      { date: "2026-08-02", total: 3000 },
+    ])).toEqual([2800, 3100]);
+  });
+
+  it("空数据返回安全兜底区间", () => {
+    expect(starTrendYDomain([])).toEqual([0, 100]);
   });
 });
 

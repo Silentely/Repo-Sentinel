@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -69,24 +69,6 @@ function renderPage() {
 }
 
 describe("关于页", () => {
-  it("Git SHA 可一键复制，复制后反馈状态", async () => {
-    const writeText = vi.fn(async () => undefined);
-    // jsdom 的 navigator.clipboard 会随 user-event 交互被重置：用 defineProperty 注入
-    // 一次性 mock，并以 fireEvent 触发（fireEvent 不触碰 navigator）。
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText },
-      configurable: true,
-    });
-    renderPage();
-
-    const build = screen.getByRole("region", { name: "构建与运行" });
-    await within(build).findByText("abc1234");
-    fireEvent.click(within(build).getByRole("button", { name: "复制 Git SHA" }));
-
-    expect(writeText).toHaveBeenCalledWith("abc1234");
-    expect(await within(build).findByText("已复制")).toBeInTheDocument();
-  });
-
   it("展示产品介绍、构建信息与运维提示区块", async () => {
     renderPage();
 
@@ -97,10 +79,12 @@ describe("关于页", () => {
     expect(within(product).getByText("常见问题")).toBeInTheDocument();
     expect(within(product).getByRole("link", { name: "打开设置" })).toHaveAttribute("href", "/settings");
 
-    // 构建与运行区块：版本字段落定展示。
+    // 构建与运行区块：版本字段落定展示；Git SHA 直接展示（无复制按钮）；构建时间为绝对日期。
     const build = screen.getByRole("region", { name: "构建与运行" });
     expect(await within(build).findByText("0.3.8")).toBeInTheDocument();
     expect(within(build).getByText("abc1234")).toBeInTheDocument();
+    expect(within(build).queryByRole("button", { name: "复制 Git SHA" })).toBeNull();
+    expect(within(build).getByText(new Date("2026-08-08T04:48:10Z").toLocaleString("zh-CN"))).toBeInTheDocument();
     expect(within(build).getByText("sqlite")).toBeInTheDocument();
 
     // 运维提示区块。

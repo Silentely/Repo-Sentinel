@@ -22,6 +22,26 @@ export function starTotalWithDelta(value: number, delta: number | null): string 
   return `${value}（较前日 ${delta >= 0 ? "+" : ""}${delta}）`;
 }
 
+/**
+ * Y 轴范围：围绕数据上下界外扩 padding（下限不低于 0），
+ * 让大基数（如数千 Star）下的个位增长在图中可见，而非从 0 起被压平。
+ * padding 取「波动幅度的 2 倍」并夹在 [20, 100]：波动大时贴近「上下 100」的
+ * 常规观感，波动只有个位数时自动收紧窗口，避免增长线仍被压成一条直线；
+ * 空数据返回安全兜底区间（图表此时不渲染，仅保证调用不越界）。
+ */
+export function starTrendYDomain(points: StarTrendPoint[]): [number, number] {
+  if (points.length === 0) return [0, 100];
+  let min = Infinity;
+  let max = -Infinity;
+  for (const p of points) {
+    if (p.total < min) min = p.total;
+    if (p.total > max) max = p.total;
+  }
+  const spread = max - min;
+  const pad = Math.max(20, Math.min(100, spread * 2));
+  return [Math.max(0, min - pad), max + pad];
+}
+
 export function StarTrendChart({
   points,
   days,
@@ -34,6 +54,7 @@ export function StarTrendChart({
   loading: boolean;
 }) {
   const current = points.length > 0 ? points[points.length - 1]?.total : undefined;
+  const yDomain = starTrendYDomain(points);
   return (
     <div className="star-trend" data-testid="star-trend">
       <div className="star-trend__head">
@@ -88,6 +109,7 @@ export function StarTrendChart({
               tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
               stroke="var(--border-subtle)"
               allowDecimals={false}
+              domain={yDomain}
             />
             <Tooltip
               // 深色主题下 recharts 默认白底/黑字刺眼：跟随设计令牌渲染。
