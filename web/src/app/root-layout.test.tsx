@@ -182,6 +182,7 @@ describe("移动端顶栏标题 mobileTitleFor", () => {
       ["/notifications", "渠道配置"],
       ["/notifications/outbox", "投递记录"],
       ["/github", "GitHub App"],
+      ["/starred-releases", "Star Release"],
       ["/about", "关于"],
       ["/settings", "设置"],
     ];

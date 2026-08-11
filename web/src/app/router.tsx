@@ -33,6 +33,7 @@ const SecurityPage = lazyRouteComponent(() => import("../features/monitor/list-p
 const GitHubPage = lazyRouteComponent(() => import("../features/monitor/github-page"), "GitHubPage");
 const AboutPage = lazyRouteComponent(() => import("../features/monitor/about-page"), "AboutPage");
 const SettingsPage = lazyRouteComponent(() => import("../features/monitor/settings-page"), "SettingsPage");
+const StarredReleasesPage = lazyRouteComponent(() => import("../features/monitor/starred-releases-page"), "StarredReleasesPage");
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -126,6 +127,12 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 });
 
+const starredReleasesRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/starred-releases",
+  component: StarredReleasesPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
@@ -141,6 +148,7 @@ const routeTree = rootRoute.addChildren([
     githubRoute,
     aboutRoute,
     settingsRoute,
+    starredReleasesRoute,
   ]),
 ]);
 

@@ -54,7 +54,7 @@ function configBody(form: FormState, cfg: StarredReleasesConfig | undefined): St
   return body;
 }
 
-export function StarredReleasesSection() {
+export function StarredReleasesPage() {
   const queryClient = useQueryClient();
   const config = useQuery(starredReleasesConfigQueryOptions);
   const [form, setForm] = useState<FormState>(() => formFromConfig(undefined));
@@ -124,93 +124,103 @@ export function StarredReleasesSection() {
   const pageCount = Math.max(1, Math.ceil(total / perPage));
 
   return (
-    <section className="onboarding-card channel-form" aria-labelledby="settings-starred-releases-title">
-      <h2 id="settings-starred-releases-title">Star Release 追踪</h2>
-      <p className="field-hint">
-        填写 GitHub 用户名后，匿名枚举其公开 star 仓库（自动排除 fork 与已归档），并定期轮询各仓最新
-        Release——新版本发布即实时通知（含 AI 中文总结，可关）。release 轮询用 ETag 条件请求，304 不计限流。
-        部署在网络受限环境时设置 <code>HTTPS_PROXY</code> 即可（客户端默认走系统代理）。
-      </p>
-      {msg ? <p className="success-banner" role="status">{msg}</p> : null}
-      {error ? <ErrorAlert title="Star Release 追踪操作失败" message={error} /> : null}
-      {config.isError ? <ErrorAlert title="无法加载配置" message={toApiError(config.error).message} errorCode={toApiError(config.error).errorCode} /> : null}
+    <>
+      <section className="page-intro">
+        <div>
+          <p className="eyebrow">追踪</p>
+          <h1>Star Release</h1>
+          <p>追踪你 star 的公开仓库：新版本发布实时通知，可配 AI 中文总结。</p>
+        </div>
+      </section>
 
-      <label className="check-row">
-        <input type="checkbox" checked={form.enabled} onChange={(e) => set("enabled", e.target.checked)} />
-        <span>启用 Star Release 追踪</span>
-      </label>
-
-      <div className="form-grid">
-        <label className="field--plain">
-          <span>GitHub 用户名</span>
-          <input value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="octocat（可粘贴 github.com/xxx 链接）" />
-        </label>
-        <label className="field--plain">
-          <span>Star 列表同步周期</span>
-          <input value={form.starSyncInterval} onChange={(e) => set("starSyncInterval", e.target.value)} placeholder="6h0m0s" />
-        </label>
-        <label className="field--plain">
-          <span>Release 轮询周期</span>
-          <input value={form.releasePollInterval} onChange={(e) => set("releasePollInterval", e.target.value)} placeholder="10m0s" />
-        </label>
-        <label className="field--plain">
-          <span>追踪上限</span>
-          <input type="number" min={1} max={10000} value={form.maxTrackers} onChange={(e) => set("maxTrackers", Math.min(10000, Math.max(1, Number(e.target.value) || 1)))} />
-        </label>
-      </div>
-      <p className="field-hint">周期使用 Go duration 格式（如 6h、10m、24h）。Star 行为低频，同步周期可放宽；Release 轮询周期决定通知延迟。</p>
-      <label className="check-row">
-        <input type="checkbox" checked={form.notifyPrerelease} onChange={(e) => set("notifyPrerelease", e.target.checked)} />
-        <span>通知预发布版本（默认不通知，正式版发布时仍会通知）</span>
-      </label>
-      <div className="channel-form__buttons">
-        <button className="primary-button primary-button--inline" type="button" disabled={saveMut.isPending || config.isLoading || config.isError} onClick={submitConfig}>
-          {saveMut.isPending ? "保存中…" : "保存配置"}
-        </button>
-        <button className="secondary-button" type="button" disabled={syncMut.isPending || config.isError} aria-busy={syncMut.isPending} onClick={() => syncMut.mutate()}>
-          {syncMut.isPending ? "同步中…" : "立即同步 Star 列表"}
-        </button>
-      </div>
-
-      {counts ? (
-        <p className="field-hint" role="status">
-          状态概览：追踪中 {counts.tracking ?? 0} ｜ 无 Release {counts.inactive ?? 0} ｜ 已停用 {counts.disabled ?? 0} ｜ 不可用 {counts.unavailable ?? 0}
+      <section className="onboarding-card channel-form" aria-labelledby="starred-releases-title">
+        <h2 id="starred-releases-title">Star Release 追踪</h2>
+        <p className="field-hint">
+          填写 GitHub 用户名后，匿名枚举其公开 star 仓库（自动排除 fork 与已归档），并定期轮询各仓最新
+          Release——新版本发布即实时通知（含 AI 中文总结，可在「设置」→「AI 集成」关闭）。release 轮询用
+          ETag 条件请求，304 不计限流。部署在网络受限环境时设置 <code>HTTPS_PROXY</code> 即可（客户端默认走系统代理）。
         </p>
-      ) : null}
+        {msg ? <p className="success-banner" role="status">{msg}</p> : null}
+        {error ? <ErrorAlert title="Star Release 追踪操作失败" message={error} /> : null}
+        {config.isError ? <ErrorAlert title="无法加载配置" message={toApiError(config.error).message} errorCode={toApiError(config.error).errorCode} /> : null}
 
-      <div className="channel-form__header">
-        <h3>追踪列表</h3>
-        <select value={stateFilter} onChange={(e) => { setStateFilter(e.target.value); setPage(1); }} aria-label="按状态筛选">
-          <option value="">全部状态</option>
-          <option value="tracking">追踪中</option>
-          <option value="inactive">无 Release</option>
-          <option value="disabled">已停用</option>
-          <option value="unavailable">不可用</option>
-        </select>
-      </div>
-      {trackers.isError ? <ErrorAlert title="无法加载追踪列表" message={toApiError(trackers.error).message} errorCode={toApiError(trackers.error).errorCode} /> : null}
-      {items.length === 0 ? (
-        <p className="field-hint">暂无追踪记录。保存用户名并点击「立即同步」后，star 仓库会出现在这里。</p>
-      ) : (
-        <ul className="plain-list" aria-label="Star Release 追踪列表">
-          {items.map((it) => (
-            <TrackerRow key={it.id} item={it} busy={setStateMut.isPending} onToggle={(state) => setStateMut.mutate({ id: it.id, state })} />
-          ))}
-        </ul>
-      )}
-      {total > perPage ? (
-        <div className="pager-row">
-          <button className="quiet-button quiet-button--compact" type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            上一页
+        <label className="check-row">
+          <input type="checkbox" checked={form.enabled} onChange={(e) => set("enabled", e.target.checked)} />
+          <span>启用 Star Release 追踪</span>
+        </label>
+
+        <div className="form-grid">
+          <label className="field--plain">
+            <span>GitHub 用户名</span>
+            <input value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="octocat（可粘贴 github.com/xxx 链接）" />
+          </label>
+          <label className="field--plain">
+            <span>Star 列表同步周期</span>
+            <input value={form.starSyncInterval} onChange={(e) => set("starSyncInterval", e.target.value)} placeholder="6h0m0s" />
+          </label>
+          <label className="field--plain">
+            <span>Release 轮询周期</span>
+            <input value={form.releasePollInterval} onChange={(e) => set("releasePollInterval", e.target.value)} placeholder="10m0s" />
+          </label>
+          <label className="field--plain">
+            <span>追踪上限</span>
+            <input type="number" min={1} max={10000} value={form.maxTrackers} onChange={(e) => set("maxTrackers", Math.min(10000, Math.max(1, Number(e.target.value) || 1)))} />
+          </label>
+        </div>
+        <p className="field-hint">周期使用 Go duration 格式（如 6h、10m、24h）。Star 行为低频，同步周期可放宽；Release 轮询周期决定通知延迟。</p>
+        <label className="check-row">
+          <input type="checkbox" checked={form.notifyPrerelease} onChange={(e) => set("notifyPrerelease", e.target.checked)} />
+          <span>通知预发布版本（默认不通知，正式版发布时仍会通知）</span>
+        </label>
+        <div className="channel-form__buttons">
+          <button className="primary-button primary-button--inline" type="button" disabled={saveMut.isPending || config.isLoading || config.isError} onClick={submitConfig}>
+            {saveMut.isPending ? "保存中…" : "保存配置"}
           </button>
-          <span>第 {page} / {pageCount} 页（共 {total} 条）</span>
-          <button className="quiet-button quiet-button--compact" type="button" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>
-            下一页
+          <button className="secondary-button" type="button" disabled={syncMut.isPending || config.isError} aria-busy={syncMut.isPending} onClick={() => syncMut.mutate()}>
+            {syncMut.isPending ? "同步中…" : "立即同步 Star 列表"}
           </button>
         </div>
-      ) : null}
-      {saveMut.isError ? <ErrorAlert title="保存失败" message={toApiError(saveMut.error).message} errorCode={toApiError(saveMut.error).errorCode} /> : null}
-    </section>
+
+        {counts ? (
+          <p className="field-hint" role="status">
+            状态概览：追踪中 {counts.tracking ?? 0} ｜ 无 Release {counts.inactive ?? 0} ｜ 已停用 {counts.disabled ?? 0} ｜ 不可用 {counts.unavailable ?? 0}
+          </p>
+        ) : null}
+
+        <div className="channel-form__header">
+          <h3>追踪列表</h3>
+          <select value={stateFilter} onChange={(e) => { setStateFilter(e.target.value); setPage(1); }} aria-label="按状态筛选">
+            <option value="">全部状态</option>
+            <option value="tracking">追踪中</option>
+            <option value="inactive">无 Release</option>
+            <option value="disabled">已停用</option>
+            <option value="unavailable">不可用</option>
+          </select>
+        </div>
+        {trackers.isError ? <ErrorAlert title="无法加载追踪列表" message={toApiError(trackers.error).message} errorCode={toApiError(trackers.error).errorCode} /> : null}
+        {items.length === 0 ? (
+          <p className="field-hint">暂无追踪记录。保存用户名并点击「立即同步」后，star 仓库会出现在这里。</p>
+        ) : (
+          <ul className="plain-list" aria-label="Star Release 追踪列表">
+            {items.map((it) => (
+              <TrackerRow key={it.id} item={it} busy={setStateMut.isPending} onToggle={(state) => setStateMut.mutate({ id: it.id, state })} />
+            ))}
+          </ul>
+        )}
+        {total > perPage ? (
+          <div className="pager-row">
+            <button className="quiet-button quiet-button--compact" type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              上一页
+            </button>
+            <span>第 {page} / {pageCount} 页（共 {total} 条）</span>
+            <button className="quiet-button quiet-button--compact" type="button" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>
+              下一页
+            </button>
+          </div>
+        ) : null}
+        {saveMut.isError ? <ErrorAlert title="保存失败" message={toApiError(saveMut.error).message} errorCode={toApiError(saveMut.error).errorCode} /> : null}
+      </section>
+    </>
   );
 }
 

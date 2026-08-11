@@ -8,6 +8,7 @@ import {
   ListTodo,
   LogOut,
   Menu,
+  Rocket,
   Send,
   Settings,
   Shield,
@@ -43,6 +44,7 @@ export function mobileTitleFor(pathname: string): string {
   if (pathname.startsWith("/actions")) return "Actions";
   if (pathname.startsWith("/security")) return "安全告警";
   if (pathname.startsWith("/github")) return "GitHub App";
+  if (pathname.startsWith("/starred-releases")) return "Star Release";
   if (pathname.startsWith("/about")) return "关于";
   if (pathname.startsWith("/settings")) return "设置";
   return "仪表盘";
@@ -145,6 +147,7 @@ export function RootLayout({ session }: RootLayoutProps) {
   const featurePRs = settings.data?.["feature.pull_requests"] !== false;
   const featureActions = settings.data?.["feature.actions"] !== false;
   const featureAlerts = settings.data?.["feature.security_alerts"] !== false;
+  const featureStarredReleases = settings.data?.["feature.starred_releases"] !== false;
 
   // 侧边栏徽章数据
   const stats = dashboard.data;
@@ -237,6 +240,15 @@ export function RootLayout({ session }: RootLayoutProps) {
             <span>投递记录</span>
             {outboxDead > 0 && <span className="nav-badge nav-badge--warning">{outboxDead}</span>}
           </Link>
+          {featureStarredReleases ? (
+            <>
+              <span className="app-nav__label">追踪</span>
+              <Link to="/starred-releases" activeProps={{ "aria-current": "page" }}>
+                <Rocket aria-hidden="true" size={17} />
+                <span>Star Release</span>
+              </Link>
+            </>
+          ) : null}
           <span className="app-nav__label">系统</span>
           <Link to="/github" activeProps={{ "aria-current": "page" }}>
             <FolderGit2 aria-hidden="true" size={17} />

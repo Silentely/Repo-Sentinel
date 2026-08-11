@@ -7,7 +7,6 @@ import { CollapsiblePanel } from "../../components/collapsible-panel";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
-import { StarredReleasesSection } from "./starred-releases-section";
 import { changePassword } from "../auth/api";
 import { toApiError } from "../../lib/api/errors";
 import { useAutoDismiss } from "../../lib/use-auto-dismiss";
@@ -558,8 +557,6 @@ export function SettingsPage() {
         ) : null}
         {saveAIConfigMut.isError ? <ErrorAlert title="保存失败" message={toApiError(saveAIConfigMut.error).message} errorCode={toApiError(saveAIConfigMut.error).errorCode} /> : null}
       </section>
-
-      <StarredReleasesSection />
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-password-title">
         <h2 id="settings-password-title">修改管理员密码</h2>
