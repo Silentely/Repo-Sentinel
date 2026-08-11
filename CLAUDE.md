@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-11T12:00:00Z | ①前端状态卡死修复：仓库彻底删除失败补 onSettled/onError（不再卡「删除中」）、Star 追踪行 busy 改为父级 mutation 判定、设置页表单仅首次加载回填（跨区块保存不再静默覆盖未保存编辑）；②可访问性：IgnoreToggle 补 aria-pressed、移动端/投递详情抽屉补焦点循环与模态语义、移动端主题下拉从 Tab 序移除、补 state-action_required/skipped 与 kind-release/star/watch 徽章；③通知文案收敛：digest 复用 store.KindDisplayName 与 rules.EventStatusLabel（消除映射漂移）、聚合标题「（已合并）」改「（已聚合）」、空摘要 🎉 改 📭、updatecheck 补句号；④日志留痕：webhook MarkProcessed/仓库生命周期/star 游标吞错补 Warn/Debug、投递失败日志补 error_code、AI 日志 URL 打码防内嵌凭据泄漏；⑤性能：star 同步与 outbox 投递渠道查询去 N+1、webhook 单条处理加 60s 超时、StarTrendChart memo、dead 总数查询条件化；⑥体验：仪表盘/outbox 重试失败反馈、outbox/star 追踪筛选同步 URL、复制反馈抽 useCopyFeedback、toApiError 重复解析收敛为 ApiErrorAlert；⑦错误处理：github_app_not_configured 统一 sentinel、MCP 错误不透出内部细节、updatecheck 未分类错误统一文案、unknown_channel 等确定性错误直判死信、Store 未装配返回 service_unavailable 语义码；⑧代码质量：rules 展示映射收敛到 display.go、GitHub 查看按钮文案抽常量、buildDigestBody 清理、Retry-After 硬编码抽常量、清除筛选按钮抽组件、筛选选中态两套样式统一、state 徽章令牌化（含深色档）、主题色改为运行时读设计令牌 |
 | 2026-08-11T00:00:00Z | ①Star 增长曲线 Y 轴自适应缩放：不再从 0 起，围绕数据波动范围外扩（波动大贴近上下 100、个位波动自动收紧窗口），大基数下个位增长可见；②关于页移除 Git SHA 复制按钮（直接展示文本）、构建时间恢复绝对日期显示（不再显示「X 天前」） |
 | 2026-08-10T13:00:00Z | Star 仓库 Release 追踪与通知：设置页填 GitHub 用户名匿名枚举公开 star 仓库（自动过滤 fork/archived、无 Release 仓 7 天复查），复用 GitHub App installation token + ETag 条件请求轮询各仓最新 Release，新版本实时通知并附 AI 中文总结（英文 notes 翻译摘要，失败原文链接兜底）；新增 release 事件类型与 `feature.starred_releases` 三层开关、双周期可配置（Star 同步 6h / Release 轮询 10m）、500 追踪上限、unstar 自动停用；代理经 `HTTPS_PROXY` 环境变量天然支持 |
 | 2026-08-09T18:00:00Z | 第九轮（81-90）：①列表底部回到顶部；②对账/外部轮询单仓成功 Debug 留痕；③登录成功日志补 UA；④⑤⑥筛选按钮 aria-pressed（列表/outbox/仓库归档）；⑦仓库生命周期事件 Info 留痕；⑧JSON 413 响应带说明；⑨dashboard 错误码 hover 中文说明；⑩dashboard 事件打开 title |
@@ -225,6 +226,11 @@ make verify                   # fmt + test + vet + build + test-frontend
 - 描述使用简体中文
 - 禁止出现 `Co-Authored-By: Claude` 等 AI 生成标识
 - 一个提交解决一个问题，不做无关改动
+
+## 文档与提交措辞（强制）
+
+- 变更记录（本文件变更记录表、`CHANGELOG.md`、`docs/`）与提交信息中，禁止出现「打磨」「全项目」「迭代」「第 X 轮 / N 轮」「批次」等描述执行过程或轮次的字眼。
+- 变更记录只直述改动内容、原因与影响，不描述「做了几轮、怎么打磨」等过程信息；提交描述同理。
 
 ## 数据库迁移（重要）
 
