@@ -146,9 +146,9 @@ func (s *server) handlePutStarredReleasesConfig(w http.ResponseWriter, r *http.R
 			return
 		}
 	}
-	// 用户名变更即时生效，不必等 star 同步周期。
+	// 用户名变更即时生效：强制立即同步，不受定时周期拦截。
 	if usernameChanged && s.dependencies.StarredPoller != nil {
-		if err := s.dependencies.StarredPoller.SyncStars(ctx); err != nil {
+		if err := s.dependencies.StarredPoller.SyncStarsNow(ctx); err != nil {
 			s.dependencies.Logger.Warn("starred releases sync after config failed", "error_code", "star_sync_failed", "error", err.Error())
 		}
 	}
@@ -165,7 +165,8 @@ func (s *server) handleSyncStarredReleases(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusOK, map[string]any{"started": false})
 		return
 	}
-	if err := s.dependencies.StarredPoller.SyncStars(r.Context()); err != nil {
+	// 强制立即同步：手动操作必须绕开定时周期自判。
+	if err := s.dependencies.StarredPoller.SyncStarsNow(r.Context()); err != nil {
 		s.writeMappedError(w, r, err)
 		return
 	}

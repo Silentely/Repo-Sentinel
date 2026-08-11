@@ -215,6 +215,37 @@ func TestStarredSyncStars_unstar停用(t *testing.T) {
 	}
 }
 
+// TestStarredSyncStarsNow_绕过周期 验证 HTTP「立即同步」不受定时周期自判拦截。
+func TestStarredSyncStarsNow_绕过周期(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	ctx := t.Context()
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// 用户 star 了新仓；周期未到（lastStarSync 刚设）→ 常规 SyncStars 应被静默拦截。
+	env.mu.Lock()
+	env.starred[1] = append(env.starred[1], map[string]any{"full_name": "acme/newrepo", "fork": false, "archived": false})
+	env.releases["acme/newrepo"] = []map[string]any{releaseMap(7, "v0.1", false)}
+	env.mu.Unlock()
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.data.StarredTrackers().GetByFullName(ctx, "acme/newrepo"); err != store.ErrNotFound {
+		t.Fatalf("周期内常规 SyncStars 应被拦截（不注册新仓）: %v", err)
+	}
+	// 立即同步（SyncStarsNow）应绕过周期强制执行。
+	if err := env.poller.SyncStarsNow(ctx); err != nil {
+		t.Fatal(err)
+	}
+	tk, err := env.data.StarredTrackers().GetByFullName(ctx, "acme/newrepo")
+	if err != nil || tk.State != store.TrackerStateTracking {
+		t.Fatalf("SyncStarsNow 应绕过周期注册新仓: %+v %v", tk, err)
+	}
+}
+
 // TestStarredPollReleases_新release事件与幂等 覆盖事件创建、游标推进与重复轮询幂等。
 func TestStarredPollReleases_新release事件与幂等(t *testing.T) {
 	env := newStarredTestEnv(t, func(env *starredTestEnv) {

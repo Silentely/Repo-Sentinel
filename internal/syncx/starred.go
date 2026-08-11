@@ -156,7 +156,7 @@ func NotifyPrerelease(ctx context.Context, s store.SettingsStore) bool {
 
 // ---- star 列表同步 ----
 
-// SyncStars 按周期自判执行：未到期直接返回。
+// SyncStars 按周期自判执行：未到期直接返回（供 Scheduler 节拍调用）。
 // 枚举用户公开 star → fork/archived 预过滤 → 新仓注册追踪并做首次基线探测；
 // 完整拉全分页后才执行 unstar 移除（中途限流不误删）。
 func (p *StarredReleasePoller) SyncStars(ctx context.Context) error {
@@ -169,7 +169,24 @@ func (p *StarredReleasePoller) SyncStars(ctx context.Context) error {
 	if !p.lastStarSync.IsZero() && now.Sub(p.lastStarSync) < StarSyncInterval(ctx, p.Store.Settings()) {
 		return nil
 	}
+	return p.syncStarsLocked(ctx)
+}
 
+// SyncStarsNow 强制立即执行一轮 star 同步（绕过周期自判），
+// 供 HTTP「立即同步」与保存用户名触发：手动操作必须立即可见，不能被定时周期拦住。
+func (p *StarredReleasePoller) SyncStarsNow(ctx context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.Store == nil {
+		return nil
+	}
+	return p.syncStarsLocked(ctx)
+}
+
+// syncStarsLocked 执行 star 枚举与注册（须在持锁下调用）；末尾按结果推进 lastStarSync：
+// 成功/确定性跳过推进（避免空转与刷屏），临时失败不推进（下轮节拍快速重试）。
+func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
+	now := time.Now().UTC()
 	username := StarredUsername(ctx, p.Store.Settings())
 	if username == "" {
 		// 未配置：推进记账避免每 1m 空转，6h 后再检查。
