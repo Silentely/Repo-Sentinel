@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink } from "lucide-react";
 
 import { ErrorAlert } from "../../components/error-alert";
 import { toApiError } from "../../lib/api/errors";
@@ -228,36 +229,58 @@ function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: 
   const [busyId, setBusyId] = useState<string | null>(null);
   const isBusy = busyId === item.id;
   const published = item.last_release_published_at ? new Date(item.last_release_published_at).toLocaleString() : "—";
+  const url = releaseURL(item.full_name, item.last_release_tag);
   return (
     <li className="tracker-row">
       <span className="tracker-row__main">
-        <code>{item.full_name}</code>
+        <a className="tracker-row__name" href={url} target="_blank" rel="noreferrer" title="查看该仓库的 Release">
+          <code>{item.full_name}</code>
+        </a>
         <span className="tracker-row__meta">
           {TRACKER_STATE_LABELS[item.state] ?? item.state}
           {item.last_release_tag ? ` ｜ 最新 ${item.last_release_tag}` : ""} ｜ {published}
         </span>
       </span>
-      {item.state === "tracking" || item.state === "inactive" || item.state === "unavailable" ? (
-        <button
-          className="quiet-button quiet-button--compact"
-          type="button"
-          disabled={busy}
-          aria-busy={isBusy}
-          onClick={() => { setBusyId(item.id); onToggle("disabled"); }}
+      <span className="tracker-row__actions">
+        <a
+          className="quiet-button quiet-button--compact tracker-row__link"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="查看最新 Release"
+          title={item.last_release_tag ? `查看 ${item.last_release_tag}` : "查看 Releases"}
         >
-          停用
-        </button>
-      ) : (
-        <button
-          className="quiet-button quiet-button--compact"
-          type="button"
-          disabled={busy}
-          aria-busy={isBusy}
-          onClick={() => { setBusyId(item.id); onToggle("tracking"); }}
-        >
-          恢复
-        </button>
-      )}
+          <ExternalLink aria-hidden="true" size={13} />
+        </a>
+        {item.state === "tracking" || item.state === "inactive" || item.state === "unavailable" ? (
+          <button
+            className="quiet-button quiet-button--compact"
+            type="button"
+            disabled={busy}
+            aria-busy={isBusy}
+            onClick={() => { setBusyId(item.id); onToggle("disabled"); }}
+          >
+            停用
+          </button>
+        ) : (
+          <button
+            className="quiet-button quiet-button--compact"
+            type="button"
+            disabled={busy}
+            aria-busy={isBusy}
+            onClick={() => { setBusyId(item.id); onToggle("tracking"); }}
+          >
+            恢复
+          </button>
+        )}
+      </span>
     </li>
   );
+}
+
+// releaseURL 由 full_name 与最新 tag 拼 GitHub Release 跳转链接；无 tag（从未发布）时指向仓库 Releases 页。
+export function releaseURL(fullName: string, tag: string | undefined): string {
+  const parts = fullName.split("/");
+  const base = parts.length === 2 ? `https://github.com/${parts[0]}/${parts[1]}/releases` : `https://github.com/${fullName}/releases`;
+  return tag ? `${base}/tag/${encodeURIComponent(tag)}` : base;
 }

@@ -2980,6 +2980,32 @@ a.status-item--link:focus-visible {
   color: var(--text-primary);
 }
 
+.tracker-row__name {
+  color: var(--text-primary);
+  text-decoration: none;
+  width: fit-content;
+}
+
+.tracker-row__name:hover code,
+.tracker-row__name:focus-visible code {
+  text-decoration: underline;
+  color: var(--accent);
+}
+
+.tracker-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.tracker-row__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.25rem 0.4rem;
+}
+
 .tracker-row__meta {
   font-size: 0.72rem;
   color: var(--text-muted);
