@@ -310,7 +310,7 @@ describe("仪表盘", () => {
   it("Star 增长面板默认渲染，空数据展示空态文案", async () => {
     renderPage();
 
-    const starsPanel = await screen.findByRole("region", { name: "⭐ Star 增长" });
+    const starsPanel = await screen.findByRole("region", { name: "Star 增长" });
     await within(starsPanel).findByText(/暂无 star 数据/);
   });
 
@@ -320,7 +320,7 @@ describe("仪表盘", () => {
 
     // 面板初始随「默认全开」短暂渲染，settings 查询落定后应移除。
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: "⭐ Star 增长" })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Star 增长" })).toBeNull();
     });
   });
 });
