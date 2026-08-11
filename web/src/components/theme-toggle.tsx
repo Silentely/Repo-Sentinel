@@ -5,9 +5,14 @@ export type ThemeMode = "light" | "dark" | "system";
 
 const themeStorageKey = "reposentinel-theme";
 
-// 与 index.html 内联预置脚本保持一致；色值取自 tokens.css 的 --bg-canvas。
-const lightThemeColor = "#efe9df";
-const darkThemeColor = "#1e1510";
+// 主题背景色：运行时从设计令牌（tokens.css 的 --bg-canvas）读取，令牌即单一来源；
+// CSS 未就绪（首帧脚本阶段/测试环境）时回退到与令牌等价的 hex。
+// index.html 与 public/theme-init.js 的首帧预置仍内联 hex（CSS 解析前无法读取变量）。
+function canvasColor(dark: boolean): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue("--bg-canvas").trim();
+  if (value) return value;
+  return dark ? "#1e1510" : "#efe9df";
+}
 
 export function ThemeToggle() {
   const [mode, setMode] = useState<ThemeMode>(readStoredTheme);
@@ -21,7 +26,7 @@ export function ThemeToggle() {
       // 切换主题后同步更新浏览器 UI 颜色；首帧取值由 public/theme-init.js 负责。
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) {
-        meta.setAttribute("content", dark ? darkThemeColor : lightThemeColor);
+        meta.setAttribute("content", canvasColor(dark));
       }
     };
     apply();

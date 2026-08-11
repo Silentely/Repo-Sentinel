@@ -1,6 +1,8 @@
 import { AlertCircle } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { toApiError } from "../lib/api/errors";
+
 export interface ErrorAlertProps {
   title: string;
   message: string;
@@ -20,4 +22,13 @@ export function ErrorAlert({ title, message, errorCode, action }: ErrorAlertProp
       </div>
     </div>
   );
+}
+
+/**
+ * 从查询/变更错误对象直接渲染错误条：内部只调用一次 toApiError，
+ * 避免各处重复 `toApiError(err).message / .errorCode` 的双重解析。
+ */
+export function ApiErrorAlert({ error, title, action }: { error: unknown; title: string; action?: ReactNode }) {
+  const apiError = toApiError(error);
+  return <ErrorAlert title={title} message={apiError.message} errorCode={apiError.errorCode} action={action} />;
 }

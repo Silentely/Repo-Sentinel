@@ -34,6 +34,18 @@
   --kind-dependabot: oklch(0.577 0.245 27.325); /* #dc2626 */
   --kind-code_scanning: oklch(0.646 0.222 41.116); /* #ea580c */
   --kind-secret_scanning: oklch(0.592 0.249 0.584); /* #db2777 */
+  --kind-release: oklch(0.577 0.13 145); /* #15803d */
+  --kind-star: oklch(0.65 0.15 80); /* #ca8a04 */
+  --kind-watch: oklch(0.546 0.245 262.881); /* #2563eb */
+
+  /* 事件状态徽章色：与 --kind-* 同模式（oklch + 深色提亮档），
+     .state-* 规则统一引用，消除硬编码 hex 在暗底上的对比度风险 */
+  --state-open: oklch(0.62 0.15 70); /* #b45309 */
+  --state-closed: oklch(0.577 0.13 145); /* #15803d */
+  --state-merged: oklch(0.55 0.22 292); /* #6d28d9 */
+  --state-failure: oklch(0.577 0.19 29); /* #b91c1c */
+  --state-muted: oklch(0.55 0.02 250); /* #4b5563 */
+  --state-info: oklch(0.546 0.245 262.881); /* #2563eb */
 }
 
 .dark {
@@ -43,6 +55,16 @@
   --kind-dependabot: oklch(0.704 0.191 22.216); /* 提亮 #f87171 档 */
   --kind-code_scanning: oklch(0.75 0.18 48);
   --kind-secret_scanning: oklch(0.718 0.202 349.761); /* 提亮 #f472b6 档 */
+  --kind-release: oklch(0.7 0.13 145); /* 提亮档 */
+  --kind-star: oklch(0.78 0.13 80); /* 提亮档 */
+  --kind-watch: oklch(0.707 0.165 254.624); /* 提亮 #60a5fa 档 */
+
+  --state-open: oklch(0.78 0.14 75); /* 提亮档 */
+  --state-closed: oklch(0.7 0.13 145); /* 提亮档 */
+  --state-merged: oklch(0.702 0.183 293.541); /* 提亮 #a78bfa 档 */
+  --state-failure: oklch(0.704 0.191 22.216); /* 提亮 #f87171 档 */
+  --state-muted: oklch(0.65 0.02 250); /* 提亮档 */
+  --state-info: oklch(0.707 0.165 254.624); /* 提亮 #60a5fa 档 */
 }
 
 * {
@@ -1102,6 +1124,17 @@ a.status-item--link:focus-visible {
   padding-top: 0.1rem;
 }
 
+/* 行级操作失败提示（如重试失败）：短文本与按钮同排，红色弱化不抢主内容 */
+.feed-row__error {
+  max-width: 14rem;
+  color: var(--danger);
+  font-size: 0.74rem;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .feed-row__meta .event-time {
   margin-left: 0;
 }
@@ -1421,10 +1454,9 @@ a.status-item--link:focus-visible {
   }
 
   .app-topbar__actions .theme-toggle select {
-    max-width: 0;
-    width: 0;
-    padding: 0;
-    opacity: 0;
+    /* 移动端顶栏空间不足：隐藏选择器同时从 Tab 序移除（display:none），
+       避免键盘聚焦到不可见控件；主题保持跟随系统，图标仅作状态指示。 */
+    display: none;
   }
 
   /* 退出按钮窄屏纯图标化，保证 44px 触控目标 */
@@ -1700,12 +1732,6 @@ a.status-item--link:focus-visible {
 .secondary-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.quiet-button--active {
-  background: color-mix(in oklch, var(--accent) 15%, var(--bg-surface));
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .quiet-button--danger {
@@ -2209,7 +2235,9 @@ a.status-item--link:focus-visible {
   row-gap: 0.65rem;
 }
 
-.filter-bar .quiet-button.active {
+/* 筛选/切换按钮选中态：列表页、投递记录页、Star 图范围按钮共用同一视觉语言
+   （accent 文字 + 下边框），与 quiet-button--active 实色底方案合并。 */
+.quiet-button.active {
   color: var(--accent);
   font-weight: 600;
   border-bottom: 2px solid var(--accent);
@@ -2281,13 +2309,6 @@ a.status-item--link:focus-visible {
   flex-wrap: wrap;
 }
 
-/* 范围按钮选中态：与 .filter-bar .quiet-button.active 视觉一致 */
-.star-trend__ranges .quiet-button.is-active {
-  color: var(--accent);
-  font-weight: 600;
-  border-bottom: 2px solid var(--accent);
-}
-
 .ignored-badge {
   display: inline-flex;
   align-items: center;
@@ -2324,23 +2345,25 @@ a.status-item--link:focus-visible {
 
 .mt-md { margin-top: 0.75rem; }
 
-/* ── 事件状态颜色 ── */
+/* ── 事件状态颜色（令牌化：--state-* 提供 light/dark 双档） ── */
 
 .state-open,
-.state-reopened { background: color-mix(in oklch, #e8970a 18%, var(--bg-surface)); color: #c47f00; }
-.state-closed { background: color-mix(in oklch, #1a9f5c 16%, var(--bg-surface)); color: #15803d; }
+.state-reopened { background: color-mix(in oklch, var(--state-open) 18%, var(--bg-surface)); color: var(--state-open); }
+.state-closed { background: color-mix(in oklch, var(--state-closed) 16%, var(--bg-surface)); color: var(--state-closed); }
 .state-completed,
-.state-merged { background: color-mix(in oklch, #7c3aed 14%, var(--bg-surface)); color: #6d28d9; }
-.state-success { background: color-mix(in oklch, #1a9f5c 16%, var(--bg-surface)); color: #15803d; }
+.state-merged { background: color-mix(in oklch, var(--state-merged) 14%, var(--bg-surface)); color: var(--state-merged); }
+.state-success { background: color-mix(in oklch, var(--state-closed) 16%, var(--bg-surface)); color: var(--state-closed); }
 .state-failure,
 .state-cancelled,
-.state-timed_out { background: color-mix(in oklch, #dc2626 14%, var(--bg-surface)); color: #b91c1c; }
+.state-timed_out { background: color-mix(in oklch, var(--state-failure) 14%, var(--bg-surface)); color: var(--state-failure); }
 .state-dismissed,
-.state-resolved { background: color-mix(in oklch, #6b7280 14%, var(--bg-surface)); color: #4b5563; }
+.state-resolved,
+.state-skipped { background: color-mix(in oklch, var(--state-muted) 14%, var(--bg-surface)); color: var(--state-muted); }
+.state-action_required { background: color-mix(in oklch, var(--state-open) 14%, var(--bg-surface)); color: var(--state-open); }
 .state-in_progress,
 .state-queued,
 .state-pending,
-.state-waiting { background: color-mix(in oklch, #3b82f6 14%, var(--bg-surface)); color: #2563eb; }
+.state-waiting { background: color-mix(in oklch, var(--state-info) 14%, var(--bg-surface)); color: var(--state-info); }
 
 .event-repo {
   display: inline-block;
@@ -2429,8 +2452,8 @@ a.status-item--link:focus-visible {
   font-weight: 600;
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
-  color: #6d28d9;
-  background: color-mix(in oklch, #7c3aed 14%, transparent);
+  color: var(--state-merged);
+  background: color-mix(in oklch, var(--state-merged) 14%, transparent);
 }
 
 .labels {
@@ -2652,6 +2675,9 @@ a.status-item--link:focus-visible {
 .kind-dependabot { background: color-mix(in oklch, var(--kind-dependabot) 14%, var(--bg-surface)); color: var(--kind-dependabot); }
 .kind-code_scanning { background: color-mix(in oklch, var(--kind-code_scanning) 14%, var(--bg-surface)); color: var(--kind-code_scanning); }
 .kind-secret_scanning { background: color-mix(in oklch, var(--kind-secret_scanning) 14%, var(--bg-surface)); color: var(--kind-secret_scanning); }
+.kind-release { background: color-mix(in oklch, var(--kind-release) 14%, var(--bg-surface)); color: var(--kind-release); }
+.kind-star { background: color-mix(in oklch, var(--kind-star) 14%, var(--bg-surface)); color: var(--kind-star); }
+.kind-watch { background: color-mix(in oklch, var(--kind-watch) 14%, var(--bg-surface)); color: var(--kind-watch); }
 
 .event-action {
   font-size: 0.78rem;

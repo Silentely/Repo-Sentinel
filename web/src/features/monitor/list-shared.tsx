@@ -14,6 +14,28 @@ import { repositoriesQueryOptions, settingsQueryOptions, type Repository, type S
 
 export type IgnoredMode = "active" | "ignored";
 
+/** 清除筛选按钮：筛选栏紧凑版与空态主按钮版共用，避免各列表页重复维护同一块。 */
+export function ClearFiltersButton({
+  onClick,
+  variant = "compact",
+}: {
+  onClick: () => void;
+  variant?: "compact" | "primary";
+}) {
+  if (variant === "primary") {
+    return (
+      <button type="button" className="primary-button primary-button--inline" onClick={onClick}>
+        清除筛选
+      </button>
+    );
+  }
+  return (
+    <button className="quiet-button quiet-button--compact" type="button" onClick={onClick}>
+      清除筛选
+    </button>
+  );
+}
+
 /** 功能开关守卫：加载中展示骨架，关闭时展示空状态。 */
 export function FeatureGuard({
   featureKey,
@@ -106,6 +128,7 @@ export function IgnoredToggle({
       <button
         className={`quiet-button${mode === "active" ? " active" : ""}`}
         type="button"
+        aria-pressed={mode === "active"}
         onClick={() => onChange("active")}
       >
         关注中
@@ -113,6 +136,7 @@ export function IgnoredToggle({
       <button
         className={`quiet-button${mode === "ignored" ? " active" : ""}`}
         type="button"
+        aria-pressed={mode === "ignored"}
         onClick={() => onChange("ignored")}
       >
         已忽略
