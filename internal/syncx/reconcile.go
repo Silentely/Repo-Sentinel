@@ -42,7 +42,7 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 		return fmt.Errorf("missing_installation")
 	}
 	if r.GitHub == nil || !r.GitHub.Configured() {
-		return fmt.Errorf("github_app_not_configured")
+		return ErrAppNotConfigured
 	}
 	inst, err := r.Store.Installations().Get(ctx, *repo.InstallationID)
 	if err != nil {

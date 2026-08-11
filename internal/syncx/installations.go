@@ -6,13 +6,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
 // 仓库清单同步的配置级错误，由 HTTP 层映射为具体状态码。
 var (
 	// ErrAppNotConfigured GitHub App 未配置或不可用。
-	ErrAppNotConfigured = errors.New("github_app_not_configured")
+	// 统一复用 githubx 的 sentinel，保证 errors.Is 判定跨包一致
+	//（githubx.AppJWT 与 syncx.ReconcileRepository 返回同一错误）。
+	ErrAppNotConfigured = githubx.ErrAppNotConfigured
 	// ErrNoInstallation 本地尚无任何 GitHub App 安装。
 	ErrNoInstallation = errors.New("github_no_installation")
 )

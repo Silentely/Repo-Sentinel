@@ -86,6 +86,22 @@ func (s *starredTrackerStore) ListPollCandidates(ctx context.Context, limit int)
 	return items, nil
 }
 
+// ListAll 返回全部追踪记录（不分状态），供 star 同步一次性建映射。
+func (s *starredTrackerStore) ListAll(ctx context.Context, limit int) ([]StarredRepoTracker, error) {
+	entities, err := s.client.StarredRepoTracker.Query().
+		Order(starredrepotracker.ByFullName()).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	items := make([]StarredRepoTracker, 0, len(entities))
+	for _, e := range entities {
+		items = append(items, starredRepoTrackerFromEntity(e))
+	}
+	return items, nil
+}
+
 // UpdatePollResult 推进 release 轮询结果并更新 last_poll_at。
 func (s *starredTrackerStore) UpdatePollResult(ctx context.Context, id, etag string, lastReleaseID int64, lastReleaseTag string, publishedAt *time.Time) error {
 	now := time.Now().UTC()
