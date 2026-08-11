@@ -5,7 +5,7 @@ import { CheckCircle2, CircleDashed, ExternalLink } from "lucide-react";
 
 import { CollapsiblePanel } from "../../components/collapsible-panel";
 import { EmptyState } from "../../components/empty-state";
-import { ErrorAlert } from "../../components/error-alert";
+import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { changePassword } from "../auth/api";
 import { toApiError } from "../../lib/api/errors";
@@ -170,12 +170,15 @@ function aiBody(form: AIFormState, cfg: AIConfig | undefined): AIConfigInput {
 }
 
 // useSettingsForm：初始值来自查询结果、编辑态独立维护、保存时合并为提交负载。
-// 查询快照首次到达 / 保存后回填时整体重置一次（单 effect），不做逐字段同步。
+// 仅在查询快照首次到达时整体回填一次：分区块提交场景下，保存某区块后 invalidate
+// 回传的新快照不应覆盖用户尚未保存的另一区块编辑（否则未保存改动被静默丢弃）。
 function useSettingsForm(data: SystemSettings | undefined) {
   const [form, setForm] = useState<SettingsFormState>(() => formFromSettings(undefined));
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
-    if (!data) return;
+    if (!data || hydratedRef.current) return;
+    hydratedRef.current = true;
     setForm(formFromSettings(data));
   }, [data]);
 
@@ -265,12 +268,20 @@ export function SettingsPage() {
   });
 
   // 分块提交：只 PUT 本区块字段，避免慢网时用另一区未同步的本地 state 覆盖服务端。
+  // 错误也按区块独立展示：任一区块保存失败不再同时在两处渲染同一错误。
+  const [prefsError, setPrefsError] = useState<string | null>(null);
+  const [featuresError, setFeaturesError] = useState<string | null>(null);
   function submitSettings(section: "prefs" | "features") {
     const setMsg = section === "prefs" ? setSettingsMsg : setFeaturesMsg;
+    const setErr = section === "prefs" ? setPrefsError : setFeaturesError;
     const successText = section === "prefs" ? "系统偏好已保存。" : "功能模块开关已保存。";
     setMsg("");
+    setErr(null);
     const body: SystemSettings = section === "prefs" ? prefsBody(form) : featuresBody(form);
-    saveSettings.mutate(body, { onSuccess: () => setMsg(successText) });
+    saveSettings.mutate(body, {
+      onSuccess: () => setMsg(successText),
+      onError: (err) => setErr(toApiError(err).message || "保存失败"),
+    });
   }
   const savePassword = useMutation({
     mutationFn: () => changePassword({ current_password: currentPassword, new_password: newPassword }),
@@ -448,18 +459,45 @@ export function SettingsPage() {
         <h2 id="settings-prefs-title">运行偏好</h2>
         <p className="field-hint">时区与摘要时间影响本地展示与摘要调度；聚合/超频窗口用于短时合并与突发降级。保存后立即写入数据库。</p>
         {settingsMsg ? <p className="success-banner" role="status">{settingsMsg}</p> : null}
-        {settings.isError ? <ErrorAlert title="无法加载设置" message={toApiError(settings.error).message} errorCode={toApiError(settings.error).errorCode} /> : null}
+        {settings.isError ? <ApiErrorAlert error={settings.error} title="无法加载设置" /> : null}
         <div className="form-grid">
-          <label className="field--plain"><span>管理员时区</span><input value={form.timezone} onChange={(e) => set("timezone", e.target.value)} onBlur={(e) => validateTimezone(e.target.value)} placeholder="UTC 或 Asia/Shanghai" /></label>
+          <label className="field--plain">
+            <span>管理员时区</span>
+            <input value={form.timezone} onChange={(e) => set("timezone", e.target.value)} onBlur={(e) => validateTimezone(e.target.value)} placeholder="UTC 或 Asia/Shanghai" />
+          </label>
           {timezoneHint ? <p className="field-hint" role="status">{timezoneHint}</p> : null}
-          <label className="field--plain"><span>每日摘要本地时间</span><input value={form.digestTime} onChange={(e) => set("digestTime", e.target.value)} placeholder="09:00" /></label>
-          <label className="field--plain"><span>通知聚合窗口（秒）</span><input type="number" min={1} max={86400} value={form.aggregateSec} onChange={(e) => set("aggregateSec", Number(e.target.value) || 1)} /></label>
-          <label className="field--plain"><span>超频阈值</span><input type="number" min={1} value={form.burstThreshold} onChange={(e) => set("burstThreshold", Number(e.target.value) || 1)} /></label>
-          <label className="field--plain"><span>超频窗口（秒）</span><input type="number" min={1} max={86400} value={form.burstWindowSec} onChange={(e) => set("burstWindowSec", Number(e.target.value) || 1)} /></label>
-          <label className="field--plain"><span>已关闭/已忽略显示数量</span><input type="number" min={1} max={200} value={form.closedDisplayLimit} onChange={(e) => set("closedDisplayLimit", Math.min(200, Math.max(1, Number(e.target.value) || 1)))} /></label>
-          <label className="field--plain"><span>事件保留天数</span><input type="number" min={0} max={3650} value={form.retentionEventsDays} onChange={(e) => set("retentionEventsDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
-          <label className="field--plain"><span>投递记录保留天数</span><input type="number" min={0} max={3650} value={form.retentionOutboxDays} onChange={(e) => set("retentionOutboxDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
-          <label className="field--plain"><span>Webhook Delivery 保留天数</span><input type="number" min={0} max={3650} value={form.retentionDeliveriesDays} onChange={(e) => set("retentionDeliveriesDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} /></label>
+          <label className="field--plain">
+            <span>每日摘要本地时间</span>
+            <input value={form.digestTime} onChange={(e) => set("digestTime", e.target.value)} placeholder="09:00" />
+          </label>
+          <label className="field--plain">
+            <span>通知聚合窗口（秒）</span>
+            <input type="number" min={1} max={86400} value={form.aggregateSec} onChange={(e) => set("aggregateSec", Number(e.target.value) || 1)} />
+          </label>
+          <label className="field--plain">
+            <span>超频阈值</span>
+            <input type="number" min={1} value={form.burstThreshold} onChange={(e) => set("burstThreshold", Number(e.target.value) || 1)} />
+          </label>
+          <label className="field--plain">
+            <span>超频窗口（秒）</span>
+            <input type="number" min={1} max={86400} value={form.burstWindowSec} onChange={(e) => set("burstWindowSec", Number(e.target.value) || 1)} />
+          </label>
+          <label className="field--plain">
+            <span>已关闭/已忽略显示数量</span>
+            <input type="number" min={1} max={200} value={form.closedDisplayLimit} onChange={(e) => set("closedDisplayLimit", Math.min(200, Math.max(1, Number(e.target.value) || 1)))} />
+          </label>
+          <label className="field--plain">
+            <span>事件保留天数</span>
+            <input type="number" min={0} max={3650} value={form.retentionEventsDays} onChange={(e) => set("retentionEventsDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} />
+          </label>
+          <label className="field--plain">
+            <span>投递记录保留天数</span>
+            <input type="number" min={0} max={3650} value={form.retentionOutboxDays} onChange={(e) => set("retentionOutboxDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} />
+          </label>
+          <label className="field--plain">
+            <span>Webhook Delivery 保留天数</span>
+            <input type="number" min={0} max={3650} value={form.retentionDeliveriesDays} onChange={(e) => set("retentionDeliveriesDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} />
+          </label>
         </div>
         <p className="field-hint">超频：在超频窗口内通知条数达到阈值时合并为摘要，避免刷屏。Closed/Dismissed 列表默认只显示最近指定数量条目。保留天数 0 表示禁用该类清理。</p>
         <label className="check-row"><input type="checkbox" checked={form.digestEmpty} onChange={(e) => set("digestEmpty", e.target.checked)} /><span>无事件时仍发送空摘要</span></label>
@@ -483,7 +521,7 @@ export function SettingsPage() {
         <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("prefs")}>
           {saveSettings.isPending ? "保存中…" : "保存偏好"}
         </button>
-        {saveSettings.isError ? <ErrorAlert title="保存失败" message={toApiError(saveSettings.error).message} errorCode={toApiError(saveSettings.error).errorCode} /> : null}
+        {prefsError ? <ErrorAlert title="保存失败" message={prefsError} /> : null}
       </section>
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-features-title">
@@ -499,7 +537,7 @@ export function SettingsPage() {
         <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("features")}>
           {saveSettings.isPending ? "保存中…" : "保存开关"}
         </button>
-        {saveSettings.isError ? <ErrorAlert title="保存失败" message={toApiError(saveSettings.error).message} errorCode={toApiError(saveSettings.error).errorCode} /> : null}
+        {featuresError ? <ErrorAlert title="保存失败" message={featuresError} /> : null}
       </section>
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-ai-title">
@@ -510,18 +548,33 @@ export function SettingsPage() {
           环境变量（<code>REPOSENTINEL_AI_*</code>）已设置的字段在此锁定；API Key 加密存储，不回显明文。
         </p>
         {aiMsg ? <p className="success-banner" role="status">{aiMsg}</p> : null}
-        {aiConfig.isError ? <ErrorAlert title="无法加载 AI 配置" message={toApiError(aiConfig.error).message} errorCode={toApiError(aiConfig.error).errorCode} /> : null}
+        {aiConfig.isError ? <ApiErrorAlert error={aiConfig.error} title="无法加载 AI 配置" /> : null}
         <label className="check-row">
           <input type="checkbox" checked={aiForm.enabled} disabled={aiConfig.data?.enabled_locked} onChange={(e) => setAI("enabled", e.target.checked)} />
           <span>启用 AI（{aiConfig.data?.api_key_configured ? "API Key 已配置" : "API Key 未配置"}）</span>
         </label>
         <div className="form-grid">
           <label className="field--plain"><span>API Base URL</span><input value={aiForm.baseURL} disabled={aiConfig.data?.base_url_locked} onChange={(e) => setAI("baseURL", e.target.value)} placeholder="https://api.openai.com/v1" /></label>
-          <label className="field--plain"><span>模型</span><input value={aiForm.model} disabled={aiConfig.data?.model_locked} onChange={(e) => setAI("model", e.target.value)} placeholder="gpt-4o-mini" /></label>
-          <label className="field--plain"><span>请求超时（秒）</span><input type="number" min={1} max={3600} value={aiForm.timeoutSec} disabled={aiConfig.data?.timeout_locked} onChange={(e) => setAI("timeoutSec", Math.min(3600, Math.max(1, Number(e.target.value) || 1)))} /></label>
-          <label className="field--plain"><span>重试次数</span><input type="number" min={0} max={5} value={aiForm.retries} disabled={aiConfig.data?.retries_locked} onChange={(e) => setAI("retries", Math.min(5, Math.max(0, Math.trunc(Number(e.target.value) || 0))))} /></label>
-          <label className="field--plain"><span>输出 token 上限</span><input type="number" min={100} max={8000} value={aiForm.maxTokens} disabled={aiConfig.data?.max_tokens_locked} onChange={(e) => setAI("maxTokens", Math.min(8000, Math.max(100, Number(e.target.value) || 100)))} /></label>
-          <label className="field--plain"><span>API Key（留空保持不变）</span><input type="password" autoComplete="off" value={aiForm.apiKey} disabled={aiConfig.data?.api_key_locked} onChange={(e) => setAI("apiKey", e.target.value)} placeholder={aiConfig.data?.api_key_configured ? "••••••••（已配置）" : "sk-…"} /></label>
+          <label className="field--plain">
+            <span>模型</span>
+            <input value={aiForm.model} disabled={aiConfig.data?.model_locked} onChange={(e) => setAI("model", e.target.value)} placeholder="gpt-4o-mini" />
+          </label>
+          <label className="field--plain">
+            <span>请求超时（秒）</span>
+            <input type="number" min={1} max={3600} value={aiForm.timeoutSec} disabled={aiConfig.data?.timeout_locked} onChange={(e) => setAI("timeoutSec", Math.min(3600, Math.max(1, Number(e.target.value) || 1)))} />
+          </label>
+          <label className="field--plain">
+            <span>重试次数</span>
+            <input type="number" min={0} max={5} value={aiForm.retries} disabled={aiConfig.data?.retries_locked} onChange={(e) => setAI("retries", Math.min(5, Math.max(0, Math.trunc(Number(e.target.value) || 0))))} />
+          </label>
+          <label className="field--plain">
+            <span>输出 token 上限</span>
+            <input type="number" min={100} max={8000} value={aiForm.maxTokens} disabled={aiConfig.data?.max_tokens_locked} onChange={(e) => setAI("maxTokens", Math.min(8000, Math.max(100, Number(e.target.value) || 100)))} />
+          </label>
+          <label className="field--plain">
+            <span>API Key（留空保持不变）</span>
+            <input type="password" autoComplete="off" value={aiForm.apiKey} disabled={aiConfig.data?.api_key_locked} onChange={(e) => setAI("apiKey", e.target.value)} placeholder={aiConfig.data?.api_key_configured ? "••••••••（已配置）" : "sk-…"} />
+          </label>
         </div>
         <label className="check-row">
           <input type="checkbox" checked={aiForm.digest} disabled={aiConfig.data?.digest_enabled_locked} onChange={(e) => setAI("digest", e.target.checked)} />
@@ -555,7 +608,7 @@ export function SettingsPage() {
             <ErrorAlert title="连通性测试失败" message={aiTest.message} />
           )
         ) : null}
-        {saveAIConfigMut.isError ? <ErrorAlert title="保存失败" message={toApiError(saveAIConfigMut.error).message} errorCode={toApiError(saveAIConfigMut.error).errorCode} /> : null}
+        {saveAIConfigMut.isError ? <ApiErrorAlert error={saveAIConfigMut.error} title="保存失败" /> : null}
       </section>
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-password-title">
@@ -563,9 +616,18 @@ export function SettingsPage() {
         <p className="field-hint">修改成功后其它会话会失效。若已遗失当前密码，请在服务器上运行 <code>reposentinel admin reset-password --password-stdin</code>。</p>
         {passwordMsg ? <p className="success-banner" role="status">{passwordMsg}</p> : null}
         {passwordError ? <ErrorAlert title="无法修改密码" message={passwordError} /> : null}
-        <label className="field--plain"><span>当前密码</span><input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></label>
-        <label className="field--plain"><span>新密码（至少 12 个字符）</span><input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></label>
-        <label className="field--plain"><span>确认新密码</span><input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} /></label>
+                  <label className="field--plain">
+            <span>当前密码</span>
+            <input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+          </label>
+                  <label className="field--plain">
+            <span>新密码（至少 12 个字符）</span>
+            <input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          </label>
+                  <label className="field--plain">
+            <span>确认新密码</span>
+            <input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          </label>
         <button className="primary-button primary-button--inline" type="button" disabled={savePassword.isPending || !currentPassword || !newPassword} onClick={submitPassword}>
           {savePassword.isPending ? "更新中…" : "更新密码"}
         </button>

@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 
-import { ErrorAlert } from "../../components/error-alert";
+import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { toApiError } from "../../lib/api/errors";
 import { useAutoDismiss } from "../../lib/use-auto-dismiss";
+import { useUrlState } from "../../lib/use-url-state";
 import {
   listStarredTrackers,
   saveStarredReleasesConfig,
@@ -102,8 +103,11 @@ export function StarredReleasesPage() {
   });
 
   // 追踪列表：分页 + state 筛选。默认只看「追踪中」，无 Release/停用/不可用需手动切换。
-  const [page, setPage] = useState(1);
-  const [stateFilter, setStateFilter] = useState("tracking");
+  // 分页与状态筛选同步到 URL（?page=2&state=inactive 等）：刷新/复制链接保留当前视角。
+  const [pageRaw, setPageRaw] = useUrlState("page", "1");
+  const page = Math.max(1, Number(pageRaw) || 1);
+  const setPage = (next: number) => setPageRaw(String(next));
+  const [stateFilter, setStateFilter] = useUrlState("state", "tracking");
   const trackers = useQuery({
     queryKey: ["starred-releases-trackers", page, stateFilter] as const,
     queryFn: () => listStarredTrackers({ page, per_page: 20, state: stateFilter || undefined }),
@@ -143,7 +147,7 @@ export function StarredReleasesPage() {
         </p>
         {msg ? <p className="success-banner" role="status">{msg}</p> : null}
         {error ? <ErrorAlert title="Star Release 追踪操作失败" message={error} /> : null}
-        {config.isError ? <ErrorAlert title="无法加载配置" message={toApiError(config.error).message} errorCode={toApiError(config.error).errorCode} /> : null}
+        {config.isError ? <ApiErrorAlert error={config.error} title="无法加载配置" /> : null}
 
         <label className="check-row">
           <input type="checkbox" checked={form.enabled} onChange={(e) => set("enabled", e.target.checked)} />
@@ -198,36 +202,35 @@ export function StarredReleasesPage() {
             <option value="unavailable">不可用</option>
           </select>
         </div>
-        {trackers.isError ? <ErrorAlert title="无法加载追踪列表" message={toApiError(trackers.error).message} errorCode={toApiError(trackers.error).errorCode} /> : null}
+        {trackers.isError ? <ApiErrorAlert error={trackers.error} title="无法加载追踪列表" /> : null}
         {items.length === 0 ? (
           <p className="field-hint">暂无追踪记录。保存用户名并点击「立即同步」后，star 仓库会出现在这里。</p>
         ) : (
           <ul className="plain-list" aria-label="Star Release 追踪列表">
             {items.map((it) => (
-              <TrackerRow key={it.id} item={it} busy={setStateMut.isPending} onToggle={(state) => setStateMut.mutate({ id: it.id, state })} />
+              <TrackerRow key={it.id} item={it} busy={setStateMut.isPending && setStateMut.variables?.id === it.id} onToggle={(state) => setStateMut.mutate({ id: it.id, state })} />
             ))}
           </ul>
         )}
         {total > perPage ? (
           <div className="pager-row">
-            <button className="quiet-button quiet-button--compact" type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+            <button className="quiet-button quiet-button--compact" type="button" disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>
               上一页
             </button>
             <span>第 {page} / {pageCount} 页（共 {total} 条）</span>
-            <button className="quiet-button quiet-button--compact" type="button" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>
+            <button className="quiet-button quiet-button--compact" type="button" disabled={page >= pageCount} onClick={() => setPage(Math.min(pageCount, page + 1))}>
               下一页
             </button>
           </div>
         ) : null}
-        {saveMut.isError ? <ErrorAlert title="保存失败" message={toApiError(saveMut.error).message} errorCode={toApiError(saveMut.error).errorCode} /> : null}
+        {saveMut.isError ? <ApiErrorAlert error={saveMut.error} title="保存失败" /> : null}
       </section>
     </>
   );
 }
 
 function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: boolean; onToggle: (state: "disabled" | "tracking") => void }) {
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const isBusy = busyId === item.id;
+  // busy 由父级 mutation 的 variables.id 判定：请求结束自动恢复，不会残留行级忙碌态。
   const published = item.last_release_published_at ? new Date(item.last_release_published_at).toLocaleString() : "—";
   const url = releaseURL(item.full_name, item.last_release_tag);
   return (
@@ -257,8 +260,8 @@ function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: 
             className="quiet-button quiet-button--compact"
             type="button"
             disabled={busy}
-            aria-busy={isBusy}
-            onClick={() => { setBusyId(item.id); onToggle("disabled"); }}
+            aria-busy={busy}
+            onClick={() => onToggle("disabled")}
           >
             停用
           </button>
@@ -267,8 +270,8 @@ function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: 
             className="quiet-button quiet-button--compact"
             type="button"
             disabled={busy}
-            aria-busy={isBusy}
-            onClick={() => { setBusyId(item.id); onToggle("tracking"); }}
+            aria-busy={busy}
+            onClick={() => onToggle("tracking")}
           >
             恢复
           </button>

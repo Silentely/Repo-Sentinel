@@ -90,7 +90,7 @@ describe("StarTrendChart", () => {
     render(<StarTrendChart points={points} days={7} onDaysChange={onDaysChange} loading={false} />);
 
     const group = screen.getByRole("group", { name: "时间范围" });
-    expect(group.querySelector(".is-active")?.textContent).toBe("7 天");
+    expect(group.querySelector(".active")?.textContent).toBe("7 天");
 
     await user.click(screen.getByRole("button", { name: "全部" }));
     expect(onDaysChange).toHaveBeenCalledWith(0);

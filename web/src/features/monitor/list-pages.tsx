@@ -31,6 +31,7 @@ import {
   type RepositorySettings,
 } from "./api";
 import {
+  ClearFiltersButton,
   FeatureGuard,
   IgnoreButton,
   IgnoredToggle,
@@ -281,9 +282,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
           </>
         )}
         {filtersActive ? (
-          <button className="quiet-button quiet-button--compact" type="button" onClick={clearFilters}>
-            清除筛选
-          </button>
+          <ClearFiltersButton onClick={clearFilters} />
         ) : null}
       </div>
       <EventListBody
@@ -312,9 +311,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
             }
             action={
               filtersActive ? (
-                <button type="button" className="primary-button primary-button--inline" onClick={clearFilters}>
-                  清除筛选
-                </button>
+                <ClearFiltersButton variant="primary" onClick={clearFilters} />
               ) : (
                 <Link to="/">返回仪表盘</Link>
               )
@@ -494,20 +491,24 @@ export function ReposPage() {
 
   // 彻底删除：GitHub 侧已删除但 webhook 漏投递时的手动收口，级联清理全部关联数据。
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteOne = useMutation({
     mutationFn: (id: string) => {
       setErrorMsg(null);
+      setDeleteError(null);
       setDeletingId(id);
       return deleteRepository(id);
     },
+    // onSettled 同时覆盖成功与失败：失败时不清理会让按钮永久停留在「删除中…」。
+    onSettled: () => setDeletingId(null),
     onSuccess: async () => {
-      setDeletingId(null);
       await queryClient.invalidateQueries({ queryKey: ["repositories"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       await queryClient.invalidateQueries({ queryKey: ["work-items"] });
       await queryClient.invalidateQueries({ queryKey: ["workflow-runs"] });
       await queryClient.invalidateQueries({ queryKey: ["security-alerts"] });
     },
+    onError: (error) => setDeleteError(toApiError(error).message || "删除失败"),
   });
 
   const allRepos = repos.data?.items ?? [];
@@ -518,6 +519,7 @@ export function ReposPage() {
   return (
     <ListShell eyebrow="仓库" title="仓库管理" description="「监控」为总开关；子能力受全局功能模块约束。本系统归档会停采集（可撤销），与 GitHub 侧已归档是两回事。">
       {errorMsg ? <ErrorAlert title="更新失败" message={errorMsg} /> : null}
+      {deleteError ? <ErrorAlert title="删除失败" message={deleteError} /> : null}
       <div className="filter-bar">
         <button className={`quiet-button${!showArchived ? " active" : ""}`} type="button" aria-pressed={!showArchived} onClick={() => setArchivedParam("")}>
           未归档 ({activeRepos.length})
@@ -804,9 +806,7 @@ function ActionsList() {
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
         {filtersActive ? (
-          <button className="quiet-button quiet-button--compact" type="button" onClick={clearFilters}>
-            清除筛选
-          </button>
+          <ClearFiltersButton onClick={clearFilters} />
         ) : null}
       </div>
       <EventListBody
@@ -831,9 +831,7 @@ function ActionsList() {
             }
             action={
               filtersActive ? (
-                <button type="button" className="primary-button primary-button--inline" onClick={clearFilters}>
-                  清除筛选
-                </button>
+                <ClearFiltersButton variant="primary" onClick={clearFilters} />
               ) : (
                 <Link to="/github">检查 GitHub App 权限</Link>
               )
@@ -942,9 +940,7 @@ function SecurityList() {
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
         {filtersActive ? (
-          <button className="quiet-button quiet-button--compact" type="button" onClick={clearFilters}>
-            清除筛选
-          </button>
+          <ClearFiltersButton onClick={clearFilters} />
         ) : null}
       </div>
       <EventListBody
@@ -973,9 +969,7 @@ function SecurityList() {
             }
             action={
               filtersActive ? (
-                <button type="button" className="primary-button primary-button--inline" onClick={clearFilters}>
-                  清除筛选
-                </button>
+                <ClearFiltersButton variant="primary" onClick={clearFilters} />
               ) : (
                 <Link to="/github">查看权限配置</Link>
               )

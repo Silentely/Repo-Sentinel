@@ -95,7 +95,7 @@ export function RootLayout({ session }: RootLayoutProps) {
     return () => media.removeEventListener("change", onChange);
   }, []);
 
-  // 抽屉打开期间：锁定背景滚动、支持 Escape 关闭。
+  // 抽屉打开期间：锁定背景滚动、支持 Escape 关闭、Tab 焦点在抽屉内循环。
   useEffect(() => {
     if (!navOpen) {
       return;
@@ -105,6 +105,31 @@ export function RootLayout({ session }: RootLayoutProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setNavOpen(false);
+        return;
+      }
+      // 焦点陷阱：Tab 在抽屉内循环，避免焦点逃逸到 scrim 之后的主内容
+      //（打开时焦点已移入抽屉，Tab 向后到末项后回绕，Shift+Tab 反向）。
+      if (event.key !== "Tab" || !sidebarRef.current) {
+        return;
+      }
+      const focusables = sidebarRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) {
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (!first || !last) {
+        return;
+      }
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !sidebarRef.current.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -176,6 +201,10 @@ export function RootLayout({ session }: RootLayoutProps) {
         id="app-sidebar"
         ref={sidebarRef}
         className={`app-sidebar${navOpen ? " is-open" : ""}`}
+        // 移动端打开时声明模态语义，读屏用户可感知抽屉为对话框；桌面端为常驻侧栏不加。
+        role={navOpen ? "dialog" : undefined}
+        aria-modal={navOpen ? "true" : undefined}
+        aria-label={navOpen ? "导航菜单" : undefined}
       >
         <div className="app-brand">
           <span className="app-brand__mark" aria-hidden="true">

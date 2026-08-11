@@ -6,6 +6,7 @@ import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { toApiError } from "../../lib/api/errors";
+import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import {
   channelsQueryOptions,
   settingsQueryOptions,
@@ -336,17 +337,8 @@ export function NotifyPage() {
   };
 
   const testingType = testMut.isPending ? testMut.variables : undefined;
-  // 复制渠道目标（Chat ID / URL）：配置排查时便于粘贴；剪贴板不可用静默降级。
-  const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
-  const copyTarget = async (type: string, target: string) => {
-    try {
-      await navigator.clipboard.writeText(target);
-      setCopiedTarget(type);
-      window.setTimeout(() => setCopiedTarget(null), 1500);
-    } catch {
-      // 非安全上下文或权限受限：不打断使用。
-    }
-  };
+  // 复制渠道目标（Chat ID / URL）：配置排查时便于粘贴；失败给出短暂反馈，不打断使用。
+  const { isCopied: copiedTarget, copy: copyTarget } = useCopyFeedback();
 
   return (
     <>
@@ -395,7 +387,7 @@ export function NotifyPage() {
                     aria-label={`复制目标：${ch.channel_type === "telegram" ? "Chat ID" : "URL"}`}
                     onClick={() => void copyTarget(ch.channel_type, ch.target)}
                   >
-                    {copiedTarget === ch.channel_type ? "已复制" : "复制"}
+                    {copiedTarget(ch.channel_type) ? "已复制" : "复制"}
                   </button>
                 ) : null}
                 <span className="muted">{ch.secret_configured ? "密钥已配置" : "无密钥"}</span>

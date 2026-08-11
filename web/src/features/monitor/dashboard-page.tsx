@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 
 import { CollapsiblePanel } from "../../components/collapsible-panel";
 import { EmptyState } from "../../components/empty-state";
-import { ErrorAlert } from "../../components/error-alert";
+import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
 import { toApiError } from "../../lib/api/errors";
@@ -87,11 +87,17 @@ export function DashboardPage() {
     await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
   };
 
+  // 行级重试错误：失败时在该行旁提示，避免「按钮恢复但无任何反馈」的静默失败。
+  const [retryError, setRetryError] = useState<{ id: string; message: string } | null>(null);
   const retry = useMutation({
     mutationFn: retryOutbox,
-    onMutate: (id) => setRetryBusyId(id),
+    onMutate: (id) => {
+      setRetryBusyId(id);
+      setRetryError(null);
+    },
     onSettled: () => setRetryBusyId(null),
     onSuccess: invalidateOutboxAndDashboard,
+    onError: (err, id) => setRetryError({ id, message: toApiError(err).message || "重试失败" }),
   });
 
   const stats = dashboard.data;
@@ -195,11 +201,7 @@ export function DashboardPage() {
       </section>
 
       {dashboard.isError ? (
-        <ErrorAlert
-          title="无法加载仪表盘"
-          message={toApiError(dashboard.error).message}
-          errorCode={toApiError(dashboard.error).errorCode}
-        />
+        <ApiErrorAlert error={dashboard.error} title="无法加载仪表盘" />
       ) : null}
 
       {showSetup ? (
@@ -311,14 +313,21 @@ export function DashboardPage() {
                 </div>
                 <div className="feed-row__actions">
                   {item.status === "dead" ? (
-                    <button
-                      className="quiet-button quiet-button--compact"
-                      type="button"
-                      onClick={() => retry.mutate(item.id)}
-                      disabled={retryBusyId === item.id}
-                    >
-                      {retryBusyId === item.id ? "重试中…" : "重试"}
-                    </button>
+                    <>
+                      <button
+                        className="quiet-button quiet-button--compact"
+                        type="button"
+                        onClick={() => retry.mutate(item.id)}
+                        disabled={retryBusyId === item.id}
+                      >
+                        {retryBusyId === item.id ? "重试中…" : "重试"}
+                      </button>
+                      {retryError?.id === item.id ? (
+                        <span className="feed-row__error" role="alert">
+                          {retryError.message}
+                        </span>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
               </li>

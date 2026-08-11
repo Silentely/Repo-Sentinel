@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 
-import { ErrorAlert } from "../../components/error-alert";
+import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { GithubIcon } from "../../components/github-icon";
 import { toApiError } from "../../lib/api/errors";
 import { checkForUpdates, versionQueryOptions } from "./api";
@@ -74,7 +74,7 @@ export function AboutPage() {
             {checking ? "检查中…" : "检查更新"}
           </button>
         </div>
-        {version.isError ? <ErrorAlert title="无法加载版本" message={toApiError(version.error).message} errorCode={toApiError(version.error).errorCode} /> : null}
+        {version.isError ? <ApiErrorAlert error={version.error} title="无法加载版本" /> : null}
         {banner ? (
           <div className={`about-banner about-banner--${banner.kind}`}>
             <div>{banner.text}</div>

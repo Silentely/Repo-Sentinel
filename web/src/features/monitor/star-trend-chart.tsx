@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import type { StarTrendPoint } from "./api";
@@ -42,7 +43,9 @@ export function starTrendYDomain(points: StarTrendPoint[]): [number, number] {
   return [Math.max(0, min - pad), max + pad];
 }
 
-export function StarTrendChart({
+// memo：页面级 state（重试忙碌/折叠面板等）变化不应让 recharts 图表整图重渲染；
+// props 中 points 引用来自查询缓存、days 为数字、onDaysChange 为稳定的 setState。
+export const StarTrendChart = memo(function StarTrendChart({
   points,
   days,
   onDaysChange,
@@ -67,7 +70,7 @@ export function StarTrendChart({
             <button
               key={r.days}
               type="button"
-              className={`quiet-button quiet-button--compact${days === r.days ? " is-active" : ""}`}
+              className={`quiet-button quiet-button--compact${days === r.days ? " active" : ""}`}
               onClick={() => onDaysChange(r.days)}
             >
               {r.label}
@@ -140,4 +143,4 @@ export function StarTrendChart({
       )}
     </div>
   );
-}
+});
