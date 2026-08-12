@@ -261,8 +261,8 @@ func TestProcessSuccessLogCarriesStaleDiscarded(t *testing.T) {
 	var logBuffer bytes.Buffer
 	// 成功日志已降为 Debug 级：用 LevelDebug 捕获，守护字段不丢。
 	svc := &webhooksvc.Service{
-		Store: data,
-		Logger: slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Store:      data,
+		Logger:     slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Background: t.Context(),
 	}
 	// 预置较新的 issue：之后到达的旧载荷会被 UpsertIfNewer 判定乱序丢弃。
@@ -356,8 +356,8 @@ func TestProcessSuccessLogCarriesEventID(t *testing.T) {
 	var logBuffer bytes.Buffer
 	// 成功日志已降为 Debug 级：用 LevelDebug 捕获，守护字段不丢。
 	svc := &webhooksvc.Service{
-		Store: data,
-		Logger: slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Store:      data,
+		Logger:     slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Background: t.Context(),
 	}
 	payload := issueOpenedPayload(t)
