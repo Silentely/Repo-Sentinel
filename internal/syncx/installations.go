@@ -45,6 +45,22 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 		maxPages = 20
 	}
 	result := SyncInstallationResult{Installations: len(installations)}
+	// 一次性加载本地仓库建 full_name→repo 映射，避免对每个安装仓库 GetByFullName 的
+	// N+1 查询（安装仓库多时一轮同步数百次单查）。加载失败降级逐仓单查并留痕。
+	existingByFullName := make(map[string]store.Repository)
+	for page := 1; ; page++ {
+		repos, res, err := r.Store.Repositories().List(ctx, store.ListFilter{Page: page, PerPage: 100})
+		if err != nil {
+			r.warn("load local repositories failed", 0, err)
+			break
+		}
+		for _, repo := range repos {
+			existingByFullName[repo.FullName] = repo
+		}
+		if page*res.PerPage >= res.Total || len(repos) == 0 {
+			break
+		}
+	}
 	for _, inst := range installations {
 		token, err := r.GitHub.InstallationToken(ctx, inst.InstallationID)
 		if err != nil {
@@ -96,8 +112,8 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 					HTMLURL:        htmlURL,
 					DefaultBranch:  gr.DefaultBranch,
 				}
-				existing, err := r.Store.Repositories().GetByFullName(ctx, fullName)
-				if err == nil {
+				existing, ok := existingByFullName[fullName]
+				if ok {
 					in.ID = existing.ID
 					in.SyncStatus = existing.SyncStatus
 					if existing.SyncStatus == "" {
@@ -122,10 +138,8 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 					result.Imported++
 					continue
 				}
-				if !errors.Is(err, store.ErrNotFound) {
-					result.LastError = err.Error()
-					continue
-				}
+				// map 不命中 = 本地尚无该仓库：按新建入库（语义与 GetByFullName 的
+				// ErrNotFound 分支一致；映射加载失败降级时同样走此路径）。
 				now := time.Now().UTC()
 				in.BaselineStartedAt = &now
 				if _, err := r.Store.Repositories().Upsert(ctx, in); err != nil {

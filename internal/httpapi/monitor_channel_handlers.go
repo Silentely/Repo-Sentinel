@@ -124,7 +124,11 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if saved.Enabled {
-		_ = s.dependencies.Store.Channels().DisableOthersOfType(r.Context(), channelType, saved.ID)
+		// 禁用同类型其它渠道：失败会留下多实例并存，低危但留 Debug 便于排查。
+		if err := s.dependencies.Store.Channels().DisableOthersOfType(r.Context(), channelType, saved.ID); err != nil && s.dependencies.Logger != nil {
+			s.dependencies.Logger.Warn("disable other channels failed",
+				"channel_type", channelType, "kept_channel_id", saved.ID, "error_code", "channel_disable_failed", "error", err.Error())
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": saved.ID, "channel_type": saved.ChannelType, "enabled": saved.Enabled,

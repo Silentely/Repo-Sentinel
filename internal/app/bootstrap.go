@@ -199,7 +199,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		AIRuntime:      aiRuntime,
 		StarredPoller:  starred,
 	})
-	if err := bootstrapNotifyChannels(ctx, data, keyRing, cfg); err != nil {
+	if err := bootstrapNotifyChannels(ctx, logger, data, keyRing, cfg); err != nil {
 		return nil, err
 	}
 	built := &App{
@@ -299,7 +299,7 @@ func mapStoreOpenError(err error) error {
 }
 
 // bootstrapNotifyChannels 将环境中的 Telegram/HTTP 配置物化为渠道行（每类最多启用 1 个）。
-func bootstrapNotifyChannels(ctx context.Context, data store.Store, keyRing *cryptox.KeyRing, cfg config.Config) error {
+func bootstrapNotifyChannels(ctx context.Context, logger *slog.Logger, data store.Store, keyRing *cryptox.KeyRing, cfg config.Config) error {
 	if keyRing == nil {
 		return nil
 	}
@@ -318,7 +318,10 @@ func bootstrapNotifyChannels(ctx context.Context, data store.Store, keyRing *cry
 			if err != nil {
 				return newPublicError("database_unavailable", "无法初始化 Telegram 渠道。", err)
 			}
-			_ = data.Channels().DisableOthersOfType(ctx, store.ChannelTelegram, ch.ID)
+			// 同类型去重失败会留下多实例并存（下次写入再收敛），低危但留痕。
+			if err := data.Channels().DisableOthersOfType(ctx, store.ChannelTelegram, ch.ID); err != nil && logger != nil {
+				logger.Warn("seed channel dedupe failed", "channel_type", store.ChannelTelegram, "error_code", "channel_disable_failed", "error", err.Error())
+			}
 		}
 	}
 	if url := strings.TrimSpace(cfg.Notify.HTTPWebhook.URL); url != "" {
@@ -339,7 +342,10 @@ func bootstrapNotifyChannels(ctx context.Context, data store.Store, keyRing *cry
 			if err != nil {
 				return newPublicError("database_unavailable", "无法初始化 HTTP Webhook 渠道。", err)
 			}
-			_ = data.Channels().DisableOthersOfType(ctx, store.ChannelHTTPWebhook, ch.ID)
+			// 同类型去重失败会留下多实例并存（下次写入再收敛），低危但留痕。
+			if err := data.Channels().DisableOthersOfType(ctx, store.ChannelHTTPWebhook, ch.ID); err != nil && logger != nil {
+				logger.Warn("seed channel dedupe failed", "channel_type", store.ChannelHTTPWebhook, "error_code", "channel_disable_failed", "error", err.Error())
+			}
 		}
 	}
 	return nil

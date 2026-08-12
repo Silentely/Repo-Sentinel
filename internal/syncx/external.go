@@ -50,7 +50,11 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		// 超时/限流/5xx 是临时故障，保持现状等待下轮重试。
 		var stErr *githubx.HTTPStatusError
 		if errors.As(err, &stErr) && (stErr.StatusCode == http.StatusNotFound || stErr.StatusCode == http.StatusGone) {
-			_ = p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable)
+			if uerr := p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable); uerr != nil && p.Logger != nil {
+				// 状态推进失败会留下「GitHub 已删/转私有但本地仍正常轮询」的不一致，Warn 留痕。
+				p.Logger.Warn("external poll state update failed",
+					"repo", repo.FullName, "error_code", "repo_state_update_failed", "error", uerr.Error())
+			}
 		}
 		return err
 	}
