@@ -176,7 +176,9 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 		if res.UnhandledAction {
 			attrs = append(attrs, "unhandled_action", true)
 		}
-		s.Logger.Info("github webhook processed", attrs...)
+		// 成功路径降为 Debug：高流量仓库（Actions 批量事件）下每条 webhook 都 Info
+		// 会刷屏，排查时调级即可；accepted（Info）与 failed（Warn）保留。
+		s.Logger.Debug("github webhook processed", attrs...)
 	}
 }
 

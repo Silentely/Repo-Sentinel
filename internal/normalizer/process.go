@@ -585,60 +585,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	run := env.WorkflowRun
-	conclusion := ""
-	if run.Conclusion != nil {
-		conclusion = *run.Conclusion
-	}
-	// GitHub 偶发缺字段；入库前补默认值，避免 Ent 必填校验失败。
-	if run.RunAttempt <= 0 {
-		run.RunAttempt = 1
-	}
-	if strings.TrimSpace(run.Status) == "" {
-		run.Status = "unknown"
-	}
-	if run.UpdatedAt.IsZero() {
-		if !run.CreatedAt.IsZero() {
-			run.UpdatedAt = run.CreatedAt
-		} else {
-			run.UpdatedAt = time.Now().UTC()
-		}
-	}
-	name := strings.TrimSpace(run.Name)
-	if name == "" {
-		name = "workflow"
-	}
-	actor := strings.TrimSpace(run.Actor.Login)
-	if actor == "" {
-		actor = "unknown"
-	}
-	if strings.TrimSpace(run.HeadBranch) == "" {
-		run.HeadBranch = "unknown"
-	}
-	if strings.TrimSpace(run.HeadSHA) == "" {
-		run.HeadSHA = "0000000000000000000000000000000000000000"
-	}
-	if strings.TrimSpace(run.HTMLURL) == "" {
-		run.HTMLURL = fmt.Sprintf("https://github.com/%s/actions/runs/%d", env.Repository.FullName, run.ID)
-	}
-	hash := StateHash(strconv.FormatInt(run.ID, 10), run.Status, conclusion, strconv.Itoa(run.RunAttempt), run.HeadSHA)
-	in := store.WorkflowRun{
-		RepositoryID:     repo.ID,
-		GitHubRunID:      run.ID,
-		GitHubWorkflowID: run.WorkflowID,
-		WorkflowName:     name,
-		RunNumber:        run.RunNumber,
-		Event:            run.Event,
-		HeadBranch:       run.HeadBranch,
-		HeadSHA:          run.HeadSHA,
-		Status:           run.Status,
-		Conclusion:       run.Conclusion,
-		Actor:            actor,
-		RunAttempt:       run.RunAttempt,
-		HTMLURL:          run.HTMLURL,
-		RunStartedAt:     run.RunStartedAt,
-		RunUpdatedAt:     run.UpdatedAt,
-		StateHash:        hash,
-	}
+	in, hash := normalizeWorkflowRun(run, env.Repository.FullName, repo.ID)
 	if run.Status == "completed" {
 		t := run.UpdatedAt
 		in.RunCompletedAt = &t
@@ -672,11 +619,11 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	srcUpdated := run.UpdatedAt
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: store.WorkflowRunKind, Action: "completed",
-		RepositoryID: &repo.ID, Title: run.Name, Actor: actor, WorkflowRunID: &runID,
+		RepositoryID: &repo.ID, Title: run.Name, Actor: in.Actor, WorkflowRunID: &runID,
 		WorkflowConclusion: *run.Conclusion, OccurredAt: run.UpdatedAt, SourceUpdatedAt: &srcUpdated,
 		HTMLURL: run.HTMLURL,
 		PayloadSummary: map[string]any{
-			"workflow_name": run.Name, "run_number": run.RunNumber, "head_branch": run.HeadBranch,
+			"workflow_name": in.WorkflowName, "run_number": run.RunNumber, "head_branch": run.HeadBranch,
 			"head_sha": shortSHA(run.HeadSHA), "status": run.Status, "conclusion": *run.Conclusion, "attempt": run.RunAttempt,
 		},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
@@ -695,6 +642,65 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		return Result{}, err
 	}
 	return Result{Event: &created, Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
+}
+
+// normalizeWorkflowRun 清洗 workflow_run 载荷并补默认值，构造入库模型与状态哈希。
+// GitHub 偶发缺字段：入库前补默认值，避免 Ent 必填校验失败。
+func normalizeWorkflowRun(run *ghWorkflowRun, repoFullName string, repoID string) (store.WorkflowRun, string) {
+	conclusion := ""
+	if run.Conclusion != nil {
+		conclusion = *run.Conclusion
+	}
+	if run.RunAttempt <= 0 {
+		run.RunAttempt = 1
+	}
+	if strings.TrimSpace(run.Status) == "" {
+		run.Status = "unknown"
+	}
+	if run.UpdatedAt.IsZero() {
+		if !run.CreatedAt.IsZero() {
+			run.UpdatedAt = run.CreatedAt
+		} else {
+			run.UpdatedAt = time.Now().UTC()
+		}
+	}
+	name := strings.TrimSpace(run.Name)
+	if name == "" {
+		name = "workflow"
+	}
+	actor := strings.TrimSpace(run.Actor.Login)
+	if actor == "" {
+		actor = "unknown"
+	}
+	if strings.TrimSpace(run.HeadBranch) == "" {
+		run.HeadBranch = "unknown"
+	}
+	if strings.TrimSpace(run.HeadSHA) == "" {
+		run.HeadSHA = "0000000000000000000000000000000000000000"
+	}
+	if strings.TrimSpace(run.HTMLURL) == "" {
+		run.HTMLURL = fmt.Sprintf("https://github.com/%s/actions/runs/%d", repoFullName, run.ID)
+	}
+	hash := StateHash(strconv.FormatInt(run.ID, 10), run.Status, conclusion, strconv.Itoa(run.RunAttempt), run.HeadSHA)
+	in := store.WorkflowRun{
+		RepositoryID:     repoID,
+		GitHubRunID:      run.ID,
+		GitHubWorkflowID: run.WorkflowID,
+		WorkflowName:     name,
+		RunNumber:        run.RunNumber,
+		Event:            run.Event,
+		HeadBranch:       run.HeadBranch,
+		HeadSHA:          run.HeadSHA,
+		Status:           run.Status,
+		Conclusion:       run.Conclusion,
+		Actor:            actor,
+		RunAttempt:       run.RunAttempt,
+		HTMLURL:          run.HTMLURL,
+		RunStartedAt:     run.RunStartedAt,
+		RunUpdatedAt:     run.UpdatedAt,
+		StateHash:        hash,
+	}
+	return in, hash
 }
 
 func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env envelope) (Result, error) {
