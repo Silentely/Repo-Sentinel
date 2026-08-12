@@ -49,7 +49,8 @@ export function FeatureGuard({
   children: ReactNode;
 }) {
   const settings = useQuery(settingsQueryOptions);
-  if (settings.isLoading) {
+  // isPending 覆盖「无缓存且加载中」，与 QueryGate 判定一致。
+  if (settings.isPending) {
     return (
       <ListShell eyebrow="仓库" title={featureName} description={description}>
         <ListSkeleton />
