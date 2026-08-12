@@ -26,9 +26,6 @@ type Engine struct {
 	Logger *slog.Logger
 }
 
-// aiTriageTimeout 分诊调用预算上限：告警通知应尽快入库，AI 慢则放弃分诊。
-const aiTriageTimeout = 15 * time.Second
-
 // logNotifySkipped 记录"事件已入库但未产生实时通知"的决策留痕（Debug）：
 // 静默路径包括抑制、能力开关关闭与不在实时通知范围，排查漏通知时不再盲猜。
 func (e *Engine) logNotifySkipped(res normalizer.Result, repoFullName, reason string) {
@@ -176,7 +173,9 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 	}
 	// 为本次 AI 决策注入请求关联 ID：参与度日志与 ai 层调用日志共用同一 req_id。
 	ctx, reqID := ai.EnsureRequestID(ctx)
-	ctx, cancel := context.WithTimeout(ctx, aiTriageTimeout)
+	// 外层预算 = 配置的请求超时：分诊等待时长与用户配置一致，AI 慢时通知最迟
+	// 延迟配置超时后降级原文，不会被更短的硬编码上限截断。
+	ctx, cancel := context.WithTimeout(ctx, e.AI.EffectiveTimeout())
 	defer cancel()
 	start := time.Now()
 	analysis, err := e.AI.TriageAlert(ctx, *ev, repo)
@@ -214,11 +213,10 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 	return analysis
 }
 
-// aiReleaseTimeout release 总结调用预算上限（与分诊一致，通知不被 AI 阻塞）。
-const aiReleaseTimeout = 15 * time.Second
-
 // releaseAnalysis 生成新 release 的 AI 中文总结；未启用、非 release、无订阅渠道或失败时返回空串。
 // 返回空串时调用方保持原通知正文（原文链接兜底）。
+// 外层预算 = 配置的请求超时（e.AI.EffectiveTimeout）：等待时长与用户配置一致，
+// AI 慢时通知最迟延迟配置超时后降级原文，不会被更短的硬编码上限截断。
 // 参与度留痕与 triageAnalysis 同款：skipped（release_summary_not_enabled /
 // no_subscribed_channel）、used、fallback（reason=ai_error / empty_analysis）。
 func (e *Engine) releaseAnalysis(ctx context.Context, ev *store.Event, repo string, channels []store.NotificationChannel) string {
@@ -239,7 +237,7 @@ func (e *Engine) releaseAnalysis(ctx context.Context, ev *store.Event, repo stri
 		return skip("no_subscribed_channel")
 	}
 	ctx, reqID := ai.EnsureRequestID(ctx)
-	ctx, cancel := context.WithTimeout(ctx, aiReleaseTimeout)
+	ctx, cancel := context.WithTimeout(ctx, e.AI.EffectiveTimeout())
 	defer cancel()
 	start := time.Now()
 	tag := store.PayloadString(ev.PayloadSummary, "tag_name")

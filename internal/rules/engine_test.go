@@ -123,6 +123,58 @@ func TestReleaseAnalysis(t *testing.T) {
 	})
 }
 
+// TestReleaseAnalysisBudgetFollowsConfiguredTimeout 验证 release 总结预算跟随配置超时，
+// 而非固定 15s：配置 100ms 超时 + 慢上游 → 快速降级为空。若仍按固定 15s 预算，
+// 300ms 的慢响应会成功返回总结，本测试即失败。
+func TestReleaseAnalysisBudgetFollowsConfiguredTimeout(t *testing.T) {
+	ev := &store.Event{
+		Kind: store.ReleaseKind, Action: "published", Title: "Hello-World v2.0.0",
+		HTMLURL:        "https://github.com/o/r/releases/tag/v2.0.0",
+		PayloadSummary: map[string]any{"tag_name": "v2.0.0", "notes": "Some English notes"},
+	}
+	subscribed := []store.NotificationChannel{{Enabled: true}}
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"不应返回"}}]}`))
+	}))
+	t.Cleanup(slow.Close)
+	client := &ai.Client{BaseURL: slow.URL, APIKey: "sk-test", Enabled: true, ReleaseSummaryEnabled: true, Timeout: 100 * time.Millisecond}
+	start := time.Now()
+	got := (&Engine{AI: client}).releaseAnalysis(t.Context(), ev, "o/r", subscribed)
+	elapsed := time.Since(start)
+	if got != "" {
+		t.Fatalf("超过配置超时应降级为空，实际: %q", got)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("预算应跟随配置超时（≈100ms）而非固定 15s，实际耗时 %s", elapsed)
+	}
+}
+
+// TestTriageAnalysisBudgetFollowsConfiguredTimeout 同上，覆盖安全告警分诊链路。
+func TestTriageAnalysisBudgetFollowsConfiguredTimeout(t *testing.T) {
+	ev := &store.Event{
+		Kind: store.AlertKindDependabot, Action: "created", Title: "lodash 漏洞", Severity: "high",
+		HTMLURL:        "https://github.com/acme/web/security/dependabot/3",
+		PayloadSummary: map[string]any{"rule_or_dependency": "lodash"},
+	}
+	subscribed := []store.NotificationChannel{{Enabled: true}}
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"不应返回"}}]}`))
+	}))
+	t.Cleanup(slow.Close)
+	client := &ai.Client{BaseURL: slow.URL, APIKey: "sk-test", Enabled: true, TriageEnabled: true, Timeout: 100 * time.Millisecond}
+	start := time.Now()
+	got := (&Engine{AI: client}).triageAnalysis(t.Context(), ev, "acme/web", subscribed)
+	elapsed := time.Since(start)
+	if got != "" {
+		t.Fatalf("超过配置超时应降级为空，实际: %q", got)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("预算应跟随配置超时（≈100ms）而非固定 15s，实际耗时 %s", elapsed)
+	}
+}
+
 // TestEvaluateReleaseOutbox 验证 release 事件经 Evaluate 写入 Outbox，且 feature 关闭时静默。
 func TestEvaluateReleaseOutbox(t *testing.T) {
 	data := openEngineStore(t)

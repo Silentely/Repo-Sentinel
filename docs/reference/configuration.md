@@ -191,7 +191,7 @@ AI 用于三处：每日摘要 / 周报 / 月报正文生成（`digest_enabled`�
 | `REPOSENTINEL_AI_TRIAGE_ENABLED` | 是否启用安全告警分诊，默认 `true` |
 | `REPOSENTINEL_AI_RELEASE_SUMMARY_ENABLED` | 是否启用 star 仓库新 Release 的 AI 中文总结，默认 `true` |
 
-AI 不可用（未配置、超时、服务端错误）时自动降级：摘要回退模板正文、告警保持原文，不影响通知投递。接入本地模型的 YAML 示例见下节。
+AI 不可用（未配置、超时、服务端错误）时自动降级：摘要回退模板正文、告警保持原文，不影响通知投递。实时链路的等待时长严格遵循 `timeout` 配置（分诊与 Release 总结按配置超时建预算，无更短的硬编码上限），超时后该条通知以原文链接兜底发出。接入本地模型的 YAML 示例见下节。
 
 ### Agent 访问（可选）
 

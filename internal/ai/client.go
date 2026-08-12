@@ -90,7 +90,7 @@ func (c *Client) semChan() chan struct{} {
 }
 
 // acquireSlot 获取一个 AI 调用并发槽位；无空位时阻塞等待，直到有槽或 ctx 结束。
-// 等待计入调用总时长，由调用方预算（digest 无硬限、分诊 15s）兜底。
+// 等待计入调用总时长，由调用方预算（digest 无硬限、分诊/release 按配置超时）兜底。
 func (c *Client) acquireSlot(ctx context.Context) (release func(), err error) {
 	sem := c.semChan()
 	select {
@@ -174,7 +174,9 @@ func (c *Client) IsReleaseSummaryEnabled() bool {
 }
 
 // defaultHTTPClient 包级共享默认客户端：复用连接池，避免每次请求新建。
-var defaultHTTPClient = &http.Client{Timeout: 30 * time.Second}
+// 不设 Timeout 字段：请求超时统一由请求上下文承载（doAttempt 每次以配置超时
+// 派生 attemptCtx），避免包级 30s 硬顶截断高于 30s 的超时配置。
+var defaultHTTPClient = &http.Client{}
 
 func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
@@ -220,6 +222,14 @@ func (c *Client) timeout() time.Duration {
 		return DefaultTimeout
 	}
 	return c.Timeout
+}
+
+// EffectiveTimeout 返回当前生效的单次请求超时（未配置时回退默认值）。
+// 供规则引擎等调用方按配置建立外层预算：release 总结与安全告警分诊的等待
+// 时长与用户配置一致，不再被硬编码上限截断。
+func (c *Client) EffectiveTimeout() time.Duration {
+	s := c.Snapshot()
+	return s.timeout()
 }
 
 // retries 返回瞬时失败自动重试次数：0 表示不重试。
@@ -344,7 +354,7 @@ func classifyCallError(err error) (code, detail string) {
 // Complete 执行单轮对话并返回助手文本。
 // 未配置、网络失败、HTTP 非 2xx、响应缺内容均返回错误，调用方负责降级。
 // 瞬时失败（超时/网络/上游 5xx/空或损坏响应）按 Retries 配置自动重试，
-// 每次重试前等待 retryDelay；外层 context 预算到期（如分诊 15s）立即放弃，
+// 每次重试前等待 retryDelay；外层 context 预算到期（分诊/release 按配置超时）立即放弃，
 // 避免重试拖垮实时链路。请求成败统一留痕（Logger 注入时）：DEBUG 记录发起，
 // INFO 记录成功与输出长度及 token 用量，WARN 记录最终失败并附 error_code 分类
 // （timeout/network/upstream_<status> 等），重试过程以 DEBUG ai request retry 留痕，

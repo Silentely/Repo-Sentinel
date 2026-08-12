@@ -46,7 +46,7 @@
 
 ## 重试策略
 
-瞬时失败（`timeout` / `network` / `upstream_5xx` / `empty_response` / `bad_response`）按 `Retries` 配置自动重试，每次重试前等待 `retryDelay`（默认 1s）；`upstream_4xx`（确定性错误）与 `concurrency_limit` / `internal` 不重试。重试受外层 context 预算约束（分诊 15s 预算到期即放弃），digest 无硬限时总时长 ≈ 超时 × (1+重试次数)。指标只计最终结果，耗时含全部尝试。
+瞬时失败（`timeout` / `network` / `upstream_5xx` / `empty_response` / `bad_response`）按 `Retries` 配置自动重试，每次重试前等待 `retryDelay`（默认 1s）；`upstream_4xx`（确定性错误）与 `concurrency_limit` / `internal` 不重试。重试受外层 context 预算约束（分诊/release 按配置超时建预算，到期即放弃），digest 无硬限时总时长 ≈ 超时 × (1+重试次数)。指标只计最终结果，耗时含全部尝试。请求超时一律以配置 `timeout` 为准：包级默认 HTTP 客户端不带 Timeout 硬顶，外层预算由调用方（rules 的 `EffectiveTimeout`、webhooksvc 的 `processBudget`）按配置派生，不再有硬编码上限截断。
 
 ## 指标与运行时行为
 
@@ -61,7 +61,7 @@
 ## 常见问题 (FAQ)
 
 **Q: AI 慢是否阻塞 Webhook？**  
-A: 分诊有独立超时（rules 侧 15s）；超时则通知不含 AI 段落。
+A: 分诊等待时长 = 配置的请求超时（rules 侧按 `EffectiveTimeout` 建预算）；超时则通知不含 AI 段落。
 
 **Q: 可接本地模型吗？**  
 A: 可以，将 BaseURL 指向 OpenAI 兼容网关即可。

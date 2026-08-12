@@ -25,6 +25,7 @@ import {
   type AIConfigInput,
   type SystemSettings,
 } from "./api";
+import { NumberField } from "./number-field";
 
 // ---- 运行设置表单：单一受控表单对象，替代逐字段 useState + 同步 effect ----
 
@@ -472,31 +473,31 @@ export function SettingsPage() {
           </label>
           <label className="field--plain">
             <span>通知聚合窗口（秒）</span>
-            <input type="number" min={1} max={86400} value={form.aggregateSec} onChange={(e) => set("aggregateSec", Number(e.target.value) || 1)} />
+            <NumberField min={1} max={86400} integer value={form.aggregateSec} onChange={(v) => set("aggregateSec", v)} />
           </label>
           <label className="field--plain">
             <span>超频阈值</span>
-            <input type="number" min={1} value={form.burstThreshold} onChange={(e) => set("burstThreshold", Number(e.target.value) || 1)} />
+            <NumberField min={1} integer value={form.burstThreshold} onChange={(v) => set("burstThreshold", v)} />
           </label>
           <label className="field--plain">
             <span>超频窗口（秒）</span>
-            <input type="number" min={1} max={86400} value={form.burstWindowSec} onChange={(e) => set("burstWindowSec", Number(e.target.value) || 1)} />
+            <NumberField min={1} max={86400} integer value={form.burstWindowSec} onChange={(v) => set("burstWindowSec", v)} />
           </label>
           <label className="field--plain">
             <span>已关闭/已忽略显示数量</span>
-            <input type="number" min={1} max={200} value={form.closedDisplayLimit} onChange={(e) => set("closedDisplayLimit", Math.min(200, Math.max(1, Number(e.target.value) || 1)))} />
+            <NumberField min={1} max={200} integer value={form.closedDisplayLimit} onChange={(v) => set("closedDisplayLimit", v)} />
           </label>
           <label className="field--plain">
             <span>事件保留天数</span>
-            <input type="number" min={0} max={3650} value={form.retentionEventsDays} onChange={(e) => set("retentionEventsDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} />
+            <NumberField min={0} max={3650} integer value={form.retentionEventsDays} onChange={(v) => set("retentionEventsDays", v)} />
           </label>
           <label className="field--plain">
             <span>投递记录保留天数</span>
-            <input type="number" min={0} max={3650} value={form.retentionOutboxDays} onChange={(e) => set("retentionOutboxDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} />
+            <NumberField min={0} max={3650} integer value={form.retentionOutboxDays} onChange={(v) => set("retentionOutboxDays", v)} />
           </label>
           <label className="field--plain">
             <span>Webhook Delivery 保留天数</span>
-            <input type="number" min={0} max={3650} value={form.retentionDeliveriesDays} onChange={(e) => set("retentionDeliveriesDays", Math.min(3650, Math.max(0, Number(e.target.value) || 0)))} />
+            <NumberField min={0} max={3650} integer value={form.retentionDeliveriesDays} onChange={(v) => set("retentionDeliveriesDays", v)} />
           </label>
         </div>
         <p className="field-hint">超频：在超频窗口内通知条数达到阈值时合并为摘要，避免刷屏。Closed/Dismissed 列表默认只显示最近指定数量条目。保留天数 0 表示禁用该类清理。</p>
@@ -513,7 +514,7 @@ export function SettingsPage() {
           <label className="check-row"><input type="checkbox" checked={form.reportMonthly} onChange={(e) => set("reportMonthly", e.target.checked)} /><span>启用月度报告</span></label>
           {form.reportMonthly ? (
             <label className="field--plain"><span>每月发送日</span>
-              <input type="number" min={1} max={28} value={form.reportMonthlyDay} onChange={(e) => set("reportMonthlyDay", Math.min(28, Math.max(1, Number(e.target.value) || 1)))} />
+              <NumberField min={1} max={28} integer value={form.reportMonthlyDay} onChange={(v) => set("reportMonthlyDay", v)} />
             </label>
           ) : null}
           <p className="field-hint">周报/月报与每日摘要共用渠道的「接收定期汇总」开关；发送时刻沿用每日摘要本地时间。正文在配置 AI 后由模型总结，否则使用分组模板。</p>
@@ -561,15 +562,15 @@ export function SettingsPage() {
           </label>
           <label className="field--plain">
             <span>请求超时（秒）</span>
-            <input type="number" min={1} max={3600} value={aiForm.timeoutSec} disabled={aiConfig.data?.timeout_locked} onChange={(e) => setAI("timeoutSec", Math.min(3600, Math.max(1, Number(e.target.value) || 1)))} />
+            <NumberField min={1} max={3600} integer value={aiForm.timeoutSec} disabled={aiConfig.data?.timeout_locked} onChange={(v) => setAI("timeoutSec", v)} />
           </label>
           <label className="field--plain">
             <span>重试次数</span>
-            <input type="number" min={0} max={5} value={aiForm.retries} disabled={aiConfig.data?.retries_locked} onChange={(e) => setAI("retries", Math.min(5, Math.max(0, Math.trunc(Number(e.target.value) || 0))))} />
+            <NumberField min={0} max={5} integer value={aiForm.retries} disabled={aiConfig.data?.retries_locked} onChange={(v) => setAI("retries", v)} />
           </label>
           <label className="field--plain">
             <span>输出 token 上限</span>
-            <input type="number" min={100} max={8000} value={aiForm.maxTokens} disabled={aiConfig.data?.max_tokens_locked} onChange={(e) => setAI("maxTokens", Math.min(8000, Math.max(100, Number(e.target.value) || 100)))} />
+            <NumberField min={100} max={8000} integer value={aiForm.maxTokens} disabled={aiConfig.data?.max_tokens_locked} onChange={(v) => setAI("maxTokens", v)} />
           </label>
           <label className="field--plain">
             <span>API Key（留空保持不变）</span>

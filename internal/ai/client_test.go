@@ -78,6 +78,24 @@ func TestHTTPClientReuse(t *testing.T) {
 	if (&Client{HTTP: injected}).httpClient() != injected {
 		t.Fatal("注入的自定义客户端应原样使用")
 	}
+	// 共享默认客户端不得带硬编码 Timeout：请求超时由 ctx（配置超时）承载，
+	// 否则高于 30s 的超时配置会被客户端硬顶截断。
+	if defaultHTTPClient.Timeout != 0 {
+		t.Fatalf("默认客户端不应设 Timeout 硬顶，实际 %s", defaultHTTPClient.Timeout)
+	}
+}
+
+// TestEffectiveTimeout 验证生效超时：显式配置优先，未配置回退默认值。
+func TestEffectiveTimeout(t *testing.T) {
+	if got := (&Client{Timeout: 45 * time.Second}).EffectiveTimeout(); got != 45*time.Second {
+		t.Fatalf("显式配置应生效，实际 %s", got)
+	}
+	if got := (&Client{}).EffectiveTimeout(); got != DefaultTimeout {
+		t.Fatalf("未配置应回退默认值，实际 %s", got)
+	}
+	if got := (*Client)(nil).EffectiveTimeout(); got != DefaultTimeout {
+		t.Fatalf("nil 客户端应回退默认值，实际 %s", got)
+	}
 }
 
 // TestTruncateOutput 验证 AI 输出长度上限：超长截断、边界不截断、多字节字符不截断半个字符。

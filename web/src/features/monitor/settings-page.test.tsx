@@ -338,6 +338,42 @@ describe("设置页", () => {
     expect(saveAIConfigMock).toHaveBeenLastCalledWith(expect.objectContaining({ retries: 0 }));
   });
 
+  it("输出 token 上限可逐位输入多位数（不再被钳到 100）并随保存提交", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    const maxTokensInput = within(aiSection).getByLabelText("输出 token 上限");
+    // 默认值与后端 DefaultMaxTokens 一致。
+    expect(maxTokensInput).toHaveValue(800);
+    // 等 AI 配置查询落定，避免输入被数据回填的 useEffect 重置覆盖。
+    await waitFor(() => {
+      expect(within(aiSection).getByRole("button", { name: "保存 AI 配置" })).toBeEnabled();
+    });
+    // 逐位输入 2000：旧实现键入首位数即被钳到 100，无法继续输入。
+    fireEvent.change(maxTokensInput, { target: { value: "2" } });
+    expect(maxTokensInput).toHaveValue(2);
+    fireEvent.change(maxTokensInput, { target: { value: "2000" } });
+    expect(maxTokensInput).toHaveValue(2000);
+    await user.click(within(aiSection).getByRole("button", { name: "保存 AI 配置" }));
+    expect(await within(aiSection).findByText("AI 配置已保存。")).toBeInTheDocument();
+    expect(saveAIConfigMock).toHaveBeenLastCalledWith(expect.objectContaining({ max_tokens: 2000 }));
+  });
+
+  it("输出 token 上限失焦时钳到合法范围", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    const maxTokensInput = within(aiSection).getByLabelText("输出 token 上限");
+    await waitFor(() => {
+      expect(within(aiSection).getByRole("button", { name: "保存 AI 配置" })).toBeEnabled();
+    });
+    fireEvent.change(maxTokensInput, { target: { value: "50" } });
+    fireEvent.blur(maxTokensInput);
+    expect(maxTokensInput).toHaveValue(100);
+  });
+
   it("重试次数被环境变量锁定时输入框禁用", async () => {
     const original = aiConfigFixture;
     aiConfigFixture = { ...original, retries_locked: true };

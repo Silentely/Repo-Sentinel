@@ -16,7 +16,7 @@
 ## 对外接口
 
 - 实现 `webhooksvc.Evaluator`
-- 可选 `AI *ai.Client`：安全告警分诊（超时 `aiTriageTimeout` = 15s，失败则无分诊正文）
+- 可选 `AI *ai.Client`：安全告警分诊与 release 总结（等待时长 = 配置的请求超时，失败则无 AI 段落）
 - 可选 `Logger *slog.Logger`：分诊参与度留痕，由 `app.Build` / `webhooksvc` 注入
 
 ## 分诊日志留痕

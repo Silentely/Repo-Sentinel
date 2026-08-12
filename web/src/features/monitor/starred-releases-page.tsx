@@ -16,6 +16,7 @@ import {
   type StarredReleasesConfigInput,
   type StarredTrackerItem,
 } from "./api";
+import { NumberField } from "./number-field";
 
 interface FormState {
   enabled: boolean;
@@ -169,7 +170,7 @@ export function StarredReleasesPage() {
           </label>
           <label className="field--plain">
             <span>追踪上限</span>
-            <input type="number" min={1} max={10000} value={form.maxTrackers} onChange={(e) => set("maxTrackers", Math.min(10000, Math.max(1, Number(e.target.value) || 1)))} />
+            <NumberField min={1} max={10000} integer value={form.maxTrackers} onChange={(v) => set("maxTrackers", v)} />
           </label>
         </div>
         <p className="field-hint">周期使用 Go duration 格式（如 6h、10m、24h）。Star 行为低频，同步周期可放宽；Release 轮询周期决定通知延迟。</p>

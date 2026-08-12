@@ -40,10 +40,29 @@ type Service struct {
 // 阻塞（数据库抖动、外部调用），以 Warn 留痕便于定位。
 const slowWebhookThreshold = 5 * time.Second
 
-// webhookProcessTimeout 单条 webhook 后台处理超时上限：
+// webhookProcessTimeout 单条 webhook 后台处理超时下限：
 // 数据库挂起或外部依赖（AI 分诊等评估路径）变慢时，超时释放 32 并发槽位，
 // 避免槽位被永久占用导致积压恶化。状态标记使用脱离取消的 markCtx，不受此超时影响。
+// 实际预算取该值与「AI 配置超时 + 余量」的较大者（见 processBudget），
+// 保证分诊调用预算不被处理预算截断，配置即强制。
 const webhookProcessTimeout = 60 * time.Second
+
+// webhookProcessMargin 处理预算在 AI 配置超时之上预留的非 AI 管线余量
+// （规范化、状态标记等），避免 AI 恰好用满超时时整条处理被掐断。
+const webhookProcessMargin = 10 * time.Second
+
+// processBudget 计算单条 webhook 处理预算：以 webhookProcessTimeout 为下限，
+// 若 AI 分诊配置的超时更高则随之放宽。nil 客户端按系统下限处理。
+func processBudget(aiClient *ai.Client, base time.Duration) time.Duration {
+	if aiClient == nil {
+		return base
+	}
+	budget := aiClient.EffectiveTimeout() + webhookProcessMargin
+	if budget < base {
+		return base
+	}
+	return budget
+}
 
 // markFailed 统一处理失败分支：标记投递失败（带语义化错误码）、记录失败指标回调。
 // 标记失败会让行残留 accepted/中间态，影响状态机与重放判断，必须留痕。
@@ -74,9 +93,9 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	if ctx == nil {
 		return
 	}
-	// 单条处理带超时上限：Background 为应用生命周期 context，无 Deadline；
-	// 挂起时超时释放并发槽位（见 webhookProcessTimeout 注释）。
-	processCtx, processCancel := context.WithTimeout(ctx, webhookProcessTimeout)
+	// 单条处理带超时预算：Background 为应用生命周期 context，无 Deadline；
+	// 挂起时超时释放并发槽位（见 webhookProcessTimeout / processBudget 注释）。
+	processCtx, processCancel := context.WithTimeout(ctx, processBudget(s.AI, webhookProcessTimeout))
 	defer processCancel()
 	startedAt := time.Now()
 	// 慢处理留痕：repoName 为变量，defer 读取 return 时的最终值。
