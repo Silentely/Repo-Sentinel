@@ -54,4 +54,17 @@ describe("NumberField", () => {
     expect(input).toHaveValue(2);
     expect(onChange).toHaveBeenLastCalledWith(2);
   });
+
+  it("宽度随内容增长而变宽（短值不再撑满整列）", () => {
+    const { input, onChange } = setup({ value: 3 });
+    // style.width 形如 calc(Nch + 1.5rem + 2px)，取 N 比较。
+    const charsOf = (w: string) => Number.parseFloat(w.slice("calc(".length));
+    const short = charsOf(input.style.width);
+    expect(Number.isFinite(short)).toBe(true);
+    // 输入 5 位数字后宽度应大于 1 位时。
+    fireEvent.change(input, { target: { value: "86400" } });
+    const long = charsOf(input.style.width);
+    expect(long).toBeGreaterThan(short);
+    expect(onChange).toHaveBeenLastCalledWith(86400);
+  });
 });

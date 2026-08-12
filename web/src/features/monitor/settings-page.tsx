@@ -555,7 +555,7 @@ export function SettingsPage() {
           <span>启用 AI（{aiConfig.data?.api_key_configured ? "API Key 已配置" : "API Key 未配置"}）</span>
         </label>
         <div className="form-grid">
-          <label className="field--plain"><span>API Base URL</span><input value={aiForm.baseURL} disabled={aiConfig.data?.base_url_locked} onChange={(e) => setAI("baseURL", e.target.value)} placeholder="https://api.openai.com/v1" /></label>
+          <label className="field--plain"><span>API Base URL</span><input size={30} value={aiForm.baseURL} disabled={aiConfig.data?.base_url_locked} onChange={(e) => setAI("baseURL", e.target.value)} placeholder="https://api.openai.com/v1" /></label>
           <label className="field--plain">
             <span>模型</span>
             <input value={aiForm.model} disabled={aiConfig.data?.model_locked} onChange={(e) => setAI("model", e.target.value)} placeholder="gpt-4o-mini" />

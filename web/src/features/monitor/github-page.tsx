@@ -161,7 +161,7 @@ export function GitHubPage() {
           </label>
           <label className="field--plain">
             <span>Public Base URL {cfg?.public_base_url_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
-            <input value={publicBaseURL} disabled={cfg?.public_base_url_locked} onChange={(e) => setPublicBaseURL(e.target.value)} placeholder="https://monitor.example.com" autoComplete="off" />
+            <input size={30} value={publicBaseURL} disabled={cfg?.public_base_url_locked} onChange={(e) => setPublicBaseURL(e.target.value)} placeholder="https://monitor.example.com" autoComplete="off" />
           </label>
           <label className="field--plain">
             <span>Webhook Secret {cfg?.webhook_secret_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
@@ -174,7 +174,7 @@ export function GitHubPage() {
         </label>
         <label className="field--plain">
           <span>或：服务器上的私钥路径（二选一）</span>
-          <input value={privateKeyPath} disabled={cfg?.private_key_locked || Boolean(privateKeyPEM.trim())} onChange={(e) => setPrivateKeyPath(e.target.value)} placeholder="/secrets/github-app.pem" autoComplete="off" />
+          <input size={26} value={privateKeyPath} disabled={cfg?.private_key_locked || Boolean(privateKeyPEM.trim())} onChange={(e) => setPrivateKeyPath(e.target.value)} placeholder="/secrets/github-app.pem" autoComplete="off" />
         </label>
         <p className="field-hint">
           推荐直接粘贴 PEM（加密入库，容器无需挂载文件）。External PAT 仅支持环境变量。

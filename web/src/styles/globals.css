@@ -1621,6 +1621,14 @@ a.status-item--link:focus-visible {
 }
 
 .field--plain input {
+  justify-self: start;
+  /* 宽度跟随内容：短值（数字/时区等）不再撑满整列留白。
+     field-sizing: content 让 Chrome/Safari 精确贴合内容；
+     Firefox 不支持时回退到 size 属性/默认 20ch（见下方显式 size 兜底）。 */
+  width: fit-content;
+  max-width: 100%;
+  min-width: 12ch;
+  field-sizing: content;
   min-height: 44px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
@@ -1628,6 +1636,13 @@ a.status-item--link:focus-visible {
   background: var(--bg-canvas);
   color: var(--text-primary);
   transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+/* 数字框宽度由 NumberField 组件按内容内联控制，这里只约束下限与溢出 */
+.field--plain input[type="number"] {
+  width: auto;
+  min-width: 4ch;
+  max-width: 100%;
 }
 
 .field--plain input:focus {
