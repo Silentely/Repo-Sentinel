@@ -309,8 +309,7 @@ button:disabled {
   color: var(--accent-fg);
   background: var(--accent);
   font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  font-weight: 700;  letter-spacing: 0.01em;
   line-height: 1.2;
   cursor: pointer;
   transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
@@ -326,6 +325,16 @@ button:disabled {
 .primary-button--inline {
   width: auto;
   min-width: 7.5rem;
+}
+
+/* 危险确认主按钮：删除类操作确认用实色危险底（见 ConfirmDialog） */
+.primary-button--danger {
+  border-color: color-mix(in oklch, var(--danger) 90%, black);
+  background: var(--danger);
+}
+
+.primary-button--danger:hover:not(:disabled) {
+  box-shadow: 0 8px 20px color-mix(in oklch, var(--danger) 28%, transparent);
 }
 
 a.primary-button {
@@ -2827,6 +2836,75 @@ a.status-item--link:focus-visible {
 @keyframes drawer-slide-in {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
+}
+
+/* ── 居中确认对话框（ConfirmDialog）── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: color-mix(in oklch, var(--bg-canvas) 60%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: drawer-fade-in 0.15s ease;
+}
+
+.confirm-dialog {
+  width: min(26rem, 92vw);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  box-shadow: 0 16px 48px color-mix(in oklch, var(--bg-canvas) 50%, transparent);
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  animation: dialog-pop-in 0.16s ease;
+}
+
+@keyframes dialog-pop-in {
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.confirm-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.confirm-dialog__header h2 {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.confirm-dialog__body {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.confirm-dialog__actions .primary-button {
+  width: auto;
+  min-width: 6.5rem;
+  min-height: 40px;
+  margin-top: 0;
+}
+
+.confirm-dialog__actions .secondary-button {
+  min-height: 40px;
 }
 
 .drawer-panel__header {

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
+import { ConfirmDialog } from "../../components/confirm-dialog";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate, type QueryGateQuery } from "../../components/query-gate";
@@ -591,30 +592,38 @@ function RepoCard({
   features: { issues: boolean; prs: boolean; actions: boolean; alerts: boolean; stars: boolean; watches: boolean };
 }) {
   const monitorOn = repo.monitor_enabled;
+  // 待确认操作：归档 / 彻底删除 走样式化确认对话框（原生 confirm 与整体 UI 割裂）。
+  const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
+
   function handleArchive(next: boolean) {
     if (next) {
-      if (
-        !window.confirm(
-          `确定在本系统归档「${repo.full_name || repo.name}」？将关闭监控与全部能力开关，停止采集与通知（不修改 GitHub 侧归档状态）。`,
-        )
-      ) {
-        return;
-      }
+      setConfirmAction("archive");
+      return;
     }
-    onToggle({ is_archived: next });
+    onToggle({ is_archived: false });
   }
 
   function handleDelete() {
-    const name = repo.full_name || repo.name;
-    if (
-      !window.confirm(
-        `确定彻底删除「${name}」？将级联清理该仓库的全部本地数据（PR/Issue、事件、告警、快照、游标与待投递通知），不可恢复。GitHub 侧若仍存在该仓库，重新同步后会重新出现。`,
-      )
-    ) {
-      return;
-    }
-    onDelete(repo.id);
+    setConfirmAction("delete");
   }
+
+  const repoName = repo.full_name || repo.name;
+  const confirmContent =
+    confirmAction === "archive" ? (
+      {
+        title: "归档仓库",
+        message: `确定在本系统归档「${repoName}」？将关闭监控与全部能力开关，停止采集与通知（不修改 GitHub 侧归档状态）。`,
+        confirmLabel: "归档",
+        action: () => onToggle({ is_archived: true }),
+      }
+    ) : confirmAction === "delete" ? (
+      {
+        title: "彻底删除仓库",
+        message: `确定彻底删除「${repoName}」？将级联清理该仓库的全部本地数据（PR/Issue、事件、告警、快照、游标与待投递通知），不可恢复。GitHub 侧若仍存在该仓库，重新同步后会重新出现。`,
+        confirmLabel: deleting ? "删除中…" : "彻底删除",
+        action: () => onDelete(repo.id),
+      }
+    ) : null;
 
   return (
     <li className="repo-card">
@@ -701,6 +710,20 @@ function RepoCard({
           {deleting ? "删除中…" : "彻底删除"}
         </button>
       </div>
+      <ConfirmDialog
+        open={confirmContent !== null}
+        title={confirmContent?.title ?? ""}
+        message={confirmContent?.message ?? ""}
+        confirmLabel={confirmContent?.confirmLabel ?? "确认"}
+        danger
+        busy={deleting}
+        onConfirm={() => {
+          const action = confirmContent?.action;
+          setConfirmAction(null);
+          action?.();
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </li>
   );
 }

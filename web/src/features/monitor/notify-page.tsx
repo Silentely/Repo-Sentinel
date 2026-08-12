@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
+import { ConfirmDialog } from "../../components/confirm-dialog";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
@@ -91,19 +92,21 @@ function ChannelForm({
   const [secret, setSecret] = useState("");
   const [kinds, setKinds] = useState<string[]>(() => SUBSCRIBABLE_KINDS.map((k) => k.value));
   const [digest, setDigest] = useState(true);
-  const channelId = channel?.id;
 
-  // 仅在渠道记录就绪时回填一次，避免覆盖用户正在编辑的勾选。
+  // 仅在渠道记录就绪时回填一次（按实例 ID 记账），避免覆盖用户正在编辑的勾选；
+  // 依赖完整（channel 与 setter 均入数组），不依赖禁用 exhaustive-deps。
   // 密钥不回填：服务端不返回明文，保存成功后置空等待重新输入。
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const prefilledIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (channel) {
-      setKinds(uiCheckedKinds(channel.event_kinds));
-      setDigest(channel.digest_enabled);
-      // 预填目标值，避免「只改订阅」时表单为空误清空。
-      if (channel.target) setTarget(channel.target);
+    if (!channel || prefilledIdRef.current === channel.id) {
+      return;
     }
-  }, [channelId]);
+    prefilledIdRef.current = channel.id;
+    setKinds(uiCheckedKinds(channel.event_kinds));
+    setDigest(channel.digest_enabled);
+    // 预填目标值，避免「只改订阅」时表单为空误清空。
+    if (channel.target) setTarget(channel.target);
+  }, [channel, setKinds, setDigest, setTarget]);
 
   const saveMut = useMutation({
     mutationFn: () => {
@@ -330,10 +333,10 @@ export function NotifyPage() {
     },
   });
 
+  // 删除渠道确认：样式化对话框（原生 confirm 与整体 UI 割裂）。
+  const [deleteTarget, setDeleteTarget] = useState<ChannelType | null>(null);
   const handleDelete = (type: ChannelType) => {
-    if (window.confirm(`确定要删除 ${channelDisplayName(type)} 渠道吗？`)) {
-      deleteMut.mutate(type);
-    }
+    setDeleteTarget(type);
   };
 
   const testingType = testMut.isPending ? testMut.variables : undefined;
@@ -482,6 +485,25 @@ export function NotifyPage() {
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
         onSaved={invalidateAll}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="删除渠道"
+        message={
+          deleteTarget
+            ? `确定要删除 ${channelDisplayName(deleteTarget)} 渠道吗？删除后该渠道的待投递记录将无法继续发送。`
+            : ""
+        }
+        confirmLabel={deleteMut.isPending ? "删除中…" : "删除"}
+        danger
+        busy={deleteMut.isPending}
+        onConfirm={() => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (target) deleteMut.mutate(target);
+        }}
+        onCancel={() => setDeleteTarget(null)}
       />
     </>
   );

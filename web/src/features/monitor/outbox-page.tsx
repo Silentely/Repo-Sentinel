@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 
+import { ConfirmDialog } from "../../components/confirm-dialog";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
@@ -49,6 +50,8 @@ export function OutboxPage() {
   const [batchRetryResult, setBatchRetryResult] = useState<BatchRetryResult | null>(null);
   // 单条重试失败：顶部提示原因（错误码已写入该记录，可结合列表查看）。
   const [retryError, setRetryError] = useState<string | null>(null);
+  // 跨页批量重试确认：批量操作覆盖全部失败投递，样式化对话框防误触。
+  const [retryAllConfirmOpen, setRetryAllConfirmOpen] = useState(false);
 
   const retry = useMutation({
     mutationFn: (id: string) => retryOutbox(id),
@@ -198,12 +201,7 @@ export function OutboxPage() {
               <button
                 className="quiet-button quiet-button--primary-ghost"
                 type="button"
-                onClick={() => {
-                  // 批量操作覆盖全部失败投递：确认防误触。
-                  if (window.confirm(`确定要重新排队全部 ${totalDead} 条失败投递吗？`)) {
-                    retryAllDeadAcrossPages.mutate();
-                  }
-                }}
+                onClick={() => setRetryAllConfirmOpen(true)}
                 disabled={retryAllDeadAcrossPages.isPending}
                 title={`跨页重试全部 ${totalDead} 条失败投递`}
               >
@@ -288,6 +286,19 @@ export function OutboxPage() {
       {selectedItem && (
         <OutboxDetailDrawer item={selectedItem} onClose={closeDetail} />
       )}
+
+      <ConfirmDialog
+        open={retryAllConfirmOpen}
+        title="重新排队全部失败投递"
+        message={`确定要重新排队全部 ${totalDead} 条失败投递吗？将不受当前筛选限制，按页收集后逐条重新入队。`}
+        confirmLabel={retryAllDeadAcrossPages.isPending ? "收集中…" : "重新排队"}
+        busy={retryAllDeadAcrossPages.isPending}
+        onConfirm={() => {
+          setRetryAllConfirmOpen(false);
+          retryAllDeadAcrossPages.mutate();
+        }}
+        onCancel={() => setRetryAllConfirmOpen(false)}
+      />
     </>
   );
 }
