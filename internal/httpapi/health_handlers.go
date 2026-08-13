@@ -3,7 +3,7 @@ package httpapi
 import "net/http"
 
 // noStore 供探活/就绪端点使用：健康检查响应不得被中间层缓存
-//（否则 503 会被缓存，编排系统误判实例健康）。
+// （否则 503 会被缓存，编排系统误判实例健康）。
 func (s *server) handleLive(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
