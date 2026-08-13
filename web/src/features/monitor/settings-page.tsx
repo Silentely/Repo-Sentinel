@@ -464,12 +464,12 @@ export function SettingsPage() {
         <div className="form-grid">
           <label className="field--plain">
             <span>管理员时区</span>
-            <input value={form.timezone} onChange={(e) => set("timezone", e.target.value)} onBlur={(e) => validateTimezone(e.target.value)} placeholder="UTC 或 Asia/Shanghai" />
+            <input size={16} value={form.timezone} onChange={(e) => set("timezone", e.target.value)} onBlur={(e) => validateTimezone(e.target.value)} placeholder="UTC 或 Asia/Shanghai" />
           </label>
           {timezoneHint ? <p className="field-hint" role="status">{timezoneHint}</p> : null}
           <label className="field--plain">
             <span>每日摘要本地时间</span>
-            <input value={form.digestTime} onChange={(e) => set("digestTime", e.target.value)} placeholder="09:00" />
+            <input size={6} value={form.digestTime} onChange={(e) => set("digestTime", e.target.value)} placeholder="09:00" />
           </label>
           <label className="field--plain">
             <span>通知聚合窗口（秒）</span>
@@ -558,7 +558,7 @@ export function SettingsPage() {
           <label className="field--plain"><span>API Base URL</span><input size={30} value={aiForm.baseURL} disabled={aiConfig.data?.base_url_locked} onChange={(e) => setAI("baseURL", e.target.value)} placeholder="https://api.openai.com/v1" /></label>
           <label className="field--plain">
             <span>模型</span>
-            <input value={aiForm.model} disabled={aiConfig.data?.model_locked} onChange={(e) => setAI("model", e.target.value)} placeholder="gpt-4o-mini" />
+            <input size={16} value={aiForm.model} disabled={aiConfig.data?.model_locked} onChange={(e) => setAI("model", e.target.value)} placeholder="gpt-4o-mini" />
           </label>
           <label className="field--plain">
             <span>请求超时（秒）</span>
@@ -574,7 +574,7 @@ export function SettingsPage() {
           </label>
           <label className="field--plain">
             <span>API Key（留空保持不变）</span>
-            <input type="password" autoComplete="off" value={aiForm.apiKey} disabled={aiConfig.data?.api_key_locked} onChange={(e) => setAI("apiKey", e.target.value)} placeholder={aiConfig.data?.api_key_configured ? "••••••••（已配置）" : "sk-…"} />
+            <input size={32} type="password" autoComplete="off" value={aiForm.apiKey} disabled={aiConfig.data?.api_key_locked} onChange={(e) => setAI("apiKey", e.target.value)} placeholder={aiConfig.data?.api_key_configured ? "••••••••（已配置）" : "sk-…"} />
           </label>
         </div>
         <label className="check-row">
@@ -619,15 +619,15 @@ export function SettingsPage() {
         {passwordError ? <ErrorAlert title="无法修改密码" message={passwordError} /> : null}
                   <label className="field--plain">
             <span>当前密码</span>
-            <input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+            <input size={24} type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
           </label>
                   <label className="field--plain">
             <span>新密码（至少 12 个字符）</span>
-            <input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            <input size={24} type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
           </label>
                   <label className="field--plain">
             <span>确认新密码</span>
-            <input type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            <input size={24} type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
           </label>
         <button className="primary-button primary-button--inline" type="button" disabled={savePassword.isPending || !currentPassword || !newPassword} onClick={submitPassword}>
           {savePassword.isPending ? "更新中…" : "更新密码"}

@@ -22,6 +22,7 @@
 - 摘要预览补齐 PR 转草稿、Star/Watch/Release 状态中文（此前回退为裸英文 action）
 - Star Release 追踪行停用/恢复的忙碌态随请求结束自动恢复
 - 通知渠道目标 / 投递 ID / Webhook URL 复制失败时给出短暂提示（此前静默降级）
+- 表单输入框宽度由自动伸缩改为 `size` 属性限定：移除 `fit-content` / `field-sizing: content`（后者仅 Chrome/Safari 支持，Firefox 行为不一致且输入时宽度抖动）；宽度按字段语义限定（时区 / 时间等短字段窄、URL / 密钥等长字段宽），NumberField 按上限位数固定宽度不再随输入内容伸缩
 
 ### Added
 
@@ -126,6 +127,8 @@
 - AI 区块操作按钮（保存 / 测试 / 清除）改为与通知渠道一致的 `channel-form__buttons` 容器布局，间距与对齐统一
 - 示例配置 `configs/reposentinel.example.yaml` 的 AI 标量字段改为注释展示，并说明显式设置会在管理台锁定，避免复制即用的部署再次误锁
 - AI 启动校验与管理台校验对齐：`ai.base_url` 同样拒绝 URL 内嵌凭据（userinfo）
+- 列表页底部「回到顶部」点击无效：桌面端页面滚动发生在 `.app-main` 容器（`.app-shell` 以 `overflow: hidden` 锁死文档滚动），原 `window.scrollTo` 滚动对象错误；现按实际滚动位置选择目标容器，移动端抽屉形态下回退 `window`
+- 渠道配置「订阅通知类型」与「接收定期汇总」勾选框被撑成巨大方块：`.field--plain input` 的文本输入框样式（`min-width: 12ch` / `min-height: 44px` / 边框 / 内边距）泄漏到 checkbox；选择器排除 `checkbox` / `radio`，勾选框恢复 16px 标准尺寸（与设置页、仓库页一致）
 
 ## [0.3.8] - 2026-08-05
 

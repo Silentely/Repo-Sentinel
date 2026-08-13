@@ -55,16 +55,17 @@ describe("NumberField", () => {
     expect(onChange).toHaveBeenLastCalledWith(2);
   });
 
-  it("宽度随内容增长而变宽（短值不再撑满整列）", () => {
-    const { input, onChange } = setup({ value: 3 });
-    // style.width 形如 calc(Nch + 1.5rem + 2px)，取 N 比较。
-    const charsOf = (w: string) => Number.parseFloat(w.slice("calc(".length));
-    const short = charsOf(input.style.width);
-    expect(Number.isFinite(short)).toBe(true);
-    // 输入 5 位数字后宽度应大于 1 位时。
+  it("宽度由上限位数限定，不随输入内容伸缩", () => {
+    const { input, onChange } = setup({ value: 3, min: 100, max: 8000 });
+    // style.width 形如 calc(Nch + 1.5rem + 2px)，同一字段生命周期内固定。
+    const width = input.style.width;
+    // jsdom 会把 calc 内加法项重排（如 calc(6ch + 2px + 1.5rem)），只断言以 Nch 开头。
+    expect(width).toMatch(/^calc\(\d+ch /);
+    // 输入内容变化不改变宽度（宽度由上限 8000 的位数决定），避免输入时框宽抖动。
+    fireEvent.change(input, { target: { value: "2" } });
+    expect(input.style.width).toBe(width);
     fireEvent.change(input, { target: { value: "86400" } });
-    const long = charsOf(input.style.width);
-    expect(long).toBeGreaterThan(short);
+    expect(input.style.width).toBe(width);
     expect(onChange).toHaveBeenLastCalledWith(86400);
   });
 });

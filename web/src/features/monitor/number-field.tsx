@@ -22,10 +22,11 @@ export function NumberField({ value, min, max, integer, disabled, placeholder, o
   const [text, setText] = useState(String(value));
   const [focused, setFocused] = useState(false);
 
-  // 数字等宽：宽度按字符数（ch）+ 左右 padding/border 计算，贴合内容而不撑满整列。
-  // 下限 4ch 保证聚焦时数字 spinner 有空间，上限 16ch 避免超长输入撑爆布局。
-  const chars = Math.min(Math.max(text.length + 2, 4), 16);
-  const inputWidth = `calc(${chars}ch + 1.5rem + 2px)`;
+  // 数字等宽：宽度按上限位数（ch）+ 左右 padding/border 计算，同一字段内固定、不随输入伸缩，
+  // 避免 fit-content/field-sizing 跨浏览器行为不一致（field-sizing 仅 Chrome/Safari 支持）。
+  // 下限 4ch 保证聚焦时数字 spinner 有空间，上限 16ch 避免超大上限撑爆布局。
+  const widthChars = Math.min(Math.max(String(max ?? 9999).length + 2, 4), 16);
+  const inputWidth = `calc(${widthChars}ch + 1.5rem + 2px)`;
 
   // 外部值变化（表单回填/重置）时同步显示；聚焦编辑中不覆盖用户输入。
   useEffect(() => {

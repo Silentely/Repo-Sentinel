@@ -1086,7 +1086,14 @@ function ListFooter({
           <button
             className="quiet-button quiet-button--compact"
             type="button"
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            onClick={() => {
+              // 桌面端页面滚动发生在 .app-main（.app-shell overflow: hidden 锁死文档滚动），
+              // window.scrollTo 无效；移动端抽屉形态下滚动容器是 body（见 globals.css 媒体查询）。
+              // 按实际滚动位置选择目标容器，两端都生效。
+              const scroller = document.querySelector<HTMLElement>(".app-main");
+              const target = scroller && scroller.scrollTop > 0 ? scroller : window;
+              target.scrollTo({ top: 0, behavior: "smooth" });
+            }}
           >
             回到顶部
           </button>

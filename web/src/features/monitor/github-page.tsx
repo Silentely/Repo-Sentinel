@@ -153,11 +153,11 @@ export function GitHubPage() {
         <div className="form-grid">
           <label className="field--plain">
             <span>App ID {cfg?.app_id_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
-            <input inputMode="numeric" value={appID} disabled={cfg?.app_id_locked} onChange={(e) => setAppID(e.target.value.replace(/[^\d]/g, ""))} placeholder="123456" autoComplete="off" />
+            <input size={12} inputMode="numeric" value={appID} disabled={cfg?.app_id_locked} onChange={(e) => setAppID(e.target.value.replace(/[^\d]/g, ""))} placeholder="123456" autoComplete="off" />
           </label>
           <label className="field--plain">
             <span>Client ID {cfg?.client_id_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
-            <input value={clientID} disabled={cfg?.client_id_locked} onChange={(e) => setClientID(e.target.value)} placeholder="Iv1.xxxxxxxx" autoComplete="off" />
+            <input size={24} value={clientID} disabled={cfg?.client_id_locked} onChange={(e) => setClientID(e.target.value)} placeholder="Iv1.xxxxxxxx" autoComplete="off" />
           </label>
           <label className="field--plain">
             <span>Public Base URL {cfg?.public_base_url_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
@@ -165,7 +165,7 @@ export function GitHubPage() {
           </label>
           <label className="field--plain">
             <span>Webhook Secret {cfg?.webhook_secret_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
-            <input type="password" value={webhookSecret} disabled={cfg?.webhook_secret_locked} onChange={(e) => setWebhookSecret(e.target.value)} placeholder={cfg?.webhook_secret_configured ? "已配置 · 留空保留" : "与 GitHub App Secret 相同"} autoComplete="off" />
+            <input size={32} type="password" value={webhookSecret} disabled={cfg?.webhook_secret_locked} onChange={(e) => setWebhookSecret(e.target.value)} placeholder={cfg?.webhook_secret_configured ? "已配置 · 留空保留" : "与 GitHub App Secret 相同"} autoComplete="off" />
           </label>
         </div>
         <label className="field--plain">
@@ -314,7 +314,7 @@ export function GitHubPage() {
         {formMessage ? <p className="success-banner" role="status">{formMessage}</p> : null}
         <label className="field--plain">
           <span>仓库全名</span>
-          <input value={externalName} onChange={(e) => setExternalName(e.target.value)} placeholder="owner/repo" autoComplete="off" />
+          <input size={24} value={externalName} onChange={(e) => setExternalName(e.target.value)} placeholder="owner/repo" autoComplete="off" />
         </label>
         <button className="primary-button primary-button--inline" type="button" disabled={addExternal.isPending || !externalName.trim()} onClick={() => { setFormMessage(""); addExternal.mutate(); }}>
           {addExternal.isPending ? "登记中…" : "添加外部仓"}

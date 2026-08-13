@@ -226,6 +226,7 @@ function ChannelForm({
       <label className="field--plain">
         <span>{targetLabel}{channel ? "（留空保留原值）" : ""}</span>
         <input
+          size={32}
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           onBlur={(e) => validateTarget(e.target.value)}
@@ -237,6 +238,7 @@ function ChannelForm({
         <label className="field--plain">
           <span>{secretLabel}</span>
           <input
+            size={32}
             type="password"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}

@@ -1620,15 +1620,15 @@ a.status-item--link:focus-visible {
   color: var(--text-secondary);
 }
 
-.field--plain input {
+/* 文本输入控件样式只作用于文本框类控件：checkbox/radio 是固定尺寸的勾选控件，
+   若被 min-width/min-height/padding 等规则命中会被撑成巨大方块（渠道配置勾选框曾因此回归）。 */
+.field--plain input:not([type="checkbox"]):not([type="radio"]) {
   justify-self: start;
-  /* 宽度跟随内容：短值（数字/时区等）不再撑满整列留白。
-     field-sizing: content 让 Chrome/Safari 精确贴合内容；
-     Firefox 不支持时回退到 size 属性/默认 20ch（见下方显式 size 兜底）。 */
-  width: fit-content;
+  /* 宽度由 HTML size 属性（字符数）限定：短字段（时区/时间）窄、长字段（URL/密钥）宽，
+     格式确定且跨浏览器一致；不再用 fit-content/field-sizing 随内容自动伸缩
+     （field-sizing 仅 Chrome/Safari 支持，Firefox 行为不一致，且输入时宽度抖动）。
+     未显式设置 size 时回退浏览器默认 20ch。 */
   max-width: 100%;
-  min-width: 12ch;
-  field-sizing: content;
   min-height: 44px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
@@ -1638,14 +1638,13 @@ a.status-item--link:focus-visible {
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
-/* 数字框宽度由 NumberField 组件按内容内联控制，这里只约束下限与溢出 */
+/* 数字框宽度由 NumberField 组件内联限定（按上限位数固定，不随输入伸缩），这里只约束下限与溢出 */
 .field--plain input[type="number"] {
-  width: auto;
   min-width: 4ch;
   max-width: 100%;
 }
 
-.field--plain input:focus {
+.field--plain input:not([type="checkbox"]):not([type="radio"]):focus {
   border-color: color-mix(in oklch, var(--accent) 70%, var(--border-subtle));
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 14%, transparent);
   outline: 0;
@@ -1708,6 +1707,9 @@ a.status-item--link:focus-visible {
 }
 
 .channel-kinds__item input {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
   accent-color: var(--accent);
 }
 

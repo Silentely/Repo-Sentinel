@@ -180,12 +180,13 @@ export function StarredReleasesPage() {
         <div className="form-grid">
           <label className="field--plain">
             <span>GitHub 用户名</span>
-            <input value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="octocat（可粘贴 github.com/xxx 链接）" />
+            <input size={24} value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="octocat（可粘贴 github.com/xxx 链接）" />
           </label>
           <label className="field--plain">
             <span>Star 列表同步周期</span>
             <input
               value={form.starSyncInterval}
+              size={10}
               onChange={(e) => set("starSyncInterval", e.target.value)}
               onBlur={() => setIntervalHint((prev) => ({ ...prev, starSync: validateInterval(form.starSyncInterval, 30 * 24 * 3600) }))}
               placeholder="6h0m0s"
@@ -196,6 +197,7 @@ export function StarredReleasesPage() {
             <span>Release 轮询周期</span>
             <input
               value={form.releasePollInterval}
+              size={10}
               onChange={(e) => set("releasePollInterval", e.target.value)}
               onBlur={() => setIntervalHint((prev) => ({ ...prev, releasePoll: validateInterval(form.releasePollInterval, 24 * 3600) }))}
               placeholder="10m0s"
