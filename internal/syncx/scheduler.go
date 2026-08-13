@@ -22,12 +22,18 @@ type Scheduler struct {
 	DigestEvery    time.Duration
 }
 
-// runScheduledTask 统一记录调度任务失败上下文；任务本身仍按调用方提供的顺序同步执行。
+// scheduledTaskTimeout 单次调度任务超时上限：任务挂死（外部依赖慢）时释放 select
+// 循环，避免单任务阻塞全部调度（digest/star/对账互相拖累）。
+const scheduledTaskTimeout = 30 * time.Minute
+
+// runScheduledTask 统一记录调度任务失败上下文；任务在带超时的上下文内同步执行。
 // 失败记 Error（error_code 稳定可聚合），成功留痕放 Debug（task + duration_ms）：
 // 正常周期不刷屏，排查「任务到底跑没跑」时把 logging.level 调成 debug 即可确认。
-func (s *Scheduler) runScheduledTask(task, message, errorCode string, run func() error) {
+func (s *Scheduler) runScheduledTask(ctx context.Context, task, message, errorCode string, run func(context.Context) error) {
+	taskCtx, cancel := context.WithTimeout(ctx, scheduledTaskTimeout)
+	defer cancel()
 	startedAt := time.Now()
-	err := run()
+	err := run(taskCtx)
 	durationMs := time.Since(startedAt).Milliseconds()
 	if err != nil {
 		if s.Logger != nil {
@@ -73,8 +79,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 		if s.Reconciler == nil {
 			return
 		}
-		s.runScheduledTask("reconcile", "scheduled reconcile failed", "reconcile_failed", func() error {
-			err := s.Reconciler.ReconcileAll(ctx, 15)
+		s.runScheduledTask(ctx, "reconcile", "scheduled reconcile failed", "reconcile_failed", func(taskCtx context.Context) error {
+			err := s.Reconciler.ReconcileAll(taskCtx, 15)
 			// 与 HTTP 手动对账并发时跳过本轮：Reconciler 内部已互斥，正常情况不触发。
 			if errors.Is(err, ErrReconcileInProgress) && s.Logger != nil {
 				s.Logger.Debug("reconcile skipped", "reason", "reconcile_in_progress")
@@ -87,8 +93,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 		if s.External == nil {
 			return
 		}
-		s.runScheduledTask("external_poll", "scheduled external poll failed", "external_poll_failed", func() error {
-			return s.External.PollAll(ctx)
+		s.runScheduledTask(ctx, "external_poll", "scheduled external poll failed", "external_poll_failed", func(taskCtx context.Context) error {
+			return s.External.PollAll(taskCtx)
 		})
 	}
 	runDigest := func() {
@@ -96,14 +102,14 @@ func (s *Scheduler) Run(ctx context.Context) {
 			return
 		}
 		now := time.Now()
-		s.runScheduledTask("digest", "scheduled digest failed", "digest_failed", func() error {
-			return s.Digest.RunOnce(ctx, now)
+		s.runScheduledTask(ctx, "digest", "scheduled digest failed", "digest_failed", func(taskCtx context.Context) error {
+			return s.Digest.RunOnce(taskCtx, now)
 		})
-		s.runScheduledTask("weekly_report", "scheduled weekly report failed", "weekly_report_failed", func() error {
-			return s.Digest.RunWeekly(ctx, now)
+		s.runScheduledTask(ctx, "weekly_report", "scheduled weekly report failed", "weekly_report_failed", func(taskCtx context.Context) error {
+			return s.Digest.RunWeekly(taskCtx, now)
 		})
-		s.runScheduledTask("monthly_report", "scheduled monthly report failed", "monthly_report_failed", func() error {
-			return s.Digest.RunMonthly(ctx, now)
+		s.runScheduledTask(ctx, "monthly_report", "scheduled monthly report failed", "monthly_report_failed", func(taskCtx context.Context) error {
+			return s.Digest.RunMonthly(taskCtx, now)
 		})
 	}
 
@@ -134,10 +140,10 @@ func (s *Scheduler) runStarred(ctx context.Context) {
 	if s.Starred == nil {
 		return
 	}
-	s.runScheduledTask("star_sync", "scheduled star sync failed", "star_sync_failed", func() error {
-		return s.Starred.SyncStars(ctx)
+	s.runScheduledTask(ctx, "star_sync", "scheduled star sync failed", "star_sync_failed", func(taskCtx context.Context) error {
+		return s.Starred.SyncStars(taskCtx)
 	})
-	s.runScheduledTask("release_poll", "scheduled release poll failed", "release_poll_failed", func() error {
-		return s.Starred.PollReleases(ctx)
+	s.runScheduledTask(ctx, "release_poll", "scheduled release poll failed", "release_poll_failed", func(taskCtx context.Context) error {
+		return s.Starred.PollReleases(taskCtx)
 	})
 }

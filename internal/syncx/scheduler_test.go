@@ -23,7 +23,7 @@ func TestSchedulerFailureLogIncludesTaskAndDuration(t *testing.T) {
 	var logBuffer bytes.Buffer
 	s := &Scheduler{Logger: slog.New(slog.NewJSONHandler(&logBuffer, nil))}
 
-	s.runScheduledTask("digest", "scheduled digest failed", "digest_failed", func() error {
+	s.runScheduledTask(t.Context(), "digest", "scheduled digest failed", "digest_failed", func(_ context.Context) error {
 		return errors.New("digest boom")
 	})
 
@@ -41,7 +41,7 @@ func TestSchedulerSuccessLogsAtDebug(t *testing.T) {
 	var logBuffer bytes.Buffer
 	s := &Scheduler{Logger: slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug}))}
 
-	s.runScheduledTask("external_poll", "scheduled external poll failed", "external_poll_failed", func() error {
+	s.runScheduledTask(t.Context(), "external_poll", "scheduled external poll failed", "external_poll_failed", func(_ context.Context) error {
 		return nil
 	})
 
