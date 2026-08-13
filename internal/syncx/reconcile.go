@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
@@ -14,6 +15,10 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
+
+// ErrReconcileInProgress 全量对账进行中：调度器与 HTTP 手动触发并发时跳过本轮，
+// 避免双轮对账同时打 GitHub API 并争抢数据库连接。
+var ErrReconcileInProgress = errors.New("reconcile_in_progress")
 
 // Reconciler 自有仓库 API 对账与首次基线。
 type Reconciler struct {
@@ -24,6 +29,9 @@ type Reconciler struct {
 	MaxPages int
 	// OnRun 可选：每次对账执行回调（指标等）。
 	OnRun func()
+
+	// reconcileAllBusy 全量对账互斥（跨调度器与 HTTP 触发共享）：防重入。
+	reconcileAllBusy atomic.Bool
 }
 
 // ReconcileRepository 对单仓执行增量或基线同步。
@@ -533,6 +541,12 @@ func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 	if r.OnRun != nil {
 		r.OnRun()
 	}
+	// 全量对账互斥下沉到 Reconciler：调度器（每 6h）与 HTTP 手动触发共用同一原子锁，
+	// 进行中再触发直接返回 ErrReconcileInProgress，避免双轮并发打爆 GitHub 配额。
+	if !r.reconcileAllBusy.CompareAndSwap(false, true) {
+		return ErrReconcileInProgress
+	}
+	defer r.reconcileAllBusy.Store(false)
 	if limit <= 0 {
 		limit = 10
 	}

@@ -287,9 +287,23 @@ func (c *AppClient) DoJSONPage(ctx context.Context, method, path, token string, 
 }
 
 // doJSON 请求 GitHub API 并返回剩余配额与 Link header。
-// 错误分类：429 与 403（X-RateLimit-Remaining=0 或 body 含 rate limit）→ github_rate_limited；
-// 其余 403/4xx/5xx → HTTPStatusError（403 需区分限流与权限/功能未开启，不能一律当限流）。
 func (c *AppClient) doJSON(ctx context.Context, method, path, token string, out any) (rateRemaining int, link string, err error) {
+	rateRemaining, link, _, err = c.doJSONReq(ctx, method, path, token, "", out)
+	return rateRemaining, link, err
+}
+
+// doJSONConditional 与 doJSON 相同，额外支持 If-None-Match 条件请求并返回响应 ETag：
+// 304 时返回 errNotModified（调用方以 etag 推进游标），供 release 轮询等低带宽场景使用。
+func (c *AppClient) doJSONConditional(ctx context.Context, method, path, token, ifNoneMatch string, out any) (rateRemaining int, etag string, err error) {
+	rateRemaining, _, etag, err = c.doJSONReq(ctx, method, path, token, ifNoneMatch, out)
+	return rateRemaining, etag, err
+}
+
+// doJSONReq 请求 GitHub API 并返回剩余配额、Link header 与响应 ETag。
+// 错误分类：429 与 403（X-RateLimit-Remaining=0 或 body 含 rate limit）→ github_rate_limited；
+// 其余 403/4xx/5xx → HTTPStatusError（403 需区分限流与权限/功能未开启，不能一律当限流）；
+// 304（条件请求命中）→ errNotModified。
+func (c *AppClient) doJSONReq(ctx context.Context, method, path, token, ifNoneMatch string, out any) (rateRemaining int, link, etag string, err error) {
 	if c.HTTP == nil {
 		c.HTTP = &http.Client{Timeout: 30 * time.Second}
 	}
@@ -302,7 +316,7 @@ func (c *AppClient) doJSON(ctx context.Context, method, path, token string, out 
 	}
 	req, err := http.NewRequestWithContext(ctx, method, full, nil)
 	if err != nil {
-		return 0, "", err
+		return 0, "", "", err
 	}
 	// 出站标识：GitHub 要求 UA 识别客户端来源，未设置会命中默认 Go UA。
 	req.Header.Set("User-Agent", githubClientUA)
@@ -311,39 +325,43 @@ func (c *AppClient) doJSON(ctx context.Context, method, path, token string, out 
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if ifNoneMatch != "" {
+		req.Header.Set("If-None-Match", ifNoneMatch)
+	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return 0, "", err
+		return 0, "", "", err
 	}
 	defer resp.Body.Close()
 	if v := resp.Header.Get("X-RateLimit-Remaining"); v != "" {
 		rateRemaining, _ = strconv.Atoi(v)
 	}
 	link = resp.Header.Get("Link")
+	etag = resp.Header.Get("ETag")
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode == http.StatusNotModified {
-		return rateRemaining, link, errNotModified
+		return rateRemaining, link, etag, errNotModified
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
 		// 429：次限流，按 Retry-After 响应头给出等待时长。
-		return rateRemaining, link, &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
+		return rateRemaining, link, etag, &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
 	}
 	if resp.StatusCode == http.StatusForbidden {
 		// 403 需区分限流与权限/功能未开启：主限流响应携带 X-RateLimit-Remaining: 0。
 		if resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")) {
-			return rateRemaining, link, &RateLimitError{RetryAfter: resetDelta(resp.Header.Get("X-RateLimit-Reset"))}
+			return rateRemaining, link, etag, &RateLimitError{RetryAfter: resetDelta(resp.Header.Get("X-RateLimit-Reset"))}
 		}
-		return rateRemaining, link, statusError(resp.StatusCode, body)
+		return rateRemaining, link, etag, statusError(resp.StatusCode, body)
 	}
 	if resp.StatusCode >= 300 {
-		return rateRemaining, link, statusError(resp.StatusCode, body)
+		return rateRemaining, link, etag, statusError(resp.StatusCode, body)
 	}
 	if out != nil {
 		if err := json.Unmarshal(body, out); err != nil {
-			return rateRemaining, link, err
+			return rateRemaining, link, etag, err
 		}
 	}
-	return rateRemaining, link, nil
+	return rateRemaining, link, etag, nil
 }
 
 // statusError 构造 HTTPStatusError。

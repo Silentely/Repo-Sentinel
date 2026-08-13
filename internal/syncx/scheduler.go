@@ -2,6 +2,7 @@ package syncx
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -73,7 +74,13 @@ func (s *Scheduler) Run(ctx context.Context) {
 			return
 		}
 		s.runScheduledTask("reconcile", "scheduled reconcile failed", "reconcile_failed", func() error {
-			return s.Reconciler.ReconcileAll(ctx, 15)
+			err := s.Reconciler.ReconcileAll(ctx, 15)
+			// 与 HTTP 手动对账并发时跳过本轮：Reconciler 内部已互斥，正常情况不触发。
+			if errors.Is(err, ErrReconcileInProgress) && s.Logger != nil {
+				s.Logger.Debug("reconcile skipped", "reason", "reconcile_in_progress")
+				return nil
+			}
+			return err
 		})
 	}
 	runExternal := func() {

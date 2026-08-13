@@ -192,7 +192,11 @@ func (a *Aggregator) flush(key string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if len(b.events) == 1 {
-		_ = (&Engine{Store: a.Store, AI: a.AI, Logger: a.Logger}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName)
+		// 单事件回放：走实时通知评估。失败留痕，避免聚合窗口内的通知静默丢失。
+		if err := (&Engine{Store: a.Store, AI: a.AI, Logger: a.Logger}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName); err != nil && a.Logger != nil {
+			a.Logger.Warn("aggregate flush evaluate failed",
+				"repo", b.repoName, "category", b.category, "events", len(b.events), "error_code", "aggregate_flush_failed", "error", err.Error())
+		}
 		return
 	}
 	if a.Logger != nil {
@@ -200,7 +204,11 @@ func (a *Aggregator) flush(key string) {
 		a.Logger.Debug("aggregate flushed",
 			"repo", b.repoName, "category", b.category, "events", len(b.events))
 	}
-	_ = a.enqueueMerged(ctx, b)
+	if err := a.enqueueMerged(ctx, b); err != nil && a.Logger != nil {
+		// 合并通知写库失败：与单事件回放同样留痕，DB 抖动时不再静默丢聚合通知。
+		a.Logger.Warn("aggregate flush enqueue failed",
+			"repo", b.repoName, "category", b.category, "events", len(b.events), "error_code", "aggregate_flush_failed", "error", err.Error())
+	}
 }
 
 // enqueueMerged 按渠道订阅过滤桶内事件子集，逐渠道构建合并消息。
