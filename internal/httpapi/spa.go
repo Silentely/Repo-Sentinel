@@ -95,10 +95,19 @@ func safeSPAPath(requestURL *url.URL) (string, bool) {
 
 func isReservedHTTPPath(name string) bool {
 	requestPath := "/" + name
+	// API 与机器端点一律不落入 SPA fallback：GET /mcp、/.well-known/xxx 等未注册路径
+	// 若返回 index.html 200，客户端探测会误判服务正常。
 	return requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") ||
 		requestPath == "/health" || strings.HasPrefix(requestPath, "/health/") ||
 		requestPath == "/webhooks" || strings.HasPrefix(requestPath, "/webhooks/") ||
-		requestPath == "/metrics"
+		requestPath == "/metrics" ||
+		requestPath == "/mcp" || strings.HasPrefix(requestPath, "/mcp/") ||
+		requestPath == "/oauth" || strings.HasPrefix(requestPath, "/oauth/") ||
+		strings.HasPrefix(requestPath, "/.well-known/") ||
+		requestPath == "/openapi.json" ||
+		requestPath == "/auth.md" ||
+		requestPath == "/robots.txt" ||
+		requestPath == "/sitemap.xml"
 }
 
 func (h *spaHandler) serveFile(w http.ResponseWriter, r *http.Request, name, cacheControl string) bool {

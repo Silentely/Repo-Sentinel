@@ -301,6 +301,11 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		// 出站客户端禁跟随重定向（ErrUseLastResponse 防 SSRF 跳转）：3xx 说明目标
+		// 返回了重定向而未收到通知，必须按可重试错误处理，否则条目标记 sent 静默丢失。
+		return deliveryErrorf(fmt.Sprintf("http_webhook_redirect_%d", resp.StatusCode), readBodyDetail(resp))
+	}
 	if resp.StatusCode == 408 || resp.StatusCode == 425 || resp.StatusCode == 429 || resp.StatusCode >= 500 {
 		// 429/503 等响应携带 Retry-After 时优先遵循上游退避指引，否则按固定阶梯重试。
 		if ra := parseRetryAfter(resp); ra > 0 {

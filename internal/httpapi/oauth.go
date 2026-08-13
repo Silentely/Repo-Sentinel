@@ -101,6 +101,20 @@ func (s *server) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "缺少客户端凭据，请携带 client_id/client_secret 或 Basic Auth。")
 		return
 	}
+	// 令牌端点复用登录限流器：client_secret 是长期静态凭据，按来源 IP 节流
+	// 防止无限暴力尝试（每次失败都会刷 Warn 日志）。
+	remoteIP := remoteIPFromContext(r.Context())
+	if !s.dependencies.LoginLimiter.Allow(remoteIP) {
+		s.dependencies.Logger.Warn(
+			"oauth token rate limited",
+			"request_id", requestIDFromContext(r.Context()),
+			"remote_ip", remoteIP,
+			"error_code", errorCodeRateLimited,
+		)
+		w.Header().Set("Retry-After", loginRetryAfterSeconds)
+		writeOAuthError(w, http.StatusTooManyRequests, "invalid_client", "尝试过于频繁，请稍后再试。")
+		return
+	}
 	configuredID := s.dependencies.Config.OAuth.ClientID
 	configuredSecret := s.dependencies.Config.OAuth.ClientSecret.Reveal()
 	secretMatch := configuredSecret != "" &&

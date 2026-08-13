@@ -2,6 +2,7 @@ package notify
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -197,5 +198,25 @@ func TestHTMLToPlainText(t *testing.T) {
 	}
 	if !strings.Contains(got, "链接 (https://example.com/a?b=1&c=2)") {
 		t.Fatalf("链接应保留文字与 URL: %q", got)
+	}
+}
+
+// 出站客户端禁跟随重定向（ErrUseLastResponse）：3xx 说明目标返回重定向而接收端未收到
+// 通知，必须按可重试错误处理；此前会落到 success 分支被标记 sent，造成静默丢失。
+func TestSendHTTPRedirectIsFailure(t *testing.T) {
+	for _, status := range []int{http.StatusMovedPermanently, http.StatusFound, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			w, ch, item := newWebhookHarness(t, func(rw http.ResponseWriter, _ *http.Request) {
+				rw.WriteHeader(status)
+			})
+			err := w.sendHTTP(t.Context(), ch, "", item)
+			if err == nil {
+				t.Fatalf("%d 应返回错误（接收端未收到通知）", status)
+			}
+			code := deliveryErrorCode(err)
+			if want := fmt.Sprintf("http_webhook_redirect_%d", status); code != want {
+				t.Fatalf("期望错误码 %s，实际 %s", want, code)
+			}
+		})
 	}
 }
