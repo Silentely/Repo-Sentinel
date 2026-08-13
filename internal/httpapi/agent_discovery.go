@@ -377,7 +377,7 @@ func (s *server) siteMarkdownDocument(r *http.Request) string {
 	return fmt.Sprintf(`# RepoSentinel
 
 自托管的 GitHub 仓库值守平台：通过 Webhook 实时接收 Issue / PR / Actions / 安全告警，
-经规则引擎推送 Telegram 或 HTTP Webhook，可选 AI 摘要与安全告警分诊。
+经规则引擎推送 Telegram 或 HTTP Webhook，可选智能简报与安全告警分诊。
 
 ## 使用入口
 

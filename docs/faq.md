@@ -48,7 +48,7 @@
 2. 后台按「Release 轮询周期」（默认 10m）用 GitHub App installation token 轮询各仓最新 Release；
    ETag 条件请求未变更时返回 304、**不计入 API 限流**。
 3. 新 Release 发布后经通知管线推送到已订阅 `release` 事件类型的渠道（Telegram / HTTP Webhook）；
-   配置 AI 后正文附带**中文总结**（英文 release notes 自动翻译摘要）与原文链接；AI 不可用时通知原文链接兜底，不会丢。
+   配置智能值守后正文附带**更新速览**（英文 release notes 自动翻译要点）与原文链接；AI 不可用时通知原文链接兜底，不会丢。
 4. 用户 unstar 某仓库后，下一轮同步自动停用其追踪（保留记录，可手动恢复）。
 
 几点说明：

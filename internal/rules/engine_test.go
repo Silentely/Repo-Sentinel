@@ -227,7 +227,7 @@ func TestEvaluateReleaseOutbox(t *testing.T) {
 	}
 }
 
-// TestEvaluateReleaseAIInjection 验证 AI 总结注入正文与失败降级（不丢通知）。
+// TestEvaluateReleaseAIInjection 验证更新速览注入正文与失败降级（不丢通知）。
 func TestEvaluateReleaseAIInjection(t *testing.T) {
 	data := openEngineStore(t)
 	ctx := t.Context()
@@ -245,7 +245,7 @@ func TestEvaluateReleaseAIInjection(t *testing.T) {
 		OccurredAt: now, HTMLURL: "https://github.com/o/r/releases/tag/v2.0.0",
 		PayloadSummary: map[string]any{"tag_name": "v2.0.0", "notes": "English notes"},
 	}
-	t.Run("AI 成功注入总结", func(t *testing.T) {
+	t.Run("AI 成功注入更新速览", func(t *testing.T) {
 		client := aiStub(t, `{"choices":[{"message":{"content":"新增 X 功能，修复 Y。"}}]}`)
 		client.ReleaseSummaryEnabled = true
 		e := &Engine{Store: data, AI: client}
@@ -256,8 +256,8 @@ func TestEvaluateReleaseAIInjection(t *testing.T) {
 		if len(outbox) == 0 {
 			t.Fatal("应写入 outbox")
 		}
-		if !strings.Contains(outbox[len(outbox)-1].BodyText, "🤖 AI 总结") {
-			t.Fatalf("正文应含 AI 总结段: %s", outbox[len(outbox)-1].BodyText)
+		if !strings.Contains(outbox[len(outbox)-1].BodyText, "🤖 更新速览") {
+			t.Fatalf("正文应含更新速览段: %s", outbox[len(outbox)-1].BodyText)
 		}
 	})
 	t.Run("AI 失败仍通知", func(t *testing.T) {
@@ -270,10 +270,10 @@ func TestEvaluateReleaseAIInjection(t *testing.T) {
 			t.Fatal(err)
 		}
 		outbox, _, _ := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
-		// 按内容断言（不依赖 outbox 排序）：AI 失败时通知仍在且不带总结段。
+		// 按内容断言（不依赖 outbox 排序）：AI 失败时通知仍在且不带更新速览段。
 		found := false
 		for _, o := range outbox {
-			if strings.Contains(o.BodyText, "🔗 在 GitHub 中查看") && !strings.Contains(o.BodyText, "🤖 AI 总结") {
+			if strings.Contains(o.BodyText, "🔗 在 GitHub 中查看") && !strings.Contains(o.BodyText, "🤖 更新速览") {
 				found = true
 				break
 			}
@@ -565,7 +565,7 @@ func TestTriageAnalysisLogs(t *testing.T) {
 	})
 }
 
-// Evaluate 级测试：新安全告警通知正文附带 AI 分析；Issue 不受影响。
+// Evaluate 级测试：新安全告警通知正文附带告警分析；Issue 不受影响。
 func TestEvaluateWithAITriage(t *testing.T) {
 	data := openEngineStore(t)
 	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
@@ -593,8 +593,8 @@ func TestEvaluateWithAITriage(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("应生成 1 条通知，got %d", len(items))
 	}
-	if !strings.Contains(items[0].BodyText, "🤖 AI 分析") {
-		t.Fatalf("正文应含 AI 分析段，实际: %s", items[0].BodyText)
+	if !strings.Contains(items[0].BodyText, "🤖 告警分析") {
+		t.Fatalf("正文应含告警分析段，实际: %s", items[0].BodyText)
 	}
 	// AI 输出必须转义，避免破坏 Telegram HTML。
 	if strings.Contains(items[0].BodyText, "<b>高危</b>") {
@@ -629,8 +629,8 @@ func TestEvaluateSkipsTriageForIssue(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("应生成 1 条通知，got %d", len(items))
 	}
-	if strings.Contains(items[0].BodyText, "AI 分析") {
-		t.Fatalf("Issue 通知不应含 AI 分析，实际: %s", items[0].BodyText)
+	if strings.Contains(items[0].BodyText, "告警分析") {
+		t.Fatalf("Issue 通知不应含告警分析，实际: %s", items[0].BodyText)
 	}
 }
 

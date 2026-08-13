@@ -41,7 +41,7 @@ const (
 	maxBackfillPerRound = 5
 	// maxPollCandidatesPerRound 单轮最多轮询的追踪仓数（分轮防止单轮耗时过长）。
 	maxPollCandidatesPerRound = 200
-	// maxReleaseNotesStored 事件 PayloadSummary 中保存的 release notes 上限（供 AI 总结输入）。
+	// maxReleaseNotesStored 事件 PayloadSummary 中保存的 release notes 上限（供更新速览生成输入）。
 	maxReleaseNotesStored = 8000
 )
 

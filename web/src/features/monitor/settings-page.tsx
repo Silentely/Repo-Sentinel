@@ -234,7 +234,7 @@ export function SettingsPage() {
     mutationFn: (body: AIConfigInput) => saveAIConfig(body),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["ai-config"] });
-      setAIMsg("AI 配置已保存。");
+      setAIMsg("智能值守配置已保存。");
     },
   });
   function submitAIConfig() {
@@ -517,7 +517,7 @@ export function SettingsPage() {
               <NumberField min={1} max={28} integer value={form.reportMonthlyDay} onChange={(v) => set("reportMonthlyDay", v)} />
             </label>
           ) : null}
-          <p className="field-hint">周报/月报与每日摘要共用渠道的「接收定期汇总」开关；发送时刻沿用每日摘要本地时间。正文在配置 AI 后由模型总结，否则使用分组模板。</p>
+          <p className="field-hint">周报/月报与每日简报共用渠道的「接收定期汇总」开关；发送时刻沿用每日简报本地时间。正文在配置智能值守后由模型生成，否则使用分组模板。</p>
         </div>
         <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("prefs")}>
           {saveSettings.isPending ? "保存中…" : "保存偏好"}
@@ -542,17 +542,17 @@ export function SettingsPage() {
       </section>
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-ai-title">
-        <h2 id="settings-ai-title">AI 集成</h2>
+        <h2 id="settings-ai-title">智能值守</h2>
         <p className="field-hint">
           可选能力：每日/周/月报告正文由模型总结，新安全告警附带影响分析与处理建议。
           网络波动瞬时失败（超时/5xx 等）按「重试次数」自动重试，0 表示不重试。
           环境变量（<code>REPOSENTINEL_AI_*</code>）已设置的字段在此锁定；API Key 加密存储，不回显明文。
         </p>
         {aiMsg ? <p className="success-banner" role="status">{aiMsg}</p> : null}
-        {aiConfig.isError ? <ApiErrorAlert error={aiConfig.error} title="无法加载 AI 配置" /> : null}
+        {aiConfig.isError ? <ApiErrorAlert error={aiConfig.error} title="无法加载智能值守配置" /> : null}
         <label className="check-row">
           <input type="checkbox" checked={aiForm.enabled} disabled={aiConfig.data?.enabled_locked} onChange={(e) => setAI("enabled", e.target.checked)} />
-          <span>启用 AI（{aiConfig.data?.api_key_configured ? "API Key 已配置" : "API Key 未配置"}）</span>
+          <span>启用智能值守（{aiConfig.data?.api_key_configured ? "API Key 已配置" : "API Key 未配置"}）</span>
         </label>
         <div className="form-grid">
           <label className="field--plain"><span>API Base URL</span><input size={30} value={aiForm.baseURL} disabled={aiConfig.data?.base_url_locked} onChange={(e) => setAI("baseURL", e.target.value)} placeholder="https://api.openai.com/v1" /></label>
@@ -579,7 +579,7 @@ export function SettingsPage() {
         </div>
         <label className="check-row">
           <input type="checkbox" checked={aiForm.digest} disabled={aiConfig.data?.digest_enabled_locked} onChange={(e) => setAI("digest", e.target.checked)} />
-          <span>AI 摘要（每日/周/月报告）</span>
+          <span>智能简报（每日/周/月报告）</span>
         </label>
         <label className="check-row">
           <input type="checkbox" checked={aiForm.triage} disabled={aiConfig.data?.triage_enabled_locked} onChange={(e) => setAI("triage", e.target.checked)} />
@@ -587,11 +587,11 @@ export function SettingsPage() {
         </label>
         <label className="check-row">
           <input type="checkbox" checked={aiForm.releaseSummary} disabled={aiConfig.data?.release_summary_enabled_locked} onChange={(e) => setAI("releaseSummary", e.target.checked)} />
-          <span>Release 中文总结（star 仓库新版本通知附 AI 翻译摘要）</span>
+          <span>Release 更新速览（star 仓库新版本通知附翻译要点）</span>
         </label>
         <div className="channel-form__buttons">
           <button className="primary-button primary-button--inline" type="button" disabled={saveAIConfigMut.isPending || aiConfig.isLoading || aiConfig.isError} onClick={submitAIConfig}>
-            {saveAIConfigMut.isPending ? "保存中…" : "保存 AI 配置"}
+            {saveAIConfigMut.isPending ? "保存中…" : "保存智能值守配置"}
           </button>
           <button className="secondary-button" type="button" disabled={testAIMut.isPending || aiConfig.isLoading || aiConfig.isError} onClick={runAITest}>
             {testAIMut.isPending ? "测试中…" : "🔌 测试连通性"}

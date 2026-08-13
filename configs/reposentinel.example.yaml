@@ -89,10 +89,10 @@ aggregation:
   # 多实例时合并与摘要依赖 Outbox 幂等键去重，进程内合并仍为 best-effort。
 
 ai:
-  # 可选 LLM 集成（每日摘要 / 周报月报 / 安全告警分诊），默认关闭。
+  # 可选智能值守（每日简报 / 周报月报 / 安全告警分诊），默认关闭。
   enabled: false
   # 以下五个标量字段（base_url/model/timeout/max_tokens/retries）默认留空即可：
-  # 未设置时由客户端在使用点回退默认值，且管理台「AI 集成」可自由编辑。
+  # 未设置时由客户端在使用点回退默认值，且管理台「智能值守」可自由编辑。
   # 注意：一旦在配置文件或 REPOSENTINEL_AI_* 中显式设置，对应字段会在管理台锁定（不可编辑）。
   # OpenAI 兼容端点；可指向本地模型网关（如 Ollama http://127.0.0.1:11434/v1）。
   # base_url: "https://api.openai.com/v1"
@@ -104,11 +104,11 @@ ai:
   # max_tokens: 800
   # 瞬时失败（超时/网络/5xx/空响应）自动重试次数，默认 1；0 表示不重试。
   # retries: 1
-  # 是否启用 AI 摘要（每日/周报/月报）。
+  # 是否启用智能简报（每日/周报/月报）。
   digest_enabled: true
   # 是否启用实时安全告警 AI 分诊。
   triage_enabled: true
-  # 是否启用 star 仓库新 Release 的 AI 中文总结（英文 notes 自动翻译摘要）。
+  # 是否启用 star 仓库新 Release 的更新速览（英文 notes 自动翻译要点）。
   release_summary_enabled: true
   # API Key 通过 REPOSENTINEL_AI_API_KEY 注入；enabled=true 时必须提供。
 

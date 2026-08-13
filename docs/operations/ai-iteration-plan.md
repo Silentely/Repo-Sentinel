@@ -1,7 +1,7 @@
 # AI 链路打磨迭代计划（头脑风暴）
 
 > 面向 RepoSentinel 的 AI 能力（摘要 / 安全告警分诊 / 连通性测试）持续打磨清单。
-> 基线：AI 调用日志可观测已落地（`ai request start/ok/failed` + error_code 分类 + digest/rules 参与度三段日志）。
+> 基线：大模型调用日志可观测已落地（`ai request start/ok/failed` + error_code 分类 + digest/rules 参与度三段日志）。
 > 本文记录 10 个候选打磨项：问题 → 方案 → 收益 → 成本 → 风险，供分批实施。
 
 ## 实施状态
@@ -29,7 +29,7 @@
 
 ### A 类：可观测性补强（延续日志留痕主线）
 
-#### 1. AI 调用指标（Prometheus 计数器）
+#### 1. 大模型调用指标（Prometheus 计数器）
 
 - **问题**：日志能回答成败，但 `/metrics` 看不到 AI 成功率、延迟、用量，无法接入现有监控面板。
 - **方案**：沿用 `httpapi/metrics.go` 的 atomic 计数器模式，在 `Complete` 出口统一计数：`reposentinel_ai_requests_total`、`reposentinel_ai_requests_failed_total`（按 error_code 分列，或单计数 + 标签）、`reposentinel_ai_request_duration_ms`（累计总和 + 次数，供均值）、token 计数（见 #2）。在 `handleMetrics` 输出。
@@ -87,7 +87,7 @@
 - **成本**：中高（config 结构、DB 存储、UI 校验、测试均需动；走 system settings JSON，不涉及 schema 迁移）。
 - **风险**：fallback 模型质量差异 → 仅作为降级路径，成功路径仍用主模型。
 
-#### 8. AI 调用并发预算（信号量）
+#### 8. 大模型调用并发预算（信号量）
 
 - **问题**：digest 三周期与分诊可能并发打 AI；小模型网关并发敏感，突发调用推高延迟与费用。
 - **方案**：`ai.Client` 增加全局信号量（默认并发 1~2，可配置）；超出时排队（带超时）或直接降级（fallback 语义，日志标注 `reason=concurrency_limit`）。

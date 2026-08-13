@@ -174,24 +174,24 @@ openssl rand -hex 32
 | `REPOSENTINEL_AGGREGATION_BURST_THRESHOLD` | 突发条数阈值 |
 | `REPOSENTINEL_AGGREGATION_BURST_WINDOW` | 突发统计窗口，如 `5m` |
 
-### AI 集成（可选）
+### 智能值守（可选）
 
-AI 用于三处：每日摘要 / 周报 / 月报正文生成（`digest_enabled`），以及实时安全告警的影响分析与处理建议（`triage_enabled`）。默认关闭；开启时须提供 API Key，支持任意 OpenAI 兼容端点（可接 Ollama 等本地模型）。
+智能值守用于三处：每日简报 / 周报 / 月报正文生成（`digest_enabled`），以及实时安全告警的影响分析与处理建议（`triage_enabled`）。默认关闭；开启时须提供 API Key，支持任意 OpenAI 兼容端点（可接 Ollama 等本地模型）。
 
 | 变量 | 说明 |
 |------|------|
-| `REPOSENTINEL_AI_ENABLED` | AI 总开关，默认 `false` |
+| `REPOSENTINEL_AI_ENABLED` | 智能值守总开关，默认 `false` |
 | `REPOSENTINEL_AI_API_KEY` | API Key，`enabled=true` 时必填 |
 | `REPOSENTINEL_AI_BASE_URL` | OpenAI 兼容端点，默认 `https://api.openai.com/v1` |
 | `REPOSENTINEL_AI_MODEL` | 模型名，默认 `gpt-4o-mini` |
 | `REPOSENTINEL_AI_TIMEOUT` | 单次请求超时，默认 `30s` |
 | `REPOSENTINEL_AI_MAX_TOKENS` | 输出 token 上限，默认 `800` |
 | `REPOSENTINEL_AI_RETRIES` | 瞬时失败自动重试次数，默认 `1`（0 表示不重试） |
-| `REPOSENTINEL_AI_DIGEST_ENABLED` | 是否启用 AI 摘要，默认 `true` |
+| `REPOSENTINEL_AI_DIGEST_ENABLED` | 是否启用智能简报，默认 `true` |
 | `REPOSENTINEL_AI_TRIAGE_ENABLED` | 是否启用安全告警分诊，默认 `true` |
-| `REPOSENTINEL_AI_RELEASE_SUMMARY_ENABLED` | 是否启用 star 仓库新 Release 的 AI 中文总结，默认 `true` |
+| `REPOSENTINEL_AI_RELEASE_SUMMARY_ENABLED` | 是否启用 star 仓库新 Release 的更新速览，默认 `true` |
 
-AI 不可用（未配置、超时、服务端错误）时自动降级：摘要回退模板正文、告警保持原文，不影响通知投递。实时链路的等待时长严格遵循 `timeout` 配置（分诊与 Release 总结按配置超时建预算，无更短的硬编码上限），超时后该条通知以原文链接兜底发出。接入本地模型的 YAML 示例见下节。
+智能值守不可用（未配置、超时、服务端错误）时自动降级：简报回退模板正文、告警保持原文，不影响通知投递。实时链路的等待时长严格遵循 `timeout` 配置（分诊与 Release 更新速览按配置超时建预算，无更短的硬编码上限），超时后该条通知以原文链接兜底发出。接入本地模型的 YAML 示例见下节。
 
 ### Agent 访问（可选）
 
@@ -202,11 +202,11 @@ AI 不可用（未配置、超时、服务端错误）时自动降级：摘要�
 | `REPOSENTINEL_OAUTH_CLIENT_ID` | Agent 客户端标识，默认 `reposentinel-agent` |
 | `REPOSENTINEL_OAUTH_CLIENT_SECRET` | Agent 客户端密钥（必填才可签发令牌） |
 
-除环境变量外，AI 配置也可在管理台「设置 → AI 集成」编辑：环境变量已设置的字段在管理台锁定（写入返回 `ai_field_locked`），未设置的字段由数据库补充；API Key 经主密钥 AES-GCM 加密存库，管理台不回显明文。修改保存后热生效，无需重启。
+除环境变量外，智能值守配置也可在管理台「设置 → 智能值守」编辑：环境变量已设置的字段在管理台锁定（写入返回 `ai_field_locked`），未设置的字段由数据库补充；API Key 经主密钥 AES-GCM 加密存库，管理台不回显明文。修改保存后热生效，无需重启。
 
 该区块提供「测试连通性」按钮：以当前生效配置向端点发送一次最小对话并返回耗时与结果，未锁定字段可携带表单中的临时值（便于保存前先验证端点 / 模型 / 密钥），测试不写库、不改变运行时。测试仅发送固定最小消息（不携带仓库数据），请求会发往配置的 Base URL——该地址可指向任意 http(s) 端点（含本地 / 内网模型网关），由管理员自行配置并承担相应风险。
 
-> 隐私提示：启用 AI 后，事件标题、仓库名与告警信息会发送至所配置的模型服务（第三方云端或本地网关）。敏感环境建议接入本地模型（如 Ollama），避免仓库信息外泄。
+> 隐私提示：启用智能值守后，事件标题、仓库名与告警信息会发送至所配置的模型服务（第三方云端或本地网关）。敏感环境建议接入本地模型（如 Ollama），避免仓库信息外泄。
 
 配置错误返回稳定 `validation_failed`，不会回显密码、连接串或主密钥原文。
 

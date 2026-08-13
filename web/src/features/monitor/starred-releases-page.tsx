@@ -135,7 +135,7 @@ export function StarredReleasesPage() {
         <div>
           <p className="eyebrow">追踪</p>
           <h1>Star Release</h1>
-          <p>追踪你 star 的公开仓库：新版本发布实时通知，可配 AI 中文总结。</p>
+          <p>追踪你 star 的公开仓库：新版本发布实时通知，可配更新速览。</p>
         </div>
       </section>
 
@@ -143,7 +143,7 @@ export function StarredReleasesPage() {
         <h2 id="starred-releases-title">Star Release 追踪</h2>
         <p className="field-hint">
           填写 GitHub 用户名后，匿名枚举其公开 star 仓库（自动排除 fork 与已归档），并定期轮询各仓最新
-          Release——新版本发布即实时通知（含 AI 中文总结，可在「设置」→「AI 集成」关闭）。release 轮询用
+          Release——新版本发布即实时通知（含更新速览，可在「设置」→「智能值守」关闭）。release 轮询用
           ETag 条件请求，304 不计限流。部署在网络受限环境时设置 <code>HTTPS_PROXY</code> 即可（客户端默认走系统代理）。
         </p>
         {msg ? <p className="success-banner" role="status">{msg}</p> : null}

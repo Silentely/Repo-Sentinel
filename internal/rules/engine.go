@@ -57,14 +57,14 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		return err
 	}
 	title, body, htmlURL := renderMessage(res.Event, repoFullName)
-	// 安全告警分诊：新告警附带 AI 影响分析与处理建议；失败保持原文，不阻塞入库。
+	// 安全告警分诊：新告警附带影响分析与处理建议；失败保持原文，不阻塞入库。
 	// 是否有接收渠道的检查并入 triageAnalysis，与参与度日志归并一处。
 	if analysis := e.triageAnalysis(ctx, res.Event, repoFullName, channels); analysis != "" {
-		body = body + "\n────────────────\n🤖 AI 分析\n" + htmlpkg.EscapeString(analysis)
+		body = body + "\n────────────────\n🤖 告警分析\n" + htmlpkg.EscapeString(analysis)
 	}
-	// release 中文总结：新 release 附带 AI 翻译摘要；失败降级原文链接，不阻塞入库。
+	// release 更新速览：新 release 附带智能翻译要点；失败降级原文链接，不阻塞入库。
 	if summary := e.releaseAnalysis(ctx, res.Event, repoFullName, channels); summary != "" {
-		body = body + "\n────────────────\n🤖 AI 总结\n" + htmlpkg.EscapeString(summary)
+		body = body + "\n────────────────\n🤖 更新速览\n" + htmlpkg.EscapeString(summary)
 	}
 	for _, ch := range channels {
 		// 渠道未订阅该事件类型时跳过。
@@ -144,7 +144,7 @@ func hasSubscribedChannel(channels []store.NotificationChannel, kind string) boo
 	return false
 }
 
-// triageAnalysis 生成新安全告警的 AI 分析；未启用、非新告警、无订阅渠道或调用失败时返回空串。
+// triageAnalysis 生成新安全告警的告警分析；未启用、非新告警、无订阅渠道或调用失败时返回空串。
 // 返回空串时调用方保持原通知正文，AI 慢或不可用绝不影响通知入库。
 // 参与度留痕（Logger 注入时）：skipped 记录未参与原因（triage_not_enabled / not_new_alert /
 // no_subscribed_channel），used 记录分诊成功，fallback 记录失败、空输出或格式不达标
@@ -213,7 +213,7 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 	return analysis
 }
 
-// releaseAnalysis 生成新 release 的 AI 中文总结；未启用、非 release、无订阅渠道或失败时返回空串。
+// releaseAnalysis 生成新 release 的更新速览；未启用、非 release、无订阅渠道或失败时返回空串。
 // 返回空串时调用方保持原通知正文（原文链接兜底）。
 // 外层预算 = 配置的请求超时（e.AI.EffectiveTimeout）：等待时长与用户配置一致，
 // AI 慢时通知最迟延迟配置超时后降级原文，不会被更短的硬编码上限截断。

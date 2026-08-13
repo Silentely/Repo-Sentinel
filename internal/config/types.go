@@ -48,11 +48,11 @@ type AIConfig struct {
 	MaxTokens int `yaml:"max_tokens"`
 	// Retries 瞬时失败（超时/网络/5xx/空响应）自动重试次数，默认 1；0 表示不重试。
 	Retries int `yaml:"retries"`
-	// DigestEnabled 是否启用 AI 摘要（每日/周报/月报），默认 true。
+	// DigestEnabled 是否启用智能简报（每日/周报/月报），默认 true。
 	DigestEnabled bool `yaml:"digest_enabled"`
 	// TriageEnabled 是否启用实时安全告警 AI 分诊，默认 true。
 	TriageEnabled bool `yaml:"triage_enabled"`
-	// ReleaseSummaryEnabled 是否启用 star 仓库新 release 的 AI 中文总结，默认 true。
+	// ReleaseSummaryEnabled 是否启用 star 仓库新 release 的更新速览，默认 true。
 	ReleaseSummaryEnabled bool `yaml:"release_summary_enabled"`
 }
 
