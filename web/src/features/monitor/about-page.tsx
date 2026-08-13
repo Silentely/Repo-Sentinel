@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 
@@ -14,6 +14,7 @@ const DOCS_FAQ = "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/faq.
 const DOCS_CHANGELOG = "https://github.com/Silentely/Repo-Sentinel/blob/main/CHANGELOG.md";
 
 export function AboutPage() {
+  const queryClient = useQueryClient();
   const version = useQuery(versionQueryOptions);
   const [checking, setChecking] = useState(false);
   const [banner, setBanner] = useState<{
@@ -29,6 +30,8 @@ export function AboutPage() {
     try {
       const res = await checkForUpdates(force);
       const uc = res.update_check;
+      // 检查完成（含失败）后刷新版本信息：底部「版本」列表可能因远程响应带出构建元数据变化。
+      await queryClient.invalidateQueries({ queryKey: ["version"] });
       if (!uc.enabled) { setBanner({ kind: "info", text: "远程更新检查已关闭。" }); return; }
       if (uc.error && !uc.latest_version) { setBanner({ kind: "error", text: `检查失败：${uc.error}` }); return; }
       const url = safeHttpUrl(uc.latest_url);

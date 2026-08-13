@@ -131,6 +131,14 @@ export function StarredReleasesPage() {
     queryFn: () => listStarredTrackers({ page, per_page: 20, state: stateFilter || undefined }),
     staleTime: 10_000,
   });
+  const total = trackers.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / 20));
+  // URL 中 page 超界（如筛选切换后共 3 页但 ?page=99）时钳制回末页，避免「第 99 / 3 页」+ 空列表。
+  useEffect(() => {
+    if (total > 0 && page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [page, pageCount, total, setPage]);
   const setStateMut = useMutation({
     mutationFn: ({ id, state }: { id: string; state: "disabled" | "tracking" }) => setStarredTrackerState(id, state),
     onSuccess: async () => {
@@ -142,9 +150,6 @@ export function StarredReleasesPage() {
 
   const counts = config.data?.counts;
   const items = trackers.data?.items ?? [];
-  const total = trackers.data?.total ?? 0;
-  const perPage = 20;
-  const pageCount = Math.max(1, Math.ceil(total / perPage));
 
   return (
     <>
@@ -242,7 +247,7 @@ export function StarredReleasesPage() {
             ))}
           </ul>
         )}
-        {total > perPage ? (
+        {total > 20 ? (
           <div className="pager-row">
             <button className="quiet-button quiet-button--compact" type="button" disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>
               上一页
