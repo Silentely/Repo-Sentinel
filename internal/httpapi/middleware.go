@@ -23,10 +23,29 @@ const (
 
 func (s *server) requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestID := ulid.Make().String()
+		// 上游（反代）已带 X-Request-ID 时沿用，便于跨组件按同一 ID 串联日志；
+		// 未带或格式非法（过长/不可打印）时本地生成。
+		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		if !validRequestID(requestID) {
+			requestID = ulid.Make().String()
+		}
 		w.Header().Set("X-Request-ID", requestID)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDContextKey, requestID)))
 	})
+}
+
+// validRequestID 校验上游请求 ID：非空、长度受限、仅可打印 ASCII，
+// 避免把不可信头部原样回写响应头（CRLF 注入防护）。
+func validRequestID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, c := range id {
+		if c < 0x21 || c > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *server) realIPMiddleware(next http.Handler) http.Handler {
@@ -57,6 +76,10 @@ func (s *server) accessLogMiddleware(next http.Handler) http.Handler {
 
 func (s *server) recoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 追踪响应是否已写出：handler 已写头/部分 body 后 panic 时，再补写 500 会产生
+		// superfluous WriteHeader 与截断脏响应，此时只记日志、让连接自然结束。
+		wrote := false
+		tracker := &responseWriteTracker{ResponseWriter: w, wrote: &wrote}
 		defer func() {
 			recovered := recover()
 			if recovered == nil {
@@ -75,10 +98,28 @@ func (s *server) recoveryMiddleware(next http.Handler) http.Handler {
 				"request_id", requestIDFromContext(r.Context()),
 				"stack", string(debug.Stack()),
 			)
-			s.writeAPIError(w, r, http.StatusInternalServerError, errorCodeInternal, nil)
+			if !wrote {
+				s.writeAPIError(w, r, http.StatusInternalServerError, errorCodeInternal, nil)
+			}
 		}()
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(tracker, r)
 	})
+}
+
+// responseWriteTracker 记录响应是否已写出（WriteHeader 或隐式 200 的 Write）。
+type responseWriteTracker struct {
+	http.ResponseWriter
+	wrote *bool
+}
+
+func (t *responseWriteTracker) WriteHeader(code int) {
+	*t.wrote = true
+	t.ResponseWriter.WriteHeader(code)
+}
+
+func (t *responseWriteTracker) Write(b []byte) (int, error) {
+	*t.wrote = true
+	return t.ResponseWriter.Write(b)
 }
 
 func (s *server) authenticationMiddleware(next http.Handler) http.Handler {
@@ -101,8 +142,8 @@ func (s *server) authenticationMiddleware(next http.Handler) http.Handler {
 		}
 		// 无 Session Cookie 时尝试 OAuth Bearer（Agent 只读访问）。
 		if token, ok := bearerToken(r); ok {
-			audience := s.siteOrigin(r) + "/api/v1"
-			if clientID, err := s.oauthValidateToken(token, audience); err == nil {
+			origin := s.siteOrigin(r)
+			if clientID, err := s.oauthValidateToken(token, origin+"/api/v1", origin); err == nil {
 				ctx := context.WithValue(r.Context(), agentClientContextKey, clientID)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
