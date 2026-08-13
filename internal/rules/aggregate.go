@@ -136,8 +136,9 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 
 	a.mu.Lock()
 	now := time.Now()
-	// 超频检测
-	times := a.bursts[repoID]
+	// 超频检测按「仓库+类别」维度：与聚合粒度一致，避免单类别未超频时因其它类别的
+	// 事件量被误判超频（如 5 分钟内 8 个 issue + 8 个 PR 各低于阈值，却触发频率摘要）。
+	times := a.bursts[key]
 	filtered := times[:0]
 	for _, t := range times {
 		if now.Sub(t) <= a.BurstWindow {
@@ -145,7 +146,7 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 		}
 	}
 	filtered = append(filtered, now)
-	a.bursts[repoID] = filtered
+	a.bursts[key] = filtered
 	if len(filtered) > a.BurstThreshold {
 		sample := res.Event
 		// 标题带上仓库名：Telegram 推送预览只看标题，无仓库名时无法区分是哪个仓超频。
@@ -236,12 +237,18 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 			continue
 		}
 		title, body := renderMergedMessage(b.repoName, b.category, sub, time.Now().UTC())
-		variant := fmt.Sprintf("agg|%s|%s|%d", b.repoID, b.category, bucket)
-		idem := idempotencyKey(ch.ID, b.repoID, variant)
+		// repoID 为空（事件未绑定仓库）时回退仓库名进幂等键与聚合键：
+		// 否则不同仓库同类同桶会生成相同幂等键，第二条被 Outbox 唯一约束静默丢弃。
+		idScope := b.repoID
+		if idScope == "" {
+			idScope = b.repoName
+		}
+		variant := fmt.Sprintf("agg|%s|%s|%d", idScope, b.category, bucket)
+		idem := idempotencyKey(ch.ID, idScope, variant)
 		eventID := sub[0].ID
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eventID,
-			AggregateKey: b.repoID + "|" + b.category, IdempotencyKey: idem,
+			AggregateKey: idScope + "|" + b.category, IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: title, BodyText: body, ParseMode: "HTML",
 			BodyJSON: map[string]any{"aggregate": true, "count": len(sub), "category": b.category, "bucket": bucket},
@@ -301,12 +308,17 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 		if !ch.Enabled || !ch.AcceptsKind(sample.Kind) {
 			continue
 		}
-		variant := fmt.Sprintf("burst|%s|%s|%d", repoID, cat, bucket)
-		idem := idempotencyKey(ch.ID, repoID, variant)
+		// repoID 为空时回退仓库名进幂等键，避免不同仓库摘要互相碰撞。
+		idScope := repoID
+		if idScope == "" {
+			idScope = repoName
+		}
+		variant := fmt.Sprintf("burst|%s|%s|%d", idScope, cat, bucket)
+		idem := idempotencyKey(ch.ID, idScope, variant)
 		eid := sample.ID
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eid,
-			AggregateKey: repoID + "|burst", IdempotencyKey: idem,
+			AggregateKey: idScope + "|burst", IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: safeTitle, BodyText: body, ParseMode: "HTML",
 			// 有事件链接时附带跳转按钮，用户可从摘要直达原始事件。
