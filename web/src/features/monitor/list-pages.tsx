@@ -186,7 +186,6 @@ function EventListBody({
   query: QueryGateQuery & {
     hasNextPage?: boolean;
     isFetchingNextPage?: boolean;
-    isError?: boolean;
     fetchNextPage: () => void;
   };
   items: unknown[];
@@ -203,7 +202,7 @@ function EventListBody({
           total={total}
           hasNextPage={query.hasNextPage ?? false}
           fetchingNextPage={query.isFetchingNextPage ?? false}
-          hasError={query.isError}
+          loadError={query.error}
           onLoadMore={() => query.fetchNextPage()}
         />
       </>
@@ -1043,20 +1042,22 @@ export function SecurityPage() {
 }
 
 /** 列表底部分页条：展示已加载数量与服务端总数，并提供「加载更多」翻页；
- * 翻页失败时给出明确错误态与重试入口（首屏失败由 QueryGate 兜底）。 */
+ * 翻页失败时给出明确错误态与重试入口（首屏失败由 QueryGate 兜底）。
+ * loadError 用 query.error 判定：TanStack v5 中后续页 fetch 失败时 status 保持
+ * success、isError 为 false，只有 error 字段能反映失败（isError 分支实际不可达）。 */
 function ListFooter({
   shown,
   total,
   hasNextPage,
   fetchingNextPage,
-  hasError,
+  loadError,
   onLoadMore,
 }: {
   shown: number;
   total: number;
   hasNextPage: boolean;
   fetchingNextPage: boolean;
-  hasError?: boolean;
+  loadError?: unknown;
   onLoadMore: () => void;
 }) {
   return (
@@ -1064,7 +1065,7 @@ function ListFooter({
       <span className="muted">
         已显示 {shown} / 共 {total} 条
       </span>
-      {hasError && hasNextPage ? (
+      {loadError != null && hasNextPage ? (
         <button className="quiet-button quiet-button--danger" type="button" onClick={onLoadMore}>
           加载失败，点击重试
         </button>

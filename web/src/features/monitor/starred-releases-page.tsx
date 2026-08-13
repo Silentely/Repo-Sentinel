@@ -63,6 +63,15 @@ export function StarredReleasesPage() {
   const [form, setForm] = useState<FormState>(() => formFromConfig(undefined));
   const [msg, setMsg] = useAutoDismiss();
   const [error, setError] = useState<string>();
+  // 周期输入即时校验：与服务端范围一致（star 同步 1m~30d，release 轮询 1m~24h），
+  // 失焦反馈格式/范围问题，提交时再强校验一次（服务端仍为最终裁决）。
+  const [intervalHint, setIntervalHint] = useState<{ starSync: string; releasePoll: string }>({ starSync: "", releasePoll: "" });
+  const validateInterval = (raw: string, maxSeconds: number): string => {
+    const seconds = parseGoDurationSeconds(raw);
+    if (seconds == null) return "周期格式非法，请使用 Go duration 格式（如 6h、10m、1.5h）。";
+    if (seconds < 60 || seconds > maxSeconds) return `周期需在 1 分钟 ~ ${Math.round(maxSeconds / 3600)} 小时之间。`;
+    return "";
+  };
 
   useEffect(() => {
     if (!config.data) return;
@@ -90,6 +99,14 @@ export function StarredReleasesPage() {
   function submitConfig() {
     setMsg("");
     setError(undefined);
+    // 提交前强校验周期：非法直接阻断并提示，避免服务端 400 后只剩通用错误条。
+    const starSyncHint = validateInterval(form.starSyncInterval, 30 * 24 * 3600);
+    const releasePollHint = validateInterval(form.releasePollInterval, 24 * 3600);
+    setIntervalHint({ starSync: starSyncHint, releasePoll: releasePollHint });
+    if (starSyncHint || releasePollHint) {
+      setError("周期配置不符合要求，请修正后保存。");
+      return;
+    }
     saveMut.mutate(configBody(form, config.data));
   }
 
@@ -162,12 +179,24 @@ export function StarredReleasesPage() {
           </label>
           <label className="field--plain">
             <span>Star 列表同步周期</span>
-            <input value={form.starSyncInterval} onChange={(e) => set("starSyncInterval", e.target.value)} placeholder="6h0m0s" />
+            <input
+              value={form.starSyncInterval}
+              onChange={(e) => set("starSyncInterval", e.target.value)}
+              onBlur={() => setIntervalHint((prev) => ({ ...prev, starSync: validateInterval(form.starSyncInterval, 30 * 24 * 3600) }))}
+              placeholder="6h0m0s"
+            />
           </label>
+          {intervalHint.starSync ? <p className="field-hint" role="status">{intervalHint.starSync}</p> : null}
           <label className="field--plain">
             <span>Release 轮询周期</span>
-            <input value={form.releasePollInterval} onChange={(e) => set("releasePollInterval", e.target.value)} placeholder="10m0s" />
+            <input
+              value={form.releasePollInterval}
+              onChange={(e) => set("releasePollInterval", e.target.value)}
+              onBlur={() => setIntervalHint((prev) => ({ ...prev, releasePoll: validateInterval(form.releasePollInterval, 24 * 3600) }))}
+              placeholder="10m0s"
+            />
           </label>
+          {intervalHint.releasePoll ? <p className="field-hint" role="status">{intervalHint.releasePoll}</p> : null}
           <label className="field--plain">
             <span>追踪上限</span>
             <NumberField min={1} max={10000} integer value={form.maxTrackers} onChange={(v) => set("maxTrackers", v)} />
@@ -287,4 +316,41 @@ export function releaseURL(fullName: string, tag: string | undefined): string {
   const parts = fullName.split("/");
   const base = parts.length === 2 ? `https://github.com/${parts[0]}/${parts[1]}/releases` : `https://github.com/${fullName}/releases`;
   return tag ? `${base}/tag/${encodeURIComponent(tag)}` : base;
+}
+
+/**
+ * 简化解析 Go duration 字符串（支持 d/h/m/s/ms 组合与小数，如 6h0m0s / 1.5h）。
+ * 返回总秒数；格式非法返回 null。仅用于提交前客户端校验，服务端仍做最终强校验。
+ */
+export function parseGoDurationSeconds(raw: string): number | null {
+  const s = raw.trim();
+  if (!s || !/^(\d+(\.\d+)?(ms|s|m|h|d))+$/.test(s)) {
+    return null;
+  }
+  let total = 0;
+  const re = /(\d+(?:\.\d+)?)(ms|s|m|h|d)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    const value = parseFloat(m[1] ?? "");
+    switch (m[2]) {
+      case "ms":
+        total += value / 1000;
+        break;
+      case "s":
+        total += value;
+        break;
+      case "m":
+        total += value * 60;
+        break;
+      case "h":
+        total += value * 3600;
+        break;
+      case "d":
+        total += value * 86400;
+        break;
+      default:
+        return null; // 前置正则已限定单位，理论不可达
+    }
+  }
+  return total;
 }

@@ -67,18 +67,20 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const dashboard = useQuery(dashboardQueryOptions);
   const repos = useQuery(repositoriesQueryOptions);
-  const events = useQuery(eventsQueryOptions(DASHBOARD_FEED_LIMIT));
-  const outbox = useQuery(outboxQueryOptions("", "", DASHBOARD_FEED_LIMIT));
+  // 折叠状态从 localStorage 恢复，切换后写回。
+  // 面板查询按折叠状态暂停：折叠的「通知投递/最近事件/Star 增长」零请求零轮询，
+  // 展开时若缓存新鲜直接显示，过期则骨架加载（QueryGate 兜底）。
+  const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(readOpenPanels);
+  const events = useQuery({ ...eventsQueryOptions(DASHBOARD_FEED_LIMIT), enabled: openPanels.events });
+  const outbox = useQuery({ ...outboxQueryOptions("", "", DASHBOARD_FEED_LIMIT), enabled: openPanels.outbox });
   const settings = useQuery(settingsQueryOptions);
   const githubConfig = useQuery(githubConfigQueryOptions);
 
   // Star 增长趋势：时间范围由本地状态管理，切换范围时按 queryKey 换缓存。
   const [trendDays, setTrendDays] = useState(30);
-  const starTrend = useQuery(starTrendQueryOptions(trendDays));
+  const starTrend = useQuery({ ...starTrendQueryOptions(trendDays), enabled: openPanels.stars });
   const featureStars = settings.data?.["feature.stars"] !== false;
 
-  // 折叠状态从 localStorage 恢复，切换后写回。
-  const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(readOpenPanels);
   // 行级忙碌：只让当前操作的行转圈。
   const [retryBusyId, setRetryBusyId] = useState<string | null>(null);
 
