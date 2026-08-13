@@ -2343,8 +2343,8 @@ type EventMutation struct {
 	kind                  *string
 	action                *string
 	repository_id         *string
-	subject_number        *int
-	addsubject_number     *int
+	subject_number        *int64
+	addsubject_number     *int64
 	title                 *string
 	severity              *string
 	actor                 *string
@@ -2627,13 +2627,13 @@ func (m *EventMutation) ResetRepositoryID() {
 }
 
 // SetSubjectNumber sets the "subject_number" field.
-func (m *EventMutation) SetSubjectNumber(i int) {
+func (m *EventMutation) SetSubjectNumber(i int64) {
 	m.subject_number = &i
 	m.addsubject_number = nil
 }
 
 // SubjectNumber returns the value of the "subject_number" field in the mutation.
-func (m *EventMutation) SubjectNumber() (r int, exists bool) {
+func (m *EventMutation) SubjectNumber() (r int64, exists bool) {
 	v := m.subject_number
 	if v == nil {
 		return
@@ -2644,7 +2644,7 @@ func (m *EventMutation) SubjectNumber() (r int, exists bool) {
 // OldSubjectNumber returns the old "subject_number" field's value of the Event entity.
 // If the Event object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *EventMutation) OldSubjectNumber(ctx context.Context) (v *int, err error) {
+func (m *EventMutation) OldSubjectNumber(ctx context.Context) (v *int64, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldSubjectNumber is only allowed on UpdateOne operations")
 	}
@@ -2659,7 +2659,7 @@ func (m *EventMutation) OldSubjectNumber(ctx context.Context) (v *int, err error
 }
 
 // AddSubjectNumber adds i to the "subject_number" field.
-func (m *EventMutation) AddSubjectNumber(i int) {
+func (m *EventMutation) AddSubjectNumber(i int64) {
 	if m.addsubject_number != nil {
 		*m.addsubject_number += i
 	} else {
@@ -2668,7 +2668,7 @@ func (m *EventMutation) AddSubjectNumber(i int) {
 }
 
 // AddedSubjectNumber returns the value that was added to the "subject_number" field in this mutation.
-func (m *EventMutation) AddedSubjectNumber() (r int, exists bool) {
+func (m *EventMutation) AddedSubjectNumber() (r int64, exists bool) {
 	v := m.addsubject_number
 	if v == nil {
 		return
@@ -3440,7 +3440,7 @@ func (m *EventMutation) SetField(name string, value ent.Value) error {
 		m.SetRepositoryID(v)
 		return nil
 	case event.FieldSubjectNumber:
-		v, ok := value.(int)
+		v, ok := value.(int64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -3573,7 +3573,7 @@ func (m *EventMutation) AddedField(name string) (ent.Value, bool) {
 func (m *EventMutation) AddField(name string, value ent.Value) error {
 	switch name {
 	case event.FieldSubjectNumber:
-		v, ok := value.(int)
+		v, ok := value.(int64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}

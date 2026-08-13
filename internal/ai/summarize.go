@@ -82,10 +82,10 @@ func renderEventLines(events []store.Event, repoNames map[string]string) string 
 		if ev.SubjectNumber != nil {
 			line += fmt.Sprintf(" #%d", *ev.SubjectNumber)
 		}
-		if repoNames != nil && ev.RepositoryID != nil {
-			if name := repoNames[*ev.RepositoryID]; name != "" {
-				line += "（" + name + "）"
-			}
+		// release 事件（star 追踪）无 RepositoryID，经 EventRepoName 回退 PayloadSummary 补仓库名，
+		// 避免 AI 面对无主事件猜测归属；star/watch 事件标题即仓库名，不再追加「（名）」重复。
+		if name := store.EventRepoName(ev, repoNames); name != "" && name != ev.Title {
+			line += "（" + name + "）"
 		}
 		if ev.Severity != "" {
 			line += " [严重度:" + ev.Severity + "]"

@@ -297,7 +297,13 @@ export function DashboardPage() {
         >
           <ul className="feed-list">
             {eventItems.map((ev) => {
-              const repoName = ev.repository_id ? repoNameMap[ev.repository_id] : undefined;
+              // 归属仓库名：优先 repository_id 关联，release 事件（star 追踪）无
+              // repository_id，回退 payload_summary.repository。
+              const repoName = ev.repository_id
+                ? repoNameMap[ev.repository_id]
+                : typeof ev.payload_summary?.repository === "string"
+                  ? ev.payload_summary.repository
+                  : undefined;
               const title = ev.title || "（无标题）";
               return (
                 <li key={ev.id} className="feed-row">

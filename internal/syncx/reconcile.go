@@ -275,7 +275,7 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			if _, err := r.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 				continue
 			}
-			num := saved.Number
+			num := int64(saved.Number)
 			src := saved.SourceUpdatedAt
 			if _, err := r.Store.Events().Create(ctx, store.Event{
 				ID: ulid.Make().String(), Source: "reconcile", Kind: kind, Action: "updated",

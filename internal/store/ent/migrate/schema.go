@@ -113,7 +113,7 @@ var (
 		{Name: "kind", Type: field.TypeString},
 		{Name: "action", Type: field.TypeString},
 		{Name: "repository_id", Type: field.TypeString, Nullable: true},
-		{Name: "subject_number", Type: field.TypeInt, Nullable: true},
+		{Name: "subject_number", Type: field.TypeInt64, Nullable: true},
 		{Name: "title", Type: field.TypeString, Default: ""},
 		{Name: "severity", Type: field.TypeString, Default: ""},
 		{Name: "actor", Type: field.TypeString, Default: ""},

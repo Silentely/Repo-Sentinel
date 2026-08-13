@@ -112,7 +112,7 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 			continue
 		}
-		num := saved.Number
+		num := int64(saved.Number)
 		src := saved.SourceUpdatedAt
 		if _, err := p.Store.Events().Create(ctx, store.Event{
 			ID: ulid.Make().String(), Source: "external_poll", Kind: kind, Action: "updated",

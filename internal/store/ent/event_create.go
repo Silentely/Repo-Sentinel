@@ -53,13 +53,13 @@ func (_c *EventCreate) SetNillableRepositoryID(v *string) *EventCreate {
 }
 
 // SetSubjectNumber sets the "subject_number" field.
-func (_c *EventCreate) SetSubjectNumber(v int) *EventCreate {
+func (_c *EventCreate) SetSubjectNumber(v int64) *EventCreate {
 	_c.mutation.SetSubjectNumber(v)
 	return _c
 }
 
 // SetNillableSubjectNumber sets the "subject_number" field if the given value is not nil.
-func (_c *EventCreate) SetNillableSubjectNumber(v *int) *EventCreate {
+func (_c *EventCreate) SetNillableSubjectNumber(v *int64) *EventCreate {
 	if v != nil {
 		_c.SetSubjectNumber(*v)
 	}
@@ -380,7 +380,7 @@ func (_c *EventCreate) createSpec() (*Event, *sqlgraph.CreateSpec) {
 		_node.RepositoryID = &value
 	}
 	if value, ok := _c.mutation.SubjectNumber(); ok {
-		_spec.SetField(event.FieldSubjectNumber, field.TypeInt, value)
+		_spec.SetField(event.FieldSubjectNumber, field.TypeInt64, value)
 		_node.SubjectNumber = &value
 	}
 	if value, ok := _c.mutation.Title(); ok {

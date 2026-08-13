@@ -47,6 +47,8 @@ export interface MonitorEvent {
   html_url: string;
   occurred_at: string;
   repository_id?: string;
+  /** 事件附加数据：star 追踪的 release 事件无 repository_id，仓库名回退读取 payload_summary.repository。 */
+  payload_summary?: Record<string, unknown>;
 }
 
 export interface OutboxItem {

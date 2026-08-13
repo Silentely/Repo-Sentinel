@@ -545,7 +545,7 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 		p.eventDuplicate(repo, kind, normalizeAction(action))
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
 	}
-	num := saved.Number
+	num := int64(saved.Number)
 	srcUpdated := saved.SourceUpdatedAt
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(action),
@@ -767,7 +767,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 		p.eventDuplicate(repo, kind, normalizeAction(env.Action))
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
 	}
-	num := a.Number
+	num := int64(a.Number)
 	srcUpdated := updatedAt
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(env.Action),

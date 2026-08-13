@@ -187,7 +187,7 @@ func TestEvaluateReleaseOutbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	releaseID := 42
+	releaseID := int64(42)
 	ev := store.Event{
 		ID: ulid.Make().String(), Kind: store.ReleaseKind, Action: "published",
 		Title: "Hello-World v2.0.0", SubjectNumber: &releaseID,
@@ -238,7 +238,7 @@ func TestEvaluateReleaseAIInjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	releaseID := 42
+	releaseID := int64(42)
 	ev := store.Event{
 		ID: ulid.Make().String(), Kind: store.ReleaseKind, Action: "published",
 		Title: "Hello-World v2.0.0", SubjectNumber: &releaseID,
@@ -307,7 +307,7 @@ func TestShouldNotifyRealtimeStarWatch(t *testing.T) {
 
 func TestRenderMessage_IssueOpened(t *testing.T) {
 	now := time.Date(2026, 7, 30, 9, 15, 0, 0, time.UTC)
-	num := 8
+	num := int64(8)
 	ev := &store.Event{
 		Kind: store.WorkItemKindIssue, Action: "opened", Title: "[BUG] 脚本一直在跑",
 		Actor: "testuser", SubjectNumber: &num, OccurredAt: now, HTMLURL: "https://github.com/test/repo/issues/8",
@@ -345,7 +345,7 @@ func TestRenderMessage_IssueOpened(t *testing.T) {
 }
 
 func TestRenderMessage_PRMerged(t *testing.T) {
-	num := 42
+	num := int64(42)
 	ev := &store.Event{
 		Kind: store.WorkItemKindPR, Action: "merged", Title: "feat: 新功能",
 		Actor: "dev", SubjectNumber: &num, OccurredAt: time.Now().UTC(), HTMLURL: "https://github.com/test/repo/pull/42",
@@ -703,7 +703,7 @@ func TestEvaluateSkipsTriageWithoutSubscriber(t *testing.T) {
 }
 
 func TestRenderMessage_PRDraft(t *testing.T) {
-	num := 50
+	num := int64(50)
 	ev := &store.Event{
 		Kind: store.WorkItemKindPR, Action: "opened", Title: "WIP: draft pr",
 		SubjectNumber: &num, OccurredAt: time.Now().UTC(),

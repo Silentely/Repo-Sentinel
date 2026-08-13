@@ -8,7 +8,7 @@ import (
 )
 
 func TestRenderMessageIssueOpened(t *testing.T) {
-	num := 42
+	num := int64(42)
 	ev := &store.Event{
 		Kind:          store.WorkItemKindIssue,
 		Action:        "opened",
@@ -83,7 +83,7 @@ func TestRenderMessagePRMerged(t *testing.T) {
 }
 
 func TestRenderMessageIssueClosed(t *testing.T) {
-	num := 7
+	num := int64(7)
 	ev := &store.Event{
 		Kind:          store.WorkItemKindIssue,
 		Action:        "closed",
@@ -161,7 +161,7 @@ func TestRenderMessageSeparatorPresent(t *testing.T) {
 }
 
 func TestRenderMessageReleasePublished(t *testing.T) {
-	releaseID := 42
+	releaseID := int64(42)
 	ev := &store.Event{
 		Kind:          store.ReleaseKind,
 		Action:        "published",

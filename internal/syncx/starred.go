@@ -305,7 +305,7 @@ func (p *StarredReleasePoller) probeRelease(ctx context.Context, id, fullName st
 		return nil // 原因已留痕
 	}
 	owner, name := splitFullName(fullName)
-	items, newEtag, modified, _, err := p.GitHub.ListReleases(ctx, token, owner, name, "")
+	items, newEtag, modified, _, err := p.GitHub.ListReleases(ctx, token, owner, name, 1, "")
 	if err != nil {
 		var stErr *githubx.HTTPStatusError
 		if errors.As(err, &stErr) && (stErr.StatusCode == http.StatusNotFound || stErr.StatusCode == http.StatusGone) {
@@ -395,77 +395,116 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 			break
 		}
 		owner, name := splitFullName(tk.FullName)
-		items, newEtag, modified, _, err := p.GitHub.ListReleases(ctx, token, owner, name, tk.ETag)
-		if err != nil {
-			var stErr *githubx.HTTPStatusError
-			switch {
-			case githubx.IsRateLimited(err):
-				// 限流：推进记账避免刷屏，下个周期再试。
-				p.lastReleasePoll = now
-				p.warn("release poll rate limited, stop round", "error_code", "rate_limited_round_stopped")
-				return nil
-			case errors.As(err, &stErr) && (stErr.StatusCode == http.StatusNotFound || stErr.StatusCode == http.StatusGone):
-				// 删仓/转私有：标记不可用并停止轮询（star 同步发现恢复时转回）。
-				if err := p.Store.StarredTrackers().UpdateState(ctx, tk.ID, store.TrackerStateUnavailable); err != nil {
-					p.warn("release poll state update failed", "repo", tk.FullName, "error_code", "tracker_state_failed", "error", err.Error())
+		// 分页扫描最新 release：从第 1 页起逐页翻到「已覆盖全部比游标新的 release」为止
+		//（命中游标所在页，或返回页不满一页即末页）。条件请求 ETag 仅对第 1 页生效。
+		page := 1
+		var newest githubx.ReleaseItem
+		page1Etag := ""
+		newestSet := false
+		cursorUpdated := false
+		advance := true
+	pollRepo:
+		for {
+			items, newEtag, modified, _, err := p.GitHub.ListReleases(ctx, token, owner, name, page, tk.ETag)
+			if err != nil {
+				var stErr *githubx.HTTPStatusError
+				switch {
+				case githubx.IsRateLimited(err):
+					// 限流：推进记账避免刷屏，下个周期再试。
+					p.lastReleasePoll = now
+					p.warn("release poll rate limited, stop round", "error_code", "rate_limited_round_stopped")
+					return nil
+				case errors.As(err, &stErr) && (stErr.StatusCode == http.StatusNotFound || stErr.StatusCode == http.StatusGone):
+					// 删仓/转私有：标记不可用并停止轮询（star 同步发现恢复时转回）。
+					if err := p.Store.StarredTrackers().UpdateState(ctx, tk.ID, store.TrackerStateUnavailable); err != nil {
+						p.warn("release poll state update failed", "repo", tk.FullName, "error_code", "tracker_state_failed", "error", err.Error())
+					}
+					break pollRepo
+				default:
+					// 超时/5xx 等临时故障：保持现状等待下轮重试；翻页失败不推进游标（防漏 release）。
+					p.warn("release poll failed", "repo", tk.FullName, "page", page, "error_code", "release_poll_failed", "error", err.Error())
+					advance = false
+					break pollRepo
 				}
-				continue
-			default:
-				// 超时/5xx 等临时故障：保持现状等待下轮重试。
-				p.warn("release poll failed", "repo", tk.FullName, "error_code", "release_poll_failed", "error", err.Error())
-				continue
 			}
+			if len(items) == 0 {
+				if page == 1 {
+					// 曾追踪过 release 的仓现在为空（异常）：按无 release 处理并复查。
+					recheck := time.Now().UTC().Add(noReleaseRecheckAfter)
+					if err := p.Store.StarredTrackers().UpdateNoRelease(ctx, tk.ID, recheck); err != nil {
+						p.warn("release poll state update failed", "repo", tk.FullName, "error_code", "tracker_state_failed", "error", err.Error())
+					}
+				}
+				break pollRepo
+			}
+			if page == 1 {
+				page1Etag = newEtag
+				if !modified {
+					// 304：未变更，仅推进轮询时间。
+					if err := p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, newEtag, tk.LastReleaseID, tk.LastReleaseTag, tk.LastReleasePublishedAt); err != nil {
+						// ETag 落库失败 → 下轮全量拉取 release body（浪费带宽），Debug 留痕。
+						p.debug("release poll cursor update failed", "repo", tk.FullName, "error_code", "tracker_cursor_failed", "error", err.Error())
+					}
+					cursorUpdated = true
+					p.debug("release poll ok", "repo", tk.FullName, "modified", false)
+					break pollRepo
+				}
+				// 基线：首次见到 release 只记游标，不通知（避免历史洪泛）。
+				if tk.LastReleaseID == 0 {
+					published := items[0].PublishedAt
+					if err := p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, newEtag, items[0].ID, items[0].TagName, &published); err != nil {
+						p.debug("release poll cursor update failed", "repo", tk.FullName, "error_code", "tracker_cursor_failed", "error", err.Error())
+					}
+					cursorUpdated = true
+					p.debug("release baseline recorded", "repo", tk.FullName, "release_id", items[0].ID)
+					break pollRepo
+				}
+				newest = items[0]
+				newestSet = true
+			}
+			// 本页逐条事件化（补拉）：比游标新的 release 全部处理，避免中间版本静默丢失。
+			// 预发布且未开启通知：不建事件但游标照常推进（正式版发布时再通知）。
+			// 达到本轮补发上限或事件落库失败时，不推进游标与 ETag，下轮节拍从旧游标续补
+			//（事件指纹幂等，重复扫描安全，不会重复投递）。
+			for _, rel := range items {
+				if rel.ID <= tk.LastReleaseID {
+					break // 已处理过的 release 不再回溯
+				}
+				if rel.Prerelease && !notifyPrerelease {
+					continue
+				}
+				created, err := p.createReleaseEvent(ctx, tk.FullName, rel)
+				if err != nil {
+					p.warn("release event create failed", "repo", tk.FullName, "release_id", rel.ID, "error_code", "event_create_failed", "error", err.Error())
+					advance = false
+					break pollRepo
+				}
+				if !created {
+					continue // 已存在（前轮已建事件但游标未推进），不计入补发预算
+				}
+				backfill++
+				p.debug("release event created", "repo", tk.FullName, "tag", rel.TagName, "release_id", rel.ID)
+				if backfill >= maxBackfillPerRound {
+					advance = false
+					p.debug("release poll backfill cap reached", "repo", tk.FullName, "cap", maxBackfillPerRound)
+					break pollRepo
+				}
+			}
+			// 翻页终止：本页已含游标（后续页都是已处理 release），或本页为末页（不足一页）。
+			if items[len(items)-1].ID <= tk.LastReleaseID || len(items) < githubx.ReleaseListPerPage {
+				break pollRepo
+			}
+			page++
 		}
-		if !modified {
-			// 304：未变更，仅推进轮询时间。
-			if err := p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, newEtag, tk.LastReleaseID, tk.LastReleaseTag, tk.LastReleasePublishedAt); err != nil {
-				// ETag 落库失败 → 下轮全量拉取 release body（浪费带宽），Debug 留痕。
-				p.debug("release poll cursor update failed", "repo", tk.FullName, "error_code", "tracker_cursor_failed", "error", err.Error())
-			}
-			p.debug("release poll ok", "repo", tk.FullName, "modified", false)
+		// 游标推进到最新 release：仅在完整覆盖（无失败/无 cap/无 304 与基线分支）时执行。
+		if !advance || cursorUpdated || !newestSet {
 			continue
 		}
-		if len(items) == 0 {
-			// 曾追踪过 release 的仓现在为空（异常）：按无 release 处理并复查。
-			recheck := time.Now().UTC().Add(noReleaseRecheckAfter)
-			if err := p.Store.StarredTrackers().UpdateNoRelease(ctx, tk.ID, recheck); err != nil {
-				p.warn("release poll state update failed", "repo", tk.FullName, "error_code", "tracker_state_failed", "error", err.Error())
-			}
-			continue
-		}
-		rel := items[0]
-		published := rel.PublishedAt
-		// 基线：首次见到 release 只记游标，不通知（避免历史洪泛）。
-		if tk.LastReleaseID == 0 {
-			if err := p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, newEtag, rel.ID, rel.TagName, &published); err != nil {
-				p.debug("release poll cursor update failed", "repo", tk.FullName, "error_code", "tracker_cursor_failed", "error", err.Error())
-			}
-			p.debug("release baseline recorded", "repo", tk.FullName, "release_id", rel.ID)
-			continue
-		}
-		if rel.ID == tk.LastReleaseID {
-			if err := p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, newEtag, rel.ID, rel.TagName, &published); err != nil {
-				p.debug("release poll cursor update failed", "repo", tk.FullName, "error_code", "tracker_cursor_failed", "error", err.Error())
-			}
-			continue
-		}
-		// 预发布且未开启通知：只推进游标，正式版发布时再通知。
-		if rel.Prerelease && !notifyPrerelease {
-			if err := p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, newEtag, rel.ID, rel.TagName, &published); err != nil {
-				p.debug("release poll cursor update failed", "repo", tk.FullName, "error_code", "tracker_cursor_failed", "error", err.Error())
-			}
-			p.debug("release prerelease skipped", "repo", tk.FullName, "tag", rel.TagName)
-			continue
-		}
-		if err := p.createReleaseEvent(ctx, tk.FullName, rel); err != nil {
-			p.warn("release event create failed", "repo", tk.FullName, "error_code", "event_create_failed", "error", err.Error())
-			continue
-		}
-		backfill++
-		if err := p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, newEtag, rel.ID, rel.TagName, &published); err != nil {
+		published := newest.PublishedAt
+		if err := p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, page1Etag, newest.ID, newest.TagName, &published); err != nil {
 			p.debug("release poll cursor update failed", "repo", tk.FullName, "error_code", "tracker_cursor_failed", "error", err.Error())
 		}
-		p.debug("release poll ok", "repo", tk.FullName, "tag", rel.TagName, "event_created", true)
+		p.debug("release poll ok", "repo", tk.FullName, "tag", newest.TagName, "event_created", true)
 	}
 	// 完整轮询成功后才推进记账：失败/限流路径下轮节拍快速重试。
 	p.lastReleasePoll = time.Now().UTC()
@@ -474,7 +513,9 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 
 // createReleaseEvent 将新 release 事件化并落库（指纹幂等，重复轮询不重复通知），
 // 随后触发实时通知决策（rules.Engine 直连，不聚合：release 低频单条，避免 60s 窗口延迟）。
-func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName string, rel githubx.ReleaseItem) error {
+// 返回是否新建了事件：幂等命中（已存在）时返回 false,nil，
+// 供补拉循环区分「已处理过」与「新事件」，避免重复消耗单轮补发预算。
+func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName string, rel githubx.ReleaseItem) (bool, error) {
 	stateHash := fmt.Sprintf("id:%d", rel.ID)
 	fp := normalizer.Fingerprint(
 		"starred_releases", fullName, store.ReleaseKind,
@@ -482,9 +523,9 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 		"published", rel.PublishedAt, stateHash,
 	)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
-		return nil // 已存在（幂等）
+		return false, nil // 已存在（幂等）
 	}
-	num := int(rel.ID)
+	num := rel.ID
 	src := rel.PublishedAt
 	title := rel.Name
 	if title == "" {
@@ -494,6 +535,8 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 	if len(notes) > maxReleaseNotesStored {
 		notes = notes[:maxReleaseNotesStored]
 	}
+	// 外部 star 仓不建 Repository 行（tracker 独立表），事件无法挂 RepositoryID；
+	// 仓库名写入 PayloadSummary，供每日摘要预览与 AI 总结回退引用，避免 release 事件丢失归属。
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "starred_releases", Kind: store.ReleaseKind, Action: "published",
 		Title: title, SubjectNumber: &num, Actor: rel.Author.Login,
@@ -501,10 +544,11 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 		DedupeFingerprint: fp, StateHash: stateHash,
 		PayloadSummary: map[string]any{
 			"tag_name": rel.TagName, "prerelease": rel.Prerelease, "notes": notes,
+			"repository": fullName,
 		},
 	}
 	if _, err := p.Store.Events().Create(ctx, ev); err != nil {
-		return err
+		return false, err
 	}
 	if p.Engine != nil {
 		// Outbox 幂等键以 event_id 派生，重复 Evaluate 不会重复投递。
@@ -512,7 +556,7 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 			p.warn("release notify evaluate failed", "repo", fullName, "error_code", "notify_evaluate_failed", "error", err.Error())
 		}
 	}
-	return nil
+	return true, nil
 }
 
 // installationToken 取任一安装的令牌；App 未配置或无安装时留痕并返回空串。

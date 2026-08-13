@@ -103,13 +103,28 @@ type ReleaseItem struct {
 	} `json:"author"`
 }
 
-// ListReleases 拉取仓库最新 release（per_page=1）。
-// ifNoneMatch 非空时带 If-None-Match 条件请求；304 时 modified=false、items 为空。
-// 返回响应 ETag 供下次条件请求；错误分类复用 doJSONReq（限流 / HTTPStatusError），
+// ReleaseListPerPage 轮询 release 列表的每页条数：单页覆盖数条新 release 的补拉窗口
+// （中断后中间版本补发），同时控制响应体大小（release body 随列表一并返回）。
+const ReleaseListPerPage = 30
+
+// ListReleases 拉取仓库 release 列表指定页（按发布时间倒序，每页 ReleaseListPerPage 条）。
+// page=1 且 ifNoneMatch 非空时带 If-None-Match 条件请求；304 时 modified=false、items 为空。
+// page>1 忽略 ifNoneMatch（存储的 ETag 仅对应列表资源第 1 页，翻页不做条件请求）。
+// 返回第 1 页的响应 ETag 供下次条件请求；错误分类复用 doJSONReq（限流 / HTTPStatusError），
 // 避免与其它 REST 调用两套错误行为漂移。
-func (c *AppClient) ListReleases(ctx context.Context, token, owner, repo, ifNoneMatch string) ([]ReleaseItem, string, bool, int, error) {
-	path := fmt.Sprintf("/repos/%s/%s/releases?per_page=1", owner, repo)
+func (c *AppClient) ListReleases(ctx context.Context, token, owner, repo string, page int, ifNoneMatch string) ([]ReleaseItem, string, bool, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	path := fmt.Sprintf("/repos/%s/%s/releases?per_page=%d&page=%d", owner, repo, ReleaseListPerPage, page)
 	var items []ReleaseItem
+	if page > 1 {
+		remaining, err := c.DoJSON(ctx, http.MethodGet, path, token, &items)
+		if err != nil {
+			return nil, "", false, remaining, err
+		}
+		return items, "", true, remaining, nil
+	}
 	remaining, etag, err := c.doJSONConditional(ctx, http.MethodGet, path, token, ifNoneMatch, &items)
 	if err != nil {
 		if errors.Is(err, errNotModified) {

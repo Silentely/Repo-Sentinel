@@ -3,6 +3,7 @@ package githubx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -89,6 +90,9 @@ func TestListReleasesConditional(t *testing.T) {
 		if r.URL.Path != "/repos/o/r/releases" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
+		if got := r.URL.Query().Get("per_page"); got != fmt.Sprintf("%d", ReleaseListPerPage) {
+			t.Fatalf("per_page = %s, want %d（补拉需覆盖多条新 release）", got, ReleaseListPerPage)
+		}
 		w.Header().Set("ETag", `"rel-1"`)
 		w.Header().Set("X-RateLimit-Remaining", "4999")
 		if r.Header.Get("If-None-Match") == `"rel-1"` {
@@ -100,14 +104,14 @@ func TestListReleasesConditional(t *testing.T) {
 	defer srv.Close()
 	c := &AppClient{HTTP: srv.Client(), BaseURL: srv.URL}
 
-	items, etag, modified, _, err := c.ListReleases(context.Background(), "tok", "o", "r", "")
+	items, etag, modified, _, err := c.ListReleases(context.Background(), "tok", "o", "r", 1, "")
 	if err != nil || len(items) != 1 || !modified || etag != `"rel-1"` {
 		t.Fatalf("first: items=%v etag=%q modified=%v err=%v", items, etag, modified, err)
 	}
 	if items[0].ID != 42 || items[0].TagName != "v1.0" || items[0].Prerelease {
 		t.Fatalf("unexpected item: %+v", items[0])
 	}
-	items, _, modified, _, err = c.ListReleases(context.Background(), "tok", "o", "r", etag)
+	items, _, modified, _, err = c.ListReleases(context.Background(), "tok", "o", "r", 1, etag)
 	if err != nil || modified || len(items) != 0 {
 		t.Fatalf("conditional: modified=%v items=%v err=%v", modified, items, err)
 	}
@@ -123,7 +127,7 @@ func TestListReleasesNotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := &AppClient{HTTP: srv.Client(), BaseURL: srv.URL}
-	_, _, _, _, err := c.ListReleases(context.Background(), "tok", "o", "r", "")
+	_, _, _, _, err := c.ListReleases(context.Background(), "tok", "o", "r", 1, "")
 	var stErr *HTTPStatusError
 	if !errors.As(err, &stErr) || stErr.StatusCode != 404 {
 		t.Fatalf("want HTTPStatusError 404, got %v", err)

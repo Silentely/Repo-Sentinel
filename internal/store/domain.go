@@ -163,6 +163,18 @@ func PayloadString(m map[string]any, key string) string {
 	return ""
 }
 
+// EventRepoName 解析事件所属仓库名，供报告预览与 AI 总结引用。
+// 优先 RepositoryID → repositories 映射；star 追踪的 release 事件没有 RepositoryID
+// （外部 star 仓不建 Repository 行），回退 PayloadSummary["repository"]（syncx 写入）。
+func EventRepoName(ev Event, repoNames map[string]string) string {
+	if ev.RepositoryID != nil && repoNames != nil {
+		if name := repoNames[*ev.RepositoryID]; name != "" {
+			return name
+		}
+	}
+	return PayloadString(ev.PayloadSummary, "repository")
+}
+
 // CoerceInt 将 JSON 数值（float64/int/int64/json.Number）收敛为整数；
 // 非数值或小数（如 3.5）返回 false。保留天数、聚合窗口等设置解析共用此实现，
 // 避免各包自行转换导致边界行为漂移。
@@ -303,7 +315,7 @@ type Event struct {
 	Kind                 string         `json:"kind"`
 	Action               string         `json:"action"`
 	RepositoryID         *string        `json:"repository_id,omitempty"`
-	SubjectNumber        *int           `json:"subject_number,omitempty"`
+	SubjectNumber        *int64         `json:"subject_number,omitempty"`
 	Title                string         `json:"title"`
 	Severity             string         `json:"severity"`
 	Actor                string         `json:"actor"`

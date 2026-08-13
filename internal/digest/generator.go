@@ -373,10 +373,10 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 		}
 		status := digestStatusLabel(ev)
 		repoPrefix := ""
-		if repoNames != nil && ev.RepositoryID != nil {
-			if name := repoNames[*ev.RepositoryID]; name != "" {
-				repoPrefix = name
-			}
+		// release 事件（star 追踪）无 RepositoryID，经 EventRepoName 回退 PayloadSummary 补仓库名；
+		// star/watch 事件标题即仓库名，不再重复前缀。
+		if name := store.EventRepoName(ev, repoNames); name != "" && name != ev.Title {
+			repoPrefix = name
 		}
 		numStr := ""
 		if ev.SubjectNumber != nil {

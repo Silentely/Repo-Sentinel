@@ -96,6 +96,23 @@ func newStarredTestEnv(t *testing.T, setup func(env *starredTestEnv)) *starredTe
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
+			// 模拟 GitHub 分页：按 per_page/page 切片，翻页返回剩余条目。
+			page := 1
+			if p := r.URL.Query().Get("page"); p != "" {
+				fmt.Sscanf(p, "%d", &page)
+			}
+			perPage := 30
+			if pp := r.URL.Query().Get("per_page"); pp != "" {
+				fmt.Sscanf(pp, "%d", &perPage)
+			}
+			start := (page - 1) * perPage
+			if start >= len(items) {
+				items = nil
+			} else if end := start + perPage; end < len(items) {
+				items = items[start:end]
+			} else {
+				items = items[start:]
+			}
 			w.Header().Set("ETag", `"e1"`)
 			_ = json.NewEncoder(w).Encode(items)
 		default:
@@ -271,6 +288,9 @@ func TestStarredPollReleases_新release事件与幂等(t *testing.T) {
 	if events[0].HTMLURL == "" || events[0].PayloadSummary["tag_name"] != "v2.0" {
 		t.Fatalf("事件应带链接与 tag: %+v", events[0])
 	}
+	if got := store.PayloadString(events[0].PayloadSummary, "repository"); got != "octocat/Hello-World" {
+		t.Fatalf("事件应带仓库名供摘要引用，got %q: %+v", got, events[0])
+	}
 	// 幂等：同 release 再次轮询不新增事件
 	env.poller.lastReleasePoll = time.Time{}
 	if err := env.poller.PollReleases(ctx); err != nil {
@@ -278,6 +298,122 @@ func TestStarredPollReleases_新release事件与幂等(t *testing.T) {
 	}
 	if events := listReleaseEvents(t, env.data); len(events) != 1 {
 		t.Fatalf("重复轮询不应新增事件，got %d", len(events))
+	}
+}
+
+// TestStarredPollReleases_中断补拉全部新release 验证中断期间发布的多个 release
+// 全部事件化（不再只处理最新一条导致中间版本静默丢失），游标推进到最新。
+func TestStarredPollReleases_中断补拉全部新release(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	ctx := t.Context()
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// 中断期间连发 3 个 release（最新在前）。
+	env.mu.Lock()
+	env.releases["octocat/Hello-World"] = []map[string]any{
+		releaseMap(45, "v2.1", false), releaseMap(44, "v2.0", false), releaseMap(43, "v1.9", false),
+	}
+	env.mu.Unlock()
+	env.poller.lastReleasePoll = time.Time{}
+	if err := env.poller.PollReleases(ctx); err != nil {
+		t.Fatal(err)
+	}
+	events := listReleaseEvents(t, env.data)
+	if len(events) != 3 {
+		t.Fatalf("中断期间 3 个 release 应全部事件化，got %d", len(events))
+	}
+	tk, _ := env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if tk.LastReleaseID != 45 {
+		t.Fatalf("游标应推进到最新 release 45，got %d", tk.LastReleaseID)
+	}
+}
+
+// TestStarredPollReleases_补发上限下轮续补 验证单轮补发达到上限后游标不动，
+// 下轮节拍从旧游标继续补发剩余 release（重复事件幂等跳过、不消耗预算），不丢事件。
+func TestStarredPollReleases_补发上限下轮续补(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	ctx := t.Context()
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// 中断期间连发 7 个 release（id 43..49，最新在前）。
+	var batch []map[string]any
+	for id := int64(49); id >= 43; id-- {
+		batch = append(batch, releaseMap(id, fmt.Sprintf("v1.%d", id-42), false))
+	}
+	env.mu.Lock()
+	env.releases["octocat/Hello-World"] = batch
+	env.mu.Unlock()
+	env.poller.lastReleasePoll = time.Time{}
+	if err := env.poller.PollReleases(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if events := listReleaseEvents(t, env.data); len(events) != maxBackfillPerRound {
+		t.Fatalf("首轮应补发 %d 条，got %d", maxBackfillPerRound, len(events))
+	}
+	tk, _ := env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if tk.LastReleaseID != 42 {
+		t.Fatalf("达到上限后游标不应推进，got %d", tk.LastReleaseID)
+	}
+	// 下轮从旧游标续补剩余 release；已建事件幂等跳过，不重复消耗预算。
+	env.poller.lastReleasePoll = time.Time{}
+	if err := env.poller.PollReleases(ctx); err != nil {
+		t.Fatal(err)
+	}
+	events := listReleaseEvents(t, env.data)
+	if len(events) != 7 {
+		t.Fatalf("两轮应补全 7 条事件，got %d", len(events))
+	}
+	tk, _ = env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if tk.LastReleaseID != 49 {
+		t.Fatalf("补全后游标应推进到最新 49，got %d", tk.LastReleaseID)
+	}
+}
+
+// TestStarredPollReleases_翻页补拉超过一页 验证中断期间发布超过一页（>30 条）的 release
+// 全部事件化：轮询分页翻到游标为止，不因单页上限丢失旧版本。
+func TestStarredPollReleases_翻页补拉超过一页(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	ctx := t.Context()
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// 中断期间连发 31 个 release（id 43..73，最新在前，超过一页 30 条）。
+	var batch []map[string]any
+	for id := int64(73); id >= 43; id-- {
+		batch = append(batch, releaseMap(id, fmt.Sprintf("v1.%d", id-42), false))
+	}
+	env.mu.Lock()
+	env.releases["octocat/Hello-World"] = batch
+	env.mu.Unlock()
+	// 逐轮补发直到全部事件化（每轮 5 条），最后一轮需翻页到第 2 页。
+	total := 0
+	for i := 0; i < 20; i++ {
+		env.poller.lastReleasePoll = time.Time{}
+		if err := env.poller.PollReleases(ctx); err != nil {
+			t.Fatal(err)
+		}
+		total = len(listReleaseEvents(t, env.data))
+		if total == 31 {
+			break
+		}
+	}
+	if total != 31 {
+		t.Fatalf("超过一页的 release 应全部事件化，got %d", total)
+	}
+	tk, _ := env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if tk.LastReleaseID != 73 {
+		t.Fatalf("补全后游标应推进到最新 73，got %d", tk.LastReleaseID)
 	}
 }
 

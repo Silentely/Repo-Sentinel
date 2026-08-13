@@ -186,8 +186,8 @@ func TestRunOnceEmptyDefaultNoSend(t *testing.T) {
 var reportGeneratedAt = time.Date(2026, 8, 8, 9, 5, 0, 0, time.UTC)
 
 func TestBuildDigestBody_WithEvents(t *testing.T) {
-	num1 := 8
-	num2 := 42
+	num1 := int64(8)
+	num2 := int64(42)
 	events := []store.Event{
 		{Kind: store.WorkItemKindIssue, Action: "opened", Title: "[BUG] 脚本不停", SubjectNumber: &num1},
 		{Kind: store.WorkItemKindPR, Action: "merged", Title: "feat: 新功能", SubjectNumber: &num2},
@@ -624,7 +624,7 @@ func TestParseWeekday(t *testing.T) {
 
 // buildReportBody 时段文案参数化。
 func TestBuildReportBody_PeriodLabel(t *testing.T) {
-	num := 1
+	num := int64(1)
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "t", SubjectNumber: &num}}
 	body := buildReportBody("📊 每周报告", events, "过去 7 天", nil, reportGeneratedAt)
 	if !strings.Contains(body, "过去 7 天共 1 条事件") {
@@ -659,7 +659,7 @@ func TestBuildReportBody_EmptyUsesPeriod(t *testing.T) {
 // 无 RepositoryID 的事件保持原格式（不带仓库前缀）。
 func TestBuildReportBody_ShowsRepoName(t *testing.T) {
 	repoID := "repo-1"
-	num := 42
+	num := int64(42)
 	events := []store.Event{
 		{Kind: store.WorkItemKindIssue, Action: "opened", Title: "修复登录 Bug", SubjectNumber: &num, RepositoryID: &repoID},
 		{Kind: store.WorkItemKindIssue, Action: "closed", Title: "无仓库事件"},
@@ -670,6 +670,39 @@ func TestBuildReportBody_ShowsRepoName(t *testing.T) {
 	}
 	if !strings.Contains(body, "• [已关闭] 无仓库事件") {
 		t.Fatalf("无仓库事件应保持原格式（不带仓库前缀），实际: %s", body)
+	}
+}
+
+// TestBuildReportBody_ReleaseRepoFallback 验证 star 追踪的 release 事件（无 RepositoryID）
+// 经 PayloadSummary 回退补仓库名，与 AI 总结输入同源修复。
+func TestBuildReportBody_ReleaseRepoFallback(t *testing.T) {
+	num := int64(369624730)
+	events := []store.Event{
+		{Kind: store.ReleaseKind, Action: "published", Title: "v0.4.24 - xAI SuperGrok plan_type hotfix",
+			SubjectNumber: &num,
+			PayloadSummary: map[string]any{
+				"tag_name": "v0.4.24", "repository": "kittors/CliRelay",
+			}},
+	}
+	body := buildReportBody("📊 每日摘要 2026-08-08", events, "过去 24 小时", nil, reportGeneratedAt)
+	if !strings.Contains(body, "kittors/CliRelay#369624730") {
+		t.Fatalf("release 预览行应回退补仓库名，实际: %s", body)
+	}
+}
+
+// TestBuildReportBody_StarTitleDedup 验证 star/watch 事件标题即仓库名时不再重复前缀，
+// 避免「Silentely/eSIM-Tools（Silentely/eSIM-Tools）」式噪声行。
+func TestBuildReportBody_StarTitleDedup(t *testing.T) {
+	repoID := "repo-1"
+	events := []store.Event{
+		{Kind: store.StarKind, Action: "created", Title: "acme/demo", RepositoryID: &repoID},
+	}
+	body := buildReportBody("📊 每日摘要 2026-08-08", events, "过去 24 小时", map[string]string{"repo-1": "acme/demo"}, reportGeneratedAt)
+	if !strings.Contains(body, "• [已收藏] acme/demo") {
+		t.Fatalf("预览行应为「已收藏」+ 仓库名（不重复），实际: %s", body)
+	}
+	if strings.Count(body, "acme/demo") != 1 {
+		t.Fatalf("仓库名应只出现一次，实际: %s", body)
 	}
 }
 
@@ -715,7 +748,7 @@ func newTestSlog(t *testing.T) (*bytes.Buffer, *slog.Logger) {
 func TestReportBodyLogsAIUsed(t *testing.T) {
 	buf, logger := newTestSlog(t)
 	g := &Generator{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"今日共 1 条事件：- 新 Issue hello"}}]}`)}
-	num := 1
+	num := int64(1)
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
 	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt)
 	if !aiUsed {
@@ -733,7 +766,7 @@ func TestReportBodyLogsAIUsed(t *testing.T) {
 func TestReportBodyLogsAIFallback(t *testing.T) {
 	buf, logger := newTestSlog(t)
 	g := &Generator{Logger: logger, AI: aiStub(t, `not-json`)}
-	num := 1
+	num := int64(1)
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
 	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt)
 	if aiUsed {
@@ -752,7 +785,7 @@ func TestReportBodyLogsAIFallback(t *testing.T) {
 func TestReportBodyLogsAISkipped(t *testing.T) {
 	buf, logger := newTestSlog(t)
 	g := &Generator{Logger: logger}
-	num := 1
+	num := int64(1)
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
 	_, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt)
 	if aiUsed {
@@ -768,7 +801,7 @@ func TestReportBodyLogsAISkipped(t *testing.T) {
 func TestReportBodyLogsLowQuality(t *testing.T) {
 	buf, logger := newTestSlog(t)
 	g := &Generator{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"一切正常"}}]}`)}
-	num := 1
+	num := int64(1)
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
 	body, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt)
 	if aiUsed {
@@ -787,7 +820,7 @@ func TestReportBodyLogsLowQuality(t *testing.T) {
 func TestReportBodyLogsLowQualityTemplateEcho(t *testing.T) {
 	buf, logger := newTestSlog(t)
 	g := &Generator{Logger: logger, AI: aiStub(t, `{"choices":[{"message":{"content":"共 1 条事件\n最近活动：\n• [已打开] hello"}}]}`)}
-	num := 1
+	num := int64(1)
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
 	_, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt)
 	if aiUsed {
@@ -806,7 +839,7 @@ func TestReportBodyReqIDConsistent(t *testing.T) {
 	// 同一 Logger 注入 AI 客户端，使参与度日志与 ai 层调用日志写入同一缓冲。
 	aiClient.Logger = logger
 	g := &Generator{Logger: logger, AI: aiClient}
-	num := 1
+	num := int64(1)
 	events := []store.Event{{Kind: store.WorkItemKindIssue, Action: "opened", Title: "hello", SubjectNumber: &num}}
 	if _, aiUsed := g.reportBody(t.Context(), "📊 每日摘要 2026-08-06", events, "过去 24 小时", reportGeneratedAt); !aiUsed {
 		t.Fatal("AI 总结成功应标记参与")
