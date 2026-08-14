@@ -556,7 +556,9 @@ func TestConcurrencyBudget(t *testing.T) {
 	aiMaxConcurrency = 1
 	t.Cleanup(func() { aiMaxConcurrency = old })
 
-	entered := make(chan struct{})
+	// entered 带 1 缓冲：handler 的 non-blocking 发送不依赖接收方先就绪，
+	// 避免发送早于主 goroutine 的 <-entered 时静默丢信号导致死锁。
+	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -609,7 +611,9 @@ func TestCompleteConcurrencyLimitContextCanceled(t *testing.T) {
 	aiMaxConcurrency = 1
 	t.Cleanup(func() { aiMaxConcurrency = old })
 
-	entered := make(chan struct{})
+	// entered 带 1 缓冲：handler 的 non-blocking 发送不依赖接收方先就绪，
+	// 避免发送早于主 goroutine 的 <-entered 时静默丢信号导致死锁。
+	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
