@@ -21,6 +21,8 @@ const (
 
 // FeatureEnabled 读取布尔型全局功能开关。
 // 键不存在、JSON 非法或非 bool 时返回 true，避免未配置时误伤采集。
+// 注意 fail-open 是有意选择（采集优先）：DB 抖动时不会因开关读取失败停掉全部采集，
+// 代价是极端情况下可能短暂放行已关闭的类型；无法留痕（store 层无 logger）。
 func FeatureEnabled(ctx context.Context, settings SettingsStore, key string) bool {
 	if settings == nil {
 		return true

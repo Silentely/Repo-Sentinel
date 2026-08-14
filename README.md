@@ -180,7 +180,7 @@ pnpm --dir web build
 npm run docs:build
 ```
 
-CLI：`serve` · `version` · `config validate` · `admin reset-password`。
+CLI：`serve` · `version` · `config validate` · `admin reset-password` · `doctor` · `healthcheck` · `backup` · `restore`。
 
 ---
 

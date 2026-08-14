@@ -219,10 +219,8 @@ func (s *server) githubConfigView(r *http.Request) githubConfigResponse {
 	out.AppID = snap.AppID
 	out.ClientID = snap.ClientID
 	out.PrivateKeyPath = snap.PrivateKeyPath
+	// base 即 snap.PublicBaseURL（见 StatusFlags），无需再回退。
 	out.PublicBaseURL = base
-	if out.PublicBaseURL == "" {
-		out.PublicBaseURL = snap.PublicBaseURL
-	}
 	out.WebhookPath = path
 	out.WebhookURL = joinWebhookURL(out.PublicBaseURL, path, r)
 	out.AppIDConfigured = appID

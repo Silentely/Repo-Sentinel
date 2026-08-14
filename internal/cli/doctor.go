@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
@@ -27,8 +28,19 @@ func (r Runner) runDoctor(ctx context.Context, args []string) error {
 	fmt.Fprintf(r.stdout, "github_app_id=%d\n", cfg.GitHub.AppID)
 	fmt.Fprintf(r.stdout, "github_private_key_path=%s\n", cfg.GitHub.PrivateKeyPath)
 	if cfg.GitHub.PrivateKeyPath != "" {
-		_, err := os.Stat(cfg.GitHub.PrivateKeyPath)
-		fmt.Fprintf(r.stdout, "github_private_key_readable=%t\n", err == nil)
+		_, statErr := os.Stat(cfg.GitHub.PrivateKeyPath)
+		readable := statErr == nil
+		// 文件存在但内容损坏（非合法 PEM）时 doctor 应报 false，否则误导排查
+		// 「配置了却调不通 GitHub」的问题。
+		parseable := false
+		if readable {
+			raw, readErr := os.ReadFile(cfg.GitHub.PrivateKeyPath)
+			if readErr == nil {
+				parseable = githubx.ValidatePrivateKeyPEM(string(raw)) == nil
+			}
+		}
+		fmt.Fprintf(r.stdout, "github_private_key_readable=%t\n", readable)
+		fmt.Fprintf(r.stdout, "github_private_key_parseable=%t\n", parseable)
 	}
 	fmt.Fprintf(r.stdout, "webhook_secret_configured=%t\n", strings.TrimSpace(cfg.GitHub.WebhookSecret.Reveal()) != "")
 	fmt.Fprintf(r.stdout, "telegram_configured=%t\n", strings.TrimSpace(cfg.Notify.Telegram.Token.Reveal()) != "" && cfg.Notify.Telegram.ChatID != "")
