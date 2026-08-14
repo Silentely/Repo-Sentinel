@@ -600,7 +600,8 @@ export interface StarTrendPoint {
   total: number;
 }
 
-/** Star 增长趋势查询：days 为 7/30/90/0（0 表示全部），跟随查询缓存切换数据。 */
+/** Star 增长趋势查询：days 为 7/30/90/0（0 表示全部），跟随查询缓存切换数据。
+ * 聚合较重，短 TTL 内重复进入仪表盘直接复用缓存，避免每次都重拉。 */
 export function starTrendQueryOptions(days: number) {
   return queryOptions({
     queryKey: ["star-trend", days],
@@ -608,5 +609,6 @@ export function starTrendQueryOptions(days: number) {
       const data = await apiRequest<{ items: StarTrendPoint[] }>(`/api/v1/stats/star-trend?days=${days}`);
       return data.items ?? [];
     },
+    staleTime: 30_000,
   });
 }

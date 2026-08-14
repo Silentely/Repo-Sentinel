@@ -82,11 +82,15 @@ export function FeatureGuard({
   return <>{children}</>;
 }
 
-/** 活跃（未归档）仓库列表，用于四页共用筛选。 */
+/** 活跃（未归档、未不可用）仓库列表，用于四页共用筛选。 */
 export function useActiveRepos() {
   const repos = useQuery(repositoriesQueryOptions);
   const active = useMemo(
-    () => (repos.data?.items ?? []).filter((r) => !r.is_archived && r.sync_status !== "archived"),
+    // 排除 archived 与 unavailable：不可用仓库的工作项列表本就不展示，进下拉只会选中即空态。
+    () =>
+      (repos.data?.items ?? []).filter(
+        (r) => !r.is_archived && r.sync_status !== "archived" && r.sync_status !== "unavailable",
+      ),
     [repos.data?.items],
   );
   return { active };
@@ -102,8 +106,9 @@ export function RepoFilterSelect({
   repos: Repository[];
 }) {
   return (
+    // label 关联 + select aria-label 双份命名重复：保留 aria-label（读屏只取其一），
+    // sr-only 文本删去避免标注冗余。
     <label className="repo-filter">
-      <span className="sr-only">按仓库筛选</span>
       <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="按仓库筛选">
         <option value="">全部仓库</option>
         {repos.map((r) => (

@@ -305,8 +305,9 @@ export function RootLayout({ session }: RootLayoutProps) {
               className="app-topbar__menu"
               aria-expanded={navOpen}
               aria-controls="app-sidebar"
-              aria-label="打开导航菜单"
-              onClick={() => setNavOpen(true)}
+              // 与打开/收起语义一致：label 随状态切换，点击在两种状态间切换。
+              aria-label={navOpen ? "收起导航菜单" : "打开导航菜单"}
+              onClick={() => setNavOpen((prev) => !prev)}
             >
               <Menu aria-hidden="true" size={20} strokeWidth={1.8} />
             </button>

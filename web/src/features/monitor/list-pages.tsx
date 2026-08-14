@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
@@ -119,7 +119,8 @@ function useInfiniteList<T>(opts: {
     getNextPageParam: (lastPage) =>
       lastPage.page * lastPage.per_page < lastPage.total ? lastPage.page + 1 : undefined,
   });
-  const items = q.data?.pages.flatMap((page) => page.items) ?? [];
+  // flatMap 仅在 pages 引用变化时重建：避免列表滚动/重渲染时反复摊平同一数据数组。
+  const items = useMemo(() => q.data?.pages.flatMap((page) => page.items) ?? [], [q.data]);
   const total = q.data?.pages[q.data.pages.length - 1]?.total ?? 0;
   return { q, items, total };
 }
@@ -311,11 +312,13 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
             }
             action={
               filtersActive ? (
+                // 清除筛选是操作而非导航：关闭右箭头，避免暗示跳转。
                 <ClearFiltersButton variant="primary" onClick={clearFilters} />
               ) : (
                 <Link to="/">返回仪表盘</Link>
               )
             }
+            actionArrow={!filtersActive}
           />
         }
       >
@@ -858,6 +861,7 @@ function ActionsList() {
                 <Link to="/github">检查 GitHub App 权限</Link>
               )
             }
+          actionArrow={!filtersActive}
           />
         }
       >
@@ -997,6 +1001,7 @@ function SecurityList() {
                 <Link to="/github">查看权限配置</Link>
               )
             }
+          actionArrow={!filtersActive}
           />
         }
       >
