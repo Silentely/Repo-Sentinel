@@ -71,7 +71,7 @@ export function SetupPage({
       <section className="auth-card" aria-labelledby="setup-title">
         <AuthCardHeader
           titleId="setup-title"
-          eyebrow="首次设置 · 1 / 1"
+          eyebrow="首次设置"
           title="创建唯一管理员"
           subtitle="凭据仅保存在你的 RepoSentinel 实例中。"
           productMark={<ShieldCheck size={22} strokeWidth={1.8} />}
