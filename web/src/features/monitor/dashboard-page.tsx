@@ -215,6 +215,8 @@ export function DashboardPage() {
             </span>
           </div>
           <p className="field-hint">按步骤完成即可开始值守；已完成的步骤会打勾。</p>
+          {/* 仓库列表查询失败时步骤会误显示「未完成」：补错误提示，避免与「真没仓库」混淆。 */}
+          {repos.isError ? <ApiErrorAlert error={repos.error} title="无法加载仓库状态" /> : null}
           <ol className="setup-progress__list">
             {setupSteps.map((step, index) => (
               <li key={step.id} className={`setup-progress__item${step.ok ? " is-done" : ""}`}>

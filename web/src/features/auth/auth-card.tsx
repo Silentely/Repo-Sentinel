@@ -59,6 +59,8 @@ export function AuthField({ id, label, icon, type = "text", autoComplete, autoFo
           type={type}
           autoComplete={autoComplete}
           autoFocus={autoFocus}
+          // 登录/初始化表单均必填：表单 noValidate 场景下用 aria-required 告知读屏。
+          aria-required="true"
           aria-invalid={Boolean(error)}
           aria-describedby={error ? errorId : help ? helpId : undefined}
           {...registration}

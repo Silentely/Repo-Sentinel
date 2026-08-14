@@ -174,16 +174,20 @@ export function IgnoreButton({
   );
 }
 
-/** 忽略开关 mutation：统一 busy 状态与查询失效。 */
+/** 忽略开关 mutation：统一 busy 状态、查询失效与失败反馈。 */
 export function useIgnoreMutation(
   mutateFn: (id: string, ignored: boolean) => Promise<void>,
   invalidateKeys: string[],
 ) {
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: ({ id, ignored }: { id: string; ignored: boolean }) => mutateFn(id, ignored),
-    onMutate: ({ id }) => setBusyId(id),
+    onMutate: ({ id }) => {
+      setBusyId(id);
+      setErrorMessage(null);
+    },
     onSettled: async () => {
       setBusyId(null);
       for (const key of invalidateKeys) {
@@ -191,8 +195,9 @@ export function useIgnoreMutation(
       }
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
+    onError: (error) => setErrorMessage(toApiError(error).message || "操作失败"),
   });
-  return { mutation, busyId };
+  return { mutation, busyId, errorMessage };
 }
 
 export { ListShell, ListSkeleton };

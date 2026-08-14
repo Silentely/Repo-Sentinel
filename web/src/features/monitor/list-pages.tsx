@@ -235,7 +235,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
     },
   });
 
-  const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
+  const { mutation: ignoreMutation, busyId, errorMessage } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
   // 仓库/审核/检查筛选激活时，空态需区分「筛选后为空」与「真的没有」。
   const filtersActive = repoId !== "" || reviewFilter !== "" || checkFilter !== "";
   const clearFilters = () => {
@@ -286,6 +286,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
           <ClearFiltersButton onClick={clearFilters} />
         ) : null}
       </div>
+      {errorMessage ? <ErrorAlert title="忽略操作失败" message={errorMessage} /> : null}
       <EventListBody
         query={q}
         items={items}
@@ -793,7 +794,7 @@ function ActionsList() {
   const [repoId, setRepoId] = useUrlState("repo", "");
   const [conclusion, setConclusion] = useUrlState("conclusion", "");
   const [ignoredMode, setIgnoredMode] = useUrlState<IgnoredMode>("ignored", "active", parseIgnoredMode);
-  const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkflowRunIgnored, ["workflow-runs"]);
+  const { mutation: ignoreMutation, busyId, errorMessage } = useIgnoreMutation(setWorkflowRunIgnored, ["workflow-runs"]);
 
   const { q, items, total } = useInfiniteList<WorkflowRun>({
     queryKey: ["workflow-runs", repoId, conclusion, ignoredMode],
@@ -834,6 +835,7 @@ function ActionsList() {
           <ClearFiltersButton onClick={clearFilters} />
         ) : null}
       </div>
+      {errorMessage ? <ErrorAlert title="忽略操作失败" message={errorMessage} /> : null}
       <EventListBody
         query={q}
         items={items}
@@ -920,7 +922,7 @@ function SecurityList() {
   const [alertKind, setAlertKind] = useUrlState("kind", "");
   const [repoId, setRepoId] = useUrlState("repo", "");
   const [ignoredMode, setIgnoredMode] = useUrlState<IgnoredMode>("ignored", "active", parseIgnoredMode);
-  const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setSecurityAlertIgnored, ["security-alerts"]);
+  const { mutation: ignoreMutation, busyId, errorMessage } = useIgnoreMutation(setSecurityAlertIgnored, ["security-alerts"]);
 
   const { q, items, total } = useInfiniteList<SecurityAlert>({
     queryKey: ["security-alerts", state, alertKind, repoId, ignoredMode],
@@ -970,6 +972,7 @@ function SecurityList() {
           <ClearFiltersButton onClick={clearFilters} />
         ) : null}
       </div>
+      {errorMessage ? <ErrorAlert title="忽略操作失败" message={errorMessage} /> : null}
       <EventListBody
         query={q}
         items={items}

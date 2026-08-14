@@ -258,9 +258,17 @@ export function outboxErrorHint(errorCode: string): string {
       return "Telegram 渠道缺少 Bot Token 或 Chat ID，请到「渠道配置」补全。";
     case "telegram_rate_limited":
       return "Telegram 触发限流，已按上游建议推迟重试，通常会自动恢复。";
+    case "telegram_redirect_301":
+    case "telegram_redirect_302":
+    case "telegram_redirect_307":
+    case "telegram_redirect_308":
+      return "Telegram 返回重定向而消息未送达（客户端禁跟随跳转），系统将按退避策略重试。";
+    case "telegram_http_408":
+    case "telegram_http_425":
     case "telegram_http_500":
     case "telegram_http_502":
     case "telegram_http_503":
+    case "telegram_http_504":
       return "Telegram 服务端暂时不可用，系统会按退避策略自动重试。";
     case "telegram_client_error_400":
       return "Telegram 拒绝消息：多为 Chat ID 无效或正文格式问题，请核对渠道目标。";
@@ -281,6 +289,27 @@ export function outboxErrorHint(errorCode: string): string {
     case "http_webhook_status_503":
     case "http_webhook_status_504":
       return "接收端服务端错误，请检查 Webhook 目标服务是否正常。";
+    case "http_webhook_redirect_301":
+    case "http_webhook_redirect_302":
+    case "http_webhook_redirect_307":
+    case "http_webhook_redirect_308":
+      return "接收端返回重定向而通知未送达（客户端禁跟随跳转），系统将按退避策略重试。";
+    case "http_webhook_client_400":
+      return "接收端拒绝请求：多为正文格式或请求头问题，请检查 Webhook 目标配置。";
+    case "http_webhook_client_401":
+      return "接收端要求鉴权未通过：请核对 Webhook 目标的认证凭据或签名 Secret。";
+    case "http_webhook_client_403":
+      return "接收端拒绝访问：请检查目标地址权限或防火墙规则。";
+    case "http_webhook_client_404":
+      return "接收端返回 404：目标路径可能已变更，请核对 Webhook URL。";
+    case "invalid_webhook_url":
+      return "Webhook 目标 URL 非法：仅支持 HTTPS 地址，请到「渠道配置」修正。";
+    case "ssrf_blocked":
+      return "目标地址被私网保护拦截：系统默认禁止访问内网地址，请核对 URL。";
+    case "private_target_blocked":
+      return "目标为内网地址但未开启「允许私网目标」：如确需内网接收，请在渠道配置开启。";
+    case "webhook_dns_lookup_failed":
+      return "目标域名解析失败，请检查 DNS 配置与域名是否有效。";
     case "decrypt_secret":
       return "渠道密钥解密失败：可能主密钥已更换或数据损坏，请重新保存渠道配置。";
     case "missing_keyring":

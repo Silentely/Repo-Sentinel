@@ -62,6 +62,8 @@ export interface OutboxItem {
   html_url: string;
   created_at: string;
   updated_at: string;
+  /** 下次重试时刻（pending/sending 条目排障最有用）；无重试计划时为空。 */
+  next_attempt_at?: string;
   /** Telegram HTML 格式正文（详情抽屉纯文本化展示）。 */
   body_text?: string;
 }

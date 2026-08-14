@@ -97,7 +97,10 @@ export function OutboxPage() {
     mutationFn: async (): Promise<BatchRetryResult> => {
       const ids: string[] = [];
       for (let page = 1; ; page++) {
+        // 带上当前渠道筛选：与按钮计数（status=dead 时取当前筛选 total）保持一致，
+        // 避免「仅重试 Telegram 的 3 条」按钮实际重试了所有渠道的失败投递。
         const params = new URLSearchParams({ per_page: "100", page: String(page), status: "dead" });
+        if (channelFilter) params.set("channel_type", channelFilter);
         const data = await apiRequest<Page<OutboxItem>>(`/api/v1/notifications/outbox?${params.toString()}`);
         ids.push(...data.items.map((it) => it.id));
         if (data.items.length === 0 || page * data.per_page >= data.total) break;
@@ -203,7 +206,7 @@ export function OutboxPage() {
                 type="button"
                 onClick={() => setRetryAllConfirmOpen(true)}
                 disabled={retryAllDeadAcrossPages.isPending}
-                title={`跨页重试全部 ${totalDead} 条失败投递`}
+                title={`${channelFilter ? `重试${channelLabel(channelFilter)}渠道全部 ` : "跨页重试全部 "}${totalDead} 条失败投递`}
               >
                 {retryAllDeadAcrossPages.isPending ? (
                   <><Loader2 size={14} className="spin" aria-hidden="true" /> 收集中…</>
@@ -397,6 +400,14 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
             <dt>尝试次数</dt>
             <dd>{item.attempt_count}</dd>
           </div>
+          {item.next_attempt_at ? (
+            <div className="drawer-field">
+              <dt>下次重试</dt>
+              <dd>
+                <RelativeTime date={item.next_attempt_at} />
+              </dd>
+            </div>
+          ) : null}
           {item.last_error_code && (
             <div className="drawer-field">
               <dt>错误码</dt>

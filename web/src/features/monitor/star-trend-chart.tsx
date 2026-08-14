@@ -58,6 +58,11 @@ export const StarTrendChart = memo(function StarTrendChart({
 }) {
   const current = points.length > 0 ? points[points.length - 1]?.total : undefined;
   const yDomain = starTrendYDomain(points);
+  // 数据跨年（首末日期不同年，days=0 全量场景）时 X 轴刻度带年份，避免 MM-DD 无法区分跨年月份。
+  const first = points[0];
+  const last = points[points.length - 1];
+  const spansYears = Boolean(first && last && first.date.slice(0, 4) !== last.date.slice(0, 4));
+  const formatTick = (date: string) => (spansYears ? date.slice(0, 7) : formatXAxisDate(date));
   return (
     <div className="star-trend" data-testid="star-trend">
       <div className="star-trend__head">
@@ -105,7 +110,7 @@ export const StarTrendChart = memo(function StarTrendChart({
               tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
               stroke="var(--border-subtle)"
               minTickGap={28}
-              tickFormatter={formatXAxisDate}
+              tickFormatter={formatTick}
             />
             <YAxis
               width={44}
