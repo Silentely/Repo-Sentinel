@@ -57,6 +57,8 @@ func EventStatusLabel(ev *store.Event) string {
 			return "已忽略"
 		case "auto_dismissed":
 			return "自动忽略"
+		case "withdrawn":
+			return "已撤回"
 		default:
 			if ev.Severity != "" {
 				return "告警更新"
@@ -141,6 +143,8 @@ func statusDisplay(ev *store.Event) (emoji, label string) {
 			return "🔇", "已忽略"
 		case "auto_dismissed":
 			return "🔇", "自动忽略"
+		case "withdrawn":
+			return "🛡️", "已撤回"
 		default:
 			if ev.Severity != "" {
 				return severityEmoji(ev.Severity), "告警更新"
@@ -226,6 +230,8 @@ func actionDisplayName(action string) string {
 		return "已忽略"
 	case "fixed", "resolved":
 		return "已修复"
+	case "withdrawn":
+		return "已撤回"
 	case "ready_for_review":
 		return "待审核"
 	case "converted_to_draft":

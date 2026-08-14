@@ -149,6 +149,8 @@ export function eventActionLabel(action: string, kind?: string): string {
       return "转为草稿";
     case "auto_dismissed":
       return "自动忽略";
+    case "withdrawn":
+      return "已撤回";
     default:
       return action;
   }

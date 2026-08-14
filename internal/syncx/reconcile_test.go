@@ -919,7 +919,30 @@ func TestReconcileWithdrawsMissingDependabotAlert(t *testing.T) {
 	}
 	withdrawnAt := got.UpdatedAt
 
-	// 幂等：再次对账 withdrawn 行不被改写（UpdatedAt 不前进）。
+	// 被撤回告警落一条抑制事件：管理台事件流可追溯，但不推送通知、不进定期报告。
+	events := listEvents(t, data, repo.ID)
+	withdrawn := 0
+	var ev store.Event
+	for _, e := range events {
+		if e.Action == store.AlertStateWithdrawn {
+			withdrawn++
+			ev = e
+		}
+	}
+	if withdrawn != 1 {
+		t.Fatalf("应恰好落 1 条 withdrawn 事件，got %d", withdrawn)
+	}
+	if ev.Kind != store.AlertKindDependabot || !ev.SuppressNotification || ev.Title != "lodash" {
+		t.Fatalf("withdrawn 事件字段错误: kind=%s suppress=%v title=%s", ev.Kind, ev.SuppressNotification, ev.Title)
+	}
+	if ev.SubjectNumber == nil || *ev.SubjectNumber != 4 {
+		t.Fatalf("withdrawn 事件应指向告警 4，got %v", ev.SubjectNumber)
+	}
+	if ev.HTMLURL != "https://github.com/acme/demo/security/dependabot/4" {
+		t.Fatalf("withdrawn 事件应带告警链接，got %s", ev.HTMLURL)
+	}
+
+	// 幂等：再次对账 withdrawn 行不被改写（UpdatedAt 不前进），也不再产生新事件。
 	time.Sleep(5 * time.Millisecond)
 	if err := r.ReconcileRepository(ctx, repo); err != nil {
 		t.Fatalf("第二轮对账应成功: %v", err)
@@ -931,6 +954,31 @@ func TestReconcileWithdrawsMissingDependabotAlert(t *testing.T) {
 	if got2.State != store.AlertStateWithdrawn || !got2.UpdatedAt.Equal(withdrawnAt) {
 		t.Fatalf("withdrawn 应幂等：state=%s updated_at=%v -> %v", got2.State, withdrawnAt, got2.UpdatedAt)
 	}
+	if n := countWithdrawnEvents(t, data, repo.ID); n != 1 {
+		t.Fatalf("第二轮对账不应重复产生 withdrawn 事件，got %d", n)
+	}
+}
+
+// listEvents 返回某仓库的事件列表（测试辅助）。
+func listEvents(t *testing.T, data store.Store, repoID string) []store.Event {
+	t.Helper()
+	items, _, err := data.Events().List(t.Context(), store.ListFilter{Page: 1, PerPage: 100, RepositoryID: repoID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return items
+}
+
+// countWithdrawnEvents 统计某仓库 withdrawn 动作的事件数（测试辅助）。
+func countWithdrawnEvents(t *testing.T, data store.Store, repoID string) int {
+	t.Helper()
+	n := 0
+	for _, e := range listEvents(t, data, repoID) {
+		if e.Action == store.AlertStateWithdrawn {
+			n++
+		}
+	}
+	return n
 }
 
 // TestReconcileSkipsDiffWhenAlertPagesTruncated 验证页数预算截断时不执行差集：
