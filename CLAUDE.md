@@ -4,6 +4,8 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-14T00:00:00Z | 安全告警差集对账：完整拉取远端告警列表后，将本地存在但源端已消失（GitHub 撤回，如依赖升级后公告被撤销）的非终态告警标记为 withdrawn（前端「已撤回」、安全页可筛选），修复「源端已解决、网页仍显示待处理」的陈旧状态；翻页超出页数预算（MaxPages）时跳过差集，避免把「没拉到」误判为「已消失」；已终态（fixed/dismissed/auto_dismissed/withdrawn）不重复改写 |
+|---|---|
 | 2026-08-13T14:00:00Z | ①修复列表页「回到顶部」点击无效：桌面端页面滚动发生在 `.app-main` 容器（`.app-shell` 以 `overflow: hidden` 锁死文档滚动），原 `window.scrollTo` 滚动对象错误，改按实际滚动位置选择目标容器（移动端抽屉形态回退 `window`）；②修复渠道配置勾选框被撑成巨大方块：`.field--plain input` 的文本框样式（`min-width: 12ch`/`min-height: 44px`/边框/内边距）泄漏到 checkbox，选择器排除 `checkbox`/`radio`，勾选框恢复 16px 标准尺寸（与设置页、仓库页一致）；③输入框宽度统一改为 `size` 属性限定：移除 `fit-content`/`field-sizing: content`（后者仅 Chrome/Safari 支持、Firefox 行为不一致且输入时宽度抖动），按字段语义定宽（时区/时间短、URL/密钥长），NumberField 按上限位数固定宽度不再随输入内容伸缩，各表单字段补充 size 值 |
 | 2026-08-13T10:30:00Z | ①修复每日摘要/AI 总结中 star 追踪 release 事件归属错误：外部 star 仓不建 Repository 行，release 事件落库补写 `PayloadSummary.repository`，摘要预览与 AI 输入统一经 `store.EventRepoName` 解析仓库名（RepositoryID → 回退 PayloadSummary），star/watch 事件标题即仓库名时不再重复前缀，杜绝 release 被张冠李戴到同名事件扎堆的仓库（如误归 eSIM-Tools）；②修复 release 轮询中断后中间版本静默丢失：`ListReleases` 每页 1→30 条，`PollReleases` 遍历所有比游标新的 release 逐个事件化，单轮补发上限 5 条，达上限或落库失败不推进游标、下轮续补（事件指纹幂等，重复扫描不重复投递）；③release ID 溢出防护：`events.subject_number` int→int64（Ent schema + 双轨迁移，PG 侧 `ALTER TYPE bigint`，SQLite 无 DDL），GitHub release ID 不再受 PG int4 上限约束；④release 轮询翻页补拉：`ListReleases` 支持分页（30 条/页、ETag 仅第 1 页），`PollReleases` 逐页翻到游标所在页，中断期间 >30 条也不再丢失旧版本；⑤前端最近事件面板：release 事件无 `repository_id` 时回退 `payload_summary.repository` 展示仓库名（事件列表 API 本就返回 payload_summary） |
 | 2026-08-13T00:00:00Z | AI 相关文案统一更名为「智能值守」体系：设置页「AI 集成」区块改「智能值守」、「启用 AI」改「启用智能值守」、每日/周/月报告「AI 摘要」改「智能简报」、Release「AI 中文总结」改「更新速览」（通知正文分段标题同步）、运维文档「AI 调用」改「大模型调用」；测试断言、示例配置与文档同步更新 |

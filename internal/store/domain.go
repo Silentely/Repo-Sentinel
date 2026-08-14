@@ -36,6 +36,10 @@ const (
 	AlertKindCodeScanning   = "code_scanning"
 	AlertKindSecretScanning = "secret_scanning"
 
+	// AlertStateWithdrawn 安全告警源端撤回状态：GitHub 不推送该状态、也不会再出现在
+	// 告警列表 API 中，由对账差集检测写入本地，避免「源端已消失、本地永远待处理」。
+	AlertStateWithdrawn = "withdrawn"
+
 	ChannelTelegram    = "telegram"
 	ChannelHTTPWebhook = "http_webhook"
 
@@ -566,6 +570,8 @@ type SecurityAlertStore interface {
 	Get(context.Context, string) (SecurityAlert, error)
 	UpsertIfNewer(context.Context, SecurityAlert) (SecurityAlert, bool, error)
 	List(context.Context, ListFilter) ([]SecurityAlert, PageResult, error)
+	// ListByRepoKind 返回指定仓库与类型的全部本地告警（不分状态），供对账差集判定。
+	ListByRepoKind(context.Context, string, string) ([]SecurityAlert, error)
 	CountOpen(context.Context) (int, error)
 	SetIgnored(context.Context, string, bool) error
 }

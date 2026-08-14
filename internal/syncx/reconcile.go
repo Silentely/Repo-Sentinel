@@ -398,16 +398,26 @@ func (r *Reconciler) syncAlerts(ctx context.Context, token string, repo store.Re
 // syncDependabotAlerts 用游标分页拉取 dependabot alerts。
 func (r *Reconciler) syncDependabotAlerts(ctx context.Context, token string, repo store.Repository) error {
 	var cursor string
+	seen := make(map[int]struct{})
+	complete := false
 	for page := 1; page <= r.MaxPages; page++ {
 		items, next, _, err := r.GitHub.ListDependabotAlerts(ctx, token, repo.Owner, repo.Name, cursor)
 		if err != nil {
 			return err
 		}
 		r.saveAlerts(ctx, repo, store.AlertKindDependabot, items)
+		for _, a := range items {
+			seen[a.Number] = struct{}{}
+		}
 		if next == "" {
+			complete = true
 			break
 		}
 		cursor = next
+	}
+	// 仅完整翻页后才做差集：页数预算截断时远端集合不完整，不能据此判定"已消失"。
+	if complete {
+		r.retireMissingAlerts(ctx, repo, store.AlertKindDependabot, seen)
 	}
 	return nil
 }
@@ -423,15 +433,24 @@ func (r *Reconciler) syncPageAlerts(ctx context.Context, token string, repo stor
 	default:
 		return nil
 	}
+	seen := make(map[int]struct{})
+	complete := false
 	for page := 1; page <= r.MaxPages; page++ {
 		items, _, err := listFn(ctx, token, repo.Owner, repo.Name, page)
 		if err != nil {
 			return err
 		}
 		r.saveAlerts(ctx, repo, kind, items)
+		for _, a := range items {
+			seen[a.Number] = struct{}{}
+		}
 		if len(items) < 50 {
+			complete = true
 			break
 		}
+	}
+	if complete {
+		r.retireMissingAlerts(ctx, repo, kind, seen)
 	}
 	return nil
 }
@@ -476,6 +495,53 @@ func (r *Reconciler) saveAlerts(ctx context.Context, repo store.Repository, kind
 			r.Logger.Warn("security alert upsert failed", "repo", repo.FullName, "alert_number", a.Number, "kind", kind, "error_code", "alert_upsert_failed", "error", err.Error())
 		}
 	}
+}
+
+// retireMissingAlerts 差集对账：远端完整列表里已消失的本地非终态告警标记为 withdrawn。
+// GitHub 撤回告警时不推送 webhook、也不再出现在列表 API（单独访问返回 404 withdrawn），
+// 若不收口，本地行会永远停留在最后一次看到的 open 状态（如"已修复却仍显示待处理"）。
+// 前提：调用方已确认本轮完整翻页（未被 MaxPages 截断），seen 覆盖源端全量。
+func (r *Reconciler) retireMissingAlerts(ctx context.Context, repo store.Repository, kind string, seen map[int]struct{}) {
+	local, err := r.Store.SecurityAlerts().ListByRepoKind(ctx, repo.ID, kind)
+	if err != nil {
+		if r.Logger != nil {
+			r.Logger.Warn("security alert diff list failed", "repo", repo.FullName, "kind", kind, "error_code", "alert_diff_list_failed", "error", err.Error())
+		}
+		return
+	}
+	now := time.Now().UTC()
+	for _, a := range local {
+		if _, ok := seen[a.AlertNumber]; ok {
+			continue
+		}
+		if isTerminalAlertState(a.State) {
+			// 已是终态（fixed/dismissed/auto_dismissed/withdrawn）不再重复处理。
+			continue
+		}
+		hash := normalizer.StateHash(kind, store.AlertStateWithdrawn, a.Severity, a.RuleOrDependency, "withdrawn_by_source")
+		if _, updated, err := r.Store.SecurityAlerts().UpsertIfNewer(ctx, store.SecurityAlert{
+			RepositoryID: repo.ID, AlertKind: kind, AlertNumber: a.AlertNumber,
+			State: store.AlertStateWithdrawn, Severity: a.Severity,
+			RuleOrDependency: a.RuleOrDependency, DismissedReason: "withdrawn_by_source",
+			HTMLURL: a.HTMLURL, SourceUpdatedAt: now, StateHash: hash,
+		}); err != nil {
+			if r.Logger != nil {
+				r.Logger.Warn("security alert withdraw failed", "repo", repo.FullName, "alert_number", a.AlertNumber, "kind", kind, "error_code", "alert_withdraw_failed", "error", err.Error())
+			}
+		} else if updated && r.Logger != nil {
+			r.Logger.Debug("security alert withdrawn by reconcile", "repo", repo.FullName, "alert_number", a.AlertNumber, "kind", kind)
+		}
+	}
+}
+
+// isTerminalAlertState 终态告警不再参与差集重标：保留用户或源端已确认的状态，
+// 只有仍处于待处理语义（open/reopened 等）的本地行才可能被撤回标记覆盖。
+func isTerminalAlertState(state string) bool {
+	switch state {
+	case "fixed", "dismissed", "auto_dismissed", store.AlertStateWithdrawn:
+		return true
+	}
+	return false
 }
 
 // alertUnavailable 判断告警 API 的错误是否为"功能未开启"不可恢复状态。

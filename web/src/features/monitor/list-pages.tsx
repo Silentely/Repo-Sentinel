@@ -942,6 +942,7 @@ function SecurityList() {
             { value: "", label: "全部" },
             { value: "open", label: "待处理" },
             { value: "dismissed", label: "GitHub 已忽略" },
+            { value: "withdrawn", label: "已撤回" },
           ]}
           value={state}
           onChange={setState}

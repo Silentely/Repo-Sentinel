@@ -102,6 +102,8 @@ describe("alertStateLabel", () => {
     expect(alertStateLabel("dismissed")).toBe("GitHub 已忽略");
     expect(alertStateLabel("fixed")).toBe("已修复");
     expect(alertStateLabel("resolved")).toBe("已修复");
+    expect(alertStateLabel("auto_dismissed")).toBe("自动忽略");
+    expect(alertStateLabel("withdrawn")).toBe("已撤回");
   });
 
   it("未知状态原样回退", () => {

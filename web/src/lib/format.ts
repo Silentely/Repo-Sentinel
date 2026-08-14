@@ -222,6 +222,8 @@ export function alertStateLabel(state: string): string {
       return "已修复";
     case "auto_dismissed":
       return "自动忽略";
+    case "withdrawn":
+      return "已撤回";
     default:
       return state || "—";
   }

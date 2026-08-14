@@ -52,6 +52,10 @@ type fakeGitHub struct {
 	// alertHTTPStatus 可选：code/secret scanning 端点的状态码（默认 200），
 	// 用于模拟功能未开启（404）等不可用场景。
 	alertHTTPStatus map[string]int
+	// codeScanningFn / secretScanningFn 可选：对应端点响应体（缺省空数组），
+	// 用于差集对账等需要远端有数据的用例。
+	codeScanningFn   func(page int) any
+	secretScanningFn func(page int) any
 	// rateLimitIssuesRequests 前 N 次 issues 请求返回 429 + Retry-After 响应头；
 	// issues429RetryAfter 缺省 "60"。N=0 表示不限流。
 	rateLimitIssuesRequests int
@@ -132,10 +136,18 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, http.StatusText(status), status)
 			return
 		}
+		if f.codeScanningFn != nil {
+			write(f.codeScanningFn(page))
+			return
+		}
 		write([]any{})
 	case reSecretScan.MatchString(path):
 		if status, ok := f.alertHTTPStatus["secret_scanning"]; ok {
 			http.Error(w, http.StatusText(status), status)
+			return
+		}
+		if f.secretScanningFn != nil {
+			write(f.secretScanningFn(page))
 			return
 		}
 		write([]any{})
@@ -840,5 +852,174 @@ func TestReconcileMarkUnavailableOn404(t *testing.T) {
 	}
 	if got := fake.issuesPages.Load(); got != 1 {
 		t.Fatalf("unavailable 后不应再请求 issues，got %d", got)
+	}
+}
+
+// TestReconcileWithdrawsMissingDependabotAlert 验证告警差集对账：
+// GitHub 撤回（从列表消失）的本地 open 告警被标记 withdrawn；仍在列表中的告警与
+// 已终态（fixed/dismissed）告警不受影响；重复对账幂等，不反复改写 withdrawn 行。
+func TestReconcileWithdrawsMissingDependabotAlert(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	updated := time.Now().UTC().Truncate(time.Second)
+
+	seedAlert := func(n int, state string) {
+		t.Helper()
+		if _, _, err := data.SecurityAlerts().UpsertIfNewer(ctx, store.SecurityAlert{
+			RepositoryID: repo.ID, AlertKind: store.AlertKindDependabot, AlertNumber: n, State: state,
+			Severity: "high", RuleOrDependency: "lodash",
+			HTMLURL:         fmt.Sprintf("https://github.com/acme/demo/security/dependabot/%d", n),
+			SourceUpdatedAt: updated,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 本地预置：1/2/3 仍存在于远端列表，4 已被 GitHub 撤回（不再返回）。
+	seedAlert(1, "open")
+	seedAlert(2, "fixed")
+	seedAlert(3, "dismissed")
+	seedAlert(4, "open")
+
+	remote := func(n int, state string) map[string]any {
+		return map[string]any{
+			"number": n, "state": state,
+			"html_url":   fmt.Sprintf("https://github.com/acme/demo/security/dependabot/%d", n),
+			"created_at": updated.Format(time.RFC3339), "updated_at": updated.Format(time.RFC3339),
+			"dependency":        map[string]any{"package": map[string]any{"name": "lodash"}},
+			"security_advisory": map[string]any{"severity": "high"},
+		}
+	}
+	fake.issuesFn = func(page int) any { return []any{} }
+	fake.dependabotFn = func(cursor string) (any, string) {
+		return []map[string]any{remote(1, "open"), remote(2, "fixed"), remote(3, "dismissed")}, ""
+	}
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+
+	// 仍存在于远端列表的告警保留原状态。
+	for _, n := range []int{1, 2, 3} {
+		got, err := data.SecurityAlerts().GetByIdentity(ctx, repo.ID, store.AlertKindDependabot, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.State == store.AlertStateWithdrawn {
+			t.Fatalf("告警 %d 仍在远端列表，不应被撤回标记", n)
+		}
+	}
+	// 远端已消失的 open 告警被标记 withdrawn。
+	got, err := data.SecurityAlerts().GetByIdentity(ctx, repo.ID, store.AlertKindDependabot, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != store.AlertStateWithdrawn {
+		t.Fatalf("远端已消失的 open 告警应标记 withdrawn，got %q", got.State)
+	}
+	withdrawnAt := got.UpdatedAt
+
+	// 幂等：再次对账 withdrawn 行不被改写（UpdatedAt 不前进）。
+	time.Sleep(5 * time.Millisecond)
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("第二轮对账应成功: %v", err)
+	}
+	got2, err := data.SecurityAlerts().GetByIdentity(ctx, repo.ID, store.AlertKindDependabot, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.State != store.AlertStateWithdrawn || !got2.UpdatedAt.Equal(withdrawnAt) {
+		t.Fatalf("withdrawn 应幂等：state=%s updated_at=%v -> %v", got2.State, withdrawnAt, got2.UpdatedAt)
+	}
+}
+
+// TestReconcileSkipsDiffWhenAlertPagesTruncated 验证页数预算截断时不执行差集：
+// 远端列表未完整拉取时，不能把"还没拉到"误判为"已消失"而误标撤回。
+func TestReconcileSkipsDiffWhenAlertPagesTruncated(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	updated := time.Now().UTC().Truncate(time.Second)
+
+	// 本地 open 告警 1：远端每页 50 条、翻页超出 MaxPages 预算时永远拉不到它。
+	if _, _, err := data.SecurityAlerts().UpsertIfNewer(ctx, store.SecurityAlert{
+		RepositoryID: repo.ID, AlertKind: store.AlertKindDependabot, AlertNumber: 1, State: "open",
+		Severity: "high", RuleOrDependency: "lodash",
+		HTMLURL: "https://github.com/acme/demo/security/dependabot/1", SourceUpdatedAt: updated,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	page := 0
+	fake.issuesFn = func(page int) any { return []any{} }
+	fake.dependabotFn = func(cursor string) (any, string) {
+		page++
+		items := make([]map[string]any, 0, 50)
+		for i := 1; i <= 50; i++ {
+			n := 1000 + page*50 + i
+			items = append(items, map[string]any{
+				"number": n, "state": "open",
+				"html_url":   fmt.Sprintf("https://github.com/acme/demo/security/dependabot/%d", n),
+				"created_at": updated.Format(time.RFC3339), "updated_at": updated.Format(time.RFC3339),
+				"dependency":        map[string]any{"package": map[string]any{"name": "lodash"}},
+				"security_advisory": map[string]any{"severity": "high"},
+			})
+		}
+		return items, "cursor-next"
+	}
+
+	r := &Reconciler{Store: data, GitHub: fake.client, MaxPages: 3}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+	if got := fake.dependabotPages.Load(); got != 3 {
+		t.Fatalf("MaxPages=3 应恰好请求 3 页，got %d", got)
+	}
+	got, err := data.SecurityAlerts().GetByIdentity(ctx, repo.ID, store.AlertKindDependabot, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "open" {
+		t.Fatalf("截断轮不应执行差集，本地告警应保持 open，got %q", got.State)
+	}
+}
+
+// TestReconcileWithdrawsMissingCodeScanningAlert 验证 page 分页告警（code_scanning）
+// 同样执行差集对账：远端消失的 open 告警被标记 withdrawn。
+func TestReconcileWithdrawsMissingCodeScanningAlert(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	updated := time.Now().UTC().Truncate(time.Second)
+
+	if _, _, err := data.SecurityAlerts().UpsertIfNewer(ctx, store.SecurityAlert{
+		RepositoryID: repo.ID, AlertKind: store.AlertKindCodeScanning, AlertNumber: 5, State: "open",
+		Severity: "error", RuleOrDependency: "injection",
+		HTMLURL: "https://github.com/acme/demo/security/code-scanning/5", SourceUpdatedAt: updated,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	fake.issuesFn = func(page int) any { return []any{} }
+	// 远端仅返回 6：5 已被撤回。
+	fake.codeScanningFn = func(page int) any {
+		return []map[string]any{{
+			"number": 6, "state": "open", "html_url": "https://github.com/acme/demo/security/code-scanning/6",
+			"created_at": updated.Format(time.RFC3339), "updated_at": updated.Format(time.RFC3339),
+			"rule": map[string]any{"id": "injection", "severity": "error"},
+		}}
+	}
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+	got, err := data.SecurityAlerts().GetByIdentity(ctx, repo.ID, store.AlertKindCodeScanning, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != store.AlertStateWithdrawn {
+		t.Fatalf("远端消失的 code_scanning open 告警应标记 withdrawn，got %q", got.State)
+	}
+	if _, err := data.SecurityAlerts().GetByIdentity(ctx, repo.ID, store.AlertKindCodeScanning, 6); err != nil {
+		t.Fatalf("远端存在的告警 6 应落库: %v", err)
 	}
 }
