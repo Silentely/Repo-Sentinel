@@ -122,6 +122,11 @@ func (t *responseWriteTracker) Write(b []byte) (int, error) {
 	return t.ResponseWriter.Write(b)
 }
 
+// Unwrap 供 http.NewResponseController 穿透包装层。
+func (t *responseWriteTracker) Unwrap() http.ResponseWriter {
+	return t.ResponseWriter
+}
+
 func (s *server) authenticationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 优先 Session Cookie（管理台）。
@@ -237,4 +242,17 @@ func (w *statusResponseWriter) Write(body []byte) (int, error) {
 		w.WriteHeader(http.StatusOK)
 	}
 	return w.ResponseWriter.Write(body)
+}
+
+// Unwrap 供 http.NewResponseController 穿透包装层（SetWriteDeadline/Flush 依赖
+// Unwrap 链逐层解包，缺失会让 controller 静默失效）。
+func (w *statusResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+// Flush 透传底层 Flusher（流式响应场景），无 Flusher 时静默忽略。
+func (w *statusResponseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }

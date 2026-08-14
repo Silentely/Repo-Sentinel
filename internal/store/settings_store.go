@@ -30,21 +30,39 @@ func (s *settingsStore) Get(ctx context.Context, key string) (SystemSetting, err
 	return row, nil
 }
 
-// GetMany 批量读取设置：单次查询按 key 集合过滤，仅返回存在的行。
-// 相比逐个 Get 可减少一次设置页渲染（handleGetSettings）产生的 18 次往返查询。
+// GetMany 批量读取设置：先取缓存命中键，缺失键单次查库并回填缓存。
+// 相比逐个 Get 可减少设置页渲染（handleGetSettings）的多次往返；回填后
+// webhook 热路径对同键的 Get 直接命中缓存，不再重复落库。
 func (s *settingsStore) GetMany(ctx context.Context, keys ...string) ([]SystemSetting, error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
-	entities, err := s.client.SystemSetting.Query().
-		Where(systemsetting.KeyIn(keys...)).
-		All(ctx)
-	if err != nil {
-		return nil, mapStoreError(err)
+	out := make([]SystemSetting, 0, len(keys))
+	missing := make([]string, 0, len(keys))
+	seen := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		if seen[key] {
+			continue // 调用方传重复键时去重，避免重复查询
+		}
+		seen[key] = true
+		if row, ok := s.cache.Get(key); ok {
+			out = append(out, row)
+			continue
+		}
+		missing = append(missing, key)
 	}
-	out := make([]SystemSetting, 0, len(entities))
-	for _, entity := range entities {
-		out = append(out, settingFromEntity(entity))
+	if len(missing) > 0 {
+		entities, err := s.client.SystemSetting.Query().
+			Where(systemsetting.KeyIn(missing...)).
+			All(ctx)
+		if err != nil {
+			return nil, mapStoreError(err)
+		}
+		for _, entity := range entities {
+			row := settingFromEntity(entity)
+			out = append(out, row)
+			s.cache.Set(row.Key, row)
+		}
 	}
 	return out, nil
 }

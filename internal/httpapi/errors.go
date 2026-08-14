@@ -118,6 +118,12 @@ func apiErrorMessage(errorCode string) string {
 		return "尚未配置 GitHub App ID 与私钥，无法调用 GitHub API。"
 	case "github_no_installation":
 		return "本地尚无 Installation 记录。请先在 GitHub 安装 App，或等待 installation 事件到达。"
+	case "reconcile_in_progress":
+		return "已有对账任务在进行中，请稍后再试。"
+	case "ai_field_locked":
+		return "该字段已由环境变量设置，管理台不能覆盖。"
+	case "method_not_allowed":
+		return "当前请求方法不受支持。"
 	default:
 		return "服务器暂时无法完成请求，请使用 request_id 排查。"
 	}
