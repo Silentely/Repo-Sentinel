@@ -78,12 +78,12 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	writeMetric("reposentinel_reconcile_runs_total", "Reconcile job executions", "counter", metricReconcileRuns.Load())
 
 	// AI 调用指标：成功率/延迟/成本可观测（与日志同源，出口统一计数）。
+	// 平均耗时以「累计毫秒 sum + 请求数 count」表达：Prometheus 用 rate(sum)/rate(count)
+	// 求平均，series 恒存在（无请求时也输出 0 行），且无整型截断。
 	aiRequests, aiFailures, aiDurMS, aiPromptTok, aiCompTok, aiFailByCode := ai.MetricsSnapshot()
 	writeMetric("reposentinel_ai_requests_total", "LLM calls issued (success + failure)", "counter", aiRequests)
 	writeMetric("reposentinel_ai_requests_failed_total", "Failed LLM calls", "counter", aiFailures)
-	if aiRequests > 0 {
-		writeMetric("reposentinel_ai_request_duration_avg_ms", "Average LLM call duration in ms", "gauge", aiDurMS/aiRequests)
-	}
+	writeMetric("reposentinel_ai_request_duration_ms_sum", "Cumulative LLM call duration in ms", "counter", aiDurMS)
 	writeMetric("reposentinel_ai_prompt_tokens_total", "Prompt tokens consumed", "counter", aiPromptTok)
 	writeMetric("reposentinel_ai_completion_tokens_total", "Completion tokens consumed", "counter", aiCompTok)
 	for _, code := range ai.SortedFailCodes(aiFailByCode) {

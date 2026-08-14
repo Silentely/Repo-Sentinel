@@ -2,6 +2,7 @@ package notify
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -116,6 +117,27 @@ func TestSendTelegramNotConfigured(t *testing.T) {
 	err := w.sendTelegramDirect(t.Context(), "http://unused", "", "token", "text", "", "HTML")
 	if err == nil {
 		t.Fatal("期望空 chatID 返回错误")
+	}
+}
+
+// 客户端禁跟随重定向（ErrUseLastResponse）：Telegram 端点返回 3xx 时消息未送达，
+// 必须按可重试错误处理，此前穿透所有分支被标记 sent 静默丢失。
+func TestSendTelegramRedirectIsFailure(t *testing.T) {
+	for _, status := range []int{http.StatusMovedPermanently, http.StatusFound, http.StatusTemporaryRedirect} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+			}))
+			t.Cleanup(srv.Close)
+			w := &Worker{Client: srv.Client()}
+			err := w.sendTelegramDirect(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", "test", "", "HTML")
+			if err == nil {
+				t.Fatalf("%d 应返回错误（消息未送达）", status)
+			}
+			if want := fmt.Sprintf("telegram_redirect_%d", status); deliveryErrorCode(err) != want {
+				t.Fatalf("期望错误码 %s，实际 %s", want, deliveryErrorCode(err))
+			}
+		})
 	}
 }
 
