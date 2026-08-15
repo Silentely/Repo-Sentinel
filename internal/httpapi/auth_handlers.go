@@ -148,6 +148,18 @@ func (s *server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
+	// 改密后撤销其它会话：密码已更换，旧会话继续存活是安全漏洞（前端文案
+	// 「其它会话将失效」与实现此前不符）。撤销失败不阻断改密结果，留痕即可。
+	if revoked, err := s.dependencies.SessionService.RevokeOthers(r.Context(), session.AdminID, session.ID); err != nil && s.dependencies.Logger != nil {
+		s.dependencies.Logger.Warn("revoke other sessions failed after password change",
+			"request_id", requestIDFromContext(r.Context()),
+			"error_code", "session_revoke_failed",
+			"error", err.Error())
+	} else if s.dependencies.Logger != nil {
+		s.dependencies.Logger.Info("other sessions revoked after password change",
+			"request_id", requestIDFromContext(r.Context()),
+			"revoked", revoked)
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]bool{"changed": true})
 }

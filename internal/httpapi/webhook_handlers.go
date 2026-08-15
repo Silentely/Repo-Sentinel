@@ -75,7 +75,7 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if existing, err := s.dependencies.Store.WebhookDeliveries().GetByDeliveryID(r.Context(), deliveryID); err == nil {
-		s.respondWebhookDuplicate(w, existing.DeliveryID, eventType)
+		s.respondWebhookDuplicate(w, &existing, deliveryID, eventType)
 		return
 	}
 
@@ -85,7 +85,13 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			s.respondWebhookDuplicate(w, deliveryID, eventType)
+			// 冲突说明行已存在：取回行状态，accepted 卡死时走重放路径。
+			existing, gerr := s.dependencies.Store.WebhookDeliveries().GetByDeliveryID(r.Context(), deliveryID)
+			if gerr != nil {
+				s.respondWebhookDuplicate(w, nil, deliveryID, eventType)
+			} else {
+				s.respondWebhookDuplicate(w, &existing, deliveryID, eventType)
+			}
 			return
 		}
 		s.writeMappedError(w, r, err)
@@ -108,15 +114,29 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	s.processWebhookAsync(delivery.ID, eventType, deliveryID, body)
 }
 
-// respondWebhookDuplicate 处理重复投递：GitHub 可能重发同一 delivery_id，
-// 记录指标与日志后以 202 duplicate 幂等应答，不重复入库与处理。
-func (s *server) respondWebhookDuplicate(w http.ResponseWriter, deliveryID, eventType string) {
+// respondWebhookDuplicate 处理重复投递：GitHub 可能重发同一 delivery_id。
+// 已处理的行幂等应答；仍停留在 accepted 的行（进程在入库与处理之间崩溃/关闭，
+// 或实例关闭期间后台未消费）用行内载荷重放一次：事件级指纹幂等兜底，
+// 重复处理无害，但能避免「载荷已入库却从未处理」的事件静默丢失。
+func (s *server) respondWebhookDuplicate(w http.ResponseWriter, existing *store.WebhookDelivery, deliveryID, eventType string) {
 	MetricsIncWebhookDuplicate()
+	status := ""
+	if existing != nil {
+		status = existing.Status
+	}
 	s.dependencies.Logger.Info(
 		"github webhook duplicate",
 		"delivery_id", deliveryID,
 		"event_type", eventType,
+		"row_status", status,
 	)
+	if existing != nil && existing.Status == store.DeliveryAccepted && time.Since(existing.ReceivedAt) > 2*time.Minute {
+		// 正常处理在秒级完成：停留 accepted 超 2 分钟说明后台未消费（崩溃/关闭），重放恢复。
+		s.dependencies.Logger.Warn("webhook accepted row replayed",
+			"delivery_id", deliveryID, "event_type", existing.EventType,
+			"error_code", "accepted_replay", "age_ms", time.Since(existing.ReceivedAt).Milliseconds())
+		s.processWebhookAsync(existing.ID, existing.EventType, existing.DeliveryID, existing.Payload)
+	}
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"status":      "duplicate",
 		"delivery_id": deliveryID,
