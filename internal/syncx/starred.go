@@ -427,6 +427,20 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 					break pollRepo
 				}
 			}
+			if page == 1 {
+				page1Etag = newEtag
+				if !modified {
+					// 304：未变更，仅推进轮询时间。304 响应体为空（items 为空是正常表示），
+					// 必须先于空列表判定处理，否则会把有 release 的仓误标「无 release」。
+					if err := p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, newEtag, tk.LastReleaseID, tk.LastReleaseTag, tk.LastReleasePublishedAt); err != nil {
+						// ETag 落库失败 → 下轮全量拉取 release body（浪费带宽），Debug 留痕。
+						p.debug("release poll cursor update failed", "repo", tk.FullName, "error_code", "tracker_cursor_failed", "error", err.Error())
+					}
+					cursorUpdated = true
+					p.debug("release poll ok", "repo", tk.FullName, "modified", false)
+					break pollRepo
+				}
+			}
 			if len(items) == 0 {
 				if page == 1 {
 					// 曾追踪过 release 的仓现在为空（异常）：按无 release 处理并复查。
@@ -438,17 +452,6 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 				break pollRepo
 			}
 			if page == 1 {
-				page1Etag = newEtag
-				if !modified {
-					// 304：未变更，仅推进轮询时间。
-					if err := p.Store.StarredTrackers().UpdatePollResult(ctx, tk.ID, newEtag, tk.LastReleaseID, tk.LastReleaseTag, tk.LastReleasePublishedAt); err != nil {
-						// ETag 落库失败 → 下轮全量拉取 release body（浪费带宽），Debug 留痕。
-						p.debug("release poll cursor update failed", "repo", tk.FullName, "error_code", "tracker_cursor_failed", "error", err.Error())
-					}
-					cursorUpdated = true
-					p.debug("release poll ok", "repo", tk.FullName, "modified", false)
-					break pollRepo
-				}
 				// 基线：首次见到 release 只记游标，不通知（避免历史洪泛）。
 				if tk.LastReleaseID == 0 {
 					published := items[0].PublishedAt

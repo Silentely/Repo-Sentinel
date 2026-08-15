@@ -29,15 +29,19 @@ type starredTestEnv struct {
 	starred   map[int][]map[string]any // page → 公开 star 条目
 	releases  map[string][]map[string]any
 	rateLimit bool // 触发匿名枚举限流
+
+	// releaseUnchanged 标记 release 未变化：条件请求命中 If-None-Match 时返回 304（模拟 GitHub）。
+	releaseUnchanged map[string]bool
 }
 
 func newStarredTestEnv(t *testing.T, setup func(env *starredTestEnv)) *starredTestEnv {
 	t.Helper()
 	data := openSyncStore(t)
 	env := &starredTestEnv{
-		data:     data,
-		starred:  map[int][]map[string]any{},
-		releases: map[string][]map[string]any{},
+		data:             data,
+		starred:          map[int][]map[string]any{},
+		releases:         map[string][]map[string]any{},
+		releaseUnchanged: map[string]bool{},
 	}
 	now := time.Now().UTC()
 	if _, err := data.Installations().Upsert(t.Context(), store.GitHubInstallation{
@@ -94,6 +98,11 @@ func newStarredTestEnv(t *testing.T, setup func(env *starredTestEnv)) *starredTe
 			items := env.releases[fullName]
 			if items == nil {
 				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			// 模拟条件请求 304：release 未变化且 If-None-Match 命中时返回空 body 的 304。
+			if env.releaseUnchanged[fullName] && r.Header.Get("If-None-Match") == `"e1"` {
+				w.WriteHeader(http.StatusNotModified)
 				return
 			}
 			// 模拟 GitHub 分页：按 per_page/page 切片，翻页返回剩余条目。
@@ -482,6 +491,38 @@ func TestStarredPollReleases_空列表inactive(t *testing.T) {
 	tk, _ := env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
 	if tk.State != store.TrackerStateInactive {
 		t.Fatalf("release 列表为空应转 inactive: %+v", tk)
+	}
+}
+
+// TestStarredPollReleases_304不误判无release 验证条件请求命中 304（release 未变化）时保持 tracking：
+// 304 响应体为空是正常表示，不能被当成「无 release」转入 inactive（回归：空列表判定早于 304 处理）。
+func TestStarredPollReleases_304不误判无release(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	ctx := t.Context()
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	tk, err := env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if err != nil || tk.State != store.TrackerStateTracking || tk.ETag == "" {
+		t.Fatalf("基线应 tracking 且带 etag: %+v %v", tk, err)
+	}
+	// release 未变化：下一轮条件请求命中 304（空 items + modified=false）。
+	env.mu.Lock()
+	env.releaseUnchanged["octocat/Hello-World"] = true
+	env.mu.Unlock()
+	env.poller.lastReleasePoll = time.Time{}
+	if err := env.poller.PollReleases(ctx); err != nil {
+		t.Fatal(err)
+	}
+	tk, err = env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if err != nil || tk.State != store.TrackerStateTracking {
+		t.Fatalf("304 不应把有 release 的仓误标无 release: %+v %v", tk, err)
+	}
+	if tk.LastReleaseID != 42 || tk.LastReleaseTag != "v1.0" {
+		t.Fatalf("304 不应改写游标: %+v", tk)
 	}
 }
 
