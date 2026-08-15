@@ -526,6 +526,50 @@ func TestStarredPollReleases_304不误判无release(t *testing.T) {
 	}
 }
 
+// TestStarredSyncStars_带游标inactive自愈 验证 inactive 但带 release 游标的仓（304 误判受害）
+// 在下次 star 同步时立即重新探测恢复 tracking；release 确实被删除的仓保持 inactive。
+func TestStarredSyncStars_带游标inactive自愈(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	ctx := t.Context()
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// 复现 304 误判：有 release 的仓被标为无 release（inactive + 复查时间）。
+	tk, err := env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if err != nil || tk.State != store.TrackerStateTracking || tk.LastReleaseID == 0 {
+		t.Fatalf("基线应 tracking 且带游标: %+v %v", tk, err)
+	}
+	if err := env.data.StarredTrackers().UpdateNoRelease(ctx, tk.ID, time.Now().UTC().Add(7*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	env.poller.lastStarSync = time.Time{}
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	tk, err = env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if err != nil || tk.State != store.TrackerStateTracking {
+		t.Fatalf("带游标的 inactive 应在同步时自愈回 tracking: %+v %v", tk, err)
+	}
+	// release 被整体删除（列表真的为空）：重新探测后仍应保持 inactive。
+	env.mu.Lock()
+	env.releases["octocat/Hello-World"] = []map[string]any{}
+	env.mu.Unlock()
+	if err := env.data.StarredTrackers().UpdateNoRelease(ctx, tk.ID, time.Now().UTC().Add(7*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	env.poller.lastStarSync = time.Time{}
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	tk, err = env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if err != nil || tk.State != store.TrackerStateInactive {
+		t.Fatalf("release 确实为空时不应恢复: %+v %v", tk, err)
+	}
+}
+
 // TestStarredPollReleases_404不可用 验证删仓/转私有标记 unavailable。
 func TestStarredPollReleases_404不可用(t *testing.T) {
 	env := newStarredTestEnv(t, func(env *starredTestEnv) {

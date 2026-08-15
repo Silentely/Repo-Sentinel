@@ -266,7 +266,7 @@ export function StarredReleasesPage() {
   );
 }
 
-function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: boolean; onToggle: (state: "disabled" | "tracking") => void }) {
+export function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: boolean; onToggle: (state: "disabled" | "tracking") => void }) {
   // busy 由父级 mutation 的 variables.id 判定：请求结束自动恢复，不会残留行级忙碌态。
   const published = item.last_release_published_at ? new Date(item.last_release_published_at).toLocaleString() : "—";
   const url = releaseURL(item.full_name, item.last_release_tag);
@@ -292,17 +292,7 @@ function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: 
         >
           <ExternalLink aria-hidden="true" size={13} />
         </a>
-        {item.state === "tracking" || item.state === "inactive" || item.state === "unavailable" ? (
-          <button
-            className="quiet-button quiet-button--compact"
-            type="button"
-            disabled={busy}
-            aria-busy={busy}
-            onClick={() => onToggle("disabled")}
-          >
-            停用
-          </button>
-        ) : (
+        {item.state === "disabled" ? (
           <button
             className="quiet-button quiet-button--compact"
             type="button"
@@ -312,6 +302,30 @@ function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: 
           >
             恢复
           </button>
+        ) : (
+          <>
+            {item.state === "inactive" && item.last_release_tag ? (
+              // 无 Release 但带已记录 release：多为条件请求 304 误判，提供恢复入口。
+              <button
+                className="quiet-button quiet-button--compact"
+                type="button"
+                disabled={busy}
+                aria-busy={busy}
+                onClick={() => onToggle("tracking")}
+              >
+                恢复
+              </button>
+            ) : null}
+            <button
+              className="quiet-button quiet-button--compact"
+              type="button"
+              disabled={busy}
+              aria-busy={busy}
+              onClick={() => onToggle("disabled")}
+            >
+              停用
+            </button>
+          </>
         )}
       </span>
     </li>

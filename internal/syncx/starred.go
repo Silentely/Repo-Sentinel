@@ -253,14 +253,17 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 }
 
 // registerIfNew 新 star 仓注册追踪并做首次 release 基线探测；
-// 已 inactive 且到复查时间的仓触发一次复查探测。
+// 已 inactive 的仓触发复查探测：到复查时间，或带 release 游标（多为 304 误判，立即自愈）。
 // trackerMap 为 syncStarsLocked 预加载的全量 full_name→tracker 映射（消除逐仓单查）；
 // 注册成功后同步写入该映射，保证同一轮内重复出现的 full_name 幂等。
 func (p *StarredReleasePoller) registerIfNew(ctx context.Context, fullName string, max int, added *int, trackerMap map[string]store.StarredRepoTracker) error {
 	tracker, ok := trackerMap[fullName]
 	if ok {
 		if tracker.State == store.TrackerStateInactive && tracker.NoReleaseRecheckAt != nil &&
-			time.Now().UTC().After(*tracker.NoReleaseRecheckAt) {
+			(tracker.LastReleaseID > 0 || time.Now().UTC().After(*tracker.NoReleaseRecheckAt)) {
+			// 有 release 游标却 inactive：多为条件请求 304 误判（release 未变化被当成无 release），
+			// 或 release 被整体删除；同步时立即重新探测自愈，不必等 7 天复查。
+			// 无游标的真无 release 仓仍按复查周期。
 			return p.probeRelease(ctx, tracker.ID, fullName)
 		}
 		return nil
