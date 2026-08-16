@@ -26,8 +26,9 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | 基线与乱序 | 新仓基线抑制通知；陈旧 `source_updated_at` 丢弃回滚 |
 | 通知 | Outbox、Telegram、HTTP Webhook、死信重试、短时聚合与超频摘要 |
 | 渠道订阅 | 每渠道独立勾选订阅类型（Issue、PR、Star/Watch、Actions、Dependabot、Code Scanning、Secret Scanning，默认全部）与「每日汇总」开关（默认开），合并通知按订阅重建子集 |
-| 全局功能模块 | Issues / PR / Actions / 安全告警 / Star / Watch：关闭后停止采集、对账与实时/摘要通知；Issues/PR/Actions/安全告警关闭同时隐藏侧栏入口，Star 关闭同时隐藏仪表盘 Star 增长面板；仓库级开关在全局关闭时禁用 |
-| 管理后台 | 仪表盘（可折叠区块，含 Star 增长曲线，支持 7/30/90/全部范围）、仓库管理、Issues/PR/Actions/安全告警列表、投递、渠道配置、主题 |
+| 全局功能模块 | Issues / PR / Actions / 安全告警 / Star / Watch / Star Release：关闭后停止采集、对账与实时/摘要通知；Issues/PR/Actions/安全告警关闭同时隐藏侧栏入口，Star 关闭同时隐藏仪表盘 Star 增长面板；仓库级开关在全局关闭时禁用 |
+| Star Release 追踪 | 匿名枚举指定用户公开 star 仓库（自动排除 fork/archived），ETag 条件请求轮询各仓最新 Release；新版本实时通知，可配 AI 中文总结；500 追踪上限、双周期可配置、unstar 自动停用、独立 `/starred-releases` 管理页 |
+| 管理后台 | 仪表盘（可折叠区块，含 Star 增长曲线，支持 7/30/90/全部范围）、仓库管理、Issues/PR/Actions/安全告警列表、Star Release 追踪、投递、渠道配置、主题 |
 | 运维 CLI | `doctor` / `backup` / `restore`、配置校验、密码重置 |
 | 容器部署 | GHCR 镜像（`latest` 随正式 tag）、Compose 拉取部署、健康检查与 `/metrics` |
 | 历史数据保留 | 事件 / 终态投递 / Webhook Delivery 可配置保留天数，后台定期清理（0 禁用） |

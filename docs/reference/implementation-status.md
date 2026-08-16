@@ -28,6 +28,7 @@
 | Outbox 重试 / 死信 | 已交付 | |
 | 仪表盘 / 列表 / GitHub / 关于 | 已交付 | 关于页可检查 GitHub Release；列表支持按仓筛选与本地忽略；仪表盘区块可折叠并记住状态 |
 | 仪表盘 Star 增长曲线 | 已交付 | 全部仓库 Star 总数折线图，7/30/90/全部范围；无数据时显示引导文案 |
+| Star Release 追踪 | 已交付 | 匿名枚举指定用户公开 star 仓库（排除 fork/archived），ETag 条件请求轮询各仓最新 Release；新版本实时通知 + AI 中文总结；500 追踪上限、双周期可配置、unstar 自动停用；`feature.starred_releases` 全局开关 + 独立 `/starred-releases` 管理页 |
 | 归档仓数据隔离 | 已交付 | 列表、侧栏计数、事件流与每日汇总默认排除已归档仓库；历史项仍保留在库中；GitHub 侧归档自动联动关闭采集 |
 | 仓库删除清理 | 已交付 | GitHub 侧删除（repository.deleted）级联删除本地仓库与全部关联数据；对账 404/410、repositories_removed、transferred 标记不可用并暂停采集，可经 API 重新激活；仓库管理页提供「彻底删除」按钮兜底清理漏投递场景 |
 | doctor / backup / restore | 已交付 | 备份须同时保管主密钥 |
