@@ -337,8 +337,9 @@ func (p *Processor) processRepositoryEvent(ctx context.Context, env envelope) (R
 		}
 		repo.SyncStatus = store.SyncStatusUnavailable
 	case "privatized":
+		// IsPrivate 已由 ensureRepository（NormalizeRepository 用载荷 GetPrivate()）写入，
+		// 此处仅同步内存态避免重复 Upsert；错误不会在未写库时被吞掉。
 		repo.IsPrivate = true
-		repo, _ = p.Store.Repositories().Upsert(ctx, repo)
 	}
 	return Result{Repository: &repo, Updated: true, SuppressNotify: true}, nil
 }

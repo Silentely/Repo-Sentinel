@@ -725,12 +725,12 @@ func TestSendWindowInvalidTimezoneFallsBackToUTC(t *testing.T) {
 	if loc != time.UTC {
 		t.Fatalf("非法时区应回退 UTC，实际: %v", loc)
 	}
-	// 窗口为 [09:00, 11:00)：10:30 仍在窗口内，11:30 超出。
-	if _, ok := g.sendWindow(t.Context(), time.Date(2026, 7, 28, 10, 30, 0, 0, time.UTC)); !ok {
-		t.Fatal("10:30 应在发送窗口内")
+	// 窗口为发送时刻起一小时 [09:00, 10:00)：09:30 仍在窗口内，10:30 超出。
+	if _, ok := g.sendWindow(t.Context(), time.Date(2026, 7, 28, 9, 30, 0, 0, time.UTC)); !ok {
+		t.Fatal("09:30 应在发送窗口内")
 	}
-	if _, ok := g.sendWindow(t.Context(), time.Date(2026, 7, 28, 11, 30, 0, 0, time.UTC)); ok {
-		t.Fatal("11:30 超出发送窗口")
+	if _, ok := g.sendWindow(t.Context(), time.Date(2026, 7, 28, 10, 30, 0, 0, time.UTC)); ok {
+		t.Fatal("10:30 超出发送窗口")
 	}
 }
 

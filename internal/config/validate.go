@@ -7,9 +7,14 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const validationFailedCode = "validation_failed"
+
+// maxAITimeout AI 请求超时上界：过大超时会让单条 webhook 后台处理占用
+// 32 并发槽位过久（processBudget = AI timeout + 10s），设置页数字钳制同此上限。
+const maxAITimeout = 10 * time.Minute
 
 // ValidationError 表示可稳定识别且不包含配置原文的校验错误。
 type ValidationError struct {
@@ -101,8 +106,8 @@ func (cfg Config) Validate() error {
 		if strings.TrimSpace(cfg.AI.APIKey.Reveal()) == "" {
 			return newValidationError("ai.api_key", "is required when ai.enabled is true")
 		}
-		if cfg.AI.Timeout < 0 {
-			return newValidationError("ai.timeout", "must be >= 0")
+		if cfg.AI.Timeout < 0 || cfg.AI.Timeout > maxAITimeout {
+			return newValidationError("ai.timeout", fmt.Sprintf("must be between 0 and %s", maxAITimeout))
 		}
 		// max_tokens 为 0 表示使用默认 800（客户端在使用点回退），仅拒绝负值。
 		if cfg.AI.MaxTokens < 0 {

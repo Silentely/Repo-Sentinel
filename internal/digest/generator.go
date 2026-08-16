@@ -164,11 +164,10 @@ func (g *Generator) sendWindow(ctx context.Context, now time.Time) (*time.Locati
 	if _, err := fmt.Sscanf(sendAt, "%d:%d", &hour, &minute); err != nil {
 		hour, minute = 9, 0
 	}
-	// 仅在本地时刻到达后的一小时窗口内尝试，避免整点错过。
-	if localNow.Hour() < hour || (localNow.Hour() == hour && localNow.Minute() < minute) {
-		return loc, false
-	}
-	if localNow.Hour() > hour+1 {
+	// 发送窗口 = 本地发送时刻起一小时：按时刻比较而非小时+分钟分段，
+	// 避免 sendAt 分钟越大窗口越逼近两小时（此前 09:30 会开放到 10:59）。
+	sendAtTime := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), hour, minute, 0, 0, loc)
+	if localNow.Before(sendAtTime) || !localNow.Before(sendAtTime.Add(time.Hour)) {
 		return loc, false
 	}
 	return loc, true

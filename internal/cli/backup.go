@@ -117,6 +117,12 @@ func (r Runner) runRestore(ctx context.Context, args []string) error {
 			_ = os.Remove(tmp)
 			return fmt.Errorf("备份文件写入暂存失败，主库未改动: %w", err)
 		}
+		// 替换前校验文件头：SQLite 库以 "SQLite format 3\000" 开头，误传其它文件
+		// （如 PostgreSQL dump 或任意文件）时中止，避免主库被替换成垃圾。
+		if !isSQLiteFile(tmp) {
+			_ = os.Remove(tmp)
+			return newCLIError("备份文件不是有效的 SQLite 数据库，已中止恢复（主库未改动）。")
+		}
 		// WAL 模式下替换主文件前必须清理旧日志，否则残留 -wal 会被重放到新库上。
 		for _, suffix := range []string{"-wal", "-shm"} {
 			if err := os.Remove(path + suffix); err != nil && !os.IsNotExist(err) {
@@ -148,6 +154,20 @@ func (r Runner) runRestore(ctx context.Context, args []string) error {
 	default:
 		return newCLIError("不支持的数据库驱动。")
 	}
+}
+
+// isSQLiteFile 读取文件头 16 字节校验 SQLite 魔数（"SQLite format 3\000"）。
+func isSQLiteFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	var header [16]byte
+	if _, err := io.ReadFull(f, header[:]); err != nil {
+		return false
+	}
+	return string(header[:]) == "SQLite format 3\x00"
 }
 
 // copyFile 流式拷贝，避免大库一次性载入内存；目标统一收紧为 0600（覆盖既有文件时也生效）。
