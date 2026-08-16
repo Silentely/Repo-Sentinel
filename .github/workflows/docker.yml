@@ -88,6 +88,14 @@ jobs:
           # 未设置时契约测试自动 skip；设置后对 PostgreSQL 跑全套运行时契约与迁移
           REPOSENTINEL_TEST_POSTGRES_URL: postgres://reposentinel:reposentinel@127.0.0.1:55432/reposentinel_test?sslmode=disable
 
+      - name: Set up pnpm
+        # 先装 pnpm 再加入 PATH：setup-node 的 cache:pnpm 需要 pnpm 可执行文件
+        # 定位 store 目录，不能依赖 runner 镜像预装（镜像滚动更新可能移除）。
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+          run_install: false
+
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
@@ -99,8 +107,6 @@ jobs:
       - name: Frontend typecheck & unit tests
         working-directory: web
         run: |
-          corepack enable
-          corepack prepare pnpm@10.34.5 --activate
           pnpm install --frozen-lockfile
           pnpm typecheck
           pnpm test -- --run
