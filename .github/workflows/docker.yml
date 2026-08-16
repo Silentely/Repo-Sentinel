@@ -23,6 +23,18 @@ on:
       - "VERSION"
       - "Makefile"
       - ".github/workflows/docker.yml"
+  # PR 阶段跑 test job（build-and-push 仍只在 push/手动触发）：
+  # 此前 PR 无任何检查，问题只能合入 main 后暴露。
+  pull_request:
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - "migrations/**"
+      - "web/**"
+      - "go.mod"
+      - "go.sum"
+      - "VERSION"
+      - "Makefile"
   workflow_dispatch:
 
 permissions:
@@ -80,6 +92,9 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "24"
+          # pnpm 依赖缓存：避免每次 CI 全量下载（前端依赖体积大、安装慢）。
+          cache: "pnpm"
+          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Frontend typecheck & unit tests
         working-directory: web

@@ -4,10 +4,24 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math/rand/v2"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/digest"
 )
+
+// jitteredDuration 返回 base 的 ±10% 随机偏移（下限 1ms，避免测试毫秒级周期 jitter 为负），
+// 用于错开多实例同时重启的启动风暴与持续锁步（对账/外部轮询低频任务）。
+func jitteredDuration(base time.Duration) time.Duration {
+	if base <= 0 {
+		return base
+	}
+	ten := base / 10
+	if ten < time.Millisecond {
+		ten = time.Millisecond
+	}
+	return base + time.Duration(rand.Int64N(2*int64(ten)+1)-int64(ten))
+}
 
 // Scheduler 驱动对账、外部轮询与每日摘要。
 type Scheduler struct {
@@ -63,10 +77,11 @@ func (s *Scheduler) Run(ctx context.Context) {
 	if s.DigestEvery <= 0 {
 		s.DigestEvery = 1 * time.Hour
 	}
-	// 启动后短暂延迟再跑，避免与启动风暴重叠
-	startup := time.NewTimer(45 * time.Second)
-	reconcileT := time.NewTicker(s.ReconcileEvery)
-	externalT := time.NewTicker(s.ExternalEvery)
+	// 启动后短暂延迟再跑，避免与启动风暴重叠；启动窗口与对账/外部轮询周期加 jitter
+	// 错开多实例同时重启的锁步（starred 1m 节拍与 digest 按小时不需要）。
+	startup := time.NewTimer(45*time.Second + time.Duration(rand.Int64N(30_000_000_000)))
+	reconcileT := time.NewTicker(jitteredDuration(s.ReconcileEvery))
+	externalT := time.NewTicker(jitteredDuration(s.ExternalEvery))
 	starredT := time.NewTicker(time.Minute)
 	digestT := time.NewTicker(s.DigestEvery)
 	defer startup.Stop()
