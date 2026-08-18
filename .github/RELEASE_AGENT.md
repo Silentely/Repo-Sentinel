@@ -85,6 +85,8 @@
 
 ### 阶段 6：合并到 main 并打标签
 
+> 若版本文件更新按 RELEASE_RULES Step 5 的方式已在 main 上直接提交（如 v0.3.9 发布提交），本阶段跳过合并，直接核对版本文件一致性后从第 3 步打标签。
+
 1. 切换到 main 并拉取最新：`git checkout main && git pull origin main`
 2. 合并 dev，按合并路径三选一（均需先确认工作区干净）：
    - **可快进**：`git merge dev --ff-only`
@@ -97,10 +99,16 @@
    `git tag -a vX.Y.Z -m "vX.Y.Z"`
 4. 推送 main 和标签：`git push origin main && git push origin vX.Y.Z`
 5. 切回 dev：`git checkout dev`
+6. 同步发布收尾提交回 dev（RELEASE_RULES 要求 main 收口后同步 dev 避免长期分叉；本轮实测 v0.4.0 即通过此步保持两分支一致）：
+   ```bash
+   git fetch origin dev && git log dev..origin/dev   # 应为空，防止覆盖他人新提交
+   git branch -f dev main && git push origin dev
+   ```
+   若远端 dev 有新提交（他人开发中），改为在 dev 上合并 main 并推送，不要覆盖
 
 ### 阶段 7：验证发布
 
-1. 等待 CI 构建完成（tag 推送触发 docker.yml 构建双架构镜像，通常 15–30 分钟）。`gh run list` 表格会截断 run ID，用 `--json` 取完整 ID：
+1. 等待 CI 构建完成（tag 推送触发 docker.yml 构建双架构镜像，通常 15–30 分钟，长时间 in_progress 属正常）。`gh run list` 表格会截断 run ID，用 `--json` 取完整 ID：
    ```bash
    gh run list --workflow docker.yml --json databaseId,headBranch,status,conclusion \
      --jq '.[] | select(.headBranch=="vX.Y.Z")'
@@ -114,7 +122,7 @@
      --jq '.[0].metadata.container.tags'
    ```
    应同时含 `vX.Y.Z` 与 `latest`
-3. 冒烟验证：
+3. 冒烟验证（核对输出版本号与 `VERSION` 一致，`reposentinel version` 输出含 version / repository 字段）：
    ```bash
    docker pull ghcr.io/silentely/repo-sentinel:vX.Y.Z
    docker run --rm ghcr.io/silentely/repo-sentinel:latest version
@@ -122,11 +130,12 @@
 
 ### 阶段 8：创建 GitHub Release
 
-1. 从 `CHANGELOG.md` 提取 `[X.Y.Z]` 章节正文到临时文件（去掉版本标题行，保留 `### Added`/`Changed`/`Fixed` 分组，与历史 Release 正文一致）：
+1. 前置条件：阶段 7 中 tag 对应 CI run 已 `completed/success`，且 GHCR 已含 `vX.Y.Z` 标签；CI 未通过前不创建 Release
+2. 从 `CHANGELOG.md` 提取 `[X.Y.Z]` 章节正文到临时文件（去掉版本标题行，保留 `### Added`/`Changed`/`Fixed` 分组，与历史 Release 正文一致；将命令中的 `X.Y.Z` 替换为实际版本号）：
    ```bash
    awk '/^## \[X\.Y\.Z\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > /tmp/release-body.md
    ```
-2. 创建 Release（title 用「RepoSentinel vX.Y.Z」，参考历史 v0.3.9/v0.3.8 的命名）：
+3. 创建 Release（title 用「RepoSentinel vX.Y.Z」，参考历史 v0.3.9/v0.3.8 的命名）：
    ```bash
    gh release create vX.Y.Z --title "RepoSentinel vX.Y.Z" --notes-file /tmp/release-body.md
    ```
@@ -138,7 +147,7 @@
 |--------|----------|
 | 工作区状态 | `git status --porcelain` 非空 |
 | 分支 | 不在 dev 分支 |
-| dev 同步 | `git log dev..origin/dev` 非空 |
+| dev 同步 | 阶段 1 前置 `git log dev..origin/dev` 非空；阶段 6.6 同步 main→dev 前远端 dev 有未合并新提交 |
 | 本地门禁 | go test / go vet / pnpm typecheck / build 任一失败 |
 | CI 状态 | dev 最新 CI 未通过 |
 | 合并策略 | main 无法快进，或 main 与 dev 无共同祖先，且未经用户确认合并策略 |
@@ -157,6 +166,7 @@
 7. 提交信息中不要出现 Claude 字眼：不要使用 Co-Authored-By: Claude 等生成器署名
 8. 以 dev 为准合并时保留 dev 现状：CHANGELOG 结构等格式瑕疵不主动改动，避免与 dev 漂移（发布收尾文件除外）
 9. `gh run list` 表格显示会截断 run ID，凡需引用 run 的一律用 `--json databaseId` 或 `gh api` 取完整 ID，防止 watch 到不存在的 run 造成误报
+10. 发版收尾提交（版本文件、docs 示例等）在 main 上完成并推送后，将 main 快进同步回 dev（RELEASE_RULES 要求避免长期分叉）；推送 dev 前先 `git fetch origin dev` 确认远端无未合并的新提交，否则改为在 dev 上合并 main，禁止覆盖他人工作
 
 ## 错误恢复
 
