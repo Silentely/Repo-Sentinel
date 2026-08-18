@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
@@ -14,6 +15,10 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
+
+// ErrReconcileInProgress 全量对账进行中：调度器与 HTTP 手动触发并发时跳过本轮，
+// 避免双轮对账同时打 GitHub API 并争抢数据库连接。
+var ErrReconcileInProgress = errors.New("reconcile_in_progress")
 
 // Reconciler 自有仓库 API 对账与首次基线。
 type Reconciler struct {
@@ -24,6 +29,9 @@ type Reconciler struct {
 	MaxPages int
 	// OnRun 可选：每次对账执行回调（指标等）。
 	OnRun func()
+
+	// reconcileAllBusy 全量对账互斥（跨调度器与 HTTP 触发共享）：防重入。
+	reconcileAllBusy atomic.Bool
 }
 
 // ReconcileRepository 对单仓执行增量或基线同步。
@@ -42,7 +50,7 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 		return fmt.Errorf("missing_installation")
 	}
 	if r.GitHub == nil || !r.GitHub.Configured() {
-		return fmt.Errorf("github_app_not_configured")
+		return ErrAppNotConfigured
 	}
 	inst, err := r.Store.Installations().Get(ctx, *repo.InstallationID)
 	if err != nil {
@@ -267,7 +275,7 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			if _, err := r.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 				continue
 			}
-			num := saved.Number
+			num := int64(saved.Number)
 			src := saved.SourceUpdatedAt
 			if _, err := r.Store.Events().Create(ctx, store.Event{
 				ID: ulid.Make().String(), Source: "reconcile", Kind: kind, Action: "updated",
@@ -390,16 +398,26 @@ func (r *Reconciler) syncAlerts(ctx context.Context, token string, repo store.Re
 // syncDependabotAlerts 用游标分页拉取 dependabot alerts。
 func (r *Reconciler) syncDependabotAlerts(ctx context.Context, token string, repo store.Repository) error {
 	var cursor string
+	seen := make(map[int]struct{})
+	complete := false
 	for page := 1; page <= r.MaxPages; page++ {
 		items, next, _, err := r.GitHub.ListDependabotAlerts(ctx, token, repo.Owner, repo.Name, cursor)
 		if err != nil {
 			return err
 		}
 		r.saveAlerts(ctx, repo, store.AlertKindDependabot, items)
+		for _, a := range items {
+			seen[a.Number] = struct{}{}
+		}
 		if next == "" {
+			complete = true
 			break
 		}
 		cursor = next
+	}
+	// 仅完整翻页后才做差集：页数预算截断时远端集合不完整，不能据此判定"已消失"。
+	if complete {
+		r.retireMissingAlerts(ctx, repo, store.AlertKindDependabot, seen)
 	}
 	return nil
 }
@@ -415,15 +433,24 @@ func (r *Reconciler) syncPageAlerts(ctx context.Context, token string, repo stor
 	default:
 		return nil
 	}
+	seen := make(map[int]struct{})
+	complete := false
 	for page := 1; page <= r.MaxPages; page++ {
 		items, _, err := listFn(ctx, token, repo.Owner, repo.Name, page)
 		if err != nil {
 			return err
 		}
 		r.saveAlerts(ctx, repo, kind, items)
+		for _, a := range items {
+			seen[a.Number] = struct{}{}
+		}
 		if len(items) < 50 {
+			complete = true
 			break
 		}
+	}
+	if complete {
+		r.retireMissingAlerts(ctx, repo, kind, seen)
 	}
 	return nil
 }
@@ -468,6 +495,83 @@ func (r *Reconciler) saveAlerts(ctx context.Context, repo store.Repository, kind
 			r.Logger.Warn("security alert upsert failed", "repo", repo.FullName, "alert_number", a.Number, "kind", kind, "error_code", "alert_upsert_failed", "error", err.Error())
 		}
 	}
+}
+
+// retireMissingAlerts 差集对账：远端完整列表里已消失的本地非终态告警标记为 withdrawn。
+// GitHub 撤回告警时不推送 webhook、也不再出现在列表 API（单独访问返回 404 withdrawn），
+// 若不收口，本地行会永远停留在最后一次看到的 open 状态（如"已修复却仍显示待处理"）。
+// 前提：调用方已确认本轮完整翻页（未被 MaxPages 截断），seen 覆盖源端全量。
+func (r *Reconciler) retireMissingAlerts(ctx context.Context, repo store.Repository, kind string, seen map[int]struct{}) {
+	local, err := r.Store.SecurityAlerts().ListByRepoKind(ctx, repo.ID, kind)
+	if err != nil {
+		if r.Logger != nil {
+			r.Logger.Warn("security alert diff list failed", "repo", repo.FullName, "kind", kind, "error_code", "alert_diff_list_failed", "error", err.Error())
+		}
+		return
+	}
+	now := time.Now().UTC()
+	for _, a := range local {
+		if _, ok := seen[a.AlertNumber]; ok {
+			continue
+		}
+		if isTerminalAlertState(a.State) {
+			// 已是终态（fixed/dismissed/auto_dismissed/withdrawn）不再重复处理。
+			continue
+		}
+		hash := normalizer.StateHash(kind, store.AlertStateWithdrawn, a.Severity, a.RuleOrDependency, "withdrawn_by_source")
+		if _, updated, err := r.Store.SecurityAlerts().UpsertIfNewer(ctx, store.SecurityAlert{
+			RepositoryID: repo.ID, AlertKind: kind, AlertNumber: a.AlertNumber,
+			State: store.AlertStateWithdrawn, Severity: a.Severity,
+			RuleOrDependency: a.RuleOrDependency, DismissedReason: "withdrawn_by_source",
+			HTMLURL: a.HTMLURL, SourceUpdatedAt: now, StateHash: hash,
+		}); err != nil {
+			if r.Logger != nil {
+				r.Logger.Warn("security alert withdraw failed", "repo", repo.FullName, "alert_number", a.AlertNumber, "kind", kind, "error_code", "alert_withdraw_failed", "error", err.Error())
+			}
+		} else if updated {
+			if r.Logger != nil {
+				r.Logger.Debug("security alert withdrawn by reconcile", "repo", repo.FullName, "alert_number", a.AlertNumber, "kind", kind)
+			}
+			r.recordWithdrawnEvent(ctx, repo, kind, a, now, hash)
+		}
+	}
+}
+
+// recordWithdrawnEvent 为被撤回的告警落一条抑制通知的事件：管理台事件流可追溯
+// 「这条待处理告警去哪了」，但不推送通知、也不进入定期报告（digest 排除抑制事件）。
+// 先更新状态再补事件：事件创建失败只丢留痕，不影响状态收口；状态已是 withdrawn 后
+// 终态守卫保证不会重复触发。
+func (r *Reconciler) recordWithdrawnEvent(ctx context.Context, repo store.Repository, kind string, a store.SecurityAlert, now time.Time, hash string) {
+	fp := normalizer.Fingerprint("reconcile", repo.FullName, kind, normalizer.ResourceIdentity(kind, a.AlertNumber, 0), store.AlertStateWithdrawn, now, hash)
+	if _, err := r.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		return // 幂等：指纹唯一索引兜底，同轮重复落库时直接跳过。
+	}
+	num := int64(a.AlertNumber)
+	srcUpdated := now
+	ev := store.Event{
+		Source: "reconcile", Kind: kind, Action: store.AlertStateWithdrawn,
+		RepositoryID: &repo.ID, SubjectNumber: &num, Title: a.RuleOrDependency, Severity: a.Severity,
+		OccurredAt: now, SourceUpdatedAt: &srcUpdated, HTMLURL: a.HTMLURL,
+		PayloadSummary: map[string]any{
+			"state": store.AlertStateWithdrawn, "severity": a.Severity, "rule_or_dependency": a.RuleOrDependency,
+		},
+		SuppressNotification: true, DedupeFingerprint: fp, StateHash: hash,
+	}
+	if _, err := r.Store.Events().Create(ctx, ev); err != nil {
+		if r.Logger != nil {
+			r.Logger.Warn("security alert withdraw event failed", "repo", repo.FullName, "alert_number", a.AlertNumber, "kind", kind, "error_code", "alert_withdraw_event_failed", "error", err.Error())
+		}
+	}
+}
+
+// isTerminalAlertState 终态告警不再参与差集重标：保留用户或源端已确认的状态，
+// 只有仍处于待处理语义（open/reopened 等）的本地行才可能被撤回标记覆盖。
+func isTerminalAlertState(state string) bool {
+	switch state {
+	case "fixed", "dismissed", "auto_dismissed", store.AlertStateWithdrawn:
+		return true
+	}
+	return false
 }
 
 // alertUnavailable 判断告警 API 的错误是否为"功能未开启"不可恢复状态。
@@ -533,6 +637,12 @@ func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 	if r.OnRun != nil {
 		r.OnRun()
 	}
+	// 全量对账互斥下沉到 Reconciler：调度器（每 6h）与 HTTP 手动触发共用同一原子锁，
+	// 进行中再触发直接返回 ErrReconcileInProgress，避免双轮并发打爆 GitHub 配额。
+	if !r.reconcileAllBusy.CompareAndSwap(false, true) {
+		return ErrReconcileInProgress
+	}
+	defer r.reconcileAllBusy.Store(false)
 	if limit <= 0 {
 		limit = 10
 	}

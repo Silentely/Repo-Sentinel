@@ -2,13 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 
+import { ConfirmDialog } from "../../components/confirm-dialog";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
 import { apiRequest } from "../../lib/api/client";
+import { toApiError } from "../../lib/api/errors";
 import { channelLabel, htmlToPlainText, outboxErrorHint, outboxStatusLabel } from "../../lib/format";
+import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import { useUrlState } from "../../lib/use-url-state";
+import { ClearFiltersButton } from "./list-shared";
 import { outboxQueryOptions, retryOutbox, type OutboxItem, type Page } from "./api";
 
 const statusFilters = [
@@ -32,9 +36,10 @@ interface BatchRetryResult {
 
 export function OutboxPage() {
   const queryClient = useQueryClient();
-  // 状态筛选同步到 URL（?status=dead 等）：仪表盘「投递失败」跳转时直接进入对应筛选。
+  // 状态/渠道筛选同步到 URL（?status=dead&channel=telegram 等）：
+  // 仪表盘「投递失败」跳转直达对应筛选，刷新/复制链接保留当前视角。
   const [statusFilter, setStatusFilter] = useUrlState("status", "");
-  const [channelFilter, setChannelFilter] = useState<string>("");
+  const [channelFilter, setChannelFilter] = useUrlState("channel", "");
   const [selectedItem, setSelectedItem] = useState<OutboxItem | null>(null);
   const closeDetail = useCallback(() => setSelectedItem(null), []);
 
@@ -43,15 +48,23 @@ export function OutboxPage() {
   // 行级忙碌：只让当前重试的记录转圈，避免整列禁用。
   const [retryBusyId, setRetryBusyId] = useState<string | null>(null);
   const [batchRetryResult, setBatchRetryResult] = useState<BatchRetryResult | null>(null);
+  // 单条重试失败：顶部提示原因（错误码已写入该记录，可结合列表查看）。
+  const [retryError, setRetryError] = useState<string | null>(null);
+  // 跨页批量重试确认：批量操作覆盖全部失败投递，样式化对话框防误触。
+  const [retryAllConfirmOpen, setRetryAllConfirmOpen] = useState(false);
 
   const retry = useMutation({
     mutationFn: (id: string) => retryOutbox(id),
-    onMutate: (id) => setRetryBusyId(id),
+    onMutate: (id) => {
+      setRetryBusyId(id);
+      setRetryError(null);
+    },
     onSettled: () => setRetryBusyId(null),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["outbox"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
+    onError: (err) => setRetryError(toApiError(err).message || "重试失败"),
   });
 
   const retryAllDead = useMutation({
@@ -84,7 +97,10 @@ export function OutboxPage() {
     mutationFn: async (): Promise<BatchRetryResult> => {
       const ids: string[] = [];
       for (let page = 1; ; page++) {
+        // 带上当前渠道筛选：与按钮计数（status=dead 时取当前筛选 total）保持一致，
+        // 避免「仅重试 Telegram 的 3 条」按钮实际重试了所有渠道的失败投递。
         const params = new URLSearchParams({ per_page: "100", page: String(page), status: "dead" });
+        if (channelFilter) params.set("channel_type", channelFilter);
         const data = await apiRequest<Page<OutboxItem>>(`/api/v1/notifications/outbox?${params.toString()}`);
         ids.push(...data.items.map((it) => it.id));
         if (data.items.length === 0 || page * data.per_page >= data.total) break;
@@ -110,6 +126,7 @@ export function OutboxPage() {
   });
 
   // 全局 dead 总数：用于「重试全部失败」按钮的显示条件（无失败时隐藏）。
+  // dead 筛选页本身已是 dead 列表，直接复用当前列表 total，避免多余请求。
   const deadTotalQuery = useQuery({
     queryKey: ["outbox", "dead-total"],
     queryFn: async (): Promise<number> => {
@@ -117,8 +134,9 @@ export function OutboxPage() {
       return data.total;
     },
     staleTime: 30_000,
+    enabled: statusFilter !== "dead",
   });
-  const totalDead = deadTotalQuery.data ?? 0;
+  const totalDead = statusFilter === "dead" ? (outbox.data?.total ?? 0) : (deadTotalQuery.data ?? 0);
 
   const items = outbox.data?.items ?? [];
   const deadCount = items.filter((it) => it.status === "dead").length;
@@ -143,7 +161,7 @@ export function OutboxPage() {
             {statusFilters.map((f) => (
               <button
                 key={f.value}
-                className={`quiet-button ${statusFilter === f.value ? "quiet-button--active" : ""}`}
+                className={`quiet-button${statusFilter === f.value ? " active" : ""}`}
                 type="button"
                 aria-pressed={statusFilter === f.value}
                 onClick={() => setStatusFilter(f.value)}
@@ -166,13 +184,7 @@ export function OutboxPage() {
               </select>
             </label>
             {statusFilter || channelFilter ? (
-              <button
-                className="quiet-button"
-                type="button"
-                onClick={() => { setStatusFilter(""); setChannelFilter(""); }}
-              >
-                清除筛选
-              </button>
+              <ClearFiltersButton onClick={() => { setStatusFilter(""); setChannelFilter(""); }} />
             ) : null}
             {statusFilter === "dead" && deadCount > 0 && (
               <button
@@ -192,14 +204,9 @@ export function OutboxPage() {
               <button
                 className="quiet-button quiet-button--primary-ghost"
                 type="button"
-                onClick={() => {
-                  // 批量操作覆盖全部失败投递：确认防误触。
-                  if (window.confirm(`确定要重新排队全部 ${totalDead} 条失败投递吗？`)) {
-                    retryAllDeadAcrossPages.mutate();
-                  }
-                }}
+                onClick={() => setRetryAllConfirmOpen(true)}
                 disabled={retryAllDeadAcrossPages.isPending}
-                title={`跨页重试全部 ${totalDead} 条失败投递`}
+                title={`${channelFilter ? `重试${channelLabel(channelFilter)}渠道全部 ` : "跨页重试全部 "}${totalDead} 条失败投递`}
               >
                 {retryAllDeadAcrossPages.isPending ? (
                   <><Loader2 size={14} className="spin" aria-hidden="true" /> 收集中…</>
@@ -210,6 +217,7 @@ export function OutboxPage() {
             ) : null}
           </div>
         </div>
+        {retryError ? <ErrorAlert title="重试失败" message={retryError} /> : null}
         {batchRetryResult && batchRetryResult.failed > 0 ? (
           <ErrorAlert
             title="批量重试未全部成功"
@@ -281,6 +289,19 @@ export function OutboxPage() {
       {selectedItem && (
         <OutboxDetailDrawer item={selectedItem} onClose={closeDetail} />
       )}
+
+      <ConfirmDialog
+        open={retryAllConfirmOpen}
+        title="重新排队全部失败投递"
+        message={`确定要重新排队全部 ${totalDead} 条失败投递吗？将不受当前筛选限制，按页收集后逐条重新入队。`}
+        confirmLabel={retryAllDeadAcrossPages.isPending ? "收集中…" : "重新排队"}
+        busy={retryAllDeadAcrossPages.isPending}
+        onConfirm={() => {
+          setRetryAllConfirmOpen(false);
+          retryAllDeadAcrossPages.mutate();
+        }}
+        onCancel={() => setRetryAllConfirmOpen(false)}
+      />
     </>
   );
 }
@@ -288,19 +309,11 @@ export function OutboxPage() {
 function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () => void }) {
   const panelRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
-  // 复制投递 ID：排查时便于粘贴到日志/工单；剪贴板不可用静默降级。
-  const [copiedId, setCopiedId] = useState(false);
-  const copyId = async () => {
-    try {
-      await navigator.clipboard.writeText(item.id);
-      setCopiedId(true);
-      window.setTimeout(() => setCopiedId(false), 1500);
-    } catch {
-      // 非安全上下文或权限受限：不打断使用。
-    }
-  };
+  // 复制投递 ID：排查时便于粘贴到日志/工单；失败给出短暂反馈，不打断使用。
+  const { isCopied: copiedId, copy: copyText } = useCopyFeedback();
+  const copyId = () => void copyText("id", item.id);
 
-  // 抽屉生命周期：记录触发焦点、锁定背景滚动、支持 Escape 关闭，
+  // 抽屉生命周期：记录触发焦点、锁定背景滚动、支持 Escape 关闭与 Tab 焦点循环，
   // 关闭后归还焦点给触发元素（与移动端导航抽屉行为一致）。
   useEffect(() => {
     triggerRef.current = document.activeElement as HTMLElement | null;
@@ -311,6 +324,30 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
+        return;
+      }
+      // 焦点陷阱：Tab 在对话框内循环，避免焦点逃逸到抽屉后的页面内容。
+      if (event.key !== "Tab" || !panelRef.current) {
+        return;
+      }
+      const focusables = panelRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) {
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (!first || !last) {
+        return;
+      }
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !panelRef.current.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -363,6 +400,14 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
             <dt>尝试次数</dt>
             <dd>{item.attempt_count}</dd>
           </div>
+          {item.next_attempt_at ? (
+            <div className="drawer-field">
+              <dt>下次重试</dt>
+              <dd>
+                <RelativeTime date={item.next_attempt_at} />
+              </dd>
+            </div>
+          ) : null}
           {item.last_error_code && (
             <div className="drawer-field">
               <dt>错误码</dt>
@@ -393,7 +438,7 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
             <dd>
               <code>{item.id}</code>{" "}
               <button type="button" className="quiet-button quiet-button--compact" onClick={() => void copyId()} aria-label="复制投递 ID">
-                {copiedId ? "已复制" : "复制"}
+                {copiedId("id") ? "已复制" : "复制"}
               </button>
             </dd>
           </div>

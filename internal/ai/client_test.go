@@ -78,6 +78,24 @@ func TestHTTPClientReuse(t *testing.T) {
 	if (&Client{HTTP: injected}).httpClient() != injected {
 		t.Fatal("注入的自定义客户端应原样使用")
 	}
+	// 共享默认客户端不得带硬编码 Timeout：请求超时由 ctx（配置超时）承载，
+	// 否则高于 30s 的超时配置会被客户端硬顶截断。
+	if defaultHTTPClient.Timeout != 0 {
+		t.Fatalf("默认客户端不应设 Timeout 硬顶，实际 %s", defaultHTTPClient.Timeout)
+	}
+}
+
+// TestEffectiveTimeout 验证生效超时：显式配置优先，未配置回退默认值。
+func TestEffectiveTimeout(t *testing.T) {
+	if got := (&Client{Timeout: 45 * time.Second}).EffectiveTimeout(); got != 45*time.Second {
+		t.Fatalf("显式配置应生效，实际 %s", got)
+	}
+	if got := (&Client{}).EffectiveTimeout(); got != DefaultTimeout {
+		t.Fatalf("未配置应回退默认值，实际 %s", got)
+	}
+	if got := (*Client)(nil).EffectiveTimeout(); got != DefaultTimeout {
+		t.Fatalf("nil 客户端应回退默认值，实际 %s", got)
+	}
 }
 
 // TestTruncateOutput 验证 AI 输出长度上限：超长截断、边界不截断、多字节字符不截断半个字符。
@@ -538,7 +556,9 @@ func TestConcurrencyBudget(t *testing.T) {
 	aiMaxConcurrency = 1
 	t.Cleanup(func() { aiMaxConcurrency = old })
 
-	entered := make(chan struct{})
+	// entered 带 1 缓冲：handler 的 non-blocking 发送不依赖接收方先就绪，
+	// 避免发送早于主 goroutine 的 <-entered 时静默丢信号导致死锁。
+	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -591,7 +611,9 @@ func TestCompleteConcurrencyLimitContextCanceled(t *testing.T) {
 	aiMaxConcurrency = 1
 	t.Cleanup(func() { aiMaxConcurrency = old })
 
-	entered := make(chan struct{})
+	// entered 带 1 缓冲：handler 的 non-blocking 发送不依赖接收方先就绪，
+	// 避免发送早于主 goroutine 的 <-entered 时静默丢信号导致死锁。
+	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -617,4 +639,159 @@ func TestCompleteConcurrencyLimitContextCanceled(t *testing.T) {
 	}
 	close(release)
 	<-aDone
+}
+
+// TestRetryableCallError 验证可重试/不可重试错误分类：网络层、上游 5xx 与空/坏响应
+// 可重试；4xx 为确定性错误，并发预算超限与编码错误重试无意义。
+func TestRetryableCallError(t *testing.T) {
+	retryable := []error{
+		&callError{code: "timeout", err: errors.New("t")},
+		&callError{code: "network", err: errors.New("n")},
+		&callError{code: "upstream", status: http.StatusInternalServerError, err: errors.New("500")},
+		&callError{code: "upstream", status: http.StatusServiceUnavailable, err: errors.New("503")},
+		&callError{code: "empty_response", err: errors.New("e")},
+		&callError{code: "bad_response", err: errors.New("b")},
+	}
+	for _, e := range retryable {
+		if !retryableCallError(e) {
+			t.Fatalf("%v 应可重试", e)
+		}
+	}
+	noRetry := []error{
+		&callError{code: "upstream", status: http.StatusUnauthorized, err: errors.New("401")},
+		&callError{code: "upstream", status: http.StatusTooManyRequests, err: errors.New("429")},
+		&callError{code: "concurrency_limit", err: errors.New("c")},
+		&callError{code: "internal", err: errors.New("i")},
+		errors.New("unknown"),
+	}
+	for _, e := range noRetry {
+		if retryableCallError(e) {
+			t.Fatalf("%v 不应重试", e)
+		}
+	}
+}
+
+// TestCompleteRetriesTransientSuccess 验证瞬时失败（5xx）自动重试后成功：
+// 请求 2 次、日志含 retry 留痕、最终 ok。
+func TestCompleteRetriesTransientSuccess(t *testing.T) {
+	old := retryDelay
+	retryDelay = time.Millisecond
+	t.Cleanup(func() { retryDelay = old })
+
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			http.Error(w, "boom", http.StatusBadGateway)
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+	buf, logger := newTestLogger(t)
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Retries: 1, Logger: logger}
+	got, err := c.Complete(t.Context(), "s", "u")
+	if err != nil {
+		t.Fatalf("重试后应成功: %v", err)
+	}
+	if got != "ok" {
+		t.Fatalf("返回值异常: %q", got)
+	}
+	if calls != 2 {
+		t.Fatalf("期望 2 次尝试，实际 %d", calls)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `msg="ai request retry"`) || !strings.Contains(out, "error_code=upstream_502") {
+		t.Fatalf("期望重试留痕，实际: %s", out)
+	}
+	if !strings.Contains(out, `msg="ai request ok"`) {
+		t.Fatalf("最终成功应留痕 ok，实际: %s", out)
+	}
+}
+
+// TestCompleteRetriesExhausted 验证重试次数用尽仍失败：尝试 = 1+Retries，最终 failed 留痕。
+func TestCompleteRetriesExhausted(t *testing.T) {
+	old := retryDelay
+	retryDelay = time.Millisecond
+	t.Cleanup(func() { retryDelay = old })
+
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	buf, logger := newTestLogger(t)
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Retries: 2, Logger: logger}
+	if _, err := c.Complete(t.Context(), "s", "u"); err == nil {
+		t.Fatal("重试用尽应失败")
+	}
+	if calls != 3 {
+		t.Fatalf("期望 3 次尝试（1+2），实际 %d", calls)
+	}
+	if !strings.Contains(buf.String(), `msg="ai request failed"`) {
+		t.Fatalf("最终失败应留痕 failed，实际: %s", buf.String())
+	}
+}
+
+// TestCompleteRetriesDisabled 验证 Retries=0 不重试（直接构造默认即 0，行为向后兼容）。
+func TestCompleteRetriesDisabled(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, "boom", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Retries: 0}
+	if _, err := c.Complete(t.Context(), "s", "u"); err == nil {
+		t.Fatal("5xx 应失败")
+	}
+	if calls != 1 {
+		t.Fatalf("Retries=0 只应尝试 1 次，实际 %d", calls)
+	}
+}
+
+// TestCompleteRetriesNoRetry4xx 验证 4xx（确定性错误）不重试。
+func TestCompleteRetriesNoRetry4xx(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Retries: 3}
+	if _, err := c.Complete(t.Context(), "s", "u"); err == nil {
+		t.Fatal("401 应失败")
+	}
+	if calls != 1 {
+		t.Fatalf("4xx 不应重试，实际尝试 %d 次", calls)
+	}
+}
+
+// TestCompleteRetriesContextExpiry 验证外层预算到期停止重试：分诊 15s 等硬预算下
+// 重试不会无限叠加时长，预算耗尽即放弃。
+func TestCompleteRetriesContextExpiry(t *testing.T) {
+	old := retryDelay
+	retryDelay = 50 * time.Millisecond
+	t.Cleanup(func() { retryDelay = old })
+
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, "boom", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	// 外层 120ms：第一次尝试立即失败，等待 50ms 后重试；预算耗尽即放弃，不无限重试。
+	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Millisecond)
+	defer cancel()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Retries: 5}
+	if _, err := c.Complete(ctx, "s", "u"); err == nil {
+		t.Fatal("应失败")
+	}
+	if calls < 2 {
+		t.Fatalf("预算耗尽前应至少重试 1 次，实际尝试 %d", calls)
+	}
+	if calls > 3 {
+		t.Fatalf("预算到期应立即放弃，实际尝试 %d 次（应不超过 3）", calls)
+	}
 }

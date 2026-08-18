@@ -55,12 +55,13 @@ func (s *server) handleVersionCheck(w http.ResponseWriter, r *http.Request) {
 	local := s.localVersion()
 	checker := s.dependencies.UpdateChecker
 	if checker == nil {
-		// 未装配时按配置构造临时检查器（测试与降级路径）。
+		// 未装配时按配置构造临时检查器（测试与降级路径）；补 Logger 让检查失败可留痕。
 		checker = &updatecheck.Checker{
 			Enabled:  s.dependencies.Config.UpdateCheck.Enabled,
 			CheckURL: s.dependencies.Config.UpdateCheck.URL,
 			Token:    s.dependencies.Config.UpdateCheck.Token.Reveal(),
 			Current:  local.Version,
+			Logger:   s.dependencies.Logger,
 		}
 	}
 	// 比较基准在装配时即为当前进程版本，此处不得写共享 Checker（并发下构成数据竞争）。

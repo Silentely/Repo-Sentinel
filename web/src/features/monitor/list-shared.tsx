@@ -14,6 +14,28 @@ import { repositoriesQueryOptions, settingsQueryOptions, type Repository, type S
 
 export type IgnoredMode = "active" | "ignored";
 
+/** 清除筛选按钮：筛选栏紧凑版与空态主按钮版共用，避免各列表页重复维护同一块。 */
+export function ClearFiltersButton({
+  onClick,
+  variant = "compact",
+}: {
+  onClick: () => void;
+  variant?: "compact" | "primary";
+}) {
+  if (variant === "primary") {
+    return (
+      <button type="button" className="primary-button primary-button--inline" onClick={onClick}>
+        清除筛选
+      </button>
+    );
+  }
+  return (
+    <button className="quiet-button quiet-button--compact" type="button" onClick={onClick}>
+      清除筛选
+    </button>
+  );
+}
+
 /** 功能开关守卫：加载中展示骨架，关闭时展示空状态。 */
 export function FeatureGuard({
   featureKey,
@@ -27,7 +49,8 @@ export function FeatureGuard({
   children: ReactNode;
 }) {
   const settings = useQuery(settingsQueryOptions);
-  if (settings.isLoading) {
+  // isPending 覆盖「无缓存且加载中」，与 QueryGate 判定一致。
+  if (settings.isPending) {
     return (
       <ListShell eyebrow="仓库" title={featureName} description={description}>
         <ListSkeleton />
@@ -59,11 +82,15 @@ export function FeatureGuard({
   return <>{children}</>;
 }
 
-/** 活跃（未归档）仓库列表，用于四页共用筛选。 */
+/** 活跃（未归档、未不可用）仓库列表，用于四页共用筛选。 */
 export function useActiveRepos() {
   const repos = useQuery(repositoriesQueryOptions);
   const active = useMemo(
-    () => (repos.data?.items ?? []).filter((r) => !r.is_archived && r.sync_status !== "archived"),
+    // 排除 archived 与 unavailable：不可用仓库的工作项列表本就不展示，进下拉只会选中即空态。
+    () =>
+      (repos.data?.items ?? []).filter(
+        (r) => !r.is_archived && r.sync_status !== "archived" && r.sync_status !== "unavailable",
+      ),
     [repos.data?.items],
   );
   return { active };
@@ -79,8 +106,9 @@ export function RepoFilterSelect({
   repos: Repository[];
 }) {
   return (
+    // label 关联 + select aria-label 双份命名重复：保留 aria-label（读屏只取其一），
+    // sr-only 文本删去避免标注冗余。
     <label className="repo-filter">
-      <span className="sr-only">按仓库筛选</span>
       <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="按仓库筛选">
         <option value="">全部仓库</option>
         {repos.map((r) => (
@@ -106,6 +134,7 @@ export function IgnoredToggle({
       <button
         className={`quiet-button${mode === "active" ? " active" : ""}`}
         type="button"
+        aria-pressed={mode === "active"}
         onClick={() => onChange("active")}
       >
         关注中
@@ -113,6 +142,7 @@ export function IgnoredToggle({
       <button
         className={`quiet-button${mode === "ignored" ? " active" : ""}`}
         type="button"
+        aria-pressed={mode === "ignored"}
         onClick={() => onChange("ignored")}
       >
         已忽略
@@ -144,16 +174,20 @@ export function IgnoreButton({
   );
 }
 
-/** 忽略开关 mutation：统一 busy 状态与查询失效。 */
+/** 忽略开关 mutation：统一 busy 状态、查询失效与失败反馈。 */
 export function useIgnoreMutation(
   mutateFn: (id: string, ignored: boolean) => Promise<void>,
   invalidateKeys: string[],
 ) {
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: ({ id, ignored }: { id: string; ignored: boolean }) => mutateFn(id, ignored),
-    onMutate: ({ id }) => setBusyId(id),
+    onMutate: ({ id }) => {
+      setBusyId(id);
+      setErrorMessage(null);
+    },
     onSettled: async () => {
       setBusyId(null);
       for (const key of invalidateKeys) {
@@ -161,8 +195,9 @@ export function useIgnoreMutation(
       }
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
+    onError: (error) => setErrorMessage(toApiError(error).message || "操作失败"),
   });
-  return { mutation, busyId };
+  return { mutation, busyId, errorMessage };
 }
 
 export { ListShell, ListSkeleton };

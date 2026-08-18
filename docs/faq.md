@@ -38,6 +38,26 @@
 
 新仓库先确认是否处于基线抑制（见「为什么新仓库一开始不发 Telegram？」）。
 
+### 如何追踪 star 仓库的新 Release？
+
+「设置」→「Star Release 追踪」填写 GitHub 用户名并保存，随后点「立即同步」：
+
+1. 匿名枚举该用户**公开** star 仓库（自动排除 fork 与已归档），每个仓库注册后先探测一次：
+   - 从无 Release → 标记「无 Release」，7 天复查一次（防止仓库未来开始发版本被漏掉）；
+   - 已有 Release → 记录当前最新版本为基线，**历史版本不通知**，只通知此后新发布的。
+2. 后台按「Release 轮询周期」（默认 10m）用 GitHub App installation token 轮询各仓最新 Release；
+   ETag 条件请求未变更时返回 304、**不计入 API 限流**。
+3. 新 Release 发布后经通知管线推送到已订阅 `release` 事件类型的渠道（Telegram / HTTP Webhook）；
+   配置智能值守后正文附带**更新速览**（英文 release notes 自动翻译要点）与原文链接；AI 不可用时通知原文链接兜底，不会丢。
+4. 用户 unstar 某仓库后，下一轮同步自动停用其追踪（保留记录，可手动恢复）。
+
+几点说明：
+
+- 只覆盖**公开** star 仓库（匿名枚举的边界）；私有 star 仓不追踪。
+- 渠道 `event_kinds` 为「全部订阅」（默认）时自动接收 release 通知；显式勾选订阅的渠道需勾上 `release` 项。
+- 星标频率很低（可能几天一个），「Star 列表同步周期」默认 6h 已足够；Release 轮询周期才决定通知延迟。
+- 网络受限（如国内 VPS）访问 GitHub API 不稳时，部署容器设置 `HTTPS_PROXY` / `NO_PROXY` 环境变量即可（客户端默认走系统代理）。
+
 ### `REPOSENTINEL_GITHUB_WEBHOOK_SECRET` 和页面里的「签名 Secret」是一回事吗？
 
 **不是。** 两套 Secret 方向相反：

@@ -102,6 +102,7 @@ A: `reconcileAllRunning` atomic 防重入。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-10T13:00:00Z | 新增 starred-releases 端点：GET/PUT `/api/v1/starred-releases/config`（用户名归一化、周期/上限/预发布开关）、POST `/api/v1/starred-releases/sync`（立即同步）、GET `/api/v1/starred-releases/trackers`（分页 + state 筛选）、POST `/api/v1/starred-releases/trackers/{id}/state`（停用/恢复）；AI 配置 API 增 `release_summary_enabled` |
 | 2026-08-06T15:48:41Z | 新增 /api/v1/stats/star-trend 端点（days=7/30/90/0），/api/v1/repositories/{id}/settings 支持 stars_enabled、watches_enabled 字段 |
 | 2026-08-06T12:50:00Z | Agent 发现端点：sitemap/robots/Content-Signals、Link 头、RFC 9727 API 目录、OpenAPI 3.1、OAuth 2.0 client-credentials（token/jwks/Bearer 认证）、RFC 8414/9728 元数据、auth.md、MCP Streamable HTTP 网关 + Server Card、Agent Skills 索引、Markdown 协商；`authenticationMiddleware` 支持 Bearer，`csrfMiddleware` 对 Agent 放行 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

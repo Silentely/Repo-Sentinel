@@ -76,6 +76,8 @@ type Dependencies struct {
 	AI *ai.Client
 	// AIRuntime 可选；管理台可编辑的 AI 配置（env 优先，DB 补缺）。
 	AIRuntime *ai.RuntimeConfig
+	// StarredPoller 可选；star 仓库 release 追踪轮询（配置保存/立即同步触发）。
+	StarredPoller *syncx.StarredReleasePoller
 }
 
 type server struct {
@@ -221,6 +223,8 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/github/installations", s.handleListInstallations)
 			protected.Get("/github/config", s.handleGetGitHubConfig)
 			protected.Get("/ai/config", s.handleGetAIConfig)
+			protected.Get("/starred-releases/config", s.handleGetStarredReleasesConfig)
+			protected.Get("/starred-releases/trackers", s.handleListStarredTrackers)
 			protected.Get("/system/settings", s.handleGetSettings)
 			protected.Group(func(mutating chi.Router) {
 				mutating.Use(s.csrfMiddleware)
@@ -243,6 +247,9 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Put("/github/config", s.handlePutGitHubConfig)
 				mutating.Put("/ai/config", s.handlePutAIConfig)
 				mutating.Post("/ai/test", s.handleTestAIConfig)
+				mutating.Put("/starred-releases/config", s.handlePutStarredReleasesConfig)
+				mutating.Post("/starred-releases/sync", s.handleSyncStarredReleases)
+				mutating.Post("/starred-releases/trackers/{id}/state", s.handleSetStarredTrackerState)
 				mutating.Post("/github/sync-repositories", s.handleSyncInstallationRepositories)
 				mutating.Post("/system/version/check", s.handleVersionCheck)
 			})

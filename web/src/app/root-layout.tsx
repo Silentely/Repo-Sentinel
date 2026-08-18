@@ -8,6 +8,7 @@ import {
   ListTodo,
   LogOut,
   Menu,
+  Rocket,
   Send,
   Settings,
   Shield,
@@ -43,6 +44,7 @@ export function mobileTitleFor(pathname: string): string {
   if (pathname.startsWith("/actions")) return "Actions";
   if (pathname.startsWith("/security")) return "安全告警";
   if (pathname.startsWith("/github")) return "GitHub App";
+  if (pathname.startsWith("/starred-releases")) return "Star Release";
   if (pathname.startsWith("/about")) return "关于";
   if (pathname.startsWith("/settings")) return "设置";
   return "仪表盘";
@@ -93,7 +95,7 @@ export function RootLayout({ session }: RootLayoutProps) {
     return () => media.removeEventListener("change", onChange);
   }, []);
 
-  // 抽屉打开期间：锁定背景滚动、支持 Escape 关闭。
+  // 抽屉打开期间：锁定背景滚动、支持 Escape 关闭、Tab 焦点在抽屉内循环。
   useEffect(() => {
     if (!navOpen) {
       return;
@@ -103,6 +105,31 @@ export function RootLayout({ session }: RootLayoutProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setNavOpen(false);
+        return;
+      }
+      // 焦点陷阱：Tab 在抽屉内循环，避免焦点逃逸到 scrim 之后的主内容
+      //（打开时焦点已移入抽屉，Tab 向后到末项后回绕，Shift+Tab 反向）。
+      if (event.key !== "Tab" || !sidebarRef.current) {
+        return;
+      }
+      const focusables = sidebarRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) {
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (!first || !last) {
+        return;
+      }
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !sidebarRef.current.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -145,6 +172,7 @@ export function RootLayout({ session }: RootLayoutProps) {
   const featurePRs = settings.data?.["feature.pull_requests"] !== false;
   const featureActions = settings.data?.["feature.actions"] !== false;
   const featureAlerts = settings.data?.["feature.security_alerts"] !== false;
+  const featureStarredReleases = settings.data?.["feature.starred_releases"] !== false;
 
   // 侧边栏徽章数据
   const stats = dashboard.data;
@@ -173,6 +201,10 @@ export function RootLayout({ session }: RootLayoutProps) {
         id="app-sidebar"
         ref={sidebarRef}
         className={`app-sidebar${navOpen ? " is-open" : ""}`}
+        // 移动端打开时声明模态语义，读屏用户可感知抽屉为对话框；桌面端为常驻侧栏不加。
+        role={navOpen ? "dialog" : undefined}
+        aria-modal={navOpen ? "true" : undefined}
+        aria-label={navOpen ? "导航菜单" : undefined}
       >
         <div className="app-brand">
           <span className="app-brand__mark" aria-hidden="true">
@@ -237,6 +269,15 @@ export function RootLayout({ session }: RootLayoutProps) {
             <span>投递记录</span>
             {outboxDead > 0 && <span className="nav-badge nav-badge--warning">{outboxDead}</span>}
           </Link>
+          {featureStarredReleases ? (
+            <>
+              <span className="app-nav__label">追踪</span>
+              <Link to="/starred-releases" activeProps={{ "aria-current": "page" }}>
+                <Rocket aria-hidden="true" size={17} />
+                <span>Star Release</span>
+              </Link>
+            </>
+          ) : null}
           <span className="app-nav__label">系统</span>
           <Link to="/github" activeProps={{ "aria-current": "page" }}>
             <FolderGit2 aria-hidden="true" size={17} />
@@ -264,8 +305,9 @@ export function RootLayout({ session }: RootLayoutProps) {
               className="app-topbar__menu"
               aria-expanded={navOpen}
               aria-controls="app-sidebar"
-              aria-label="打开导航菜单"
-              onClick={() => setNavOpen(true)}
+              // 与打开/收起语义一致：label 随状态切换，点击在两种状态间切换。
+              aria-label={navOpen ? "收起导航菜单" : "打开导航菜单"}
+              onClick={() => setNavOpen((prev) => !prev)}
             >
               <Menu aria-hidden="true" size={20} strokeWidth={1.8} />
             </button>

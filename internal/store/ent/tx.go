@@ -32,6 +32,8 @@ type Tx struct {
 	Repository *RepositoryClient
 	// SecurityAlert is the client for interacting with the SecurityAlert builders.
 	SecurityAlert *SecurityAlertClient
+	// StarredRepoTracker is the client for interacting with the StarredRepoTracker builders.
+	StarredRepoTracker *StarredRepoTrackerClient
 	// SyncCursor is the client for interacting with the SyncCursor builders.
 	SyncCursor *SyncCursorClient
 	// SystemSetting is the client for interacting with the SystemSetting builders.
@@ -183,6 +185,7 @@ func (tx *Tx) init() {
 	tx.RepoStatSnapshot = NewRepoStatSnapshotClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)
 	tx.SecurityAlert = NewSecurityAlertClient(tx.config)
+	tx.StarredRepoTracker = NewStarredRepoTrackerClient(tx.config)
 	tx.SyncCursor = NewSyncCursorClient(tx.config)
 	tx.SystemSetting = NewSystemSettingClient(tx.config)
 	tx.WebhookDelivery = NewWebhookDeliveryClient(tx.config)

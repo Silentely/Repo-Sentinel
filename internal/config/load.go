@@ -267,6 +267,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 	if value, ok := lookup("REPOSENTINEL_EXTERNAL_PAT"); ok {
 		cfg.GitHub.ExternalPAT = NewSecret(value)
 	}
+	if value, ok := lookup("REPOSENTINEL_STARRED_USERNAME"); ok {
+		cfg.GitHub.StarredUsername = value
+	}
 	if value, ok := lookup("REPOSENTINEL_TELEGRAM_TOKEN"); ok {
 		cfg.Notify.Telegram.Token = NewSecret(value)
 	}
@@ -373,6 +376,13 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 		}
 		cfg.AI.MaxTokens = n
 	}
+	if value, ok := lookup("REPOSENTINEL_AI_RETRIES"); ok {
+		n, err := parseIntEnvironment("REPOSENTINEL_AI_RETRIES", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.AI.Retries = n
+	}
 	if value, ok := lookup("REPOSENTINEL_AI_DIGEST_ENABLED"); ok {
 		parsed, err := parseBoolEnvironment("REPOSENTINEL_AI_DIGEST_ENABLED", value)
 		if err != nil {
@@ -386,6 +396,13 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 			return poolExplicitFlags{}, err
 		}
 		cfg.AI.TriageEnabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_AI_RELEASE_SUMMARY_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_AI_RELEASE_SUMMARY_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.AI.ReleaseSummaryEnabled = parsed
 	}
 	if value, ok := lookup("REPOSENTINEL_OAUTH_CLIENT_ID"); ok {
 		cfg.OAuth.ClientID = value

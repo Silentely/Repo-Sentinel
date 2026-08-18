@@ -4,6 +4,17 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-18T00:00:00Z | 版本 v0.4.0：Star Release 追踪与通知（star 仓库最新 Release 轮询、AI 中文总结、三层开关、双周期可配置、500 追踪上限）；安全告警差集对账标记源端撤回告警为 withdrawn 并留痕 reconcile 事件；AI 超时强制遵循配置（删除 15s/30s 硬编码预算）、release 总结提示词改为每行要点；release 事件归属修复与补拉丢失、subject_number 升级 int64；前端可访问性、深色主题、回到顶部、表单 size 定宽、Star 曲线 Y 轴自适应、投递详情纯文本、复制反馈；调度错峰与构建链路修正 |
+| 2026-08-15T00:00:00Z | 修复 star release 轮询把有 release 的仓误标「无 Release」：`ListReleases` 条件请求命中 304（release 未变化）时响应体为空且 `modified=false`，而 `PollReleases` 的空列表判定早于 304 处理，导致每轮轮询后 release 未变化的追踪仓全部被 `UpdateNoRelease` 转入 inactive（已追踪基线游标的仓同批误标，管理台追踪中 2 / 无 Release 78 即此现象）；恢复「先处理 304 推进轮询时间、再判定空列表」的顺序，并补回归测试（mock 模拟 If-None-Match 命中 304，断言保持 tracking 且不改写游标）；存量误标自愈：star 同步对「inactive 但带 release 游标」的仓立即重新探测恢复（不必等 7 天复查，release 确实被删除的仓仍保持 inactive）；追踪页对「无 Release 但带已记录 release」的行补「恢复」按钮（可单仓立即回到追踪中） |
+| 2026-08-14T00:00:00Z | 安全告警差集对账：完整拉取远端告警列表后，将本地存在但源端已消失（GitHub 撤回，如依赖升级后公告被撤销）的非终态告警标记为 withdrawn（前端「已撤回」、安全页可筛选），并落一条抑制通知的 reconcile 事件（管理台事件流可追溯「待处理告警去哪了」，不推送、不进定期报告），修复「源端已解决、网页仍显示待处理」的陈旧状态；翻页超出页数预算（MaxPages）时跳过差集，避免把「没拉到」误判为「已消失」；已终态（fixed/dismissed/auto_dismissed/withdrawn）不重复改写 |
+|---|---|
+| 2026-08-13T14:00:00Z | ①修复列表页「回到顶部」点击无效：桌面端页面滚动发生在 `.app-main` 容器（`.app-shell` 以 `overflow: hidden` 锁死文档滚动），原 `window.scrollTo` 滚动对象错误，改按实际滚动位置选择目标容器（移动端抽屉形态回退 `window`）；②修复渠道配置勾选框被撑成巨大方块：`.field--plain input` 的文本框样式（`min-width: 12ch`/`min-height: 44px`/边框/内边距）泄漏到 checkbox，选择器排除 `checkbox`/`radio`，勾选框恢复 16px 标准尺寸（与设置页、仓库页一致）；③输入框宽度统一改为 `size` 属性限定：移除 `fit-content`/`field-sizing: content`（后者仅 Chrome/Safari 支持、Firefox 行为不一致且输入时宽度抖动），按字段语义定宽（时区/时间短、URL/密钥长），NumberField 按上限位数固定宽度不再随输入内容伸缩，各表单字段补充 size 值 |
+| 2026-08-13T10:30:00Z | ①修复每日摘要/AI 总结中 star 追踪 release 事件归属错误：外部 star 仓不建 Repository 行，release 事件落库补写 `PayloadSummary.repository`，摘要预览与 AI 输入统一经 `store.EventRepoName` 解析仓库名（RepositoryID → 回退 PayloadSummary），star/watch 事件标题即仓库名时不再重复前缀，杜绝 release 被张冠李戴到同名事件扎堆的仓库（如误归 eSIM-Tools）；②修复 release 轮询中断后中间版本静默丢失：`ListReleases` 每页 1→30 条，`PollReleases` 遍历所有比游标新的 release 逐个事件化，单轮补发上限 5 条，达上限或落库失败不推进游标、下轮续补（事件指纹幂等，重复扫描不重复投递）；③release ID 溢出防护：`events.subject_number` int→int64（Ent schema + 双轨迁移，PG 侧 `ALTER TYPE bigint`，SQLite 无 DDL），GitHub release ID 不再受 PG int4 上限约束；④release 轮询翻页补拉：`ListReleases` 支持分页（30 条/页、ETag 仅第 1 页），`PollReleases` 逐页翻到游标所在页，中断期间 >30 条也不再丢失旧版本；⑤前端最近事件面板：release 事件无 `repository_id` 时回退 `payload_summary.repository` 展示仓库名（事件列表 API 本就返回 payload_summary） |
+| 2026-08-13T00:00:00Z | AI 相关文案统一更名为「智能值守」体系：设置页「AI 集成」区块改「智能值守」、「启用 AI」改「启用智能值守」、每日/周/月报告「AI 摘要」改「智能简报」、Release「AI 中文总结」改「更新速览」（通知正文分段标题同步）、运维文档「AI 调用」改「大模型调用」；测试断言、示例配置与文档同步更新 |
+| 2026-08-12T13:30:00Z | ①AI 实时链路超时强制遵循配置：删除分诊/release 总结 15s 硬编码预算（改为按 `ai.Client.EffectiveTimeout` 建预算）、共享 HTTP 客户端 30s 硬顶移除（超时统一由 ctx 承载）、webhook 单条处理预算随 AI 超时放宽（下限 60s），「设置了超时却被更早截断」不再发生，超时后通知以原文链接兜底；②Release AI 总结提示词改「每行一条要点、`- ` 前缀」，推送正文告别整段长文字；③设置页数字输入统一为「自由输入、失焦钳制」（新增 NumberField 组件），修复输出 token 上限逐位输入首位数即被钳到 100，同步核查并迁移聚合窗口/保留天数/追踪上限等全部数字输入 |
+| 2026-08-11T12:00:00Z | ①前端状态卡死修复：仓库彻底删除失败补 onSettled/onError（不再卡「删除中」）、Star 追踪行 busy 改为父级 mutation 判定、设置页表单仅首次加载回填（跨区块保存不再静默覆盖未保存编辑）；②可访问性：IgnoreToggle 补 aria-pressed、移动端/投递详情抽屉补焦点循环与模态语义、移动端主题下拉从 Tab 序移除、补 state-action_required/skipped 与 kind-release/star/watch 徽章；③通知文案收敛：digest 复用 store.KindDisplayName 与 rules.EventStatusLabel（消除映射漂移）、聚合标题「（已合并）」改「（已聚合）」、空摘要 🎉 改 📭、updatecheck 补句号；④日志留痕：webhook MarkProcessed/仓库生命周期/star 游标吞错补 Warn/Debug、投递失败日志补 error_code、AI 日志 URL 打码防内嵌凭据泄漏；⑤性能：star 同步与 outbox 投递渠道查询去 N+1、webhook 单条处理加 60s 超时、StarTrendChart memo、dead 总数查询条件化；⑥体验：仪表盘/outbox 重试失败反馈、outbox/star 追踪筛选同步 URL、复制反馈抽 useCopyFeedback、toApiError 重复解析收敛为 ApiErrorAlert；⑦错误处理：github_app_not_configured 统一 sentinel、MCP 错误不透出内部细节、updatecheck 未分类错误统一文案、unknown_channel 等确定性错误直判死信、Store 未装配返回 service_unavailable 语义码；⑧代码质量：rules 展示映射收敛到 display.go、GitHub 查看按钮文案抽常量、buildDigestBody 清理、Retry-After 硬编码抽常量、清除筛选按钮抽组件、筛选选中态两套样式统一、state 徽章令牌化（含深色档）、主题色改为运行时读设计令牌 |
+| 2026-08-11T00:00:00Z | ①Star 增长曲线 Y 轴自适应缩放：不再从 0 起，围绕数据波动范围外扩（波动大贴近上下 100、个位波动自动收紧窗口），大基数下个位增长可见；②关于页移除 Git SHA 复制按钮（直接展示文本）、构建时间恢复绝对日期显示（不再显示「X 天前」） |
+| 2026-08-10T13:00:00Z | Star 仓库 Release 追踪与通知：设置页填 GitHub 用户名匿名枚举公开 star 仓库（自动过滤 fork/archived、无 Release 仓 7 天复查），复用 GitHub App installation token + ETag 条件请求轮询各仓最新 Release，新版本实时通知并附 AI 中文总结（英文 notes 翻译摘要，失败原文链接兜底）；新增 release 事件类型与 `feature.starred_releases` 三层开关、双周期可配置（Star 同步 6h / Release 轮询 10m）、500 追踪上限、unstar 自动停用；代理经 `HTTPS_PROXY` 环境变量天然支持 |
 | 2026-08-09T18:00:00Z | 第九轮（81-90）：①列表底部回到顶部；②对账/外部轮询单仓成功 Debug 留痕；③登录成功日志补 UA；④⑤⑥筛选按钮 aria-pressed（列表/outbox/仓库归档）；⑦仓库生命周期事件 Info 留痕；⑧JSON 413 响应带说明；⑨dashboard 错误码 hover 中文说明；⑩dashboard 事件打开 title |
 | 2026-08-09T19:00:00Z | 第十轮（91-100）：①webhook 标记失败 Warn 留痕；②列表 GitHub 链接 title；③digest 无渠道 Debug 留痕；④对账按钮 aria-busy；⑤outbox 抽屉关联链接 title；⑥about 外链 title 统一；⑦GitHub 出站 UA；⑧文档同步；⑨全量验证；⑩提交 |
 | 2026-08-09T14:00:00Z | 第八轮优化：①Star 图表深色主题适配（Tooltip/刻度随设计令牌）；②全局滚动条深色适配；③about 构建时间相对时间展示；④metrics 补 outbox pending/sending 队列深度；⑤FAQ 补通知排查条目 |
@@ -28,7 +39,7 @@
 ## 项目愿景
 
 RepoSentinel 是面向个人与小团队的 **自托管 GitHub 仓库值守平台**。  
-通过 GitHub App Webhook 实时接收 Issue / PR / Actions / 安全告警，用 REST API 对账补漏，经规则引擎与 Outbox 将重要变化推送到 Telegram 或 HTTP Webhook；可选 AI 摘要与安全告警分诊。  
+通过 GitHub App Webhook 实时接收 Issue / PR / Actions / 安全告警，用 REST API 对账补漏，经规则引擎与 Outbox 将重要变化推送到 Telegram 或 HTTP Webhook；可选智能简报与安全告警分诊。  
 
 默认 SQLite、可选 PostgreSQL；单进程模块化单体，管理后台嵌入同一二进制，适合公网 VPS / 自建机房一键部署。
 
@@ -165,7 +176,7 @@ graph TD
 | `internal/rules` | 实时通知规则与短时聚合 | [internal/rules/CLAUDE.md](internal/rules/CLAUDE.md) |
 | `internal/notify` | Outbox 领取、Telegram/HTTP 投递 | [internal/notify/CLAUDE.md](internal/notify/CLAUDE.md) |
 | `internal/syncx` | 安装仓对账、外部仓轮询、调度 | [internal/syncx/CLAUDE.md](internal/syncx/CLAUDE.md) |
-| `internal/ai` | OpenAI 兼容客户端、摘要与分诊 | [internal/ai/CLAUDE.md](internal/ai/CLAUDE.md) |
+| `internal/ai` | OpenAI 兼容客户端、简报与分诊 | [internal/ai/CLAUDE.md](internal/ai/CLAUDE.md) |
 | `web` | React 管理台 + Go embed | [web/CLAUDE.md](web/CLAUDE.md) |
 | `migrations` | Atlas 双轨 SQL 迁移嵌入 | [migrations/CLAUDE.md](migrations/CLAUDE.md) |
 | `docs` | VitePress 用户/运维/架构文档 | [docs/CLAUDE.md](docs/CLAUDE.md) |
@@ -223,6 +234,11 @@ make verify                   # fmt + test + vet + build + test-frontend
 - 描述使用简体中文
 - 禁止出现 `Co-Authored-By: Claude` 等 AI 生成标识
 - 一个提交解决一个问题，不做无关改动
+
+## 文档与提交措辞（强制）
+
+- 变更记录（本文件变更记录表、`CHANGELOG.md`、`docs/`）与提交信息中，禁止出现「打磨」「全项目」「迭代」「第 X 轮 / N 轮」「批次」等描述执行过程或轮次的字眼。
+- 变更记录只直述改动内容、原因与影响，不描述「做了几轮、怎么打磨」等过程信息；提交描述同理。
 
 ## 数据库迁移（重要）
 

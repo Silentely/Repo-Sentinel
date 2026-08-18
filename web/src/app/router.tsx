@@ -9,7 +9,7 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createAdmin, login, setupStatusQueryOptions } from "../features/auth/api";
 import { useSession } from "../features/auth/use-session";
@@ -33,6 +33,7 @@ const SecurityPage = lazyRouteComponent(() => import("../features/monitor/list-p
 const GitHubPage = lazyRouteComponent(() => import("../features/monitor/github-page"), "GitHubPage");
 const AboutPage = lazyRouteComponent(() => import("../features/monitor/about-page"), "AboutPage");
 const SettingsPage = lazyRouteComponent(() => import("../features/monitor/settings-page"), "SettingsPage");
+const StarredReleasesPage = lazyRouteComponent(() => import("../features/monitor/starred-releases-page"), "StarredReleasesPage");
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -126,6 +127,12 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 });
 
+const starredReleasesRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/starred-releases",
+  component: StarredReleasesPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
@@ -141,6 +148,7 @@ const routeTree = rootRoute.addChildren([
     githubRoute,
     aboutRoute,
     settingsRoute,
+    starredReleasesRoute,
   ]),
 ]);
 
@@ -177,6 +185,7 @@ function LoginRoute() {
 
 function SetupRoute() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const setup = useQuery(setupStatusQueryOptions);
 
   useEffect(() => {
@@ -187,7 +196,15 @@ function SetupRoute() {
 
   return (
     <Suspense fallback={<RouteLoading />}>
-      <SetupPage setupAction={createAdmin} onCreated={() => void navigate({ to: "/", replace: true })} />
+      <SetupPage
+        setupAction={createAdmin}
+        onCreated={() => {
+          // 失效 setup-status 缓存：15s staleTime 内浏览器后退会命中旧缓存
+          // 「required=true」被重定向回 /setup，再次提交得到后端 not_found。
+          void queryClient.invalidateQueries({ queryKey: ["auth", "setup-status"] });
+          void navigate({ to: "/", replace: true });
+        }}
+      />
     </Suspense>
   );
 }

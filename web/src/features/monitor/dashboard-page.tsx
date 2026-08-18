@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 
 import { CollapsiblePanel } from "../../components/collapsible-panel";
 import { EmptyState } from "../../components/empty-state";
-import { ErrorAlert } from "../../components/error-alert";
+import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
 import { toApiError } from "../../lib/api/errors";
@@ -67,18 +67,20 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const dashboard = useQuery(dashboardQueryOptions);
   const repos = useQuery(repositoriesQueryOptions);
-  const events = useQuery(eventsQueryOptions(DASHBOARD_FEED_LIMIT));
-  const outbox = useQuery(outboxQueryOptions("", "", DASHBOARD_FEED_LIMIT));
+  // 折叠状态从 localStorage 恢复，切换后写回。
+  // 面板查询按折叠状态暂停：折叠的「通知投递/最近事件/Star 增长」零请求零轮询，
+  // 展开时若缓存新鲜直接显示，过期则骨架加载（QueryGate 兜底）。
+  const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(readOpenPanels);
+  const events = useQuery({ ...eventsQueryOptions(DASHBOARD_FEED_LIMIT), enabled: openPanels.events });
+  const outbox = useQuery({ ...outboxQueryOptions("", "", DASHBOARD_FEED_LIMIT), enabled: openPanels.outbox });
   const settings = useQuery(settingsQueryOptions);
   const githubConfig = useQuery(githubConfigQueryOptions);
 
   // Star 增长趋势：时间范围由本地状态管理，切换范围时按 queryKey 换缓存。
   const [trendDays, setTrendDays] = useState(30);
-  const starTrend = useQuery(starTrendQueryOptions(trendDays));
+  const starTrend = useQuery({ ...starTrendQueryOptions(trendDays), enabled: openPanels.stars });
   const featureStars = settings.data?.["feature.stars"] !== false;
 
-  // 折叠状态从 localStorage 恢复，切换后写回。
-  const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(readOpenPanels);
   // 行级忙碌：只让当前操作的行转圈。
   const [retryBusyId, setRetryBusyId] = useState<string | null>(null);
 
@@ -87,11 +89,17 @@ export function DashboardPage() {
     await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
   };
 
+  // 行级重试错误：失败时在该行旁提示，避免「按钮恢复但无任何反馈」的静默失败。
+  const [retryError, setRetryError] = useState<{ id: string; message: string } | null>(null);
   const retry = useMutation({
     mutationFn: retryOutbox,
-    onMutate: (id) => setRetryBusyId(id),
+    onMutate: (id) => {
+      setRetryBusyId(id);
+      setRetryError(null);
+    },
     onSettled: () => setRetryBusyId(null),
     onSuccess: invalidateOutboxAndDashboard,
+    onError: (err, id) => setRetryError({ id, message: toApiError(err).message || "重试失败" }),
   });
 
   const stats = dashboard.data;
@@ -195,11 +203,7 @@ export function DashboardPage() {
       </section>
 
       {dashboard.isError ? (
-        <ErrorAlert
-          title="无法加载仪表盘"
-          message={toApiError(dashboard.error).message}
-          errorCode={toApiError(dashboard.error).errorCode}
-        />
+        <ApiErrorAlert error={dashboard.error} title="无法加载仪表盘" />
       ) : null}
 
       {showSetup ? (
@@ -211,6 +215,8 @@ export function DashboardPage() {
             </span>
           </div>
           <p className="field-hint">按步骤完成即可开始值守；已完成的步骤会打勾。</p>
+          {/* 仓库列表查询失败时步骤会误显示「未完成」：补错误提示，避免与「真没仓库」混淆。 */}
+          {repos.isError ? <ApiErrorAlert error={repos.error} title="无法加载仓库状态" /> : null}
           <ol className="setup-progress__list">
             {setupSteps.map((step, index) => (
               <li key={step.id} className={`setup-progress__item${step.ok ? " is-done" : ""}`}>
@@ -255,11 +261,11 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* 顺序：Star 增长 → 通知投递 → 最近事件 → 仓库与基线 */}
+      {/* 顺序：Star 增长 → 最近事件 → 通知投递 */}
       {featureStars ? (
         <CollapsiblePanel
           id="stars"
-          title="⭐ Star 增长"
+          title="Star 增长"
           open={openPanels.stars}
           onToggle={() => togglePanel("stars")}
         >
@@ -271,68 +277,6 @@ export function DashboardPage() {
           />
         </CollapsiblePanel>
       ) : null}
-      <CollapsiblePanel
-        id="outbox"
-        title="通知投递"
-        count={
-          outboxTotal > DASHBOARD_FEED_LIMIT ? `${DASHBOARD_FEED_LIMIT}+` : outboxItems.length
-        }
-        open={openPanels.outbox}
-        onToggle={() => togglePanel("outbox")}
-      >
-        <QueryGate
-          query={outbox}
-          errorTitle="无法加载投递记录"
-          isEmpty={outboxItems.length === 0}
-          emptyState={
-            <EmptyState title="还没有投递记录" description="配置 Telegram 或 HTTP Webhook 渠道后，实时通知会进入 Outbox。" />
-          }
-        >
-          <ul className="feed-list">
-            {outboxItems.map((item) => (
-              <li key={item.id} className="feed-row">
-                <div className="feed-row__main">
-                  <div className="feed-row__meta">
-                    <span className={`event-kind status-${item.status}`}>{outboxStatusLabel(item.status)}</span>
-                    {item.channel_type ? (
-                      <span className="muted channel-tag">{channelLabel(item.channel_type)}</span>
-                    ) : null}
-                    {item.created_at ? <RelativeTime date={item.created_at} className="event-time" /> : null}
-                    <span className="muted">尝试 {item.attempt_count} 次</span>
-                    {item.last_error_code ? (
-                      <span className="error-code" title={outboxErrorHint(item.last_error_code) || undefined}>
-                        {item.last_error_code}
-                      </span>
-                    ) : null}
-                  </div>
-                  <strong className="feed-row__title" title={item.title || item.id}>
-                    {item.title || item.id}
-                  </strong>
-                </div>
-                <div className="feed-row__actions">
-                  {item.status === "dead" ? (
-                    <button
-                      className="quiet-button quiet-button--compact"
-                      type="button"
-                      onClick={() => retry.mutate(item.id)}
-                      disabled={retryBusyId === item.id}
-                    >
-                      {retryBusyId === item.id ? "重试中…" : "重试"}
-                    </button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-          {outboxTotal > DASHBOARD_FEED_LIMIT ? (
-            <p className="panel-footnote">
-              共 {outboxTotal} 条投递记录，仅显示最近 {DASHBOARD_FEED_LIMIT} 条。
-              <Link to="/notifications/outbox">查看全部</Link>
-            </p>
-          ) : null}
-        </QueryGate>
-      </CollapsiblePanel>
-
       <CollapsiblePanel
         id="events"
         title="最近事件"
@@ -355,7 +299,13 @@ export function DashboardPage() {
         >
           <ul className="feed-list">
             {eventItems.map((ev) => {
-              const repoName = ev.repository_id ? repoNameMap[ev.repository_id] : undefined;
+              // 归属仓库名：优先 repository_id 关联，release 事件（star 追踪）无
+              // repository_id，回退 payload_summary.repository。
+              const repoName = ev.repository_id
+                ? repoNameMap[ev.repository_id]
+                : typeof ev.payload_summary?.repository === "string"
+                  ? ev.payload_summary.repository
+                  : undefined;
               const title = ev.title || "（无标题）";
               return (
                 <li key={ev.id} className="feed-row">
@@ -404,6 +354,75 @@ export function DashboardPage() {
                   ))}
                 </>
               ) : null}
+            </p>
+          ) : null}
+        </QueryGate>
+      </CollapsiblePanel>
+
+      <CollapsiblePanel
+        id="outbox"
+        title="通知投递"
+        count={
+          outboxTotal > DASHBOARD_FEED_LIMIT ? `${DASHBOARD_FEED_LIMIT}+` : outboxItems.length
+        }
+        open={openPanels.outbox}
+        onToggle={() => togglePanel("outbox")}
+      >
+        <QueryGate
+          query={outbox}
+          errorTitle="无法加载投递记录"
+          isEmpty={outboxItems.length === 0}
+          emptyState={
+            <EmptyState title="还没有投递记录" description="配置 Telegram 或 HTTP Webhook 渠道后，实时通知会进入 Outbox。" />
+          }
+        >
+          <ul className="feed-list">
+            {outboxItems.map((item) => (
+              <li key={item.id} className="feed-row">
+                <div className="feed-row__main">
+                  <div className="feed-row__meta">
+                    <span className={`event-kind status-${item.status}`}>{outboxStatusLabel(item.status)}</span>
+                    {item.channel_type ? (
+                      <span className="muted channel-tag">{channelLabel(item.channel_type)}</span>
+                    ) : null}
+                    {item.created_at ? <RelativeTime date={item.created_at} className="event-time" /> : null}
+                    <span className="muted">尝试 {item.attempt_count} 次</span>
+                    {item.last_error_code ? (
+                      <span className="error-code" title={outboxErrorHint(item.last_error_code) || undefined}>
+                        {item.last_error_code}
+                      </span>
+                    ) : null}
+                  </div>
+                  <strong className="feed-row__title" title={item.title || item.id}>
+                    {item.title || item.id}
+                  </strong>
+                </div>
+                <div className="feed-row__actions">
+                  {item.status === "dead" ? (
+                    <>
+                      <button
+                        className="quiet-button quiet-button--compact"
+                        type="button"
+                        onClick={() => retry.mutate(item.id)}
+                        disabled={retryBusyId === item.id}
+                      >
+                        {retryBusyId === item.id ? "重试中…" : "重试"}
+                      </button>
+                      {retryError?.id === item.id ? (
+                        <span className="feed-row__error" role="alert">
+                          {retryError.message}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {outboxTotal > DASHBOARD_FEED_LIMIT ? (
+            <p className="panel-footnote">
+              共 {outboxTotal} 条投递记录，仅显示最近 {DASHBOARD_FEED_LIMIT} 条。
+              <Link to="/notifications/outbox">查看全部</Link>
             </p>
           ) : null}
         </QueryGate>

@@ -47,11 +47,14 @@ func defaultConfig() Config {
 		},
 		// AI 标量字段（BaseURL/Model/Timeout/MaxTokens）不注入默认值：
 		// 空值表示「未显式设置」，管理台可编辑；实际取值由 ai.Client 在使用点回退默认。
-		// 仅 bool 开关保留默认，避免 RuntimeFromEnv 将其误判为 env 显式设置而锁定。
+		// 仅 bool 开关保留默认，避免 RuntimeFromEnv 将其误判为 env 显式设置而锁定；
+		// Retries 以「偏离默认（1）」判定显式设置，默认值在此注入与 RuntimeFromEnv 联动。
 		AI: AIConfig{
-			Enabled:       false,
-			DigestEnabled: true,
-			TriageEnabled: true,
+			Enabled:               false,
+			Retries:               1,
+			DigestEnabled:         true,
+			TriageEnabled:         true,
+			ReleaseSummaryEnabled: true,
 		},
 		// OAuth Agent 凭据无默认值：未配置时元数据照常发布，token 端点拒绝签发。
 		OAuth: OAuthConfig{

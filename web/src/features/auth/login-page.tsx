@@ -59,6 +59,16 @@ export function LoginPage({
   const invalidCredentials = requestError?.errorCode === "invalid_credentials";
   const rateLimited = requestError?.errorCode === "rate_limited";
 
+  // 登录限流后提交按钮被禁用：与后端 Retry-After（12s，见 login_limiter.go）对齐，
+  // 到点自动解除限流态，避免用户卡死到刷新页面才能重试。
+  useEffect(() => {
+    if (!rateLimited) {
+      return;
+    }
+    const timer = window.setTimeout(() => setRequestError(undefined), 12000);
+    return () => window.clearTimeout(timer);
+  }, [rateLimited]);
+
   return (
     <main className="auth-shell">
       <div className="auth-shell__theme">

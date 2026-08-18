@@ -20,7 +20,9 @@ func (Event) Fields() []ent.Field {
 		field.String("kind"),
 		field.String("action"),
 		field.String("repository_id").Optional().Nillable(),
-		field.Int("subject_number").Optional().Nillable(),
+		// GitHub release ID 已进入十亿量级前仍需 int64：PG int4 上限 2147483647，
+		// 与 workflow_run_id 同为 GitHub 全局递增 ID，遵循项目 bigint 约定。
+		field.Int64("subject_number").Optional().Nillable(),
 		field.String("title").Default(""),
 		field.String("severity").Default(""),
 		field.String("actor").Default(""),

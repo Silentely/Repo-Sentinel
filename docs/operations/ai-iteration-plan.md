@@ -1,7 +1,7 @@
 # AI 链路打磨迭代计划（头脑风暴）
 
 > 面向 RepoSentinel 的 AI 能力（摘要 / 安全告警分诊 / 连通性测试）持续打磨清单。
-> 基线：AI 调用日志可观测已落地（`ai request start/ok/failed` + error_code 分类 + digest/rules 参与度三段日志）。
+> 基线：大模型调用日志可观测已落地（`ai request start/ok/failed` + error_code 分类 + digest/rules 参与度三段日志）。
 > 本文记录 10 个候选打磨项：问题 → 方案 → 收益 → 成本 → 风险，供分批实施。
 
 ## 实施状态
@@ -29,7 +29,7 @@
 
 ### A 类：可观测性补强（延续日志留痕主线）
 
-#### 1. AI 调用指标（Prometheus 计数器）
+#### 1. 大模型调用指标（Prometheus 计数器）
 
 - **问题**：日志能回答成败，但 `/metrics` 看不到 AI 成功率、延迟、用量，无法接入现有监控面板。
 - **方案**：沿用 `httpapi/metrics.go` 的 atomic 计数器模式，在 `Complete` 出口统一计数：`reposentinel_ai_requests_total`、`reposentinel_ai_requests_failed_total`（按 error_code 分列，或单计数 + 标签）、`reposentinel_ai_request_duration_ms`（累计总和 + 次数，供均值）、token 计数（见 #2）。在 `handleMetrics` 输出。
@@ -55,6 +55,8 @@
 
 #### 4. AI 运行状态端点 + 管理台展示
 
+> 注：此端点尚未实现，属规划项；当前运行状态只能从服务端日志查看。
+
 - **问题**：管理台只有「测试连通性」，看不到历史调用情况；排障必须翻服务端日志。
 - **方案**：`httpapi` 新增只读 `GET /api/v1/ai/stats`：进程内环形缓冲最近 N（如 50）次调用（时间 / 模型 / 耗时 / error_code / ok）+ 累计计数；前端 AI 配置区下方展示最近调用列表。
 - **收益**：管理台直接可视，运维零门槛。
@@ -66,7 +68,7 @@
 #### 5. 瞬时错误有限重试（指数退避 + Retry-After）
 
 - **问题**：网关 5xx / 网络抖动 / 429 会让摘要或分诊直接降级；多数瞬时错误重试一次即可成功。
-- **方案**：`Complete` 对 `network` / `upstream_429/500/502/503` 重试（默认 2 次，指数退避 500ms 起）；429 优先尊重 `Retry-After` 头；日志标注 `attempt=N`；总预算受 timeout 约束。重试预算需计入 digest 调度窗口与分诊 15s 预算。
+- **方案**：`Complete` 对 `network` / `upstream_429/500/502/503` 重试（默认 1 次，指数退避 500ms 起）；429 优先尊重 `Retry-After` 头；日志标注 `attempt=N`；总预算受 `ai.timeout` 约束（已实施，默认 30s，重试次数与退避经配置）。重试预算需计入 digest 调度窗口与分诊决策预算（均由 `ai.timeout` 约束，无独立硬编码上限）。
 - **收益**：降级率显著下降；429 限流语义正确处理。
 - **成本**：中（重试循环 + 预算交互测试）。
 - **风险**：重试放大延迟与费用 → 必须限定次数与退避上限，且只对可重试分类生效。
@@ -87,7 +89,7 @@
 - **成本**：中高（config 结构、DB 存储、UI 校验、测试均需动；走 system settings JSON，不涉及 schema 迁移）。
 - **风险**：fallback 模型质量差异 → 仅作为降级路径，成功路径仍用主模型。
 
-#### 8. AI 调用并发预算（信号量）
+#### 8. 大模型调用并发预算（信号量）
 
 - **问题**：digest 三周期与分诊可能并发打 AI；小模型网关并发敏感，突发调用推高延迟与费用。
 - **方案**：`ai.Client` 增加全局信号量（默认并发 1~2，可配置）；超出时排队（带超时）或直接降级（fallback 语义，日志标注 `reason=concurrency_limit`）。

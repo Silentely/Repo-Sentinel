@@ -1079,6 +1079,26 @@ func (s *securityAlertStore) CountOpen(ctx context.Context) (int, error) {
 	return n, mapStoreError(err)
 }
 
+// ListByRepoKind 返回某仓库某类型全量本地告警（不分状态、按编号升序）。
+// 对账差集用：告警数量有界（GitHub 侧上限数百条），无需分页。
+func (s *securityAlertStore) ListByRepoKind(ctx context.Context, repoID, kind string) ([]SecurityAlert, error) {
+	rows, err := s.client.SecurityAlert.Query().
+		Where(
+			securityalert.RepositoryIDEQ(repoID),
+			securityalert.AlertKindEQ(kind),
+		).
+		Order(entclient.Asc(securityalert.FieldAlertNumber)).
+		All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	out := make([]SecurityAlert, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, securityAlertFromEntity(row))
+	}
+	return out, nil
+}
+
 func securityAlertFromEntity(e *entclient.SecurityAlert) SecurityAlert {
 	return SecurityAlert{
 		ID: e.ID, RepositoryID: e.RepositoryID, AlertKind: e.AlertKind, AlertNumber: e.AlertNumber,

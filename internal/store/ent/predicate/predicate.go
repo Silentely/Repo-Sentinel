@@ -36,6 +36,9 @@ type Repository func(*sql.Selector)
 // SecurityAlert is the predicate function for securityalert builders.
 type SecurityAlert func(*sql.Selector)
 
+// StarredRepoTracker is the predicate function for starredrepotracker builders.
+type StarredRepoTracker func(*sql.Selector)
+
 // SyncCursor is the predicate function for synccursor builders.
 type SyncCursor func(*sql.Selector)
 

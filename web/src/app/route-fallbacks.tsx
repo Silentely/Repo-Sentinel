@@ -7,6 +7,27 @@ import { toApiError } from "../lib/api/errors";
 
 // 路由级错误兜底：lazy chunk 加载失败（如升级后旧 hash 失效）或渲染抛错时，避免整树白屏。
 export function RouteErrorFallback({ error, reset }: ErrorComponentProps) {
+  // 升级后旧 chunk 失效是最常见的触发场景：ChunkLoadError 被 toApiError 误判为
+  // 「无法连接」，文案与真实原因不符，需单独识别并引导刷新。
+  const isChunkError = error instanceof Error && /Loading chunk|dynamically imported module|ChunkLoadError/i.test(error.message);
+  if (isChunkError) {
+    return (
+      <section className="route-fallback">
+        <ErrorAlert
+          title="页面资源已更新"
+          message="应用发布了新版本，当前页面引用的旧资源已失效，刷新后即可继续使用。"
+        />
+        <div className="route-fallback__actions">
+          <button type="button" className="primary-button primary-button--inline" onClick={() => window.location.reload()}>
+            刷新页面
+          </button>
+          <Link className="quiet-button" to="/">
+            返回仪表盘
+          </Link>
+        </div>
+      </section>
+    );
+  }
   const apiError = toApiError(error);
   return (
     <section className="route-fallback">

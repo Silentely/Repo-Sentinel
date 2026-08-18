@@ -25,6 +25,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repostatsnapshot"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/starredrepotracker"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
@@ -57,6 +58,8 @@ type Client struct {
 	Repository *RepositoryClient
 	// SecurityAlert is the client for interacting with the SecurityAlert builders.
 	SecurityAlert *SecurityAlertClient
+	// StarredRepoTracker is the client for interacting with the StarredRepoTracker builders.
+	StarredRepoTracker *StarredRepoTrackerClient
 	// SyncCursor is the client for interacting with the SyncCursor builders.
 	SyncCursor *SyncCursorClient
 	// SystemSetting is the client for interacting with the SystemSetting builders.
@@ -88,6 +91,7 @@ func (c *Client) init() {
 	c.RepoStatSnapshot = NewRepoStatSnapshotClient(c.config)
 	c.Repository = NewRepositoryClient(c.config)
 	c.SecurityAlert = NewSecurityAlertClient(c.config)
+	c.StarredRepoTracker = NewStarredRepoTrackerClient(c.config)
 	c.SyncCursor = NewSyncCursorClient(c.config)
 	c.SystemSetting = NewSystemSettingClient(c.config)
 	c.WebhookDelivery = NewWebhookDeliveryClient(c.config)
@@ -195,6 +199,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RepoStatSnapshot:    NewRepoStatSnapshotClient(cfg),
 		Repository:          NewRepositoryClient(cfg),
 		SecurityAlert:       NewSecurityAlertClient(cfg),
+		StarredRepoTracker:  NewStarredRepoTrackerClient(cfg),
 		SyncCursor:          NewSyncCursorClient(cfg),
 		SystemSetting:       NewSystemSettingClient(cfg),
 		WebhookDelivery:     NewWebhookDeliveryClient(cfg),
@@ -229,6 +234,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RepoStatSnapshot:    NewRepoStatSnapshotClient(cfg),
 		Repository:          NewRepositoryClient(cfg),
 		SecurityAlert:       NewSecurityAlertClient(cfg),
+		StarredRepoTracker:  NewStarredRepoTrackerClient(cfg),
 		SyncCursor:          NewSyncCursorClient(cfg),
 		SystemSetting:       NewSystemSettingClient(cfg),
 		WebhookDelivery:     NewWebhookDeliveryClient(cfg),
@@ -265,8 +271,8 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AdminAccount, c.AdminSession, c.AuditLog, c.Event, c.GitHubInstallation,
 		c.NotificationChannel, c.NotificationOutbox, c.RepoStatSnapshot, c.Repository,
-		c.SecurityAlert, c.SyncCursor, c.SystemSetting, c.WebhookDelivery, c.WorkItem,
-		c.WorkflowRun,
+		c.SecurityAlert, c.StarredRepoTracker, c.SyncCursor, c.SystemSetting,
+		c.WebhookDelivery, c.WorkItem, c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -278,8 +284,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AdminAccount, c.AdminSession, c.AuditLog, c.Event, c.GitHubInstallation,
 		c.NotificationChannel, c.NotificationOutbox, c.RepoStatSnapshot, c.Repository,
-		c.SecurityAlert, c.SyncCursor, c.SystemSetting, c.WebhookDelivery, c.WorkItem,
-		c.WorkflowRun,
+		c.SecurityAlert, c.StarredRepoTracker, c.SyncCursor, c.SystemSetting,
+		c.WebhookDelivery, c.WorkItem, c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -308,6 +314,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Repository.mutate(ctx, m)
 	case *SecurityAlertMutation:
 		return c.SecurityAlert.mutate(ctx, m)
+	case *StarredRepoTrackerMutation:
+		return c.StarredRepoTracker.mutate(ctx, m)
 	case *SyncCursorMutation:
 		return c.SyncCursor.mutate(ctx, m)
 	case *SystemSettingMutation:
@@ -1685,6 +1693,139 @@ func (c *SecurityAlertClient) mutate(ctx context.Context, m *SecurityAlertMutati
 	}
 }
 
+// StarredRepoTrackerClient is a client for the StarredRepoTracker schema.
+type StarredRepoTrackerClient struct {
+	config
+}
+
+// NewStarredRepoTrackerClient returns a client for the StarredRepoTracker from the given config.
+func NewStarredRepoTrackerClient(c config) *StarredRepoTrackerClient {
+	return &StarredRepoTrackerClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `starredrepotracker.Hooks(f(g(h())))`.
+func (c *StarredRepoTrackerClient) Use(hooks ...Hook) {
+	c.hooks.StarredRepoTracker = append(c.hooks.StarredRepoTracker, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `starredrepotracker.Intercept(f(g(h())))`.
+func (c *StarredRepoTrackerClient) Intercept(interceptors ...Interceptor) {
+	c.inters.StarredRepoTracker = append(c.inters.StarredRepoTracker, interceptors...)
+}
+
+// Create returns a builder for creating a StarredRepoTracker entity.
+func (c *StarredRepoTrackerClient) Create() *StarredRepoTrackerCreate {
+	mutation := newStarredRepoTrackerMutation(c.config, OpCreate)
+	return &StarredRepoTrackerCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of StarredRepoTracker entities.
+func (c *StarredRepoTrackerClient) CreateBulk(builders ...*StarredRepoTrackerCreate) *StarredRepoTrackerCreateBulk {
+	return &StarredRepoTrackerCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *StarredRepoTrackerClient) MapCreateBulk(slice any, setFunc func(*StarredRepoTrackerCreate, int)) *StarredRepoTrackerCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &StarredRepoTrackerCreateBulk{err: fmt.Errorf("calling to StarredRepoTrackerClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*StarredRepoTrackerCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &StarredRepoTrackerCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for StarredRepoTracker.
+func (c *StarredRepoTrackerClient) Update() *StarredRepoTrackerUpdate {
+	mutation := newStarredRepoTrackerMutation(c.config, OpUpdate)
+	return &StarredRepoTrackerUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *StarredRepoTrackerClient) UpdateOne(_m *StarredRepoTracker) *StarredRepoTrackerUpdateOne {
+	mutation := newStarredRepoTrackerMutation(c.config, OpUpdateOne, withStarredRepoTracker(_m))
+	return &StarredRepoTrackerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *StarredRepoTrackerClient) UpdateOneID(id string) *StarredRepoTrackerUpdateOne {
+	mutation := newStarredRepoTrackerMutation(c.config, OpUpdateOne, withStarredRepoTrackerID(id))
+	return &StarredRepoTrackerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for StarredRepoTracker.
+func (c *StarredRepoTrackerClient) Delete() *StarredRepoTrackerDelete {
+	mutation := newStarredRepoTrackerMutation(c.config, OpDelete)
+	return &StarredRepoTrackerDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *StarredRepoTrackerClient) DeleteOne(_m *StarredRepoTracker) *StarredRepoTrackerDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *StarredRepoTrackerClient) DeleteOneID(id string) *StarredRepoTrackerDeleteOne {
+	builder := c.Delete().Where(starredrepotracker.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &StarredRepoTrackerDeleteOne{builder}
+}
+
+// Query returns a query builder for StarredRepoTracker.
+func (c *StarredRepoTrackerClient) Query() *StarredRepoTrackerQuery {
+	return &StarredRepoTrackerQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeStarredRepoTracker},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a StarredRepoTracker entity by its id.
+func (c *StarredRepoTrackerClient) Get(ctx context.Context, id string) (*StarredRepoTracker, error) {
+	return c.Query().Where(starredrepotracker.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *StarredRepoTrackerClient) GetX(ctx context.Context, id string) *StarredRepoTracker {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *StarredRepoTrackerClient) Hooks() []Hook {
+	return c.hooks.StarredRepoTracker
+}
+
+// Interceptors returns the client interceptors.
+func (c *StarredRepoTrackerClient) Interceptors() []Interceptor {
+	return c.inters.StarredRepoTracker
+}
+
+func (c *StarredRepoTrackerClient) mutate(ctx context.Context, m *StarredRepoTrackerMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&StarredRepoTrackerCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&StarredRepoTrackerUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&StarredRepoTrackerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&StarredRepoTrackerDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown StarredRepoTracker mutation op: %q", m.Op())
+	}
+}
+
 // SyncCursorClient is a client for the SyncCursor schema.
 type SyncCursorClient struct {
 	config
@@ -2355,13 +2496,13 @@ type (
 	hooks struct {
 		AdminAccount, AdminSession, AuditLog, Event, GitHubInstallation,
 		NotificationChannel, NotificationOutbox, RepoStatSnapshot, Repository,
-		SecurityAlert, SyncCursor, SystemSetting, WebhookDelivery, WorkItem,
-		WorkflowRun []ent.Hook
+		SecurityAlert, StarredRepoTracker, SyncCursor, SystemSetting, WebhookDelivery,
+		WorkItem, WorkflowRun []ent.Hook
 	}
 	inters struct {
 		AdminAccount, AdminSession, AuditLog, Event, GitHubInstallation,
 		NotificationChannel, NotificationOutbox, RepoStatSnapshot, Repository,
-		SecurityAlert, SyncCursor, SystemSetting, WebhookDelivery, WorkItem,
-		WorkflowRun []ent.Interceptor
+		SecurityAlert, StarredRepoTracker, SyncCursor, SystemSetting, WebhookDelivery,
+		WorkItem, WorkflowRun []ent.Interceptor
 	}
 )

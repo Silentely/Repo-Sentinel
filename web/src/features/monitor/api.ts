@@ -47,6 +47,8 @@ export interface MonitorEvent {
   html_url: string;
   occurred_at: string;
   repository_id?: string;
+  /** 事件附加数据：star 追踪的 release 事件无 repository_id，仓库名回退读取 payload_summary.repository。 */
+  payload_summary?: Record<string, unknown>;
 }
 
 export interface OutboxItem {
@@ -60,6 +62,8 @@ export interface OutboxItem {
   html_url: string;
   created_at: string;
   updated_at: string;
+  /** 下次重试时刻（pending/sending 条目排障最有用）；无重试计划时为空。 */
+  next_attempt_at?: string;
   /** Telegram HTML 格式正文（详情抽屉纯文本化展示）。 */
   body_text?: string;
 }
@@ -346,6 +350,7 @@ export interface SystemSettings {
   "feature.security_alerts"?: boolean;
   "feature.stars"?: boolean;
   "feature.watches"?: boolean;
+  "feature.starred_releases"?: boolean;
   "report.weekly_enabled"?: boolean;
   "report.weekly_day"?: string;
   "report.monthly_enabled"?: boolean;
@@ -420,25 +425,31 @@ export interface AIConfig {
   model: string;
   timeout_sec: number;
   max_tokens: number;
+  retries: number;
   digest_enabled: boolean;
   triage_enabled: boolean;
+  release_summary_enabled: boolean;
   api_key_configured: boolean;
   enabled_source: string;
   base_url_source: string;
   model_source: string;
   timeout_source: string;
   max_tokens_source: string;
+  retries_source: string;
   api_key_source: string;
   digest_enabled_source: string;
   triage_enabled_source: string;
+  release_summary_enabled_source: string;
   enabled_locked: boolean;
   base_url_locked: boolean;
   model_locked: boolean;
   timeout_locked: boolean;
   max_tokens_locked: boolean;
+  retries_locked: boolean;
   api_key_locked: boolean;
   digest_enabled_locked: boolean;
   triage_enabled_locked: boolean;
+  release_summary_enabled_locked: boolean;
   can_edit_in_ui: boolean;
   note: string;
 }
@@ -449,8 +460,10 @@ export interface AIConfigInput {
   model?: string;
   timeout_sec?: number;
   max_tokens?: number;
+  retries?: number;
   digest_enabled?: boolean;
   triage_enabled?: boolean;
+  release_summary_enabled?: boolean;
   api_key?: string;
   clear_api_key?: boolean;
 }
@@ -465,6 +478,89 @@ export async function saveAIConfig(body: AIConfigInput): Promise<AIConfig> {
   return apiRequest<AIConfig>("/api/v1/ai/config", {
     method: "PUT",
     body: JSON.stringify(body),
+  });
+}
+
+// ---- Star Release 追踪 ----
+
+export interface StarredReleasesConfig {
+  username: string;
+  star_sync_interval: string;
+  release_poll_interval: string;
+  max_trackers: number;
+  notify_prerelease: boolean;
+  enabled: boolean;
+  ai_release_summary_enabled: boolean;
+  counts: {
+    tracking: number;
+    inactive: number;
+    disabled: number;
+    unavailable: number;
+  };
+}
+
+export interface StarredReleasesConfigInput {
+  username?: string;
+  star_sync_interval?: string;
+  release_poll_interval?: string;
+  max_trackers?: number;
+  notify_prerelease?: boolean;
+  enabled?: boolean;
+}
+
+export interface StarredTrackerItem {
+  id: string;
+  full_name: string;
+  state: "tracking" | "inactive" | "disabled" | "unavailable";
+  last_release_tag?: string;
+  last_release_published_at?: string;
+  last_poll_at?: string;
+  first_seen_at: string;
+}
+
+export interface StarredTrackerList {
+  items: StarredTrackerItem[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export const starredReleasesConfigQueryOptions = queryOptions({
+  queryKey: ["starred-releases-config"] as const,
+  queryFn: () => apiRequest<StarredReleasesConfig>("/api/v1/starred-releases/config"),
+  staleTime: 10_000,
+});
+
+export async function saveStarredReleasesConfig(body: StarredReleasesConfigInput): Promise<StarredReleasesConfig> {
+  return apiRequest<StarredReleasesConfig>("/api/v1/starred-releases/config", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function syncStarredReleases(): Promise<{ started: boolean }> {
+  return apiRequest<{ started: boolean }>("/api/v1/starred-releases/sync", {
+    method: "POST",
+  });
+}
+
+export async function listStarredTrackers(params: {
+  page?: number;
+  per_page?: number;
+  state?: string;
+} = {}): Promise<StarredTrackerList> {
+  const query = new URLSearchParams();
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.per_page != null) query.set("per_page", String(params.per_page));
+  if (params.state) query.set("state", params.state);
+  const qs = query.toString();
+  return apiRequest<StarredTrackerList>(`/api/v1/starred-releases/trackers${qs ? `?${qs}` : ""}`);
+}
+
+export async function setStarredTrackerState(id: string, state: "disabled" | "tracking"): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/api/v1/starred-releases/trackers/${id}/state`, {
+    method: "POST",
+    body: JSON.stringify({ state }),
   });
 }
 
@@ -506,7 +602,8 @@ export interface StarTrendPoint {
   total: number;
 }
 
-/** Star 增长趋势查询：days 为 7/30/90/0（0 表示全部），跟随查询缓存切换数据。 */
+/** Star 增长趋势查询：days 为 7/30/90/0（0 表示全部），跟随查询缓存切换数据。
+ * 聚合较重，短 TTL 内重复进入仪表盘直接复用缓存，避免每次都重拉。 */
 export function starTrendQueryOptions(days: number) {
   return queryOptions({
     queryKey: ["star-trend", days],
@@ -514,5 +611,6 @@ export function starTrendQueryOptions(days: number) {
       const data = await apiRequest<{ items: StarTrendPoint[] }>(`/api/v1/stats/star-trend?days=${days}`);
       return data.items ?? [];
     },
+    staleTime: 30_000,
   });
 }

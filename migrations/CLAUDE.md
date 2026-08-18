@@ -46,6 +46,7 @@ Atlas 版本化 SQL 迁移的双轨目录（SQLite + PostgreSQL），经 `embed.
 | `20260729000400_workflow_run_bigint` | workflow run ID bigint |
 | `20260730000100_github_id_bigint` | GitHub ID bigint |
 | `20260731000300_unify_jsonb` | JSONB 统一 |
+| `20260813000100_event_subject_number_bigint` | events.subject_number bigint（GitHub release ID 溢出防护） |
 
 > 新增迁移：SQLite 与 PostgreSQL **语义同步**；仅 PG 需要的类型修正可只放 postgres，但需在评审中说明。
 

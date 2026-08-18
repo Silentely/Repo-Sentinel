@@ -28,7 +28,8 @@ declare global {
   }
 }
 
-/** 同源只读 API 请求（浏览器上下文自动携带 Session Cookie）。 */
+/** 同源只读 API 请求（浏览器上下文自动携带 Session Cookie）。
+ * 非 2xx 时解析错误体，抛出带 error_code 的错误（Agent 拿到语义化原因而非裸状态码）。 */
 async function fetchJSON(path: string, query: Record<string, string | number | undefined> = {}): Promise<unknown> {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
@@ -39,7 +40,9 @@ async function fetchJSON(path: string, query: Record<string, string | number | u
   const url = `${path}${search.size > 0 ? `?${search.toString()}` : ""}`;
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   if (!response.ok) {
-    throw new Error(`请求 ${path} 失败：HTTP ${response.status}`);
+    const apiError = await response.json().catch(() => null) as { error_code?: string; message?: string } | null;
+    const detail = apiError?.message || (apiError?.error_code ? `错误码 ${apiError.error_code}` : `HTTP ${response.status}`);
+    throw new Error(`请求 ${path} 失败：${detail}`);
   }
   return response.json();
 }
@@ -65,11 +68,11 @@ export function webMCPTools(): WebMCPToolDefinition[] {
     },
     {
       name: "list_repositories",
-      description: "列出仓库，可按 type=github|external 过滤，支持分页。",
+      description: "列出仓库，可按 type=installation|external 过滤，支持分页。",
       inputSchema: {
         type: "object",
         properties: {
-          type: { type: "string", enum: ["github", "external"] },
+          type: { type: "string", enum: ["installation", "external"] },
           page: { type: "integer", minimum: 1 },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
         },

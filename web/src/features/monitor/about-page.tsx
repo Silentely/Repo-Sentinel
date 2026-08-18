@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 
-import { ErrorAlert } from "../../components/error-alert";
+import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { GithubIcon } from "../../components/github-icon";
-import { RelativeTime } from "../../components/relative-time";
 import { toApiError } from "../../lib/api/errors";
 import { checkForUpdates, versionQueryOptions } from "./api";
 
@@ -15,9 +14,9 @@ const DOCS_FAQ = "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/faq.
 const DOCS_CHANGELOG = "https://github.com/Silentely/Repo-Sentinel/blob/main/CHANGELOG.md";
 
 export function AboutPage() {
+  const queryClient = useQueryClient();
   const version = useQuery(versionQueryOptions);
   const [checking, setChecking] = useState(false);
-  const [copiedSha, setCopiedSha] = useState(false);
   const [banner, setBanner] = useState<{
     kind: "update" | "latest" | "error" | "info";
     text: string;
@@ -26,24 +25,13 @@ export function AboutPage() {
 
   const v = version.data || {};
 
-  // 复制 Git SHA 便于在 Issue / 讨论中粘贴版本定位信息；剪贴板不可用时静默降级。
-  const copySha = async () => {
-    const sha = v.git_sha;
-    if (!sha) return;
-    try {
-      await navigator.clipboard.writeText(sha);
-      setCopiedSha(true);
-      window.setTimeout(() => setCopiedSha(false), 1500);
-    } catch {
-      // 非安全上下文或权限受限：不打断页面使用。
-    }
-  };
-
   const checkUpdate = async (force = true) => {
     setChecking(true);
     try {
       const res = await checkForUpdates(force);
       const uc = res.update_check;
+      // 检查完成（含失败）后刷新版本信息：底部「版本」列表可能因远程响应带出构建元数据变化。
+      await queryClient.invalidateQueries({ queryKey: ["version"] });
       if (!uc.enabled) { setBanner({ kind: "info", text: "远程更新检查已关闭。" }); return; }
       if (uc.error && !uc.latest_version) { setBanner({ kind: "error", text: `检查失败：${uc.error}` }); return; }
       const url = safeHttpUrl(uc.latest_url);
@@ -89,7 +77,7 @@ export function AboutPage() {
             {checking ? "检查中…" : "检查更新"}
           </button>
         </div>
-        {version.isError ? <ErrorAlert title="无法加载版本" message={toApiError(version.error).message} errorCode={toApiError(version.error).errorCode} /> : null}
+        {version.isError ? <ApiErrorAlert error={version.error} title="无法加载版本" /> : null}
         {banner ? (
           <div className={`about-banner about-banner--${banner.kind}`}>
             <div>{banner.text}</div>
@@ -100,13 +88,9 @@ export function AboutPage() {
         <dl className="meta-grid">
           <div><dt>版本</dt><dd>{v.version || "—"}</dd></div>
           <div><dt>构建渠道</dt><dd>{v.build_channel || "—"}</dd></div>
-          <div><dt>Git SHA</dt><dd className="mono">{v.git_sha || "—"}{v.git_sha ? (
-            <button type="button" className="quiet-button quiet-button--compact" onClick={() => void copySha()} aria-label="复制 Git SHA">
-              {copiedSha ? "已复制" : "复制"}
-            </button>
-          ) : null}</dd></div>
+          <div><dt>Git SHA</dt><dd className="mono">{v.git_sha || "—"}</dd></div>
           <div><dt>分支</dt><dd>{v.git_branch || "—"}</dd></div>
-          <div><dt>构建时间</dt><dd>{v.build_time ? <RelativeTime date={v.build_time} /> : "—"}</dd></div>
+          <div><dt>构建时间</dt><dd>{v.build_time ? new Date(v.build_time).toLocaleString("zh-CN") : "—"}</dd></div>
           <div><dt>Go</dt><dd>{v.go_version || "—"}</dd></div>
           <div><dt>数据库</dt><dd>{v.database_driver || "—"}</dd></div>
           <div><dt>Schema</dt><dd className="mono">{v.schema_version || "—"}</dd></div>

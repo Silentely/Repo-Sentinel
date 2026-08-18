@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
+import { ConfirmDialog } from "../../components/confirm-dialog";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate, type QueryGateQuery } from "../../components/query-gate";
@@ -31,6 +32,7 @@ import {
   type RepositorySettings,
 } from "./api";
 import {
+  ClearFiltersButton,
   FeatureGuard,
   IgnoreButton,
   IgnoredToggle,
@@ -117,7 +119,8 @@ function useInfiniteList<T>(opts: {
     getNextPageParam: (lastPage) =>
       lastPage.page * lastPage.per_page < lastPage.total ? lastPage.page + 1 : undefined,
   });
-  const items = q.data?.pages.flatMap((page) => page.items) ?? [];
+  // flatMap 仅在 pages 引用变化时重建：避免列表滚动/重渲染时反复摊平同一数据数组。
+  const items = useMemo(() => q.data?.pages.flatMap((page) => page.items) ?? [], [q.data]);
   const total = q.data?.pages[q.data.pages.length - 1]?.total ?? 0;
   return { q, items, total };
 }
@@ -184,7 +187,6 @@ function EventListBody({
   query: QueryGateQuery & {
     hasNextPage?: boolean;
     isFetchingNextPage?: boolean;
-    isError?: boolean;
     fetchNextPage: () => void;
   };
   items: unknown[];
@@ -201,7 +203,7 @@ function EventListBody({
           total={total}
           hasNextPage={query.hasNextPage ?? false}
           fetchingNextPage={query.isFetchingNextPage ?? false}
-          hasError={query.isError}
+          loadError={query.error}
           onLoadMore={() => query.fetchNextPage()}
         />
       </>
@@ -233,7 +235,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
     },
   });
 
-  const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
+  const { mutation: ignoreMutation, busyId, errorMessage } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
   // 仓库/审核/检查筛选激活时，空态需区分「筛选后为空」与「真的没有」。
   const filtersActive = repoId !== "" || reviewFilter !== "" || checkFilter !== "";
   const clearFilters = () => {
@@ -281,11 +283,10 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
           </>
         )}
         {filtersActive ? (
-          <button className="quiet-button quiet-button--compact" type="button" onClick={clearFilters}>
-            清除筛选
-          </button>
+          <ClearFiltersButton onClick={clearFilters} />
         ) : null}
       </div>
+      {errorMessage ? <ErrorAlert title="忽略操作失败" message={errorMessage} /> : null}
       <EventListBody
         query={q}
         items={items}
@@ -312,13 +313,13 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
             }
             action={
               filtersActive ? (
-                <button type="button" className="primary-button primary-button--inline" onClick={clearFilters}>
-                  清除筛选
-                </button>
+                // 清除筛选是操作而非导航：关闭右箭头，避免暗示跳转。
+                <ClearFiltersButton variant="primary" onClick={clearFilters} />
               ) : (
                 <Link to="/">返回仪表盘</Link>
               )
             }
+            actionArrow={!filtersActive}
           />
         }
       >
@@ -494,20 +495,24 @@ export function ReposPage() {
 
   // 彻底删除：GitHub 侧已删除但 webhook 漏投递时的手动收口，级联清理全部关联数据。
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteOne = useMutation({
     mutationFn: (id: string) => {
       setErrorMsg(null);
+      setDeleteError(null);
       setDeletingId(id);
       return deleteRepository(id);
     },
+    // onSettled 同时覆盖成功与失败：失败时不清理会让按钮永久停留在「删除中…」。
+    onSettled: () => setDeletingId(null),
     onSuccess: async () => {
-      setDeletingId(null);
       await queryClient.invalidateQueries({ queryKey: ["repositories"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       await queryClient.invalidateQueries({ queryKey: ["work-items"] });
       await queryClient.invalidateQueries({ queryKey: ["workflow-runs"] });
       await queryClient.invalidateQueries({ queryKey: ["security-alerts"] });
     },
+    onError: (error) => setDeleteError(toApiError(error).message || "删除失败"),
   });
 
   const allRepos = repos.data?.items ?? [];
@@ -518,6 +523,7 @@ export function ReposPage() {
   return (
     <ListShell eyebrow="仓库" title="仓库管理" description="「监控」为总开关；子能力受全局功能模块约束。本系统归档会停采集（可撤销），与 GitHub 侧已归档是两回事。">
       {errorMsg ? <ErrorAlert title="更新失败" message={errorMsg} /> : null}
+      {deleteError ? <ErrorAlert title="删除失败" message={deleteError} /> : null}
       <div className="filter-bar">
         <button className={`quiet-button${!showArchived ? " active" : ""}`} type="button" aria-pressed={!showArchived} onClick={() => setArchivedParam("")}>
           未归档 ({activeRepos.length})
@@ -589,30 +595,38 @@ function RepoCard({
   features: { issues: boolean; prs: boolean; actions: boolean; alerts: boolean; stars: boolean; watches: boolean };
 }) {
   const monitorOn = repo.monitor_enabled;
+  // 待确认操作：归档 / 彻底删除 走样式化确认对话框（原生 confirm 与整体 UI 割裂）。
+  const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
+
   function handleArchive(next: boolean) {
     if (next) {
-      if (
-        !window.confirm(
-          `确定在本系统归档「${repo.full_name || repo.name}」？将关闭监控与全部能力开关，停止采集与通知（不修改 GitHub 侧归档状态）。`,
-        )
-      ) {
-        return;
-      }
+      setConfirmAction("archive");
+      return;
     }
-    onToggle({ is_archived: next });
+    onToggle({ is_archived: false });
   }
 
   function handleDelete() {
-    const name = repo.full_name || repo.name;
-    if (
-      !window.confirm(
-        `确定彻底删除「${name}」？将级联清理该仓库的全部本地数据（PR/Issue、事件、告警、快照、游标与待投递通知），不可恢复。GitHub 侧若仍存在该仓库，重新同步后会重新出现。`,
-      )
-    ) {
-      return;
-    }
-    onDelete(repo.id);
+    setConfirmAction("delete");
   }
+
+  const repoName = repo.full_name || repo.name;
+  const confirmContent =
+    confirmAction === "archive" ? (
+      {
+        title: "归档仓库",
+        message: `确定在本系统归档「${repoName}」？将关闭监控与全部能力开关，停止采集与通知（不修改 GitHub 侧归档状态）。`,
+        confirmLabel: "归档",
+        action: () => onToggle({ is_archived: true }),
+      }
+    ) : confirmAction === "delete" ? (
+      {
+        title: "彻底删除仓库",
+        message: `确定彻底删除「${repoName}」？将级联清理该仓库的全部本地数据（PR/Issue、事件、告警、快照、游标与待投递通知），不可恢复。GitHub 侧若仍存在该仓库，重新同步后会重新出现。`,
+        confirmLabel: deleting ? "删除中…" : "彻底删除",
+        action: () => onDelete(repo.id),
+      }
+    ) : null;
 
   return (
     <li className="repo-card">
@@ -699,6 +713,20 @@ function RepoCard({
           {deleting ? "删除中…" : "彻底删除"}
         </button>
       </div>
+      <ConfirmDialog
+        open={confirmContent !== null}
+        title={confirmContent?.title ?? ""}
+        message={confirmContent?.message ?? ""}
+        confirmLabel={confirmContent?.confirmLabel ?? "确认"}
+        danger
+        busy={deleting}
+        onConfirm={() => {
+          const action = confirmContent?.action;
+          setConfirmAction(null);
+          action?.();
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </li>
   );
 }
@@ -766,7 +794,7 @@ function ActionsList() {
   const [repoId, setRepoId] = useUrlState("repo", "");
   const [conclusion, setConclusion] = useUrlState("conclusion", "");
   const [ignoredMode, setIgnoredMode] = useUrlState<IgnoredMode>("ignored", "active", parseIgnoredMode);
-  const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setWorkflowRunIgnored, ["workflow-runs"]);
+  const { mutation: ignoreMutation, busyId, errorMessage } = useIgnoreMutation(setWorkflowRunIgnored, ["workflow-runs"]);
 
   const { q, items, total } = useInfiniteList<WorkflowRun>({
     queryKey: ["workflow-runs", repoId, conclusion, ignoredMode],
@@ -804,11 +832,10 @@ function ActionsList() {
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
         {filtersActive ? (
-          <button className="quiet-button quiet-button--compact" type="button" onClick={clearFilters}>
-            清除筛选
-          </button>
+          <ClearFiltersButton onClick={clearFilters} />
         ) : null}
       </div>
+      {errorMessage ? <ErrorAlert title="忽略操作失败" message={errorMessage} /> : null}
       <EventListBody
         query={q}
         items={items}
@@ -831,13 +858,12 @@ function ActionsList() {
             }
             action={
               filtersActive ? (
-                <button type="button" className="primary-button primary-button--inline" onClick={clearFilters}>
-                  清除筛选
-                </button>
+                <ClearFiltersButton variant="primary" onClick={clearFilters} />
               ) : (
                 <Link to="/github">检查 GitHub App 权限</Link>
               )
             }
+          actionArrow={!filtersActive}
           />
         }
       >
@@ -896,7 +922,7 @@ function SecurityList() {
   const [alertKind, setAlertKind] = useUrlState("kind", "");
   const [repoId, setRepoId] = useUrlState("repo", "");
   const [ignoredMode, setIgnoredMode] = useUrlState<IgnoredMode>("ignored", "active", parseIgnoredMode);
-  const { mutation: ignoreMutation, busyId } = useIgnoreMutation(setSecurityAlertIgnored, ["security-alerts"]);
+  const { mutation: ignoreMutation, busyId, errorMessage } = useIgnoreMutation(setSecurityAlertIgnored, ["security-alerts"]);
 
   const { q, items, total } = useInfiniteList<SecurityAlert>({
     queryKey: ["security-alerts", state, alertKind, repoId, ignoredMode],
@@ -922,6 +948,7 @@ function SecurityList() {
             { value: "", label: "全部" },
             { value: "open", label: "待处理" },
             { value: "dismissed", label: "GitHub 已忽略" },
+            { value: "withdrawn", label: "已撤回" },
           ]}
           value={state}
           onChange={setState}
@@ -942,11 +969,10 @@ function SecurityList() {
         <span className="filter-bar__sep" />
         <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
         {filtersActive ? (
-          <button className="quiet-button quiet-button--compact" type="button" onClick={clearFilters}>
-            清除筛选
-          </button>
+          <ClearFiltersButton onClick={clearFilters} />
         ) : null}
       </div>
+      {errorMessage ? <ErrorAlert title="忽略操作失败" message={errorMessage} /> : null}
       <EventListBody
         query={q}
         items={items}
@@ -973,13 +999,12 @@ function SecurityList() {
             }
             action={
               filtersActive ? (
-                <button type="button" className="primary-button primary-button--inline" onClick={clearFilters}>
-                  清除筛选
-                </button>
+                <ClearFiltersButton variant="primary" onClick={clearFilters} />
               ) : (
                 <Link to="/github">查看权限配置</Link>
               )
             }
+          actionArrow={!filtersActive}
           />
         }
       >
@@ -1026,20 +1051,22 @@ export function SecurityPage() {
 }
 
 /** 列表底部分页条：展示已加载数量与服务端总数，并提供「加载更多」翻页；
- * 翻页失败时给出明确错误态与重试入口（首屏失败由 QueryGate 兜底）。 */
+ * 翻页失败时给出明确错误态与重试入口（首屏失败由 QueryGate 兜底）。
+ * loadError 用 query.error 判定：TanStack v5 中后续页 fetch 失败时 status 保持
+ * success、isError 为 false，只有 error 字段能反映失败（isError 分支实际不可达）。 */
 function ListFooter({
   shown,
   total,
   hasNextPage,
   fetchingNextPage,
-  hasError,
+  loadError,
   onLoadMore,
 }: {
   shown: number;
   total: number;
   hasNextPage: boolean;
   fetchingNextPage: boolean;
-  hasError?: boolean;
+  loadError?: unknown;
   onLoadMore: () => void;
 }) {
   return (
@@ -1047,7 +1074,7 @@ function ListFooter({
       <span className="muted">
         已显示 {shown} / 共 {total} 条
       </span>
-      {hasError && hasNextPage ? (
+      {loadError != null && hasNextPage ? (
         <button className="quiet-button quiet-button--danger" type="button" onClick={onLoadMore}>
           加载失败，点击重试
         </button>
@@ -1068,7 +1095,14 @@ function ListFooter({
           <button
             className="quiet-button quiet-button--compact"
             type="button"
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            onClick={() => {
+              // 桌面端页面滚动发生在 .app-main（.app-shell overflow: hidden 锁死文档滚动），
+              // window.scrollTo 无效；移动端抽屉形态下滚动容器是 body（见 globals.css 媒体查询）。
+              // 按实际滚动位置选择目标容器，两端都生效。
+              const scroller = document.querySelector<HTMLElement>(".app-main");
+              const target = scroller && scroller.scrollTop > 0 ? scroller : window;
+              target.scrollTo({ top: 0, behavior: "smooth" });
+            }}
           >
             回到顶部
           </button>

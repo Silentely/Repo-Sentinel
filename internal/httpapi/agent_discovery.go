@@ -257,7 +257,7 @@ RepoSentinel 是自托管的 GitHub 仓库值守平台。本技能说明如何�
 ## 查询端点（均只读）
 
 - GET /api/v1/dashboard — 概览统计（开放 Issue/PR、失败 Actions、开放安全告警等）。
-- GET /api/v1/repositories?type=github|external — 仓库列表。
+- GET /api/v1/repositories?type=installation|external — 仓库列表（installation=自有安装仓，external=外部公开仓）。
 - GET /api/v1/work-items?kind=issue|pull_request&state=open|closed&repository_id=... — Issue/PR 列表。
 - GET /api/v1/workflow-runs?conclusion=failure&repository_id=... — Actions 运行列表。
 - GET /api/v1/security-alerts?state=open&severity=... — 安全告警列表。
@@ -377,7 +377,7 @@ func (s *server) siteMarkdownDocument(r *http.Request) string {
 	return fmt.Sprintf(`# RepoSentinel
 
 自托管的 GitHub 仓库值守平台：通过 Webhook 实时接收 Issue / PR / Actions / 安全告警，
-经规则引擎推送 Telegram 或 HTTP Webhook，可选 AI 摘要与安全告警分诊。
+经规则引擎推送 Telegram 或 HTTP Webhook，可选智能简报与安全告警分诊。
 
 ## 使用入口
 

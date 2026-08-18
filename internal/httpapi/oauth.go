@@ -101,6 +101,20 @@ func (s *server) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "缺少客户端凭据，请携带 client_id/client_secret 或 Basic Auth。")
 		return
 	}
+	// 令牌端点复用登录限流器：client_secret 是长期静态凭据，按来源 IP 节流
+	// 防止无限暴力尝试（每次失败都会刷 Warn 日志）。
+	remoteIP := remoteIPFromContext(r.Context())
+	if !s.dependencies.LoginLimiter.Allow(remoteIP) {
+		s.dependencies.Logger.Warn(
+			"oauth token rate limited",
+			"request_id", requestIDFromContext(r.Context()),
+			"remote_ip", remoteIP,
+			"error_code", errorCodeRateLimited,
+		)
+		w.Header().Set("Retry-After", loginRetryAfterSeconds)
+		writeOAuthError(w, http.StatusTooManyRequests, "invalid_client", "尝试过于频繁，请稍后再试。")
+		return
+	}
 	configuredID := s.dependencies.Config.OAuth.ClientID
 	configuredSecret := s.dependencies.Config.OAuth.ClientSecret.Reveal()
 	secretMatch := configuredSecret != "" &&
@@ -176,8 +190,8 @@ func (s *server) handleOAuthJWKS(w http.ResponseWriter, r *http.Request) {
 }
 
 // oauthValidateToken 校验 Bearer 令牌签名与声明，返回客户端标识。
-// expectedAudience 通常为站点 Origin + "/api/v1"。
-func (s *server) oauthValidateToken(tokenString, expectedAudience string) (string, error) {
+// expectedAudience 通常为站点 Origin + "/api/v1"；expectedIssuer 为站点 Origin。
+func (s *server) oauthValidateToken(tokenString, expectedAudience, expectedIssuer string) (string, error) {
 	key, err := s.oauthSigningKey()
 	if err != nil {
 		return "", err
@@ -188,6 +202,7 @@ func (s *server) oauthValidateToken(tokenString, expectedAudience string) (strin
 		func(_ *jwt.Token) (any, error) { return key, nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithAudience(expectedAudience),
+		jwt.WithIssuer(expectedIssuer),
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil || !parsed.Valid {
@@ -200,13 +215,15 @@ func (s *server) oauthValidateToken(tokenString, expectedAudience string) (strin
 	return claims.Subject, nil
 }
 
-// bearerToken 提取 Authorization: Bearer <token>。
+// bearerToken 提取 Authorization: Bearer <token>（scheme 大小写不敏感，RFC 7235 允许 bearer）。
 func bearerToken(r *http.Request) (string, bool) {
 	header := r.Header.Get("Authorization")
-	if !strings.HasPrefix(header, "Bearer ") {
+	// 取首个空白分隔段并比较 scheme；避免 strings.HasPrefix 的大小写敏感误拒。
+	space := strings.IndexByte(header, ' ')
+	if space <= 0 || !strings.EqualFold(header[:space], "Bearer") {
 		return "", false
 	}
-	token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	token := strings.TrimSpace(header[space+1:])
 	return token, token != ""
 }
 

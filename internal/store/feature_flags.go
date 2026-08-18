@@ -14,10 +14,15 @@ const (
 	SettingFeatureSecurityAlerts = "feature.security_alerts"
 	SettingFeatureStars          = "feature.stars"
 	SettingFeatureWatches        = "feature.watches"
+	// SettingFeatureStarredReleases star 仓库 release 追踪与通知开关
+	// （与 feature.stars 星标计数快照语义区分）。
+	SettingFeatureStarredReleases = "feature.starred_releases"
 )
 
 // FeatureEnabled 读取布尔型全局功能开关。
 // 键不存在、JSON 非法或非 bool 时返回 true，避免未配置时误伤采集。
+// 注意 fail-open 是有意选择（采集优先）：DB 抖动时不会因开关读取失败停掉全部采集，
+// 代价是极端情况下可能短暂放行已关闭的类型；无法留痕（store 层无 logger）。
 func FeatureEnabled(ctx context.Context, settings SettingsStore, key string) bool {
 	if settings == nil {
 		return true
@@ -47,6 +52,8 @@ func KindFeatureKey(kind string) string {
 		return SettingFeatureStars
 	case WatchKind:
 		return SettingFeatureWatches
+	case ReleaseKind:
+		return SettingFeatureStarredReleases
 	case AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning:
 		return SettingFeatureSecurityAlerts
 	default:
@@ -63,25 +70,27 @@ func KindFeatureEnabled(ctx context.Context, settings SettingsStore, kind string
 	return FeatureEnabled(ctx, settings, key)
 }
 
-// FeatureFlags 一次读取六个全局功能开关，供摘要等批量过滤使用。
+// FeatureFlags 一次读取七个全局功能开关，供摘要等批量过滤使用。
 type FeatureFlags struct {
-	Issues         bool
-	PullRequests   bool
-	Actions        bool
-	SecurityAlerts bool
-	Stars          bool
-	Watches        bool
+	Issues          bool
+	PullRequests    bool
+	Actions         bool
+	SecurityAlerts  bool
+	Stars           bool
+	Watches         bool
+	StarredReleases bool
 }
 
 // LoadFeatureFlags 加载全部功能开关；缺省均为 true。
 func LoadFeatureFlags(ctx context.Context, settings SettingsStore) FeatureFlags {
 	return FeatureFlags{
-		Issues:         FeatureEnabled(ctx, settings, SettingFeatureIssues),
-		PullRequests:   FeatureEnabled(ctx, settings, SettingFeaturePullRequests),
-		Actions:        FeatureEnabled(ctx, settings, SettingFeatureActions),
-		SecurityAlerts: FeatureEnabled(ctx, settings, SettingFeatureSecurityAlerts),
-		Stars:          FeatureEnabled(ctx, settings, SettingFeatureStars),
-		Watches:        FeatureEnabled(ctx, settings, SettingFeatureWatches),
+		Issues:          FeatureEnabled(ctx, settings, SettingFeatureIssues),
+		PullRequests:    FeatureEnabled(ctx, settings, SettingFeaturePullRequests),
+		Actions:         FeatureEnabled(ctx, settings, SettingFeatureActions),
+		SecurityAlerts:  FeatureEnabled(ctx, settings, SettingFeatureSecurityAlerts),
+		Stars:           FeatureEnabled(ctx, settings, SettingFeatureStars),
+		Watches:         FeatureEnabled(ctx, settings, SettingFeatureWatches),
+		StarredReleases: FeatureEnabled(ctx, settings, SettingFeatureStarredReleases),
 	}
 }
 
@@ -98,6 +107,8 @@ func (f FeatureFlags) AllowsKind(kind string) bool {
 		return f.Stars
 	case WatchKind:
 		return f.Watches
+	case ReleaseKind:
+		return f.StarredReleases
 	case AlertKindDependabot, AlertKindCodeScanning, AlertKindSecretScanning:
 		return f.SecurityAlerts
 	default:

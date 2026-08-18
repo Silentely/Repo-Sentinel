@@ -26,6 +26,7 @@ func TestParseRetryAfter(t *testing.T) {
 		{"负秒不采纳", "-5", 0},
 		{"非整数数字", "1.5", 0},
 		{"非法文本", "abc", 0},
+		{"混合数字文本", "120abc", 0},
 		{"整数超上限封顶", "999999", maxRetryAfter},
 		{"未来HTTP日期", future.Format(http.TimeFormat), -1},
 		{"空白填充日期", "  " + future.Format(http.TimeFormat) + " ", -1},
@@ -51,5 +52,16 @@ func TestParseRetryAfter(t *testing.T) {
 				t.Fatalf("parseRetryAfter() = %d, want %d", got, tc.want)
 			}
 		})
+	}
+}
+
+// 日期恰好等于上限时长：按剩余秒数计算不应封顶（尚未超过上限），
+// 也不应因执行偏差四舍五入越界（ceil 后仍等于上限）。
+func TestParseRetryAfterDateAtMax(t *testing.T) {
+	at := time.Now().UTC().Add(time.Duration(maxRetryAfter) * time.Second)
+	resp := &http.Response{Header: http.Header{"Retry-After": []string{at.Format(http.TimeFormat)}}}
+	got := parseRetryAfter(resp)
+	if got < maxRetryAfter-1 || got > maxRetryAfter {
+		t.Fatalf("parseRetryAfter() = %d, want ~%d", got, maxRetryAfter)
 	}
 }

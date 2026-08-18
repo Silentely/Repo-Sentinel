@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -81,7 +81,7 @@ const reposFixture = {
   total: 2,
 };
 
-// AI 配置初始快照：全部字段可编辑（unset 来源）、密钥未配置。
+// 智能值守配置初始快照：全部字段可编辑（unset 来源）、密钥未配置。
 // 用 let 以便单测覆盖「后端未设置标量字段（空串 / 0）」的回退场景。
 let aiConfigFixture = {
   enabled: false,
@@ -89,6 +89,7 @@ let aiConfigFixture = {
   model: "gpt-4o-mini",
   timeout_sec: 20,
   max_tokens: 800,
+  retries: 1,
   digest_enabled: true,
   triage_enabled: true,
   api_key_configured: false,
@@ -97,6 +98,7 @@ let aiConfigFixture = {
   model_source: "unset",
   timeout_source: "unset",
   max_tokens_source: "unset",
+  retries_source: "unset",
   api_key_source: "unset",
   digest_enabled_source: "unset",
   triage_enabled_source: "unset",
@@ -105,6 +107,7 @@ let aiConfigFixture = {
   model_locked: false,
   timeout_locked: false,
   max_tokens_locked: false,
+  retries_locked: false,
   api_key_locked: false,
   digest_enabled_locked: false,
   triage_enabled_locked: false,
@@ -112,7 +115,7 @@ let aiConfigFixture = {
   note: "",
 };
 
-// 供单个用例模拟 AI 配置查询失败（如反代瞬时故障），验证保存/测试按钮被禁用。
+// 供单个用例模拟 智能值守配置查询失败（如反代瞬时故障），验证保存/测试按钮被禁用。
 let aiConfigQueryError: Error | null = null;
 
 vi.mock("./api", () => ({
@@ -280,20 +283,20 @@ describe("设置页", () => {
     expect(within(featuresSection).queryByText("功能模块开关已保存。")).toBeNull();
   });
 
-  it("保存 AI 配置时提交表单字段且不回显密钥", async () => {
+  it("保存智能值守配置时提交表单字段且不回显密钥", async () => {
     const user = userEvent.setup();
     renderPage();
 
-    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
-    await user.click(within(aiSection).getByRole("checkbox", { name: /启用 AI/ }));
+    const aiSection = await screen.findByRole("region", { name: "智能值守" });
+    await user.click(within(aiSection).getByRole("checkbox", { name: /启用智能值守/ }));
     const modelInput = within(aiSection).getByLabelText("模型");
     await user.clear(modelInput);
     await user.type(modelInput, "llama3.1");
     const keyInput = within(aiSection).getByLabelText(/留空保持不变/);
     await user.type(keyInput, "sk-ui-key");
-    await user.click(within(aiSection).getByRole("button", { name: "保存 AI 配置" }));
+    await user.click(within(aiSection).getByRole("button", { name: "保存智能值守配置" }));
 
-    expect(await within(aiSection).findByText("AI 配置已保存。")).toBeInTheDocument();
+    expect(await within(aiSection).findByText("智能值守配置已保存。")).toBeInTheDocument();
     expect(saveAIConfigMock).toHaveBeenCalledWith(
       expect.objectContaining({
         enabled: true,
@@ -303,9 +306,85 @@ describe("设置页", () => {
     );
     const payload = saveAIConfigMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
     expect(payload).toBeDefined();
-    // 全字段可编辑时提交完整配置（timeout/max_tokens 为数值）。
+    // 全字段可编辑时提交完整配置（timeout/max_tokens/retries 为数值）。
     expect(payload?.timeout_sec).toBe(20);
     expect(payload?.max_tokens).toBe(800);
+    expect(payload?.retries).toBe(1);
+  });
+
+  it("重试次数输入框可修改并随保存提交（0 表示不重试）", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "智能值守" });
+    const retriesInput = within(aiSection).getByLabelText("重试次数");
+    // 默认值与后端 DefaultRetries 一致。
+    expect(retriesInput).toHaveValue(1);
+    // 等 智能值守配置查询落定（保存按钮随 isLoading 解禁），避免后续输入被数据回填的
+    // useEffect 重置覆盖——真实用户操作时表单早已加载完成。
+    await waitFor(() => {
+      expect(within(aiSection).getByRole("button", { name: "保存智能值守配置" })).toBeEnabled();
+    });
+    // number input 用 change 直接设值，规避 jsdom 中 clear 后光标位置导致的字符拼接。
+    fireEvent.change(retriesInput, { target: { value: "3" } });
+    await user.click(within(aiSection).getByRole("button", { name: "保存智能值守配置" }));
+
+    expect(await within(aiSection).findByText("智能值守配置已保存。")).toBeInTheDocument();
+    expect(saveAIConfigMock).toHaveBeenCalledWith(expect.objectContaining({ retries: 3 }));
+
+    // 0（不重试）为合法显式值。
+    fireEvent.change(retriesInput, { target: { value: "0" } });
+    await user.click(within(aiSection).getByRole("button", { name: "保存智能值守配置" }));
+    expect(saveAIConfigMock).toHaveBeenLastCalledWith(expect.objectContaining({ retries: 0 }));
+  });
+
+  it("输出 token 上限可逐位输入多位数（不再被钳到 100）并随保存提交", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "智能值守" });
+    const maxTokensInput = within(aiSection).getByLabelText("输出 token 上限");
+    // 默认值与后端 DefaultMaxTokens 一致。
+    expect(maxTokensInput).toHaveValue(800);
+    // 等 智能值守配置查询落定，避免输入被数据回填的 useEffect 重置覆盖。
+    await waitFor(() => {
+      expect(within(aiSection).getByRole("button", { name: "保存智能值守配置" })).toBeEnabled();
+    });
+    // 逐位输入 2000：旧实现键入首位数即被钳到 100，无法继续输入。
+    fireEvent.change(maxTokensInput, { target: { value: "2" } });
+    expect(maxTokensInput).toHaveValue(2);
+    fireEvent.change(maxTokensInput, { target: { value: "2000" } });
+    expect(maxTokensInput).toHaveValue(2000);
+    await user.click(within(aiSection).getByRole("button", { name: "保存智能值守配置" }));
+    expect(await within(aiSection).findByText("智能值守配置已保存。")).toBeInTheDocument();
+    expect(saveAIConfigMock).toHaveBeenLastCalledWith(expect.objectContaining({ max_tokens: 2000 }));
+  });
+
+  it("输出 token 上限失焦时钳到合法范围", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "智能值守" });
+    const maxTokensInput = within(aiSection).getByLabelText("输出 token 上限");
+    await waitFor(() => {
+      expect(within(aiSection).getByRole("button", { name: "保存智能值守配置" })).toBeEnabled();
+    });
+    fireEvent.change(maxTokensInput, { target: { value: "50" } });
+    fireEvent.blur(maxTokensInput);
+    expect(maxTokensInput).toHaveValue(100);
+  });
+
+  it("重试次数被环境变量锁定时输入框禁用", async () => {
+    const original = aiConfigFixture;
+    aiConfigFixture = { ...original, retries_locked: true };
+    renderPage();
+
+    const aiSection = await screen.findByRole("region", { name: "智能值守" });
+    const retriesInput = within(aiSection).getByLabelText("重试次数");
+    // 禁用状态依赖 智能值守配置查询结果，等待数据落定后再断言。
+    await waitFor(() => expect(retriesInput).toBeDisabled());
+
+    aiConfigFixture = original;
   });
 
   it("后端未设置标量字段（空串 / 0）时表单回退显示默认值", async () => {
@@ -316,15 +395,15 @@ describe("设置页", () => {
       const user = userEvent.setup();
       renderPage();
 
-      const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+      const aiSection = await screen.findByRole("region", { name: "智能值守" });
       expect(within(aiSection).getByLabelText("API Base URL")).toHaveValue("https://api.openai.com/v1");
       expect(within(aiSection).getByLabelText("模型")).toHaveValue("gpt-4o-mini");
       expect(within(aiSection).getByLabelText("请求超时（秒）")).toHaveValue(20);
       expect(within(aiSection).getByLabelText("输出 token 上限")).toHaveValue(800);
 
       // 未修改直接保存时，不得把 0/空串提交给后端（会触发 400 校验失败）。
-      await user.click(within(aiSection).getByRole("button", { name: "保存 AI 配置" }));
-      await within(aiSection).findByText("AI 配置已保存。");
+      await user.click(within(aiSection).getByRole("button", { name: "保存智能值守配置" }));
+      await within(aiSection).findByText("智能值守配置已保存。");
       const payload = saveAIConfigMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
       expect(payload?.timeout_sec).toBe(20);
       expect(payload?.max_tokens).toBe(800);
@@ -337,7 +416,7 @@ describe("设置页", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    const aiSection = await screen.findByRole("region", { name: "智能值守" });
     await user.click(within(aiSection).getByRole("button", { name: /测试连通性/ }));
 
     expect(await within(aiSection).findByText(/连通性测试成功/)).toBeInTheDocument();
@@ -357,22 +436,22 @@ describe("设置页", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    const aiSection = await screen.findByRole("region", { name: "智能值守" });
     await user.click(within(aiSection).getByRole("button", { name: /测试连通性/ }));
 
     expect(await within(aiSection).findByText("连通性测试失败")).toBeInTheDocument();
     expect(within(aiSection).getByText(/ai: http 401/)).toBeInTheDocument();
   });
 
-  it("AI 配置加载失败时禁用保存与测试按钮，避免覆盖已有配置", async () => {
+  it("智能值守配置加载失败时禁用保存与测试按钮，避免覆盖已有配置", async () => {
     aiConfigQueryError = new Error("boom");
     try {
       renderPage();
 
-      const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+      const aiSection = await screen.findByRole("region", { name: "智能值守" });
       // 查询失败后表单持有默认回退值，此时保存/测试必须禁用，防止用默认值覆盖 DB 有效配置。
-      expect(await within(aiSection).findByText("无法加载 AI 配置")).toBeInTheDocument();
-      expect(within(aiSection).getByRole("button", { name: "保存 AI 配置" })).toBeDisabled();
+      expect(await within(aiSection).findByText("无法加载智能值守配置")).toBeInTheDocument();
+      expect(within(aiSection).getByRole("button", { name: "保存智能值守配置" })).toBeDisabled();
       expect(within(aiSection).getByRole("button", { name: /测试连通性/ })).toBeDisabled();
     } finally {
       aiConfigQueryError = null;
@@ -382,10 +461,10 @@ describe("设置页", () => {
   it("AI 区块操作按钮使用与通知渠道一致的按钮容器布局", async () => {
     renderPage();
 
-    const aiSection = await screen.findByRole("region", { name: "AI 集成" });
+    const aiSection = await screen.findByRole("region", { name: "智能值守" });
     const container = aiSection.querySelector(".channel-form__buttons");
     expect(container).not.toBeNull();
-    expect(within(container as HTMLElement).getByRole("button", { name: "保存 AI 配置" })).toBeInTheDocument();
+    expect(within(container as HTMLElement).getByRole("button", { name: "保存智能值守配置" })).toBeInTheDocument();
     expect(within(container as HTMLElement).getByRole("button", { name: /测试连通性/ })).toBeInTheDocument();
   });
 

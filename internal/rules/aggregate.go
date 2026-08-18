@@ -136,8 +136,9 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 
 	a.mu.Lock()
 	now := time.Now()
-	// 超频检测
-	times := a.bursts[repoID]
+	// 超频检测按「仓库+类别」维度：与聚合粒度一致，避免单类别未超频时因其它类别的
+	// 事件量被误判超频（如 5 分钟内 8 个 issue + 8 个 PR 各低于阈值，却触发频率摘要）。
+	times := a.bursts[key]
 	filtered := times[:0]
 	for _, t := range times {
 		if now.Sub(t) <= a.BurstWindow {
@@ -145,7 +146,7 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 		}
 	}
 	filtered = append(filtered, now)
-	a.bursts[repoID] = filtered
+	a.bursts[key] = filtered
 	if len(filtered) > a.BurstThreshold {
 		sample := res.Event
 		// 标题带上仓库名：Telegram 推送预览只看标题，无仓库名时无法区分是哪个仓超频。
@@ -192,7 +193,11 @@ func (a *Aggregator) flush(key string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if len(b.events) == 1 {
-		_ = (&Engine{Store: a.Store, AI: a.AI, Logger: a.Logger}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName)
+		// 单事件回放：走实时通知评估。失败留痕，避免聚合窗口内的通知静默丢失。
+		if err := (&Engine{Store: a.Store, AI: a.AI, Logger: a.Logger}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName); err != nil && a.Logger != nil {
+			a.Logger.Warn("aggregate flush evaluate failed",
+				"repo", b.repoName, "category", b.category, "events", len(b.events), "error_code", "aggregate_flush_failed", "error", err.Error())
+		}
 		return
 	}
 	if a.Logger != nil {
@@ -200,7 +205,11 @@ func (a *Aggregator) flush(key string) {
 		a.Logger.Debug("aggregate flushed",
 			"repo", b.repoName, "category", b.category, "events", len(b.events))
 	}
-	_ = a.enqueueMerged(ctx, b)
+	if err := a.enqueueMerged(ctx, b); err != nil && a.Logger != nil {
+		// 合并通知写库失败：与单事件回放同样留痕，DB 抖动时不再静默丢聚合通知。
+		a.Logger.Warn("aggregate flush enqueue failed",
+			"repo", b.repoName, "category", b.category, "events", len(b.events), "error_code", "aggregate_flush_failed", "error", err.Error())
+	}
 }
 
 // enqueueMerged 按渠道订阅过滤桶内事件子集，逐渠道构建合并消息。
@@ -228,12 +237,18 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 			continue
 		}
 		title, body := renderMergedMessage(b.repoName, b.category, sub, time.Now().UTC())
-		variant := fmt.Sprintf("agg|%s|%s|%d", b.repoID, b.category, bucket)
-		idem := idempotencyKey(ch.ID, b.repoID, variant)
+		// repoID 为空（事件未绑定仓库）时回退仓库名进幂等键与聚合键：
+		// 否则不同仓库同类同桶会生成相同幂等键，第二条被 Outbox 唯一约束静默丢弃。
+		idScope := b.repoID
+		if idScope == "" {
+			idScope = b.repoName
+		}
+		variant := fmt.Sprintf("agg|%s|%s|%d", idScope, b.category, bucket)
+		idem := idempotencyKey(ch.ID, idScope, variant)
 		eventID := sub[0].ID
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eventID,
-			AggregateKey: b.repoID + "|" + b.category, IdempotencyKey: idem,
+			AggregateKey: idScope + "|" + b.category, IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: title, BodyText: body, ParseMode: "HTML",
 			BodyJSON: map[string]any{"aggregate": true, "count": len(sub), "category": b.category, "bucket": bucket},
@@ -249,7 +264,9 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 // windowEnd 为合并窗口结束时刻，正文标注批次时间便于用户判断通知对应的窗口。
 func renderMergedMessage(repoName, category string, events []*store.Event, windowEnd time.Time) (string, string) {
 	categoryCN := categoryDisplayName(category)
-	title := fmt.Sprintf("📋 %s：%s × %d（已合并）", htmlpkg.EscapeString(repoName), htmlpkg.EscapeString(categoryCN), len(events))
+	// 「已聚合」而非「已合并」：避免与 PR 的「已合并」状态语义混淆
+	//（同一条通知里既可能包含已合并的 PR，也可能表示本通知是聚合产物）。
+	title := fmt.Sprintf("📋 %s：%s × %d（已聚合）", htmlpkg.EscapeString(repoName), htmlpkg.EscapeString(categoryCN), len(events))
 	var body strings.Builder
 	body.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
 	body.WriteString("────────────────\n")
@@ -291,12 +308,17 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 		if !ch.Enabled || !ch.AcceptsKind(sample.Kind) {
 			continue
 		}
-		variant := fmt.Sprintf("burst|%s|%s|%d", repoID, cat, bucket)
-		idem := idempotencyKey(ch.ID, repoID, variant)
+		// repoID 为空时回退仓库名进幂等键，避免不同仓库摘要互相碰撞。
+		idScope := repoID
+		if idScope == "" {
+			idScope = repoName
+		}
+		variant := fmt.Sprintf("burst|%s|%s|%d", idScope, cat, bucket)
+		idem := idempotencyKey(ch.ID, idScope, variant)
 		eid := sample.ID
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eid,
-			AggregateKey: repoID + "|burst", IdempotencyKey: idem,
+			AggregateKey: idScope + "|burst", IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: safeTitle, BodyText: body, ParseMode: "HTML",
 			// 有事件链接时附带跳转按钮，用户可从摘要直达原始事件。

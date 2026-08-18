@@ -6,13 +6,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
 // 仓库清单同步的配置级错误，由 HTTP 层映射为具体状态码。
 var (
 	// ErrAppNotConfigured GitHub App 未配置或不可用。
-	ErrAppNotConfigured = errors.New("github_app_not_configured")
+	// 统一复用 githubx 的 sentinel，保证 errors.Is 判定跨包一致
+	//（githubx.AppJWT 与 syncx.ReconcileRepository 返回同一错误）。
+	ErrAppNotConfigured = githubx.ErrAppNotConfigured
 	// ErrNoInstallation 本地尚无任何 GitHub App 安装。
 	ErrNoInstallation = errors.New("github_no_installation")
 )
@@ -42,6 +45,22 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 		maxPages = 20
 	}
 	result := SyncInstallationResult{Installations: len(installations)}
+	// 一次性加载本地仓库建 full_name→repo 映射，避免对每个安装仓库 GetByFullName 的
+	// N+1 查询（安装仓库多时一轮同步数百次单查）。加载失败降级逐仓单查并留痕。
+	existingByFullName := make(map[string]store.Repository)
+	for page := 1; ; page++ {
+		repos, res, err := r.Store.Repositories().List(ctx, store.ListFilter{Page: page, PerPage: 100})
+		if err != nil {
+			r.warn("load local repositories failed", 0, err)
+			break
+		}
+		for _, repo := range repos {
+			existingByFullName[repo.FullName] = repo
+		}
+		if page*res.PerPage >= res.Total || len(repos) == 0 {
+			break
+		}
+	}
 	for _, inst := range installations {
 		token, err := r.GitHub.InstallationToken(ctx, inst.InstallationID)
 		if err != nil {
@@ -93,8 +112,8 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 					HTMLURL:        htmlURL,
 					DefaultBranch:  gr.DefaultBranch,
 				}
-				existing, err := r.Store.Repositories().GetByFullName(ctx, fullName)
-				if err == nil {
+				existing, ok := existingByFullName[fullName]
+				if ok {
 					in.ID = existing.ID
 					in.SyncStatus = existing.SyncStatus
 					if existing.SyncStatus == "" {
@@ -119,10 +138,8 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 					result.Imported++
 					continue
 				}
-				if !errors.Is(err, store.ErrNotFound) {
-					result.LastError = err.Error()
-					continue
-				}
+				// map 不命中 = 本地尚无该仓库：按新建入库（语义与 GetByFullName 的
+				// ErrNotFound 分支一致；映射加载失败降级时同样走此路径）。
 				now := time.Now().UTC()
 				in.BaselineStartedAt = &now
 				if _, err := r.Store.Repositories().Upsert(ctx, in); err != nil {

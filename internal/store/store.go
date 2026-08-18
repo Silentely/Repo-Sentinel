@@ -65,6 +65,7 @@ type Store interface {
 	SecurityAlerts() SecurityAlertStore
 	Events() EventStore
 	RepoStatSnapshots() RepoStatSnapshotStore
+	StarredTrackers() StarredTrackerStore
 	Channels() ChannelStore
 	Outbox() OutboxStore
 	Cursors() CursorStore

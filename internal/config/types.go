@@ -46,10 +46,14 @@ type AIConfig struct {
 	Timeout time.Duration `yaml:"timeout"`
 	// MaxTokens 输出 token 上限，默认 800。
 	MaxTokens int `yaml:"max_tokens"`
-	// DigestEnabled 是否启用 AI 摘要（每日/周报/月报），默认 true。
+	// Retries 瞬时失败（超时/网络/5xx/空响应）自动重试次数，默认 1；0 表示不重试。
+	Retries int `yaml:"retries"`
+	// DigestEnabled 是否启用智能简报（每日/周报/月报），默认 true。
 	DigestEnabled bool `yaml:"digest_enabled"`
 	// TriageEnabled 是否启用实时安全告警 AI 分诊，默认 true。
 	TriageEnabled bool `yaml:"triage_enabled"`
+	// ReleaseSummaryEnabled 是否启用 star 仓库新 release 的更新速览，默认 true。
+	ReleaseSummaryEnabled bool `yaml:"release_summary_enabled"`
 }
 
 // MetricsConfig 描述 Prometheus /metrics 暴露策略。
@@ -127,6 +131,9 @@ type GitHubConfig struct {
 	WebhookSecret         Secret `yaml:"webhook_secret"`
 	WebhookPreviousSecret Secret `yaml:"webhook_previous_secret"`
 	ExternalPAT           Secret `yaml:"external_pat"`
+	// StarredUsername 管理台 star release 追踪的 GitHub 用户名初始值
+	// （也可在管理台设置页填写；此处为 env/配置文件兜底）。
+	StarredUsername string `yaml:"starred_username"`
 }
 
 // NotifyConfig 汇总 Telegram 与 HTTP Webhook 通知配置。

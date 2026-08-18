@@ -25,6 +25,9 @@ const (
 	StarKind  = "star"
 	WatchKind = "watch"
 
+	// ReleaseKind star 仓库的 GitHub Release 发布事件类型。
+	ReleaseKind = "release"
+
 	// MetricStargazers 快照指标名（与 normalizer 包 starCountMetric 常量字符串一致，
 	// 两处固定为 "stargazers"；store 聚合、syncx 对账与 normalizer 写入共用该值）。
 	MetricStargazers = "stargazers"
@@ -32,6 +35,10 @@ const (
 	AlertKindDependabot     = "dependabot"
 	AlertKindCodeScanning   = "code_scanning"
 	AlertKindSecretScanning = "secret_scanning"
+
+	// AlertStateWithdrawn 安全告警源端撤回状态：GitHub 不推送该状态、也不会再出现在
+	// 告警列表 API 中，由对账差集检测写入本地，避免「源端已消失、本地永远待处理」。
+	AlertStateWithdrawn = "withdrawn"
 
 	ChannelTelegram    = "telegram"
 	ChannelHTTPWebhook = "http_webhook"
@@ -119,6 +126,10 @@ func RepoAllowsKind(repo *Repository, kind string) bool {
 	return true
 }
 
+// GitHubViewLabel 通知正文与 Telegram inline keyboard 的 GitHub 跳转按钮文案。
+// 收敛到领域层单一来源：engine（HTML 链接）与 notify（inline button）共用，避免两处漂移。
+const GitHubViewLabel = "🔗 在 GitHub 中查看"
+
 // KindDisplayName 事件类型中文/友好名（推送正文与 AI 分诊输入用，避免 raw kind）。
 func KindDisplayName(kind string) string {
 	switch kind {
@@ -138,6 +149,8 @@ func KindDisplayName(kind string) string {
 		return "Star"
 	case WatchKind:
 		return "Watch"
+	case ReleaseKind:
+		return "Release"
 	default:
 		return kind
 	}
@@ -152,6 +165,18 @@ func PayloadString(m map[string]any, key string) string {
 		return v
 	}
 	return ""
+}
+
+// EventRepoName 解析事件所属仓库名，供报告预览与 AI 总结引用。
+// 优先 RepositoryID → repositories 映射；star 追踪的 release 事件没有 RepositoryID
+// （外部 star 仓不建 Repository 行），回退 PayloadSummary["repository"]（syncx 写入）。
+func EventRepoName(ev Event, repoNames map[string]string) string {
+	if ev.RepositoryID != nil && repoNames != nil {
+		if name := repoNames[*ev.RepositoryID]; name != "" {
+			return name
+		}
+	}
+	return PayloadString(ev.PayloadSummary, "repository")
 }
 
 // CoerceInt 将 JSON 数值（float64/int/int64/json.Number）收敛为整数；
@@ -294,7 +319,7 @@ type Event struct {
 	Kind                 string         `json:"kind"`
 	Action               string         `json:"action"`
 	RepositoryID         *string        `json:"repository_id,omitempty"`
-	SubjectNumber        *int           `json:"subject_number,omitempty"`
+	SubjectNumber        *int64         `json:"subject_number,omitempty"`
 	Title                string         `json:"title"`
 	Severity             string         `json:"severity"`
 	Actor                string         `json:"actor"`
@@ -354,6 +379,7 @@ var subscribableKinds = map[string]struct{}{
 	AlertKindSecretScanning: {},
 	StarKind:                {},
 	WatchKind:               {},
+	ReleaseKind:             {},
 }
 
 // IsSubscribableKind 判定 kind 是否在订阅白名单内。
@@ -409,6 +435,31 @@ type SyncCursor struct {
 	LastSuccessAt *time.Time
 	LastErrorCode string
 	UpdatedAt     time.Time
+}
+
+// StarredRepoTracker 状态常量。
+const (
+	TrackerStateTracking    = "tracking"    // 正常轮询 release
+	TrackerStateInactive    = "inactive"    // 从未发布 release，7 天复查
+	TrackerStateDisabled    = "disabled"    // 用户停用或用户 unstar，保留记录
+	TrackerStateUnavailable = "unavailable" // 404/410 删仓或转私有
+)
+
+// StarredRepoTracker 用户 star 仓库的 release 追踪记录。
+type StarredRepoTracker struct {
+	ID                     string
+	FullName               string
+	State                  string
+	ETag                   string
+	LastReleaseID          int64
+	LastReleaseTag         string
+	LastReleasePublishedAt *time.Time
+	NoReleaseSince         *time.Time
+	NoReleaseRecheckAt     *time.Time
+	FirstSeenAt            time.Time
+	LastPollAt             *time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 // ListFilter 通用列表筛选。
@@ -519,6 +570,8 @@ type SecurityAlertStore interface {
 	Get(context.Context, string) (SecurityAlert, error)
 	UpsertIfNewer(context.Context, SecurityAlert) (SecurityAlert, bool, error)
 	List(context.Context, ListFilter) ([]SecurityAlert, PageResult, error)
+	// ListByRepoKind 返回指定仓库与类型的全部本地告警（不分状态），供对账差集判定。
+	ListByRepoKind(context.Context, string, string) ([]SecurityAlert, error)
 	CountOpen(context.Context) (int, error)
 	SetIgnored(context.Context, string, bool) error
 }
@@ -541,6 +594,26 @@ type EventStore interface {
 type RepoStatSnapshotStore interface {
 	Upsert(context.Context, RepoStatSnapshot) (RepoStatSnapshot, error)
 	ListInRange(context.Context, []string, string, string, string) ([]RepoStatSnapshot, error)
+}
+
+// StarredTrackerStore 用户 star 仓库的 release 追踪记录。
+type StarredTrackerStore interface {
+	// Upsert 按 full_name 幂等写入：已存在则更新，否则创建。
+	Upsert(context.Context, StarredRepoTracker) error
+	GetByFullName(context.Context, string) (StarredRepoTracker, error)
+	// ListAll 返回全部追踪记录（不分状态），供 star 同步一次性建 full_name→tracker
+	// 映射，避免逐仓 GetByFullName 的 N+1 查询；limit 截断（配合追踪上限配置）。
+	ListAll(context.Context, int) ([]StarredRepoTracker, error)
+	// ListPollCandidates 返回 state=tracking 的候选，按 last_poll_at 升序（未轮询过优先），limit 截断。
+	ListPollCandidates(context.Context, int) ([]StarredRepoTracker, error)
+	// UpdatePollResult 推进 release 轮询结果（etag 与最新 release 信息），并更新 last_poll_at。
+	UpdatePollResult(context.Context, string, string, int64, string, *time.Time) error
+	// UpdateNoRelease 标记仓库无 release（进入 inactive），并设置下次复查时间。
+	UpdateNoRelease(context.Context, string, time.Time) error
+	UpdateState(context.Context, string, string) error
+	// CountByState 按 state 统计数量，供管理台状态概览。
+	CountByState(context.Context) (map[string]int, error)
+	List(context.Context, ListFilter) ([]StarredRepoTracker, PageResult, error)
 }
 
 // ChannelStore 通知渠道。

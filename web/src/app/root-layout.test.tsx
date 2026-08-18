@@ -90,7 +90,9 @@ describe("移动端抽屉导航", () => {
     expect(menu).toHaveAttribute("aria-expanded", "true");
     expect(sidebar?.className).toContain("is-open");
     expect(document.body.style.overflow).toBe("hidden");
-    expect(screen.getByRole("button", { name: "收起导航菜单" })).toHaveFocus();
+    // 打开后焦点进入抽屉内关闭按钮（菜单按钮与关闭按钮同名「收起导航菜单」，按元素限定）。
+    const closeButton = sidebar?.querySelector<HTMLButtonElement>(".app-sidebar__close");
+    expect(closeButton).toHaveFocus();
   });
 
   it("顶栏提供 GitHub 仓库入口", () => {
@@ -163,7 +165,9 @@ describe("移动端抽屉导航", () => {
     renderLayout();
     await user.click(screen.getByRole("button", { name: "打开导航菜单" }));
 
-    await user.click(screen.getByRole("button", { name: "收起导航菜单" }));
+    // 点抽屉内关闭按钮收起（菜单按钮与关闭按钮同名「收起导航菜单」，按元素限定）。
+    const sidebar = document.getElementById("app-sidebar");
+    await user.click(sidebar?.querySelector<HTMLButtonElement>(".app-sidebar__close") as HTMLButtonElement);
 
     expect(document.getElementById("app-sidebar")?.className).not.toContain("is-open");
     expect(screen.getByRole("button", { name: "打开导航菜单" })).toHaveFocus();
@@ -182,6 +186,7 @@ describe("移动端顶栏标题 mobileTitleFor", () => {
       ["/notifications", "渠道配置"],
       ["/notifications/outbox", "投递记录"],
       ["/github", "GitHub App"],
+      ["/starred-releases", "Star Release"],
       ["/about", "关于"],
       ["/settings", "设置"],
     ];

@@ -8,7 +8,7 @@ import (
 )
 
 func TestRenderMessageIssueOpened(t *testing.T) {
-	num := 42
+	num := int64(42)
 	ev := &store.Event{
 		Kind:          store.WorkItemKindIssue,
 		Action:        "opened",
@@ -83,7 +83,7 @@ func TestRenderMessagePRMerged(t *testing.T) {
 }
 
 func TestRenderMessageIssueClosed(t *testing.T) {
-	num := 7
+	num := int64(7)
 	ev := &store.Event{
 		Kind:          store.WorkItemKindIssue,
 		Action:        "closed",
@@ -157,5 +157,43 @@ func TestRenderMessageSeparatorPresent(t *testing.T) {
 	_, body, _ := renderMessage(ev, "repo")
 	if !strings.Contains(body, "────────────────") {
 		t.Fatal("正文应包含分隔线")
+	}
+}
+
+func TestRenderMessageReleasePublished(t *testing.T) {
+	releaseID := int64(42)
+	ev := &store.Event{
+		Kind:          store.ReleaseKind,
+		Action:        "published",
+		Title:         "Hello-World v2.0.0",
+		SubjectNumber: &releaseID,
+		HTMLURL:       "https://github.com/octocat/Hello-World/releases/tag/v2.0.0",
+		PayloadSummary: map[string]any{
+			"tag_name": "v2.0.0", "prerelease": false, "notes": "some notes",
+		},
+	}
+	title, body, htmlURL := renderMessage(ev, "octocat/Hello-World")
+
+	if !strings.Contains(title, "🚀") {
+		t.Fatalf("release 标题应含 🚀，实际: %s", title)
+	}
+	if !strings.Contains(title, "新版本发布") {
+		t.Fatalf("标题应含「新版本发布」，实际: %s", title)
+	}
+	if !strings.Contains(body, "状态：新版本发布") {
+		t.Fatalf("正文应含状态：新版本发布，实际: %s", body)
+	}
+	if !strings.Contains(body, "版本：<code>v2.0.0</code>") {
+		t.Fatalf("正文应含版本 tag，实际: %s", body)
+	}
+	if !strings.Contains(body, "类型：Release") {
+		t.Fatalf("正文应含类型 Release，实际: %s", body)
+	}
+	// release 事件不应渲染「编号」行（编号是 release id 而非 issue 编号）。
+	if strings.Contains(body, "编号：") {
+		t.Fatalf("release 正文不应含编号行，实际: %s", body)
+	}
+	if htmlURL != "https://github.com/octocat/Hello-World/releases/tag/v2.0.0" {
+		t.Fatalf("htmlURL 不正确: %s", htmlURL)
 	}
 }

@@ -123,7 +123,7 @@ func (c *Checker) Check(ctx context.Context, force bool) Result {
 		c.logf("update check stale", "version", stale.LatestVersion, "source", stale.Source)
 		return *stale
 	}
-	c.logf("update check failed", "error", friendlyError(lastErr))
+	c.logf("update check failed", "error", lastErr.Error(), "user_message", friendlyError(lastErr))
 	return Result{
 		Enabled:   true,
 		CheckedAt: checkedAt,
@@ -405,10 +405,9 @@ func friendlyError(err error) string {
 		return "检查更新暂时失败，请稍后再试。"
 	}
 	if strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline") {
-		return "连接版本源超时，请检查网络后重试"
+		return "连接版本源超时，请检查网络后重试。"
 	}
-	if len(msg) > 200 {
-		return msg[:200] + "…"
-	}
-	return msg
+	// 未分类错误不向客户端透出原始文本（可能含 TLS/DNS/代理等内部细节），
+	// 统一为可操作的通用文案；完整错误由调用方日志保留。
+	return "无法获取最新版本，请稍后重试。"
 }

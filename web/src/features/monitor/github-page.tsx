@@ -3,9 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Circle, Copy, ExternalLink } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
-import { ErrorAlert } from "../../components/error-alert";
+import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { apiRequest } from "../../lib/api/client";
 import { toApiError } from "../../lib/api/errors";
+import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import {
   addExternalRepository,
   githubConfigQueryOptions,
@@ -27,7 +28,11 @@ export function GitHubPage() {
   const githubConfig = useQuery(githubConfigQueryOptions);
   const installations = useQuery(installationsQueryOptions);
   const [externalName, setExternalName] = useState("");
-  const [copyState, setCopyState] = useState<"idle" | "ok" | "fail">("idle");
+  // 复制 Webhook URL：ok/fail 短暂反馈（失败提示「复制失败」），定时器卸载时清理。
+  const { isCopied: copiedWebhook, isFailed: copyWebhookFailed, copy: copyText } = useCopyFeedback();
+  async function copyWebhook() {
+    await copyText("webhook", webhookURL);
+  }
   const [formMessage, setFormMessage] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
   const [configMessage, setConfigMessage] = useState("");
@@ -124,17 +129,6 @@ export function GitHubPage() {
   const inboundReady = Boolean(cfg?.webhook_secret_configured);
   const outboundReady = Boolean(cfg?.app_id_configured && cfg?.private_key_configured);
 
-  async function copyWebhook() {
-    try {
-      await navigator.clipboard.writeText(webhookURL);
-      setCopyState("ok");
-      window.setTimeout(() => setCopyState("idle"), 1800);
-    } catch {
-      setCopyState("fail");
-      window.setTimeout(() => setCopyState("idle"), 2200);
-    }
-  }
-
   return (
     <>
       <section className="page-intro">
@@ -146,7 +140,7 @@ export function GitHubPage() {
       </section>
 
       {githubConfig.isError ? (
-        <ErrorAlert title="无法加载 GitHub 配置" message={toApiError(githubConfig.error).message} errorCode={toApiError(githubConfig.error).errorCode} />
+        <ApiErrorAlert error={githubConfig.error} title="无法加载 GitHub 配置" />
       ) : null}
 
       <section className="onboarding-card channel-form" aria-labelledby="gh-config-title">
@@ -159,19 +153,19 @@ export function GitHubPage() {
         <div className="form-grid">
           <label className="field--plain">
             <span>App ID {cfg?.app_id_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
-            <input inputMode="numeric" value={appID} disabled={cfg?.app_id_locked} onChange={(e) => setAppID(e.target.value.replace(/[^\d]/g, ""))} placeholder="123456" autoComplete="off" />
+            <input size={12} inputMode="numeric" value={appID} disabled={cfg?.app_id_locked} onChange={(e) => setAppID(e.target.value.replace(/[^\d]/g, ""))} placeholder="123456" autoComplete="off" />
           </label>
           <label className="field--plain">
             <span>Client ID {cfg?.client_id_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
-            <input value={clientID} disabled={cfg?.client_id_locked} onChange={(e) => setClientID(e.target.value)} placeholder="Iv1.xxxxxxxx" autoComplete="off" />
+            <input size={24} value={clientID} disabled={cfg?.client_id_locked} onChange={(e) => setClientID(e.target.value)} placeholder="Iv1.xxxxxxxx" autoComplete="off" />
           </label>
           <label className="field--plain">
             <span>Public Base URL {cfg?.public_base_url_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
-            <input value={publicBaseURL} disabled={cfg?.public_base_url_locked} onChange={(e) => setPublicBaseURL(e.target.value)} placeholder="https://monitor.example.com" autoComplete="off" />
+            <input size={30} value={publicBaseURL} disabled={cfg?.public_base_url_locked} onChange={(e) => setPublicBaseURL(e.target.value)} placeholder="https://monitor.example.com" autoComplete="off" />
           </label>
           <label className="field--plain">
             <span>Webhook Secret {cfg?.webhook_secret_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
-            <input type="password" value={webhookSecret} disabled={cfg?.webhook_secret_locked} onChange={(e) => setWebhookSecret(e.target.value)} placeholder={cfg?.webhook_secret_configured ? "已配置 · 留空保留" : "与 GitHub App Secret 相同"} autoComplete="off" />
+            <input size={32} type="password" value={webhookSecret} disabled={cfg?.webhook_secret_locked} onChange={(e) => setWebhookSecret(e.target.value)} placeholder={cfg?.webhook_secret_configured ? "已配置 · 留空保留" : "与 GitHub App Secret 相同"} autoComplete="off" />
           </label>
         </div>
         <label className="field--plain">
@@ -180,7 +174,7 @@ export function GitHubPage() {
         </label>
         <label className="field--plain">
           <span>或：服务器上的私钥路径（二选一）</span>
-          <input value={privateKeyPath} disabled={cfg?.private_key_locked || Boolean(privateKeyPEM.trim())} onChange={(e) => setPrivateKeyPath(e.target.value)} placeholder="/secrets/github-app.pem" autoComplete="off" />
+          <input size={26} value={privateKeyPath} disabled={cfg?.private_key_locked || Boolean(privateKeyPEM.trim())} onChange={(e) => setPrivateKeyPath(e.target.value)} placeholder="/secrets/github-app.pem" autoComplete="off" />
         </label>
         <p className="field-hint">
           推荐直接粘贴 PEM（加密入库，容器无需挂载文件）。External PAT 仅支持环境变量。
@@ -189,7 +183,7 @@ export function GitHubPage() {
         <button className="primary-button primary-button--inline" type="button" disabled={saveConfig.isPending || cfg?.can_edit_in_ui === false} onClick={() => { setConfigMessage(""); saveConfig.mutate(); }}>
           {saveConfig.isPending ? "保存中…" : "保存 GitHub 配置"}
         </button>
-        {saveConfig.isError ? <ErrorAlert title="保存失败" message={toApiError(saveConfig.error).message} errorCode={toApiError(saveConfig.error).errorCode} /> : null}
+        {saveConfig.isError ? <ApiErrorAlert error={saveConfig.error} title="保存失败" /> : null}
         <ul className="status-checklist mt-md">
           {checklist.map((item) => (
             <li key={item.label} data-ok={item.ok ? "true" : "false"}>
@@ -224,10 +218,10 @@ export function GitHubPage() {
             type="button"
             onClick={() => void copyWebhook()}
             aria-live="polite"
-            aria-label={copyState === "ok" ? "Webhook URL 已复制" : copyState === "fail" ? "复制失败，请手动复制" : "复制 Webhook URL"}
+            aria-label={copiedWebhook("webhook") ? "Webhook URL 已复制" : copyWebhookFailed("webhook") ? "复制失败，请手动复制" : "复制 Webhook URL"}
           >
             <Copy size={15} aria-hidden="true" />
-            {copyState === "ok" ? "已复制" : copyState === "fail" ? "复制失败" : "复制"}
+            {copiedWebhook("webhook") ? "已复制" : copyWebhookFailed("webhook") ? "复制失败" : "复制"}
           </button>
         </div>
         <div className="link-row">
@@ -262,7 +256,7 @@ export function GitHubPage() {
             {syncRepos.isPending ? "同步中…" : "从 GitHub 同步仓库"}
           </button>
         </div>
-        {syncRepos.isError ? <ErrorAlert title="同步失败" message={toApiError(syncRepos.error).message} errorCode={toApiError(syncRepos.error).errorCode} /> : null}
+        {syncRepos.isError ? <ApiErrorAlert error={syncRepos.error} title="同步失败" /> : null}
         {syncMessage ? <p className="success-banner mt-md" role="status">{syncMessage}</p> : null}
         <details className="collapse-section mt-md">
           <summary>安装步骤（4 步）</summary>
@@ -287,7 +281,7 @@ export function GitHubPage() {
             <a className="quiet-button" href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer"><ExternalLink size={14} aria-hidden="true" /> 去 GitHub 安装</a>
           </div>
         </div>
-        {installations.isError ? <ErrorAlert title="无法加载 Installation" message={toApiError(installations.error).message} errorCode={toApiError(installations.error).errorCode} /> : null}
+        {installations.isError ? <ApiErrorAlert error={installations.error} title="无法加载 Installation" /> : null}
         {(() => {
           // 查询成功才渲染列表：避免非空断言，条件渲染与数据解耦。
           const items = installations.data?.items;
@@ -320,12 +314,12 @@ export function GitHubPage() {
         {formMessage ? <p className="success-banner" role="status">{formMessage}</p> : null}
         <label className="field--plain">
           <span>仓库全名</span>
-          <input value={externalName} onChange={(e) => setExternalName(e.target.value)} placeholder="owner/repo" autoComplete="off" />
+          <input size={24} value={externalName} onChange={(e) => setExternalName(e.target.value)} placeholder="owner/repo" autoComplete="off" />
         </label>
         <button className="primary-button primary-button--inline" type="button" disabled={addExternal.isPending || !externalName.trim()} onClick={() => { setFormMessage(""); addExternal.mutate(); }}>
           {addExternal.isPending ? "登记中…" : "添加外部仓"}
         </button>
-        {addExternal.isError ? <ErrorAlert title="无法添加" message={toApiError(addExternal.error).message} errorCode={toApiError(addExternal.error).errorCode} /> : null}
+        {addExternal.isError ? <ApiErrorAlert error={addExternal.error} title="无法添加" /> : null}
       </section>
     </>
   );

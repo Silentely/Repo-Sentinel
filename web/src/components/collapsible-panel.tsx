@@ -36,7 +36,8 @@ export function CollapsiblePanel({
           type="button"
           className="collapsible-panel__toggle"
           aria-expanded={open}
-          aria-controls={panelId}
+          // 收起时 body 不在 DOM：此时不输出 aria-controls，避免指向不存在的元素。
+          aria-controls={open ? panelId : undefined}
           aria-labelledby={headingId}
           onClick={onToggle}
         >

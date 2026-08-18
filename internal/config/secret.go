@@ -34,7 +34,7 @@ func (s *Secret) UnmarshalYAML(node *yaml.Node) error {
 		return nil
 	}
 	if node.Kind != yaml.ScalarNode {
-		return fmt.Errorf("secret must be a scalar")
+		return fmt.Errorf("secret 必须是标量值")
 	}
 	s.value = node.Value
 	return nil
@@ -50,7 +50,7 @@ func (s *Secret) UnmarshalText(value []byte) error {
 func (s *Secret) UnmarshalJSON(value []byte) error {
 	var plain string
 	if err := json.Unmarshal(value, &plain); err != nil {
-		return fmt.Errorf("secret must be a string")
+		return fmt.Errorf("secret 必须是字符串")
 	}
 	s.value = plain
 	return nil

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"log/slog"
@@ -24,6 +25,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 	webassets "github.com/Silentely/Repo-Sentinel/web"
+	"github.com/oklog/ulid/v2"
 )
 
 type buildDependencies struct {
@@ -46,8 +48,10 @@ func defaultBuildDependencies() buildDependencies {
 				Handler:           handler,
 				ReadHeaderTimeout: 10 * time.Second,
 				ReadTimeout:       30 * time.Second,
-				WriteTimeout:      30 * time.Second,
-				IdleTimeout:       60 * time.Second,
+				// WriteTimeout 45s：为 AI 连通性测试（同步 handler，探测上限 30s）与
+				// 慢响应留出余量；读侧仍由 ReadTimeout（30s）保护，无需同步放宽。
+				WriteTimeout: 45 * time.Second,
+				IdleTimeout:  60 * time.Second,
 			}
 		},
 	}
@@ -141,8 +145,27 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	aggregator.AI = aiClient
 	aggregator.Logger = logger
 	digestGen := &digest.Generator{Store: data, AI: aiClient, Logger: logger}
+
+	starred := &syncx.StarredReleasePoller{
+		Store:  data,
+		GitHub: ghClient,
+		Public: &githubx.PublicClient{},
+		// Engine 直连实时通知决策（不聚合：release 低频单条，立即投递）。
+		Engine: &rules.Engine{Store: data, AI: aiClient, Logger: logger},
+		Logger: logger,
+	}
+	// 用户名初始值：settings 优先，配置（env/yaml）兜底并写入 settings 供设置页回显。
+	if syncx.StarredUsername(ctx, data.Settings()) == "" && strings.TrimSpace(cfg.GitHub.StarredUsername) != "" {
+		raw, _ := json.Marshal(strings.TrimSpace(cfg.GitHub.StarredUsername))
+		if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+			ID: ulid.Make().String(), Key: syncx.SettingStarredUsername,
+			ValueJSON: raw, UpdatedAt: time.Now().UTC(), UpdatedBy: "bootstrap",
+		}); err != nil {
+			return nil, newPublicError("database_unavailable", "无法写入 star 追踪用户名。", err)
+		}
+	}
 	scheduler := &syncx.Scheduler{
-		Reconciler: reconciler, External: external, Digest: digestGen, Logger: logger,
+		Reconciler: reconciler, External: external, Starred: starred, Digest: digestGen, Logger: logger,
 	}
 	build := buildinfo.Current()
 	updateChecker := &updatecheck.Checker{
@@ -174,8 +197,9 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		Background:     workerCtx,
 		AI:             aiClient,
 		AIRuntime:      aiRuntime,
+		StarredPoller:  starred,
 	})
-	if err := bootstrapNotifyChannels(ctx, data, keyRing, cfg); err != nil {
+	if err := bootstrapNotifyChannels(ctx, logger, data, keyRing, cfg); err != nil {
 		return nil, err
 	}
 	built := &App{
@@ -275,7 +299,7 @@ func mapStoreOpenError(err error) error {
 }
 
 // bootstrapNotifyChannels 将环境中的 Telegram/HTTP 配置物化为渠道行（每类最多启用 1 个）。
-func bootstrapNotifyChannels(ctx context.Context, data store.Store, keyRing *cryptox.KeyRing, cfg config.Config) error {
+func bootstrapNotifyChannels(ctx context.Context, logger *slog.Logger, data store.Store, keyRing *cryptox.KeyRing, cfg config.Config) error {
 	if keyRing == nil {
 		return nil
 	}
@@ -294,7 +318,10 @@ func bootstrapNotifyChannels(ctx context.Context, data store.Store, keyRing *cry
 			if err != nil {
 				return newPublicError("database_unavailable", "无法初始化 Telegram 渠道。", err)
 			}
-			_ = data.Channels().DisableOthersOfType(ctx, store.ChannelTelegram, ch.ID)
+			// 同类型去重失败会留下多实例并存（下次写入再收敛），低危但留痕。
+			if err := data.Channels().DisableOthersOfType(ctx, store.ChannelTelegram, ch.ID); err != nil && logger != nil {
+				logger.Warn("seed channel dedupe failed", "channel_type", store.ChannelTelegram, "error_code", "channel_disable_failed", "error", err.Error())
+			}
 		}
 	}
 	if url := strings.TrimSpace(cfg.Notify.HTTPWebhook.URL); url != "" {
@@ -315,7 +342,10 @@ func bootstrapNotifyChannels(ctx context.Context, data store.Store, keyRing *cry
 			if err != nil {
 				return newPublicError("database_unavailable", "无法初始化 HTTP Webhook 渠道。", err)
 			}
-			_ = data.Channels().DisableOthersOfType(ctx, store.ChannelHTTPWebhook, ch.ID)
+			// 同类型去重失败会留下多实例并存（下次写入再收敛），低危但留痕。
+			if err := data.Channels().DisableOthersOfType(ctx, store.ChannelHTTPWebhook, ch.ID); err != nil && logger != nil {
+				logger.Warn("seed channel dedupe failed", "channel_type", store.ChannelHTTPWebhook, "error_code", "channel_disable_failed", "error", err.Error())
+			}
 		}
 	}
 	return nil

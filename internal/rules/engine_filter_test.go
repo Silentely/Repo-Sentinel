@@ -64,7 +64,7 @@ func TestEngine按仓库能力开关兜底(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	num := 5
+	num := int64(5)
 	prEvent := &store.Event{
 		ID: ulid.Make().String(), Kind: store.WorkItemKindPR, Action: "opened",
 		Title: "pr", SubjectNumber: &num, OccurredAt: time.Now().UTC(),
@@ -151,7 +151,7 @@ func TestEngine按渠道订阅过滤(t *testing.T) {
 	}
 
 	eng := &Engine{Store: data}
-	num := 3
+	num := int64(3)
 	prEvent := &store.Event{
 		ID: ulid.Make().String(), Kind: store.WorkItemKindPR, Action: "opened",
 		Title: "pr", SubjectNumber: &num, OccurredAt: time.Now().UTC(),

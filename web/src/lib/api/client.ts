@@ -57,7 +57,20 @@ export function createApiClient(dependencies: ApiClientDependencies = {}): ApiRe
     if (response.status === 204) {
       return undefined as T;
     }
-    return (await response.json()) as T;
+    // 200 成功路径也需解析兜底：反代透传 HTML 错误页或空体时 response.json() 会抛
+    // SyntaxError，若任其冒泡会被 toApiError 误判为 network_error「无法连接」。
+    // 此处构造 invalid_response 并附原文摘要，便于判断是网关还是上游问题。
+    try {
+      return (await response.json()) as T;
+    } catch {
+      const raw = await response.text().catch(() => "");
+      throw new ApiError({
+        status: response.status,
+        errorCode: "invalid_response",
+        message: raw ? `服务端返回了无法解析的响应（${raw.slice(0, 120)}${raw.length > 120 ? "…" : ""}）。` : "服务端返回了空响应。",
+        details: undefined,
+      });
+    }
   };
 }
 

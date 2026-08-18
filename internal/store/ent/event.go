@@ -27,7 +27,7 @@ type Event struct {
 	// RepositoryID holds the value of the "repository_id" field.
 	RepositoryID *string `json:"repository_id,omitempty"`
 	// SubjectNumber holds the value of the "subject_number" field.
-	SubjectNumber *int `json:"subject_number,omitempty"`
+	SubjectNumber *int64 `json:"subject_number,omitempty"`
 	// Title holds the value of the "title" field.
 	Title string `json:"title,omitempty"`
 	// Severity holds the value of the "severity" field.
@@ -122,8 +122,8 @@ func (_m *Event) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field subject_number", values[i])
 			} else if value.Valid {
-				_m.SubjectNumber = new(int)
-				*_m.SubjectNumber = int(value.Int64)
+				_m.SubjectNumber = new(int64)
+				*_m.SubjectNumber = value.Int64
 			}
 		case event.FieldTitle:
 			if value, ok := values[i].(*sql.NullString); !ok {

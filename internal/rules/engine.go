@@ -26,9 +26,6 @@ type Engine struct {
 	Logger *slog.Logger
 }
 
-// aiTriageTimeout 分诊调用预算上限：告警通知应尽快入库，AI 慢则放弃分诊。
-const aiTriageTimeout = 15 * time.Second
-
 // logNotifySkipped 记录"事件已入库但未产生实时通知"的决策留痕（Debug）：
 // 静默路径包括抑制、能力开关关闭与不在实时通知范围，排查漏通知时不再盲猜。
 func (e *Engine) logNotifySkipped(res normalizer.Result, repoFullName, reason string) {
@@ -60,10 +57,14 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		return err
 	}
 	title, body, htmlURL := renderMessage(res.Event, repoFullName)
-	// 安全告警分诊：新告警附带 AI 影响分析与处理建议；失败保持原文，不阻塞入库。
+	// 安全告警分诊：新告警附带影响分析与处理建议；失败保持原文，不阻塞入库。
 	// 是否有接收渠道的检查并入 triageAnalysis，与参与度日志归并一处。
 	if analysis := e.triageAnalysis(ctx, res.Event, repoFullName, channels); analysis != "" {
-		body = body + "\n────────────────\n🤖 AI 分析\n" + htmlpkg.EscapeString(analysis)
+		body = body + "\n────────────────\n🤖 告警分析\n" + htmlpkg.EscapeString(analysis)
+	}
+	// release 更新速览：新 release 附带智能翻译要点；失败降级原文链接，不阻塞入库。
+	if summary := e.releaseAnalysis(ctx, res.Event, repoFullName, channels); summary != "" {
+		body = body + "\n────────────────\n🤖 更新速览\n" + htmlpkg.EscapeString(summary)
 	}
 	for _, ch := range channels {
 		// 渠道未订阅该事件类型时跳过。
@@ -125,6 +126,9 @@ func shouldNotifyRealtime(ev *store.Event) bool {
 		if ev.Action == "started" {
 			return true
 		}
+	case store.ReleaseKind:
+		// release 发布事件实时通知；其余 action 不通知。
+		return ev.Action == "published"
 	}
 	return false
 }
@@ -140,7 +144,7 @@ func hasSubscribedChannel(channels []store.NotificationChannel, kind string) boo
 	return false
 }
 
-// triageAnalysis 生成新安全告警的 AI 分析；未启用、非新告警、无订阅渠道或调用失败时返回空串。
+// triageAnalysis 生成新安全告警的告警分析；未启用、非新告警、无订阅渠道或调用失败时返回空串。
 // 返回空串时调用方保持原通知正文，AI 慢或不可用绝不影响通知入库。
 // 参与度留痕（Logger 注入时）：skipped 记录未参与原因（triage_not_enabled / not_new_alert /
 // no_subscribed_channel），used 记录分诊成功，fallback 记录失败、空输出或格式不达标
@@ -169,7 +173,9 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 	}
 	// 为本次 AI 决策注入请求关联 ID：参与度日志与 ai 层调用日志共用同一 req_id。
 	ctx, reqID := ai.EnsureRequestID(ctx)
-	ctx, cancel := context.WithTimeout(ctx, aiTriageTimeout)
+	// 外层预算 = 配置的请求超时：分诊等待时长与用户配置一致，AI 慢时通知最迟
+	// 延迟配置超时后降级原文，不会被更短的硬编码上限截断。
+	ctx, cancel := context.WithTimeout(ctx, e.AI.EffectiveTimeout())
 	defer cancel()
 	start := time.Now()
 	analysis, err := e.AI.TriageAlert(ctx, *ev, repo)
@@ -205,6 +211,57 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 		e.Logger.Info("triage ai used", "req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
 	}
 	return analysis
+}
+
+// releaseAnalysis 生成新 release 的更新速览；未启用、非 release、无订阅渠道或失败时返回空串。
+// 返回空串时调用方保持原通知正文（原文链接兜底）。
+// 外层预算 = 配置的请求超时（e.AI.EffectiveTimeout）：等待时长与用户配置一致，
+// AI 慢时通知最迟延迟配置超时后降级原文，不会被更短的硬编码上限截断。
+// 参与度留痕与 triageAnalysis 同款：skipped（release_summary_not_enabled /
+// no_subscribed_channel）、used、fallback（reason=ai_error / empty_analysis）。
+func (e *Engine) releaseAnalysis(ctx context.Context, ev *store.Event, repo string, channels []store.NotificationChannel) string {
+	// 仅 release 事件参与；其余事件类型静默返回，不产生 skipped 日志噪声。
+	if ev.Kind != store.ReleaseKind {
+		return ""
+	}
+	skip := func(reason string) string {
+		if e.Logger != nil {
+			e.Logger.Info("release ai skipped", "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "reason", reason)
+		}
+		return ""
+	}
+	if e.AI == nil || !e.AI.IsReleaseSummaryEnabled() {
+		return skip("release_summary_not_enabled")
+	}
+	if !hasSubscribedChannel(channels, ev.Kind) {
+		return skip("no_subscribed_channel")
+	}
+	ctx, reqID := ai.EnsureRequestID(ctx)
+	ctx, cancel := context.WithTimeout(ctx, e.AI.EffectiveTimeout())
+	defer cancel()
+	start := time.Now()
+	tag := store.PayloadString(ev.PayloadSummary, "tag_name")
+	notes := store.PayloadString(ev.PayloadSummary, "notes")
+	summary, err := e.AI.ReleaseSummary(ctx, repo, tag, notes, ev.HTMLURL)
+	duration := time.Since(start)
+	if err != nil || strings.TrimSpace(summary) == "" {
+		if e.Logger != nil {
+			reason := "empty_analysis"
+			if err != nil {
+				reason = "ai_error"
+			}
+			attrs := []any{"req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds(), "reason", reason}
+			if err != nil {
+				attrs = append(attrs, "error", err.Error())
+			}
+			e.Logger.Warn("release ai fallback", attrs...)
+		}
+		return ""
+	}
+	if e.Logger != nil {
+		e.Logger.Info("release ai used", "req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
+	}
+	return summary
 }
 
 // isSecurityAlertKind 判定事件是否为安全告警类型（分诊仅针对告警）。
@@ -245,8 +302,13 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		b.WriteString(fmt.Sprintf("📦 仓库：<code>%s</code>\n", htmlpkg.EscapeString(repo)))
 	}
 
-	if ev.SubjectNumber != nil {
+	if ev.SubjectNumber != nil && ev.Kind != store.ReleaseKind {
 		b.WriteString(fmt.Sprintf("🔢 编号：#%d\n", *ev.SubjectNumber))
+	}
+
+	// release 事件用版本号（tag_name）替代编号行。
+	if tag := store.PayloadString(ev.PayloadSummary, "tag_name"); tag != "" {
+		b.WriteString(fmt.Sprintf("🏷️ 版本：<code>%s</code>\n", htmlpkg.EscapeString(tag)))
 	}
 
 	b.WriteString(fmt.Sprintf("📋 类型：%s\n", htmlpkg.EscapeString(store.KindDisplayName(ev.Kind))))
@@ -290,248 +352,15 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 
 	if ev.HTMLURL != "" {
 		b.WriteString("────────────────\n")
-		b.WriteString(fmt.Sprintf("<a href=\"%s\">🔗 在 GitHub 中查看</a>", htmlpkg.EscapeString(ev.HTMLURL)))
+		b.WriteString(fmt.Sprintf("<a href=\"%s\">%s</a>", htmlpkg.EscapeString(ev.HTMLURL), store.GitHubViewLabel))
 		htmlURL = ev.HTMLURL
 	}
 	return title, b.String(), htmlURL
 }
 
-// statusDisplay 返回事件的状态 emoji 与中文标签，供标题/正文一眼识别开闭与结论。
-func statusDisplay(ev *store.Event) (emoji, label string) {
-	switch ev.Kind {
-	case store.WorkItemKindIssue:
-		switch ev.Action {
-		case "opened":
-			return "🟢", "已打开"
-		case "reopened":
-			return "🔁", "重新打开"
-		case "closed":
-			return "⚫", "已关闭"
-		}
-	case store.WorkItemKindPR:
-		if isDraft(ev) && ev.Action != "ready_for_review" && ev.Action != "merged" && ev.Action != "closed" {
-			return "📝", "草稿"
-		}
-		switch ev.Action {
-		case "opened":
-			return "🟢", "已打开"
-		case "reopened":
-			return "🔁", "重新打开"
-		case "closed":
-			return "⚫", "已关闭"
-		case "merged":
-			return "🟣", "已合并"
-		case "ready_for_review":
-			return "👀", "待审核"
-		case "converted_to_draft":
-			return "📝", "转为草稿"
-		}
-	case store.WorkflowRunKind:
-		if ev.Action == "recovered" {
-			return "🟢", "已恢复"
-		}
-		return workflowConclusionEmoji(ev.WorkflowConclusion), store.WorkflowConclusionLabel(ev.WorkflowConclusion)
-	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
-		switch ev.Action {
-		case "created", "opened", "reopened":
-			return severityEmoji(ev.Severity), "新告警"
-		case "fixed", "resolved":
-			return "✅", "已修复"
-		case "dismissed", "closed":
-			return "🔇", "已忽略"
-		case "auto_dismissed":
-			return "🔇", "自动忽略"
-		default:
-			if ev.Severity != "" {
-				return severityEmoji(ev.Severity), "告警更新"
-			}
-			return "🛡️", "告警更新"
-		}
-	case store.StarKind:
-		switch ev.Action {
-		case "created":
-			return "⭐", "已收藏"
-		case "deleted":
-			return "💔", "取消收藏"
-		}
-	case store.WatchKind:
-		if ev.Action == "started" {
-			return "👀", "已关注"
-		}
-	}
-
-	// 通用回退：按 action 语义猜测
-	switch {
-	case strings.Contains(ev.Action, "reopen"):
-		return "🔁", "重新打开"
-	case ev.Action == "closed" || ev.Action == "fixed" || ev.Action == "dismissed" || ev.Action == "resolved":
-		return "⚫", "已关闭"
-	case ev.Action == "opened" || ev.Action == "created":
-		return "🟢", "已打开"
-	default:
-		if ev.Action != "" {
-			return eventEmoji(ev), actionDisplayName(ev.Action)
-		}
-		return eventEmoji(ev), "有更新"
-	}
-}
-
-// workflowConclusionEmoji 返回 Workflow 结论的 emoji（label 由 store.WorkflowConclusionLabel 提供）。
-func workflowConclusionEmoji(conclusion string) string {
-	switch conclusion {
-	case "success":
-		return "✅"
-	case "failure", "startup_failure":
-		return "❌"
-	case "cancelled":
-		return "⏹️"
-	case "timed_out":
-		return "⏱️"
-	case "action_required":
-		return "🔔"
-	case "skipped":
-		return "⏭️"
-	default:
-		if store.IsFailureConclusion(conclusion) {
-			return "❌"
-		}
-		return "📊"
-	}
-}
-
-// actionDisplayName 将 GitHub action 转为简短中文（通用回退）。
-func actionDisplayName(action string) string {
-	switch action {
-	case "opened":
-		return "已打开"
-	case "closed":
-		return "已关闭"
-	case "reopened":
-		return "重新打开"
-	case "merged":
-		return "已合并"
-	case "created":
-		return "已创建"
-	case "updated", "edited":
-		return "已更新"
-	case "completed":
-		return "已完成"
-	case "recovered":
-		return "已恢复"
-	case "dismissed":
-		return "已忽略"
-	case "fixed", "resolved":
-		return "已修复"
-	case "ready_for_review":
-		return "待审核"
-	case "converted_to_draft":
-		return "转为草稿"
-	default:
-		return action
-	}
-}
-
-// severityDisplayName 严重度中文。
-func severityDisplayName(severity string) string {
-	switch strings.ToLower(severity) {
-	case "critical":
-		return "严重 (critical)"
-	case "high", "error":
-		return "高 (high)"
-	case "medium", "warning":
-		return "中 (medium)"
-	case "low", "note":
-		return "低 (low)"
-	default:
-		return severity
-	}
-}
-
-// eventEmoji 根据事件类型和状态返回对应的 emoji。
-func eventEmoji(ev *store.Event) string {
-	switch {
-	// 安全告警 — 按严重度区分
-	case ev.Kind == store.AlertKindSecretScanning:
-		return "🔑"
-	case ev.Kind == store.AlertKindCodeScanning && ev.Severity == "error":
-		return "🔴"
-	case ev.Kind == store.AlertKindCodeScanning && ev.Severity == "warning":
-		return "🟠"
-	case ev.Kind == store.AlertKindCodeScanning:
-		return "🔎"
-	case ev.Kind == store.AlertKindDependabot && ev.Severity == "critical":
-		return "🚨"
-	case ev.Kind == store.AlertKindDependabot:
-		return "📦"
-
-	// PR 状态细分
-	case ev.Kind == store.WorkItemKindPR && ev.Action == "merged":
-		return "🟣"
-	case ev.Kind == store.WorkItemKindPR && isDraft(ev):
-		return "📝"
-	case ev.Kind == store.WorkItemKindPR:
-		return "🔀"
-
-	// star/watch 事件
-	case ev.Kind == store.StarKind:
-		return "⭐"
-	case ev.Kind == store.WatchKind:
-		return "👀"
-
-	// Issue 状态
-	case ev.Kind == store.WorkItemKindIssue && ev.Action == "opened":
-		return "🐛"
-	case ev.Kind == store.WorkItemKindIssue:
-		return "📋"
-
-	// WorkflowRun 结论细分
-	case ev.Kind == store.WorkflowRunKind && ev.Action == "recovered":
-		return "🟢"
-	case ev.Kind == store.WorkflowRunKind && ev.WorkflowConclusion == "success":
-		return "✅"
-	case ev.Kind == store.WorkflowRunKind && ev.WorkflowConclusion == "cancelled":
-		return "⏹️"
-	case ev.Kind == store.WorkflowRunKind && ev.WorkflowConclusion == "timed_out":
-		return "⏱️"
-	case ev.Kind == store.WorkflowRunKind:
-		return "❌"
-
-	// 通用回退
-	case strings.Contains(ev.Action, "reopen"):
-		return "🔁"
-	case ev.Action == "closed" || ev.Action == "fixed" || ev.Action == "dismissed" || ev.Action == "resolved":
-		return "✅"
-	default:
-		return "📋"
-	}
-}
-
-// severityEmoji 根据严重度返回对应 emoji。
-func severityEmoji(severity string) string {
-	switch severity {
-	case "critical":
-		return "🚨"
-	case "high", "error":
-		return "🔴"
-	case "medium", "warning":
-		return "🟠"
-	case "low", "note":
-		return "🟡"
-	default:
-		return "⚠️"
-	}
-}
-
-// isDraft 从 PayloadSummary 安全读取 draft 字段。
-func isDraft(ev *store.Event) bool {
-	if ev.PayloadSummary == nil {
-		return false
-	}
-	if v, ok := ev.PayloadSummary["draft"].(bool); ok {
-		return v
-	}
-	return false
-}
+// statusDisplay / workflowConclusionEmoji / actionDisplayName / severityDisplayName /
+// eventEmoji / severityEmoji / isDraft 已移至 display.go（与 digest 报告共用，
+// 避免多份映射表漂移）；EventStatusLabel 为无 emoji 的中文状态标签，供报告预览复用。
 
 // payloadStringSlice 从 PayloadSummary 安全读取字符串切片字段。
 func payloadStringSlice(m map[string]any, key string) []string {

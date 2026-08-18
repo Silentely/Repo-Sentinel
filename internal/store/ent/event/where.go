@@ -85,7 +85,7 @@ func RepositoryID(v string) predicate.Event {
 }
 
 // SubjectNumber applies equality check predicate on the "subject_number" field. It's identical to SubjectNumberEQ.
-func SubjectNumber(v int) predicate.Event {
+func SubjectNumber(v int64) predicate.Event {
 	return predicate.Event(sql.FieldEQ(FieldSubjectNumber, v))
 }
 
@@ -420,42 +420,42 @@ func RepositoryIDContainsFold(v string) predicate.Event {
 }
 
 // SubjectNumberEQ applies the EQ predicate on the "subject_number" field.
-func SubjectNumberEQ(v int) predicate.Event {
+func SubjectNumberEQ(v int64) predicate.Event {
 	return predicate.Event(sql.FieldEQ(FieldSubjectNumber, v))
 }
 
 // SubjectNumberNEQ applies the NEQ predicate on the "subject_number" field.
-func SubjectNumberNEQ(v int) predicate.Event {
+func SubjectNumberNEQ(v int64) predicate.Event {
 	return predicate.Event(sql.FieldNEQ(FieldSubjectNumber, v))
 }
 
 // SubjectNumberIn applies the In predicate on the "subject_number" field.
-func SubjectNumberIn(vs ...int) predicate.Event {
+func SubjectNumberIn(vs ...int64) predicate.Event {
 	return predicate.Event(sql.FieldIn(FieldSubjectNumber, vs...))
 }
 
 // SubjectNumberNotIn applies the NotIn predicate on the "subject_number" field.
-func SubjectNumberNotIn(vs ...int) predicate.Event {
+func SubjectNumberNotIn(vs ...int64) predicate.Event {
 	return predicate.Event(sql.FieldNotIn(FieldSubjectNumber, vs...))
 }
 
 // SubjectNumberGT applies the GT predicate on the "subject_number" field.
-func SubjectNumberGT(v int) predicate.Event {
+func SubjectNumberGT(v int64) predicate.Event {
 	return predicate.Event(sql.FieldGT(FieldSubjectNumber, v))
 }
 
 // SubjectNumberGTE applies the GTE predicate on the "subject_number" field.
-func SubjectNumberGTE(v int) predicate.Event {
+func SubjectNumberGTE(v int64) predicate.Event {
 	return predicate.Event(sql.FieldGTE(FieldSubjectNumber, v))
 }
 
 // SubjectNumberLT applies the LT predicate on the "subject_number" field.
-func SubjectNumberLT(v int) predicate.Event {
+func SubjectNumberLT(v int64) predicate.Event {
 	return predicate.Event(sql.FieldLT(FieldSubjectNumber, v))
 }
 
 // SubjectNumberLTE applies the LTE predicate on the "subject_number" field.
-func SubjectNumberLTE(v int) predicate.Event {
+func SubjectNumberLTE(v int64) predicate.Event {
 	return predicate.Event(sql.FieldLTE(FieldSubjectNumber, v))
 }
 

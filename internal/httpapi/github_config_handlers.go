@@ -62,11 +62,11 @@ func (s *server) handleGetGitHubConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.GitHubRuntime == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	if s.dependencies.Store == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 	var body githubConfigPutRequest
@@ -219,10 +219,8 @@ func (s *server) githubConfigView(r *http.Request) githubConfigResponse {
 	out.AppID = snap.AppID
 	out.ClientID = snap.ClientID
 	out.PrivateKeyPath = snap.PrivateKeyPath
+	// base 即 snap.PublicBaseURL（见 StatusFlags），无需再回退。
 	out.PublicBaseURL = base
-	if out.PublicBaseURL == "" {
-		out.PublicBaseURL = snap.PublicBaseURL
-	}
 	out.WebhookPath = path
 	out.WebhookURL = joinWebhookURL(out.PublicBaseURL, path, r)
 	out.AppIDConfigured = appID

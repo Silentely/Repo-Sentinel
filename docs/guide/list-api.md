@@ -47,4 +47,4 @@
 | 参数 | 取值 | 说明 |
 | --- | --- | --- |
 | `alert_kind` | `dependabot` / `code_scanning` / `secret_scanning` | 告警来源 |
-| `state` | `open` / `dismissed` / `fixed` | 告警状态 |
+| `state` | `open` / `dismissed` / `fixed` / `withdrawn` | 告警状态；`withdrawn`（已撤回）由对账检测到源端告警消失后写入 |

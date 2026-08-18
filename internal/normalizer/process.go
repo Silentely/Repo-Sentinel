@@ -265,7 +265,11 @@ func (p *Processor) processInstallation(ctx context.Context, eventType string, e
 			continue
 		}
 		if r, err := p.Store.Repositories().GetByFullName(ctx, name); err == nil {
-			_ = p.Store.Repositories().UpdateSyncStatus(ctx, r.ID, store.SyncStatusUnavailable)
+			if err := p.Store.Repositories().UpdateSyncStatus(ctx, r.ID, store.SyncStatusUnavailable); err != nil && p.Logger != nil {
+				// 状态推进失败会留下「GitHub 已收回授权但本地仍正常采集」的不一致，Warn 留痕。
+				p.Logger.Warn("installation repository removed state update failed",
+					"repo", r.FullName, "error_code", "repo_state_update_failed", "error", err.Error())
+			}
 			if p.Logger != nil {
 				p.Logger.Debug("installation repository removed", "repo", r.FullName)
 			}
@@ -302,12 +306,18 @@ func (p *Processor) processRepositoryEvent(ctx context.Context, env envelope) (R
 		// 归档走 UpdateSettings 联动：sync_status、is_archived 与全部能力开关一起收口，
 		// 与设置页手动归档的结果完全一致。
 		archived := true
-		_ = p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived})
+		if err := p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived}); err != nil && p.Logger != nil {
+			p.Logger.Warn("repository lifecycle state update failed",
+				"repo", repo.FullName, "action", env.Action, "error_code", "repo_state_update_failed", "error", err.Error())
+		}
 		repo.SyncStatus = store.SyncStatusArchived
 		repo.IsArchived = true
 	case "unarchived":
 		archived := false
-		_ = p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived})
+		if err := p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived}); err != nil && p.Logger != nil {
+			p.Logger.Warn("repository lifecycle state update failed",
+				"repo", repo.FullName, "action", env.Action, "error_code", "repo_state_update_failed", "error", err.Error())
+		}
 		repo.SyncStatus = store.SyncStatusActive
 		repo.IsArchived = false
 	case "deleted":
@@ -321,11 +331,15 @@ func (p *Processor) processRepositoryEvent(ctx context.Context, env envelope) (R
 	case "transferred":
 		// 转移后 App 可能失去访问权：GitHub 侧仓库仍存在，保留数据但暂停采集，
 		// 等待对账 404 兜底或后续事件恢复。
-		_ = p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable)
+		if err := p.Store.Repositories().UpdateSyncStatus(ctx, repo.ID, store.SyncStatusUnavailable); err != nil && p.Logger != nil {
+			p.Logger.Warn("repository lifecycle state update failed",
+				"repo", repo.FullName, "action", env.Action, "error_code", "repo_state_update_failed", "error", err.Error())
+		}
 		repo.SyncStatus = store.SyncStatusUnavailable
 	case "privatized":
+		// IsPrivate 已由 ensureRepository（NormalizeRepository 用载荷 GetPrivate()）写入，
+		// 此处仅同步内存态避免重复 Upsert；错误不会在未写库时被吞掉。
 		repo.IsPrivate = true
-		repo, _ = p.Store.Repositories().Upsert(ctx, repo)
 	}
 	return Result{Repository: &repo, Updated: true, SuppressNotify: true}, nil
 }
@@ -532,7 +546,7 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 		p.eventDuplicate(repo, kind, normalizeAction(action))
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
 	}
-	num := saved.Number
+	num := int64(saved.Number)
 	srcUpdated := saved.SourceUpdatedAt
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(action),
@@ -572,60 +586,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 	run := env.WorkflowRun
-	conclusion := ""
-	if run.Conclusion != nil {
-		conclusion = *run.Conclusion
-	}
-	// GitHub 偶发缺字段；入库前补默认值，避免 Ent 必填校验失败。
-	if run.RunAttempt <= 0 {
-		run.RunAttempt = 1
-	}
-	if strings.TrimSpace(run.Status) == "" {
-		run.Status = "unknown"
-	}
-	if run.UpdatedAt.IsZero() {
-		if !run.CreatedAt.IsZero() {
-			run.UpdatedAt = run.CreatedAt
-		} else {
-			run.UpdatedAt = time.Now().UTC()
-		}
-	}
-	name := strings.TrimSpace(run.Name)
-	if name == "" {
-		name = "workflow"
-	}
-	actor := strings.TrimSpace(run.Actor.Login)
-	if actor == "" {
-		actor = "unknown"
-	}
-	if strings.TrimSpace(run.HeadBranch) == "" {
-		run.HeadBranch = "unknown"
-	}
-	if strings.TrimSpace(run.HeadSHA) == "" {
-		run.HeadSHA = "0000000000000000000000000000000000000000"
-	}
-	if strings.TrimSpace(run.HTMLURL) == "" {
-		run.HTMLURL = fmt.Sprintf("https://github.com/%s/actions/runs/%d", env.Repository.FullName, run.ID)
-	}
-	hash := StateHash(strconv.FormatInt(run.ID, 10), run.Status, conclusion, strconv.Itoa(run.RunAttempt), run.HeadSHA)
-	in := store.WorkflowRun{
-		RepositoryID:     repo.ID,
-		GitHubRunID:      run.ID,
-		GitHubWorkflowID: run.WorkflowID,
-		WorkflowName:     name,
-		RunNumber:        run.RunNumber,
-		Event:            run.Event,
-		HeadBranch:       run.HeadBranch,
-		HeadSHA:          run.HeadSHA,
-		Status:           run.Status,
-		Conclusion:       run.Conclusion,
-		Actor:            actor,
-		RunAttempt:       run.RunAttempt,
-		HTMLURL:          run.HTMLURL,
-		RunStartedAt:     run.RunStartedAt,
-		RunUpdatedAt:     run.UpdatedAt,
-		StateHash:        hash,
-	}
+	in, hash := normalizeWorkflowRun(run, env.Repository.FullName, repo.ID)
 	if run.Status == "completed" {
 		t := run.UpdatedAt
 		in.RunCompletedAt = &t
@@ -659,11 +620,11 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	srcUpdated := run.UpdatedAt
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: store.WorkflowRunKind, Action: "completed",
-		RepositoryID: &repo.ID, Title: run.Name, Actor: actor, WorkflowRunID: &runID,
+		RepositoryID: &repo.ID, Title: run.Name, Actor: in.Actor, WorkflowRunID: &runID,
 		WorkflowConclusion: *run.Conclusion, OccurredAt: run.UpdatedAt, SourceUpdatedAt: &srcUpdated,
 		HTMLURL: run.HTMLURL,
 		PayloadSummary: map[string]any{
-			"workflow_name": run.Name, "run_number": run.RunNumber, "head_branch": run.HeadBranch,
+			"workflow_name": in.WorkflowName, "run_number": run.RunNumber, "head_branch": run.HeadBranch,
 			"head_sha": shortSHA(run.HeadSHA), "status": run.Status, "conclusion": *run.Conclusion, "attempt": run.RunAttempt,
 		},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
@@ -682,6 +643,65 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		return Result{}, err
 	}
 	return Result{Event: &created, Repository: &repo, Updated: true, SuppressNotify: suppress}, nil
+}
+
+// normalizeWorkflowRun 清洗 workflow_run 载荷并补默认值，构造入库模型与状态哈希。
+// GitHub 偶发缺字段：入库前补默认值，避免 Ent 必填校验失败。
+func normalizeWorkflowRun(run *ghWorkflowRun, repoFullName string, repoID string) (store.WorkflowRun, string) {
+	conclusion := ""
+	if run.Conclusion != nil {
+		conclusion = *run.Conclusion
+	}
+	if run.RunAttempt <= 0 {
+		run.RunAttempt = 1
+	}
+	if strings.TrimSpace(run.Status) == "" {
+		run.Status = "unknown"
+	}
+	if run.UpdatedAt.IsZero() {
+		if !run.CreatedAt.IsZero() {
+			run.UpdatedAt = run.CreatedAt
+		} else {
+			run.UpdatedAt = time.Now().UTC()
+		}
+	}
+	name := strings.TrimSpace(run.Name)
+	if name == "" {
+		name = "workflow"
+	}
+	actor := strings.TrimSpace(run.Actor.Login)
+	if actor == "" {
+		actor = "unknown"
+	}
+	if strings.TrimSpace(run.HeadBranch) == "" {
+		run.HeadBranch = "unknown"
+	}
+	if strings.TrimSpace(run.HeadSHA) == "" {
+		run.HeadSHA = "0000000000000000000000000000000000000000"
+	}
+	if strings.TrimSpace(run.HTMLURL) == "" {
+		run.HTMLURL = fmt.Sprintf("https://github.com/%s/actions/runs/%d", repoFullName, run.ID)
+	}
+	hash := StateHash(strconv.FormatInt(run.ID, 10), run.Status, conclusion, strconv.Itoa(run.RunAttempt), run.HeadSHA)
+	in := store.WorkflowRun{
+		RepositoryID:     repoID,
+		GitHubRunID:      run.ID,
+		GitHubWorkflowID: run.WorkflowID,
+		WorkflowName:     name,
+		RunNumber:        run.RunNumber,
+		Event:            run.Event,
+		HeadBranch:       run.HeadBranch,
+		HeadSHA:          run.HeadSHA,
+		Status:           run.Status,
+		Conclusion:       run.Conclusion,
+		Actor:            actor,
+		RunAttempt:       run.RunAttempt,
+		HTMLURL:          run.HTMLURL,
+		RunStartedAt:     run.RunStartedAt,
+		RunUpdatedAt:     run.UpdatedAt,
+		StateHash:        hash,
+	}
+	return in, hash
 }
 
 func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env envelope) (Result, error) {
@@ -748,7 +768,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 		p.eventDuplicate(repo, kind, normalizeAction(env.Action))
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
 	}
-	num := a.Number
+	num := int64(a.Number)
 	srcUpdated := updatedAt
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(env.Action),

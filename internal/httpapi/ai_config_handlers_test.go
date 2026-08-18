@@ -16,13 +16,16 @@ import (
 // aiTestFixture 构造装配好 AI 运行时的测试 fixture。
 func aiTestFixture(t *testing.T) (*httpTestFixture, *ai.RuntimeConfig, *ai.Client) {
 	t.Helper()
-	// 全默认 bool 值（digest/triage 默认 true），其余字段 unset：管理台可编辑。
-	rt := ai.RuntimeFromEnv(config.AIConfig{DigestEnabled: true, TriageEnabled: true})
+	// 全默认 bool 值（digest/triage 默认 true）与 Retries 默认 1，其余字段 unset：管理台可编辑。
+	// aiConfig 与 aiRuntime 同源，保证 PUT 热更新（RuntimeFromEnv(Config.AI)）不把默认值误判为 env 锁定。
+	aiCfg := config.AIConfig{Retries: 1, DigestEnabled: true, TriageEnabled: true}
+	rt := ai.RuntimeFromEnv(aiCfg)
 	client := rt.Client()
 	fixture := newHTTPTestFixture(t, httpTestOptions{
 		keyRing:   testHTTPKeyRing(t),
 		aiRuntime: rt,
 		aiClient:  client,
+		aiConfig:  aiCfg,
 	})
 	return fixture, rt, client
 }
@@ -105,7 +108,7 @@ func TestAIConfigAPI(t *testing.T) {
 func TestAIConfigEnvLockedField(t *testing.T) {
 	rt := ai.RuntimeFromEnv(config.AIConfig{
 		Enabled: true, BaseURL: "https://api.openai.com/v1", APIKey: config.NewSecret("sk-env"),
-		Model: "gpt-4o-mini", Timeout: 20 * time.Second, MaxTokens: 800,
+		Model: "gpt-4o-mini", Timeout: 20 * time.Second, MaxTokens: 800, Retries: 3,
 		DigestEnabled: true, TriageEnabled: true,
 	})
 	fixture := newHTTPTestFixture(t, httpTestOptions{
@@ -131,6 +134,11 @@ func TestAIConfigEnvLockedField(t *testing.T) {
 	putBase := fixture.request(t, http.MethodPut, "/api/v1/ai/config",
 		`{"base_url":"http://evil.example/v1"}`, "127.0.0.1:45103", cookies, headers)
 	assertAPIError(t, putBase, http.StatusConflict, "ai_field_locked")
+
+	// retries 是 env 显式设置的也应锁定。
+	putRetries := fixture.request(t, http.MethodPut, "/api/v1/ai/config",
+		`{"retries":1}`, "127.0.0.1:45104", cookies, headers)
+	assertAPIError(t, putRetries, http.StatusConflict, "ai_field_locked")
 }
 
 // 非法输入被拒绝：base_url 非 http(s)、timeout 越界。
@@ -160,7 +168,7 @@ func TestAIConfigValidation(t *testing.T) {
 	}
 }
 
-// 未装配 AI 运行时（旧部署/降级路径）时 GET/PUT 返回 503。
+// 未装配 AI 运行时（旧部署/降级路径）时 GET/PUT 返回 503（service_unavailable 语义码）。
 func TestAIConfigUnavailable(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
 	fixture.bootstrapAdmin(t)
@@ -168,15 +176,15 @@ func TestAIConfigUnavailable(t *testing.T) {
 	csrf := cookieByName(t, cookies, CSRFCookieName)
 
 	get := fixture.request(t, http.MethodGet, "/api/v1/ai/config", "", "127.0.0.1:45201", cookies, nil)
-	assertAPIError(t, get, http.StatusServiceUnavailable, errorCodeInternal)
+	assertAPIError(t, get, http.StatusServiceUnavailable, errorCodeServiceUnavailable)
 
 	put := fixture.request(t, http.MethodPut, "/api/v1/ai/config", `{"enabled":true}`,
 		"127.0.0.1:45202", cookies, map[string]string{CSRFHeaderName: csrf.Value})
-	assertAPIError(t, put, http.StatusServiceUnavailable, errorCodeInternal)
+	assertAPIError(t, put, http.StatusServiceUnavailable, errorCodeServiceUnavailable)
 
 	test := fixture.request(t, http.MethodPost, "/api/v1/ai/test", `{}`,
 		"127.0.0.1:45203", cookies, map[string]string{CSRFHeaderName: csrf.Value})
-	assertAPIError(t, test, http.StatusServiceUnavailable, errorCodeInternal)
+	assertAPIError(t, test, http.StatusServiceUnavailable, errorCodeServiceUnavailable)
 }
 
 // 视图的 timeout_sec 应与运行时时长一致（秒为单位往返）。
@@ -199,6 +207,49 @@ func TestAIConfigTimeoutRoundTrip(t *testing.T) {
 	if view.TimeoutSec != 90 || view.TimeoutSource != "database" {
 		t.Fatalf("timeout 视图异常：%+v", view)
 	}
+}
+
+// 视图的 retries 应与运行时时长一致（含 0 的显式值往返；越界 400）。
+func TestAIConfigRetriesRoundTrip(t *testing.T) {
+	fixture, _, _ := aiTestFixture(t)
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	put := fixture.request(t, http.MethodPut, "/api/v1/ai/config", `{"retries":3}`,
+		"127.0.0.1:45211", cookies, headers)
+	if put.Code != http.StatusOK {
+		t.Fatalf("PUT status=%d body=%s", put.Code, put.Body.String())
+	}
+	var view aiConfigResponse
+	if err := json.Unmarshal(put.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Retries != 3 || view.RetriesSource != "database" {
+		t.Fatalf("retries 视图异常：%+v", view)
+	}
+
+	// 0（不重试）为合法显式值。
+	zero := fixture.request(t, http.MethodPut, "/api/v1/ai/config", `{"retries":0}`,
+		"127.0.0.1:45212", cookies, headers)
+	if zero.Code != http.StatusOK {
+		t.Fatalf("retries=0 应合法：status=%d body=%s", zero.Code, zero.Body.String())
+	}
+	if err := json.Unmarshal(zero.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Retries != 0 {
+		t.Fatalf("retries=0 应保留显式值：%+v", view)
+	}
+
+	// 越界拒绝。
+	bad := fixture.request(t, http.MethodPut, "/api/v1/ai/config", `{"retries":6}`,
+		"127.0.0.1:45213", cookies, headers)
+	assertAPIError(t, bad, http.StatusBadRequest, errorCodeValidationFailed)
+	neg := fixture.request(t, http.MethodPut, "/api/v1/ai/config", `{"retries":-1}`,
+		"127.0.0.1:45214", cookies, headers)
+	assertAPIError(t, neg, http.StatusBadRequest, errorCodeValidationFailed)
 }
 
 // 连通性测试：可达端点返回 ok=true，未配置 Key / 远端错误返回 ok=false，非法覆盖值 400。
@@ -268,6 +319,8 @@ func TestAIConnectivityTest(t *testing.T) {
 		{"base_url 非 http(s)", `{"base_url":"ftp://bad"}`},
 		{"timeout 越界", `{"timeout_sec":0}`},
 		{"max_tokens 过小", `{"max_tokens":10}`},
+		{"retries 越界", `{"retries":6}`},
+		{"retries 负数", `{"retries":-1}`},
 	}
 	for _, tc := range invalidCases {
 		t.Run(tc.name, func(t *testing.T) {

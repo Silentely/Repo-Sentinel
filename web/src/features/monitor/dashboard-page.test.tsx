@@ -260,6 +260,32 @@ describe("仪表盘", () => {
     expect(within(eventsPanel).getByRole("link", { name: "安全告警" })).toHaveAttribute("href", "/security");
   });
 
+  it("release 事件无 repository_id 时回退 payload_summary.repository 展示仓库名", async () => {
+    fixtures.events = {
+      items: [
+        {
+          id: "evt-rel",
+          kind: "release",
+          action: "published",
+          title: "v0.4.24 - xAI SuperGrok plan_type hotfix",
+          severity: "",
+          actor: "github-actions[bot]",
+          html_url: "https://github.com/kittors/CliRelay/releases/tag/v0.4.24",
+          occurred_at: new Date().toISOString(),
+          payload_summary: { tag_name: "v0.4.24", repository: "kittors/CliRelay" },
+        },
+      ],
+      page: 1,
+      per_page: 15,
+      total: 1,
+    };
+    renderPage();
+
+    const eventsPanel = await screen.findByRole("region", { name: "最近事件" });
+    await within(eventsPanel).findByText("v0.4.24 - xAI SuperGrok plan_type hotfix");
+    expect(within(eventsPanel).getByText("kittors/CliRelay")).toBeInTheDocument();
+  });
+
   it("事件面板快捷入口随功能开关过滤：关闭 Actions 后不再出现 Actions 链接", async () => {
     (fixtures.settings as Record<string, unknown>)["feature.actions"] = false;
     renderPage();
@@ -310,7 +336,7 @@ describe("仪表盘", () => {
   it("Star 增长面板默认渲染，空数据展示空态文案", async () => {
     renderPage();
 
-    const starsPanel = await screen.findByRole("region", { name: "⭐ Star 增长" });
+    const starsPanel = await screen.findByRole("region", { name: "Star 增长" });
     await within(starsPanel).findByText(/暂无 star 数据/);
   });
 
@@ -320,7 +346,7 @@ describe("仪表盘", () => {
 
     // 面板初始随「默认全开」短暂渲染，settings 查询落定后应移除。
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: "⭐ Star 增长" })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Star 增长" })).toBeNull();
     });
   });
 });

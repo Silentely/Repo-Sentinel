@@ -91,14 +91,14 @@ func (_u *EventUpdate) ClearRepositoryID() *EventUpdate {
 }
 
 // SetSubjectNumber sets the "subject_number" field.
-func (_u *EventUpdate) SetSubjectNumber(v int) *EventUpdate {
+func (_u *EventUpdate) SetSubjectNumber(v int64) *EventUpdate {
 	_u.mutation.ResetSubjectNumber()
 	_u.mutation.SetSubjectNumber(v)
 	return _u
 }
 
 // SetNillableSubjectNumber sets the "subject_number" field if the given value is not nil.
-func (_u *EventUpdate) SetNillableSubjectNumber(v *int) *EventUpdate {
+func (_u *EventUpdate) SetNillableSubjectNumber(v *int64) *EventUpdate {
 	if v != nil {
 		_u.SetSubjectNumber(*v)
 	}
@@ -106,7 +106,7 @@ func (_u *EventUpdate) SetNillableSubjectNumber(v *int) *EventUpdate {
 }
 
 // AddSubjectNumber adds value to the "subject_number" field.
-func (_u *EventUpdate) AddSubjectNumber(v int) *EventUpdate {
+func (_u *EventUpdate) AddSubjectNumber(v int64) *EventUpdate {
 	_u.mutation.AddSubjectNumber(v)
 	return _u
 }
@@ -359,13 +359,13 @@ func (_u *EventUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		_spec.ClearField(event.FieldRepositoryID, field.TypeString)
 	}
 	if value, ok := _u.mutation.SubjectNumber(); ok {
-		_spec.SetField(event.FieldSubjectNumber, field.TypeInt, value)
+		_spec.SetField(event.FieldSubjectNumber, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedSubjectNumber(); ok {
-		_spec.AddField(event.FieldSubjectNumber, field.TypeInt, value)
+		_spec.AddField(event.FieldSubjectNumber, field.TypeInt64, value)
 	}
 	if _u.mutation.SubjectNumberCleared() {
-		_spec.ClearField(event.FieldSubjectNumber, field.TypeInt)
+		_spec.ClearField(event.FieldSubjectNumber, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(event.FieldTitle, field.TypeString, value)
@@ -498,14 +498,14 @@ func (_u *EventUpdateOne) ClearRepositoryID() *EventUpdateOne {
 }
 
 // SetSubjectNumber sets the "subject_number" field.
-func (_u *EventUpdateOne) SetSubjectNumber(v int) *EventUpdateOne {
+func (_u *EventUpdateOne) SetSubjectNumber(v int64) *EventUpdateOne {
 	_u.mutation.ResetSubjectNumber()
 	_u.mutation.SetSubjectNumber(v)
 	return _u
 }
 
 // SetNillableSubjectNumber sets the "subject_number" field if the given value is not nil.
-func (_u *EventUpdateOne) SetNillableSubjectNumber(v *int) *EventUpdateOne {
+func (_u *EventUpdateOne) SetNillableSubjectNumber(v *int64) *EventUpdateOne {
 	if v != nil {
 		_u.SetSubjectNumber(*v)
 	}
@@ -513,7 +513,7 @@ func (_u *EventUpdateOne) SetNillableSubjectNumber(v *int) *EventUpdateOne {
 }
 
 // AddSubjectNumber adds value to the "subject_number" field.
-func (_u *EventUpdateOne) AddSubjectNumber(v int) *EventUpdateOne {
+func (_u *EventUpdateOne) AddSubjectNumber(v int64) *EventUpdateOne {
 	_u.mutation.AddSubjectNumber(v)
 	return _u
 }
@@ -796,13 +796,13 @@ func (_u *EventUpdateOne) sqlSave(ctx context.Context) (_node *Event, err error)
 		_spec.ClearField(event.FieldRepositoryID, field.TypeString)
 	}
 	if value, ok := _u.mutation.SubjectNumber(); ok {
-		_spec.SetField(event.FieldSubjectNumber, field.TypeInt, value)
+		_spec.SetField(event.FieldSubjectNumber, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedSubjectNumber(); ok {
-		_spec.AddField(event.FieldSubjectNumber, field.TypeInt, value)
+		_spec.AddField(event.FieldSubjectNumber, field.TypeInt64, value)
 	}
 	if _u.mutation.SubjectNumberCleared() {
-		_spec.ClearField(event.FieldSubjectNumber, field.TypeInt)
+		_spec.ClearField(event.FieldSubjectNumber, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(event.FieldTitle, field.TypeString, value)

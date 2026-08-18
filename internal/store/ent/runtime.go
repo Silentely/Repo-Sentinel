@@ -11,6 +11,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/schema"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/starredrepotracker"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
@@ -195,6 +196,12 @@ func init() {
 	securityalertDescIgnored := securityalertFields[11].Descriptor()
 	// securityalert.DefaultIgnored holds the default value on creation for the ignored field.
 	securityalert.DefaultIgnored = securityalertDescIgnored.Default.(bool)
+	starredrepotrackerFields := schema.StarredRepoTracker{}.Fields()
+	_ = starredrepotrackerFields
+	// starredrepotrackerDescLastReleaseID is the schema descriptor for last_release_id field.
+	starredrepotrackerDescLastReleaseID := starredrepotrackerFields[4].Descriptor()
+	// starredrepotracker.DefaultLastReleaseID holds the default value on creation for the last_release_id field.
+	starredrepotracker.DefaultLastReleaseID = starredrepotrackerDescLastReleaseID.Default.(int64)
 	synccursorFields := schema.SyncCursor{}.Fields()
 	_ = synccursorFields
 	// synccursorDescCursorValue is the schema descriptor for cursor_value field.

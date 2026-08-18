@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/go-1.26+-00ADD8" alt="Go">
   <img src="https://img.shields.io/badge/node-24+-green" alt="Node.js">
-  <img src="https://img.shields.io/badge/version-0.3.9-C45C26" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.4.0-C45C26" alt="Version">
   <img src="https://img.shields.io/badge/license-see%20repo-lightgrey" alt="License">
 </p>
 
@@ -180,7 +180,7 @@ pnpm --dir web build
 npm run docs:build
 ```
 
-CLI：`serve` · `version` · `config validate` · `admin reset-password`。
+CLI：`serve` · `version` · `config validate` · `admin reset-password` · `doctor` · `healthcheck` · `backup` · `restore`。
 
 ---
 

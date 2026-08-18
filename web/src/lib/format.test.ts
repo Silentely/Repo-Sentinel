@@ -51,6 +51,12 @@ describe("eventActionLabel", () => {
     expect(eventActionLabel("updated", "star")).toBe("已更新");
     expect(eventActionLabel("created", "dependabot")).toBe("新告警");
   });
+
+  it("告警 withdrawn 动作中文化", () => {
+    expect(eventActionLabel("withdrawn", "dependabot")).toBe("已撤回");
+    expect(eventActionLabel("withdrawn", "code_scanning")).toBe("已撤回");
+    expect(eventActionLabel("withdrawn")).toBe("已撤回");
+  });
 });
 
 describe("workItemStateLabel", () => {
@@ -102,6 +108,8 @@ describe("alertStateLabel", () => {
     expect(alertStateLabel("dismissed")).toBe("GitHub 已忽略");
     expect(alertStateLabel("fixed")).toBe("已修复");
     expect(alertStateLabel("resolved")).toBe("已修复");
+    expect(alertStateLabel("auto_dismissed")).toBe("自动忽略");
+    expect(alertStateLabel("withdrawn")).toBe("已撤回");
   });
 
   it("未知状态原样回退", () => {
