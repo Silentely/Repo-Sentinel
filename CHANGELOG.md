@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+## [0.4.0] - 2026-08-18
+
 ### Changed
 
 - Star Release 追踪修复条件请求 304 误判「无 Release」：release 未变化时 GitHub 返回 304（空响应体），此前空列表判定先于 304 处理，导致有 release 的追踪仓在每轮轮询后批量转入 inactive；调整判定顺序（先处理 304 再判空列表）并补回归测试；存量误标自愈：star 同步对「inactive 但带 release 游标」的仓立即重新探测恢复（release 确实被删除的仓仍保持 inactive），追踪页对「无 Release 但带已记录 release」的行补「恢复」按钮
