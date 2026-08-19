@@ -8,7 +8,19 @@
 
 ### Changed
 
+- 事件类别 emoji 收敛为单一来源（`rules.KindEmoji`）：digest 报告分组行不再维护私有 emoji 表，与 rules 通用回退共用，扩展类别只需改一处；`EventStatusLabel` 告警分支移除无意义的严重度判断（两分支返回值相同）
+- 日志留痕一致性：`aggregator reload failed` / `ai runtime reload failed` / 对账限流等待 / 公开 API 配额告警四处 Warn 补语义化 `error_code`，便于按码聚合
+- 仓库基线「立即放行」按钮改行级忙碌反馈：仅当前行禁用并显示「放行中…」（此前全局禁用其它仓库放行按钮），与「对账」按钮行级模式一致
+- 仓库激活接口改为单次 Upsert 写回状态与基线结束时间：删除「UpdateSyncStatus → Get → Upsert」三步中的冗余更新
+- 前端渠道名映射收敛：notify 页删除私有 `channelDisplayName`，复用 `format.channelLabel`
+- 仪表盘 Star 功能关闭时不再发起趋势查询：`starTrend` 查询 enabled 增加功能开关判定（此前仅按面板折叠暂停，无效轮询）
+- 文档同步：AI 分诊注释与迭代计划文档中的「15s 独立预算」描述更新为「遵循配置超时」（该硬编码已于 0.4.0 移除）
+- Issue/PR 列表页描述「默认显示 Open」改「默认显示未关闭」，与筛选按钮文案一致；Star Release 同步成功提示「请稍后刷新列表」改「追踪列表将自动更新」，与自动失效刷新行为一致
+
 ### Fixed
+
+- 设置页密码区块缩进错乱（18 空格）恢复标准缩进
+- `display_test.go` 新增未收录告警动作统一回退与 `KindEmoji` 映射回归测试；`monitor_handlers_test.go` 新增仓库激活单次写回回归测试
 
 ## [0.4.0] - 2026-08-18
 
