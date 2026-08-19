@@ -100,15 +100,13 @@ func (s *server) handleAddExternalRepository(w http.ResponseWriter, r *http.Requ
 
 func (s *server) handleActivateRepository(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := s.dependencies.Store.Repositories().UpdateSyncStatus(r.Context(), id, store.SyncStatusActive); err != nil {
-		s.writeMappedError(w, r, err)
-		return
-	}
 	repo, err := s.dependencies.Store.Repositories().Get(r.Context(), id)
 	if err != nil {
 		s.writeMappedError(w, r, err)
 		return
 	}
+	// 单次 Upsert 写回状态与基线结束时间：Upsert 已会写 SyncStatus，
+	// 无需先 UpdateSyncStatus 再 Get 再 Upsert 的三步冗余写。
 	now := time.Now().UTC()
 	repo.BaselineFinishedAt = &now
 	repo.SyncStatus = store.SyncStatusActive
