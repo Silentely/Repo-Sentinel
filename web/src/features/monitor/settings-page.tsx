@@ -435,10 +435,11 @@ export function SettingsPage() {
                       <button
                         className="quiet-button quiet-button--compact quiet-button--primary-ghost"
                         type="button"
-                        disabled={activate.isPending}
+                        aria-busy={activate.isPending && activate.variables === repo.id}
+                        disabled={activate.isPending && activate.variables === repo.id}
                         onClick={() => activate.mutate(repo.id)}
                       >
-                        立即放行
+                        {activate.isPending && activate.variables === repo.id ? "放行中…" : "立即放行"}
                       </button>
                     ) : (
                       <span className="repo-baseline-row__slot" aria-hidden="true" />
