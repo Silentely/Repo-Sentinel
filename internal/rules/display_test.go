@@ -51,16 +51,16 @@ func TestAlertUnknownActionDisplay(t *testing.T) {
 // 扩展事件类别时只需改此处，避免与 digest 私有表漂移。
 func TestKindEmoji(t *testing.T) {
 	cases := map[string]string{
-		store.WorkItemKindIssue:         "🐛",
-		store.WorkItemKindPR:            "🔀",
-		store.AlertKindDependabot:       "📦",
-		store.AlertKindCodeScanning:     "🔎",
-		store.AlertKindSecretScanning:   "🔑",
-		store.WorkflowRunKind:           "⚙️",
-		store.StarKind:                  "⭐",
-		store.WatchKind:                 "👀",
-		store.ReleaseKind:               "🚀",
-		"some_future_kind":              "📋",
+		store.WorkItemKindIssue:       "🐛",
+		store.WorkItemKindPR:          "🔀",
+		store.AlertKindDependabot:     "📦",
+		store.AlertKindCodeScanning:   "🔎",
+		store.AlertKindSecretScanning: "🔑",
+		store.WorkflowRunKind:         "⚙️",
+		store.StarKind:                "⭐",
+		store.WatchKind:               "👀",
+		store.ReleaseKind:             "🚀",
+		"some_future_kind":            "📋",
 	}
 	for kind, want := range cases {
 		if got := KindEmoji(kind); got != want {
