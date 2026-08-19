@@ -435,7 +435,7 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 		if attempt >= maxRetries || !retryableCallError(err) {
 			return "", err
 		}
-		// 等待重试间隔；外层预算到期（如分诊 15s）则放弃，不再发起新尝试。
+		// 等待重试间隔；外层预算（由调用方按配置超时派生）到期则放弃，不再发起新尝试。
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()

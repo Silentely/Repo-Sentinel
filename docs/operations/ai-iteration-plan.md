@@ -19,7 +19,7 @@
 | `internal/ai/client.go` `Complete` | 所有 LLM 调用的唯一出口；已有统一留痕与错误分类（timeout/network/upstream_\<status\>/bad_response/empty_response/internal） |
 | `internal/ai/summarize.go` | `SummarizeEvents` / `TriageAlert` 两个业务入口；system prompt 与 Temperature(0.3) 硬编码 |
 | `internal/digest/generator.go` `reportBody` | 摘要 AI 参与度：used / skipped / fallback |
-| `internal/rules/engine.go` `triageAnalysis` | 分诊 AI 参与度：used / skipped / fallback；15s 独立预算 |
+| `internal/rules/engine.go` `triageAnalysis` | 分诊 AI 参与度：used / skipped / fallback；等待时长遵循配置超时 |
 | `internal/httpapi/metrics.go` | 进程内 atomic 计数器 + `/metrics` Prometheus 文本暴露（webhook/outbox/reconcile） |
 | `internal/httpapi/ai_config_handlers.go` | GET/PUT/Test AI 配置；探测用独立 HTTP client |
 | `internal/ai/runtime.go` | env 基线 + DB 补缺、热更新（`RuntimeConfig`） |
