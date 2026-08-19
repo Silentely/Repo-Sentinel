@@ -7,6 +7,7 @@ import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { toApiError } from "../../lib/api/errors";
+import { channelLabel } from "../../lib/format";
 import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import {
   channelsQueryOptions,
@@ -23,10 +24,6 @@ import { SUBSCRIBABLE_KINDS, subscriptionSummary, uiCheckedKinds } from "./notif
 
 function kindGloballyEnabled(settings: SystemSettings | undefined, featureKey: (typeof SUBSCRIBABLE_KINDS)[number]["featureKey"]) {
   return settings?.[featureKey] !== false;
-}
-
-function channelDisplayName(type: ChannelType): string {
-  return type === "telegram" ? "Telegram" : "HTTP Webhook";
 }
 
 // ---- ChannelForm：Telegram 与 HTTP Webhook 共用的渠道配置表单 ----
@@ -302,7 +299,7 @@ export function NotifyPage() {
   const testMut = useMutation({
     mutationFn: (type: ChannelType) => testChannel(type),
     onSuccess: (_data, type) => {
-      setMessage(`${channelDisplayName(type)} 测试通知已发送，请检查您的通知渠道。`);
+      setMessage(`${channelLabel(type)} 测试通知已发送，请检查您的通知渠道。`);
       setError("");
     },
     onError: (err) => {
@@ -313,7 +310,7 @@ export function NotifyPage() {
   const deleteMut = useMutation({
     mutationFn: (type: ChannelType) => deleteChannel(type),
     onSuccess: async (_data, type) => {
-      setMessage(`${channelDisplayName(type)} 渠道已删除。`);
+      setMessage(`${channelLabel(type)} 渠道已删除。`);
       setError("");
       await invalidateAll();
     },
@@ -326,7 +323,7 @@ export function NotifyPage() {
     mutationFn: ({ type, enabled }: { type: ChannelType; enabled: boolean }) =>
       toggleChannel(type, enabled),
     onSuccess: async (_data, { type, enabled }) => {
-      setMessage(`${channelDisplayName(type)} 渠道已${enabled ? "启用" : "禁用"}。`);
+      setMessage(`${channelLabel(type)} 渠道已${enabled ? "启用" : "禁用"}。`);
       setError("");
       await invalidateAll();
     },
@@ -494,7 +491,7 @@ export function NotifyPage() {
         title="删除渠道"
         message={
           deleteTarget
-            ? `确定要删除 ${channelDisplayName(deleteTarget)} 渠道吗？删除后该渠道的待投递记录将无法继续发送。`
+            ? `确定要删除 ${channelLabel(deleteTarget)} 渠道吗？删除后该渠道的待投递记录将无法继续发送。`
             : ""
         }
         confirmLabel={deleteMut.isPending ? "删除中…" : "删除"}

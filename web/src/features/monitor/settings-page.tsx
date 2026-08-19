@@ -617,18 +617,18 @@ export function SettingsPage() {
         <p className="field-hint">修改成功后其它会话会失效。若已遗失当前密码，请在服务器上运行 <code>reposentinel admin reset-password --password-stdin</code>。</p>
         {passwordMsg ? <p className="success-banner" role="status">{passwordMsg}</p> : null}
         {passwordError ? <ErrorAlert title="无法修改密码" message={passwordError} /> : null}
-                  <label className="field--plain">
-            <span>当前密码</span>
-            <input size={24} type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-          </label>
-                  <label className="field--plain">
-            <span>新密码（至少 12 个字符）</span>
-            <input size={24} type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-          </label>
-                  <label className="field--plain">
-            <span>确认新密码</span>
-            <input size={24} type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-          </label>
+        <label className="field--plain">
+          <span>当前密码</span>
+          <input size={24} type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+        </label>
+        <label className="field--plain">
+          <span>新密码（至少 12 个字符）</span>
+          <input size={24} type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+        </label>
+        <label className="field--plain">
+          <span>确认新密码</span>
+          <input size={24} type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+        </label>
         <button className="primary-button primary-button--inline" type="button" disabled={savePassword.isPending || !currentPassword || !newPassword} onClick={submitPassword}>
           {savePassword.isPending ? "更新中…" : "更新密码"}
         </button>
