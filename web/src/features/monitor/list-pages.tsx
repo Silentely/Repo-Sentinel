@@ -403,7 +403,7 @@ export function IssuesPage() {
       <WorkItemsList
         kind="issue"
         title="Issues"
-        description="自有仓与外部公开仓的 Issue 列表。默认显示 Open，已归档仓库与已忽略项不计入。"
+        description="自有仓与外部公开仓的 Issue 列表。默认显示未关闭，已归档仓库与已忽略项不计入。"
       />
     </FeatureGuard>
   );
@@ -415,7 +415,7 @@ export function PullRequestsPage() {
       <WorkItemsList
         kind="pull_request"
         title="Pull Requests"
-        description="自有仓与外部公开仓的 PR 列表。默认显示 Open，已归档仓库与已忽略项不计入。"
+        description="自有仓与外部公开仓的 PR 列表。默认显示未关闭，已归档仓库与已忽略项不计入。"
       />
     </FeatureGuard>
   );

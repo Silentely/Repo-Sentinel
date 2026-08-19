@@ -115,7 +115,7 @@ export function StarredReleasesPage() {
     mutationFn: () => syncStarredReleases(),
     onSuccess: async (res) => {
       await invalidateAll();
-      setMsg(res.started ? "已触发一轮同步，请稍后刷新列表。" : "未配置用户名，无法同步。");
+      setMsg(res.started ? "已触发一轮同步，追踪列表将自动更新。" : "未配置用户名，无法同步。");
     },
     onError: (err) => setError(toApiError(err).message),
   });
