@@ -13,6 +13,61 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
+// TestActivateRepositoryWritesBaselineFinishedAt 验证基线仓库激活后状态与
+// 基线结束时间一次写回（Upsert 单次更新，非 UpdateSyncStatus + Get + Upsert 三步）。
+func TestActivateRepositoryWritesBaselineFinishedAt(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	ctx := t.Context()
+	now := time.Now().UTC()
+
+	repo, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-activate-1", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusBaseline,
+		Owner: "acme", Name: "app", FullName: "acme/app", BaselineStartedAt: &now,
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+
+	// 未登录应拒绝。
+	unauth := fixture.request(t, http.MethodPost, "/api/v1/repositories/"+repo.ID+"/activate",
+		"", "127.0.0.1:45001", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	ok := fixture.request(
+		t, http.MethodPost, "/api/v1/repositories/"+repo.ID+"/activate",
+		"", "127.0.0.1:45002", cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	if ok.Code != http.StatusOK {
+		t.Fatalf("activate status=%d body=%s", ok.Code, ok.Body.String())
+	}
+	var activated store.Repository
+	if err := json.Unmarshal(ok.Body.Bytes(), &activated); err != nil {
+		t.Fatal(err)
+	}
+	if activated.SyncStatus != store.SyncStatusActive {
+		t.Fatalf("激活后 sync_status=%q, want active", activated.SyncStatus)
+	}
+	if activated.BaselineFinishedAt == nil {
+		t.Fatal("激活后应写 BaselineFinishedAt")
+	}
+
+	// 持久化核对：回读确认状态与时间均已落库（Upsert 覆盖 SyncStatus 字段）。
+	stored, err := fixture.store.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("get repo: %v", err)
+	}
+	if stored.SyncStatus != store.SyncStatusActive {
+		t.Fatalf("落库 sync_status=%q, want active", stored.SyncStatus)
+	}
+	if stored.BaselineFinishedAt == nil {
+		t.Fatal("落库应含 BaselineFinishedAt")
+	}
+}
+
 func Test工作项忽略API需要认证与CSRF并支持列表筛选(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
 	fixture.bootstrapAdmin(t)
