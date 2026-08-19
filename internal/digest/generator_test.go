@@ -14,6 +14,7 @@ import (
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
@@ -282,7 +283,7 @@ func TestKindEmoji(t *testing.T) {
 		{"unknown", "📋"},
 	}
 	for _, tc := range cases {
-		if got := kindEmoji(tc.kind); got != tc.want {
+		if got := rules.KindEmoji(tc.kind); got != tc.want {
 			t.Errorf("kind=%q: 期望 %s，实际 %s", tc.kind, tc.want, got)
 		}
 	}

@@ -60,9 +60,6 @@ func EventStatusLabel(ev *store.Event) string {
 		case "withdrawn":
 			return "已撤回"
 		default:
-			if ev.Severity != "" {
-				return "告警更新"
-			}
 			return "告警更新"
 		}
 	case store.StarKind:
@@ -257,6 +254,33 @@ func severityDisplayName(severity string) string {
 		return "低 (low)"
 	default:
 		return severity
+	}
+}
+
+// KindEmoji 按事件类别返回统一 emoji（报告分组行与通用回退共用单一来源，
+// 避免 digest 与 rules 各自维护类别 emoji 表导致漂移）。
+func KindEmoji(kind string) string {
+	switch kind {
+	case store.WorkItemKindIssue:
+		return "🐛"
+	case store.WorkItemKindPR:
+		return "🔀"
+	case store.AlertKindDependabot:
+		return "📦"
+	case store.AlertKindCodeScanning:
+		return "🔎"
+	case store.AlertKindSecretScanning:
+		return "🔑"
+	case store.WorkflowRunKind:
+		return "⚙️"
+	case store.StarKind:
+		return "⭐"
+	case store.WatchKind:
+		return "👀"
+	case store.ReleaseKind:
+		return "🚀"
+	default:
+		return "📋"
 	}
 }
 

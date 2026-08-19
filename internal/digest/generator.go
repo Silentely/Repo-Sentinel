@@ -359,7 +359,7 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 	}
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].count > sorted[j].count })
 	for _, g := range sorted {
-		b.WriteString(fmt.Sprintf("%s %s × %d\n", kindEmoji(g.kind), store.KindDisplayName(g.kind), g.count))
+		b.WriteString(fmt.Sprintf("%s %s × %d\n", rules.KindEmoji(g.kind), store.KindDisplayName(g.kind), g.count))
 	}
 
 	// 最近 5 条事件预览（状态中文一眼可读，多仓用户靠仓库名区分归属）
@@ -425,26 +425,6 @@ func parseWeekday(s string) (time.Weekday, bool) {
 		return time.Saturday, true
 	default:
 		return 0, false
-	}
-}
-
-// kindEmoji 根据事件类别返回 emoji。
-func kindEmoji(kind string) string {
-	switch kind {
-	case store.WorkItemKindIssue:
-		return "🐛"
-	case store.WorkItemKindPR:
-		return "🔀"
-	case store.AlertKindDependabot:
-		return "📦"
-	case store.AlertKindCodeScanning:
-		return "🔎"
-	case store.AlertKindSecretScanning:
-		return "🔑"
-	case store.WorkflowRunKind:
-		return "⚙️"
-	default:
-		return "📋"
 	}
 }
 
