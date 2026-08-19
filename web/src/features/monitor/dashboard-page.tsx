@@ -77,9 +77,13 @@ export function DashboardPage() {
   const githubConfig = useQuery(githubConfigQueryOptions);
 
   // Star 增长趋势：时间范围由本地状态管理，切换范围时按 queryKey 换缓存。
+  // 功能开关关闭时不发起请求（面板不渲染，避免无效轮询）；与面板折叠同一判定。
   const [trendDays, setTrendDays] = useState(30);
-  const starTrend = useQuery({ ...starTrendQueryOptions(trendDays), enabled: openPanels.stars });
   const featureStars = settings.data?.["feature.stars"] !== false;
+  const starTrend = useQuery({
+    ...starTrendQueryOptions(trendDays),
+    enabled: openPanels.stars && featureStars,
+  });
 
   // 行级忙碌：只让当前操作的行转圈。
   const [retryBusyId, setRetryBusyId] = useState<string | null>(null);
