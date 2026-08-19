@@ -272,7 +272,7 @@ func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 	// 再物化客户端广播给 digest / rules。
 	fresh := ai.RuntimeFromEnv(s.dependencies.Config.AI)
 	if err := ai.MergeFromStore(r.Context(), s.dependencies.Store, s.dependencies.KeyRing, fresh); err != nil {
-		s.dependencies.Logger.Warn("ai runtime reload failed", "error", err.Error())
+		s.dependencies.Logger.Warn("ai runtime reload failed", "error_code", "ai_runtime_reload_failed", "error", err.Error())
 	}
 	rt.Replace(fresh)
 	next := fresh.Client()

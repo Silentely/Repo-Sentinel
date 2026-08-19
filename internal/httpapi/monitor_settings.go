@@ -114,7 +114,7 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	// 聚合参数热生效：无需重启进程。
 	if s.dependencies.Aggregator != nil {
 		if err := s.dependencies.Aggregator.ReloadFrom(r.Context()); err != nil {
-			s.dependencies.Logger.Warn("aggregator reload failed", "error", err.Error())
+			s.dependencies.Logger.Warn("aggregator reload failed", "error_code", "aggregator_reload_failed", "error", err.Error())
 		}
 	}
 	s.handleGetSettings(w, r)

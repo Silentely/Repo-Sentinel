@@ -59,7 +59,7 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		return err
 	}
 	if remaining >= 0 && remaining < 20 && p.Logger != nil {
-		p.Logger.Warn("public api rate low", "remaining", remaining, "repo", repo.FullName)
+		p.Logger.Warn("public api rate low", "error_code", "public_api_rate_low", "remaining", remaining, "repo", repo.FullName)
 	}
 	features := store.LoadFeatureFlags(ctx, p.Store.Settings())
 

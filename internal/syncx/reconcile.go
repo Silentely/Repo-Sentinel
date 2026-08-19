@@ -677,7 +677,7 @@ func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 					// 上游要求短暂冷却：等完继续处理剩余候选，不让单仓限流拖垮整轮。
 					rateLimitWaited = true
 					if r.Logger != nil {
-						r.Logger.Warn("rate limited, wait and continue", "retry_after", wait.String(), "repo", repo.FullName)
+						r.Logger.Warn("rate limited, wait and continue", "error_code", "rate_limited_wait", "retry_after", wait.String(), "repo", repo.FullName)
 					}
 					select {
 					case <-time.After(wait):
