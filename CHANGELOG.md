@@ -8,6 +8,7 @@
 
 ### Changed
 
+- Release 更新速览提示词放宽：要点数量 2-5 → 3-8 条（内容较多时取上限），并明确升级注意事项不得省略；配合输出 token 上限调大，速览可覆盖更多内容
 - 事件类别 emoji 收敛为单一来源（`rules.KindEmoji`）：digest 报告分组行不再维护私有 emoji 表，与 rules 通用回退共用，扩展类别只需改一处；`EventStatusLabel` 告警分支移除无意义的严重度判断（两分支返回值相同）
 - 日志留痕一致性：`aggregator reload failed` / `ai runtime reload failed` / 对账限流等待 / 公开 API 配额告警四处 Warn 补语义化 `error_code`，便于按码聚合
 - 仓库基线「立即放行」按钮改行级忙碌反馈：仅当前行禁用并显示「放行中…」（此前全局禁用其它仓库放行按钮），与「对账」按钮行级模式一致
