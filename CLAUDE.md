@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-08-20T00:00:00Z | ①installation 事件透传挂起状态（ghInstallation 补 suspended，此前硬编码 "false" 致管理台「已挂起」永不生效）；②列表分页 page 补上限钳制防 Offset 整数溢出（公开 API 极端页号）；③外链 title 一致性（GitHub App/设置页补「在新窗口打开」）、Star Release 时间统一 zh-CN locale；④outbox 批量重试回调收敛（invalidate/retryBatchOptions 去重）、筛选按钮组抽 StateFilterButtons 共享组件、批量重试按钮补 aria-busy；⑤仪表盘「基线中」指标补设置页跳转、接入进度步骤 useMemo 缓存；⑥补分页归一化与 suspended 透传回归测试 |
 | 2026-08-20T00:00:00Z | Release 更新速览提示词放宽：要点数量 2-5 → 3-8 条（内容较多时取上限），并明确升级注意事项不得省略，配合 `max_tokens` 调大后速览覆盖更全 |
 | 2026-08-19T00:00:00Z | ①事件类别 emoji 收敛为 `rules.KindEmoji` 单一来源（digest 分组行与 rules 通用回退共用，消除私有表漂移），`EventStatusLabel` 告警分支移除无意义严重度判断；②日志一致性：aggregator/ai runtime 热加载失败、对账限流等待、公开 API 配额告警四处 Warn 补 error_code；③前端收敛：notify 页渠道名复用 format.channelLabel、设置页密码区块缩进修复、Issue/PR 列表「默认显示 Open」改「未关闭」、Star Release 同步提示与自动刷新行为一致；④UX：仓库基线「立即放行」改行级忙碌反馈（仅当前行禁用）；⑤性能：仪表盘 Star 功能关闭时不再发起趋势查询；⑥错误处理：仓库激活改单次 Upsert 写回（删除三步冗余写）；⑦文档与测试：AI 注释「15s 预算」过时描述同步、补激活仓库与展示映射回归测试 |
 | 2026-08-18T00:00:00Z | 版本 v0.4.0：Star Release 追踪与通知（star 仓库最新 Release 轮询、AI 中文总结、三层开关、双周期可配置、500 追踪上限）；安全告警差集对账标记源端撤回告警为 withdrawn 并留痕 reconcile 事件；AI 超时强制遵循配置（删除 15s/30s 硬编码预算）、release 总结提示词改为每行要点；release 事件归属修复与补拉丢失、subject_number 升级 int64；前端可访问性、深色主题、回到顶部、表单 size 定宽、Star 曲线 Y 轴自适应、投递详情纯文本、复制反馈；调度错峰与构建链路修正 |

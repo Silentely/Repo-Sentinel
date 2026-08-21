@@ -17,8 +17,16 @@
 - 仪表盘 Star 功能关闭时不再发起趋势查询：`starTrend` 查询 enabled 增加功能开关判定（此前仅按面板折叠暂停，无效轮询）
 - 文档同步：AI 分诊注释与 AI 后续改进计划文档中的「15s 独立预算」描述更新为「遵循配置超时」（该硬编码已于 0.4.0 移除）
 - Issue/PR 列表页描述「默认显示 Open」改「默认显示未关闭」，与筛选按钮文案一致；Star Release 同步成功提示「请稍后刷新列表」改「追踪列表将自动更新」，与自动失效刷新行为一致
+- GitHub App 页与设置页外链补 `title="在新窗口打开"`，与既有外链提示一致；Star Release 行时间展示统一 `zh-CN` locale
+- 列表分页 `page` 参数补 100000 上限钳制：公开 API 的极端页号不再触发 `Offset` 整数溢出；`NormalizeListFilter` 补回归测试
+- 仪表盘「基线中」指标补跳转设置页（基线放行入口）；接入进度步骤数组 `useMemo` 缓存，减少轮询重渲染重建
+- installation 事件透传挂起状态：`ghInstallation` 补 `suspended` 字段，管理台「已挂起」标识此前因硬编码 `"false"` 永不生效
 
 ### Fixed
+
+- outbox 页批量重试回调收敛：抽 `invalidateOutboxAndDashboard` 与 `retryBatchOptions`，消除三处重复失效逻辑与两份相同 mutation 回调
+- 筛选按钮组抽共享组件 `StateFilterButtons`：投递记录页与列表页共用，样式/aria 不再各自维护
+- outbox「重试本页失败」「重试全部失败」补 `aria-busy`（读屏可感知加载中）
 
 - 设置页密码区块缩进错乱（18 空格）恢复标准缩进
 - `display_test.go` 新增未收录告警动作统一回退与 `KindEmoji` 映射回归测试；`monitor_handlers_test.go` 新增仓库激活单次写回回归测试
