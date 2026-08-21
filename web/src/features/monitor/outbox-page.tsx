@@ -53,6 +53,12 @@ export function OutboxPage() {
   // 跨页批量重试确认：批量操作覆盖全部失败投递，样式化对话框防误触。
   const [retryAllConfirmOpen, setRetryAllConfirmOpen] = useState(false);
 
+  // 重试（单条/批量）成功后刷新投递列表与仪表盘：两处共享同一失效逻辑。
+  const invalidateOutboxAndDashboard = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["outbox"] });
+    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+
   const retry = useMutation({
     mutationFn: (id: string) => retryOutbox(id),
     onMutate: (id) => {
@@ -60,12 +66,18 @@ export function OutboxPage() {
       setRetryError(null);
     },
     onSettled: () => setRetryBusyId(null),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["outbox"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
+    onSuccess: invalidateOutboxAndDashboard,
     onError: (err) => setRetryError(toApiError(err).message || "重试失败"),
   });
+
+  // 批量重试共享回调：清空上次结果、回填本次结果并刷新列表/仪表盘。
+  const retryBatchOptions = {
+    onMutate: () => setBatchRetryResult(null),
+    onSuccess: async (result: BatchRetryResult) => {
+      setBatchRetryResult(result);
+      await invalidateOutboxAndDashboard();
+    },
+  } as const;
 
   const retryAllDead = useMutation({
     mutationFn: async (): Promise<BatchRetryResult> => {
@@ -83,12 +95,7 @@ export function OutboxPage() {
       }
       return { succeeded, failed };
     },
-    onMutate: () => setBatchRetryResult(null),
-    onSuccess: async (result) => {
-      setBatchRetryResult(result);
-      await queryClient.invalidateQueries({ queryKey: ["outbox"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
+    ...retryBatchOptions,
   });
 
   // 跨页重试全部失败：先分页收集全部 dead 投递 id（不受当前筛选限制），再逐个重新排队。
@@ -117,12 +124,7 @@ export function OutboxPage() {
       }
       return { succeeded, failed };
     },
-    onMutate: () => setBatchRetryResult(null),
-    onSuccess: async (result) => {
-      setBatchRetryResult(result);
-      await queryClient.invalidateQueries({ queryKey: ["outbox"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
+    ...retryBatchOptions,
   });
 
   // 全局 dead 总数：用于「重试全部失败」按钮的显示条件（无失败时隐藏）。
