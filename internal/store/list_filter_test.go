@@ -533,3 +533,34 @@ func TestListTieBreakStableAcrossPages(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeListFilterClampsPageAndPerPage(t *testing.T) {
+	// 默认值：空过滤项回退 page=1 per_page=20。
+	def := store.NormalizeListFilter(store.ListFilter{})
+	if def.Page != 1 || def.PerPage != 20 {
+		t.Fatalf("默认归一化应 page=1 per_page=20，got page=%d per_page=%d", def.Page, def.PerPage)
+	}
+
+	// 负值与零回退下限。
+	low := store.NormalizeListFilter(store.ListFilter{Page: 0, PerPage: -5})
+	if low.Page != 1 || low.PerPage != 20 {
+		t.Fatalf("下限归一化应 page=1 per_page=20，got page=%d per_page=%d", low.Page, low.PerPage)
+	}
+
+	// per_page 超上限钳制。
+	highPerPage := store.NormalizeListFilter(store.ListFilter{Page: 3, PerPage: 9999})
+	if highPerPage.Page != 3 || highPerPage.PerPage != 100 {
+		t.Fatalf("per_page 应钳到 100，got page=%d per_page=%d", highPerPage.Page, highPerPage.PerPage)
+	}
+
+	// 页号超上限钳制：防 Offset=(Page-1)*PerPage 整数溢出（公开 API 参数不可信）。
+	huge := store.NormalizeListFilter(store.ListFilter{Page: 1 << 40, PerPage: 100})
+	if huge.Page != 100_000 {
+		t.Fatalf("超大 page 应钳到 100000，got page=%d", huge.Page)
+	}
+	// 钳制后的 Offset 计算不溢出（(100000-1)*100 = 9999900，int 范围安全）。
+	offset := (huge.Page - 1) * huge.PerPage
+	if offset <= 0 {
+		t.Fatalf("钳制后 Offset 应为正，got %d", offset)
+	}
+}

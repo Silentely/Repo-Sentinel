@@ -216,6 +216,11 @@ func NormalizeListFilter(f ListFilter) ListFilter {
 	if f.PerPage > 100 {
 		f.PerPage = 100
 	}
+	// 页号上限钳制：Offset=(Page-1)*PerPage 在 Page 极大时可能整数溢出为负，
+	// 公开 API 的 page 参数不可信，钳到合理上限后查询退化到最后一页附近。
+	if f.Page > 100_000 {
+		f.Page = 100_000
+	}
 	return f
 }
 
