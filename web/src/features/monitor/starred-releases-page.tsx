@@ -268,7 +268,7 @@ export function StarredReleasesPage() {
 
 export function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: boolean; onToggle: (state: "disabled" | "tracking") => void }) {
   // busy 由父级 mutation 的 variables.id 判定：请求结束自动恢复，不会残留行级忙碌态。
-  const published = item.last_release_published_at ? new Date(item.last_release_published_at).toLocaleString() : "—";
+  const published = item.last_release_published_at ? new Date(item.last_release_published_at).toLocaleString("zh-CN") : "—";
   const url = releaseURL(item.full_name, item.last_release_tag);
   return (
     <li className="tracker-row">
