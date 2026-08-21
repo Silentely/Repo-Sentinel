@@ -1027,3 +1027,36 @@ func TestProcessInstallationRepositoriesRemovedMarksUnavailable(t *testing.T) {
 		t.Fatalf("removed 后应标记 unavailable，got %q", got.SyncStatus)
 	}
 }
+
+// TestProcessInstallationSuspendedPropagates 验证安装载荷的挂起状态透传：
+// GitHub 可挂起安装（计费等问题），此前硬编码 "false" 导致管理台「已挂起」永不生效。
+func TestProcessInstallationSuspendedPropagates(t *testing.T) {
+	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: "file:" + filepath.Join(t.TempDir(), "susp.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+
+	payload, _ := json.Marshal(map[string]any{
+		"action": "created",
+		"installation": map[string]any{
+			"id": 77,
+			"account": map[string]any{
+				"login": "acme",
+				"type":  "Organization",
+			},
+			"suspended": "true",
+		},
+	})
+	proc := &normalizer.Processor{Store: data}
+	if _, err := proc.Process(t.Context(), "installation", "delivery-susp-1", payload); err != nil {
+		t.Fatal(err)
+	}
+	insts, err := data.Installations().List(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(insts) != 1 || insts[0].Suspended != "true" {
+		t.Fatalf("应透传 suspended=true，got %+v", insts)
+	}
+}

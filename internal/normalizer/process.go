@@ -65,8 +65,9 @@ type ghRepository struct {
 }
 
 type ghInstallation struct {
-	ID      int64 `json:"id"`
-	Account struct {
+	ID        int64  `json:"id"`
+	Suspended string `json:"suspended"`
+	Account   struct {
 		Login string `json:"login"`
 		Type  string `json:"type"`
 	} `json:"account"`
@@ -203,13 +204,19 @@ func (p *Processor) processInstallation(ctx context.Context, eventType string, e
 	if env.Installation == nil {
 		return Result{}, fmt.Errorf("missing installation")
 	}
+	// 透传载荷的挂起状态：GitHub 可挂起安装（如计费问题），保留源端值
+	// 供管理台「已挂起」标识判断；载荷缺失或空串时回退未挂起。
+	suspended := env.Installation.Suspended
+	if suspended == "" {
+		suspended = "false"
+	}
 	inst, err := p.Store.Installations().Upsert(ctx, store.GitHubInstallation{
 		InstallationID:  env.Installation.ID,
 		AccountLogin:    env.Installation.Account.Login,
 		AccountType:     env.Installation.Account.Type,
 		TargetType:      env.Installation.Account.Type,
 		PermissionsJSON: map[string]any{},
-		Suspended:       "false",
+		Suspended:       suspended,
 	})
 	if err != nil {
 		return Result{}, err
