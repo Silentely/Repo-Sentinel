@@ -260,7 +260,8 @@ export function DashboardPage() {
         </div>
         <div className="status-grid status-grid--secondary">
           <Metric label="活跃仓库" value={stats?.repos_active} to="/repos" loading={dashboard.isPending} />
-          <Metric label="基线中" value={stats?.repos_baseline} loading={dashboard.isPending} />
+          {/* 基线中需在设置页放行：跳转直达「仓库与基线对账」面板。 */}
+          <Metric label="基线中" value={stats?.repos_baseline} to="/settings" loading={dashboard.isPending} />
           <Metric label="已启用渠道" value={stats?.channels_enabled} to="/notifications" loading={dashboard.isPending} />
         </div>
       </section>
