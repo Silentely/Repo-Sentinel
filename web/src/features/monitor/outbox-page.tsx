@@ -188,6 +188,7 @@ export function OutboxPage() {
                 type="button"
                 onClick={() => retryAllDead.mutate()}
                 disabled={retryAllDead.isPending}
+                aria-busy={retryAllDead.isPending}
               >
                 {retryAllDead.isPending ? (
                   <><Loader2 size={14} className="spin" aria-hidden="true" /> 重试中…</>
@@ -202,6 +203,7 @@ export function OutboxPage() {
                 type="button"
                 onClick={() => setRetryAllConfirmOpen(true)}
                 disabled={retryAllDeadAcrossPages.isPending}
+                aria-busy={retryAllDeadAcrossPages.isPending}
                 title={`${channelFilter ? `重试${channelLabel(channelFilter)}渠道全部 ` : "跨页重试全部 "}${totalDead} 条失败投递`}
               >
                 {retryAllDeadAcrossPages.isPending ? (
