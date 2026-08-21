@@ -14,6 +14,33 @@ import { repositoriesQueryOptions, settingsQueryOptions, type Repository, type S
 
 export type IgnoredMode = "active" | "ignored";
 
+/** 状态/结论筛选按钮组：当前选中项高亮（列表页/投递记录页共用，避免各页维护同一结构）。 */
+export function StateFilterButtons({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <>
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          className={`quiet-button${value === opt.value ? " active" : ""}`}
+          type="button"
+          aria-pressed={value === opt.value}
+          onClick={() => onChange(opt.value)}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </>
+  );
+}
+
 /** 清除筛选按钮：筛选栏紧凑版与空态主按钮版共用，避免各列表页重复维护同一块。 */
 export function ClearFiltersButton({
   onClick,

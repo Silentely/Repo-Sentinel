@@ -12,7 +12,7 @@ import { toApiError } from "../../lib/api/errors";
 import { channelLabel, htmlToPlainText, outboxErrorHint, outboxStatusLabel } from "../../lib/format";
 import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import { useUrlState } from "../../lib/use-url-state";
-import { ClearFiltersButton } from "./list-shared";
+import { ClearFiltersButton, StateFilterButtons } from "./list-shared";
 import { outboxQueryOptions, retryOutbox, type OutboxItem, type Page } from "./api";
 
 const statusFilters = [
@@ -160,17 +160,11 @@ export function OutboxPage() {
       <section className="onboarding-card">
         <div className="outbox-toolbar">
           <div className="outbox-filters">
-            {statusFilters.map((f) => (
-              <button
-                key={f.value}
-                className={`quiet-button${statusFilter === f.value ? " active" : ""}`}
-                type="button"
-                aria-pressed={statusFilter === f.value}
-                onClick={() => setStatusFilter(f.value)}
-              >
-                {f.label}
-              </button>
-            ))}
+            <StateFilterButtons
+              options={statusFilters}
+              value={statusFilter}
+              onChange={setStatusFilter}
+            />
           </div>
           <div className="outbox-toolbar__right">
             <label className="repo-filter">

@@ -38,6 +38,7 @@ import {
   IgnoredToggle,
   ListShell,
   RepoFilterSelect,
+  StateFilterButtons,
   useActiveRepos,
   useIgnoreMutation,
   type IgnoredMode,
@@ -123,33 +124,6 @@ function useInfiniteList<T>(opts: {
   const items = useMemo(() => q.data?.pages.flatMap((page) => page.items) ?? [], [q.data]);
   const total = q.data?.pages[q.data.pages.length - 1]?.total ?? 0;
   return { q, items, total };
-}
-
-/** 状态/结论筛选按钮组：当前选中项高亮。 */
-function StateFilterButtons({
-  options,
-  value,
-  onChange,
-}: {
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <>
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          className={`quiet-button${value === opt.value ? " active" : ""}`}
-          type="button"
-          aria-pressed={value === opt.value}
-          onClick={() => onChange(opt.value)}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </>
-  );
 }
 
 /** 条目操作区：GitHub 查看链接 + 忽略切换。 */
