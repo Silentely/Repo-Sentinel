@@ -148,43 +148,46 @@ export function DashboardPage() {
   const hasRepos = visibleRepos.length > 0;
   const hasActiveRepo = visibleRepos.some((r) => r.sync_status === "active");
   const channelsEnabled = (stats?.channels_enabled ?? 0) > 0;
-  const setupSteps = [
-    {
-      id: "inbound",
-      ok: inboundReady,
-      label: "入站 Webhook Secret",
-      hint: "GitHub → 本服务验签",
-      to: "/github" as const,
-    },
-    {
-      id: "outbound",
-      ok: outboundReady,
-      label: "出站 App 凭据",
-      hint: "App ID + 私钥，用于对账/同步",
-      to: "/github" as const,
-    },
-    {
-      id: "repos",
-      ok: hasRepos,
-      label: "已关注仓库",
-      hint: "安装 App 后点「从 GitHub 同步仓库」",
-      to: "/github" as const,
-    },
-    {
-      id: "baseline",
-      ok: hasRepos && (hasActiveRepo || baselineRepos.length === 0),
-      label: "基线已放行",
-      hint: "对账成功会自动结束基线，也可手动「立即放行」",
-      to: "/" as const,
-    },
-    {
-      id: "channels",
-      ok: channelsEnabled,
-      label: "通知渠道",
-      hint: "Telegram 或 HTTP Webhook",
-      to: "/notifications" as const,
-    },
-  ];
+  // 接入进度步骤：纯派生数据，缓存避免仪表盘轮询触发重渲染时反复重建数组。
+  const setupSteps = useMemo(() => {
+    return [
+      {
+        id: "inbound",
+        ok: inboundReady,
+        label: "入站 Webhook Secret",
+        hint: "GitHub → 本服务验签",
+        to: "/github" as const,
+      },
+      {
+        id: "outbound",
+        ok: outboundReady,
+        label: "出站 App 凭据",
+        hint: "App ID + 私钥，用于对账/同步",
+        to: "/github" as const,
+      },
+      {
+        id: "repos",
+        ok: hasRepos,
+        label: "已关注仓库",
+        hint: "安装 App 后点「从 GitHub 同步仓库」",
+        to: "/github" as const,
+      },
+      {
+        id: "baseline",
+        ok: hasRepos && (hasActiveRepo || baselineRepos.length === 0),
+        label: "基线已放行",
+        hint: "对账成功会自动结束基线，也可手动「立即放行」",
+        to: "/" as const,
+      },
+      {
+        id: "channels",
+        ok: channelsEnabled,
+        label: "通知渠道",
+        hint: "Telegram 或 HTTP Webhook",
+        to: "/notifications" as const,
+      },
+    ];
+  }, [inboundReady, outboundReady, hasRepos, hasActiveRepo, baselineRepos, channelsEnabled]);
   const setupDone = setupSteps.filter((s) => s.ok).length;
   const showSetup = setupDone < setupSteps.length;
 
