@@ -412,7 +412,7 @@ export function SettingsPage() {
                   </div>
                   <div className="repo-baseline-row__actions">
                     {repo.html_url ? (
-                      <a className="quiet-button quiet-button--compact" href={repo.html_url} target="_blank" rel="noreferrer">
+                      <a className="quiet-button quiet-button--compact" href={repo.html_url} target="_blank" rel="noreferrer" title="在新窗口打开">
                         <ExternalLink size={14} aria-hidden="true" />
                         <span>GitHub</span>
                       </a>

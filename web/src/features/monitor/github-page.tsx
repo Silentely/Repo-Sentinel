@@ -225,8 +225,8 @@ export function GitHubPage() {
           </button>
         </div>
         <div className="link-row">
-          <a className="quiet-button" href={GITHUB_NEW_APP} target="_blank" rel="noreferrer"><ExternalLink size={14} aria-hidden="true" /> 创建 GitHub App</a>
-          <a className="quiet-button" href={DOCS_GITHUB_APP} target="_blank" rel="noreferrer"><ExternalLink size={14} aria-hidden="true" /> 部署文档</a>
+          <a className="quiet-button" href={GITHUB_NEW_APP} target="_blank" rel="noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 创建 GitHub App</a>
+          <a className="quiet-button" href={DOCS_GITHUB_APP} target="_blank" rel="noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 部署文档</a>
         </div>
       </section>
 
@@ -250,8 +250,8 @@ export function GitHubPage() {
         <h2 id="gh-install-action-title">安装到仓库</h2>
         <p className="field-hint">保存凭据后，须到 GitHub 点 Install。仪表盘仓库为空？点「从 GitHub 同步仓库」补拉。</p>
         <div className="link-row">
-          <a className="primary-button primary-button--inline" href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer"><ExternalLink size={15} aria-hidden="true" /> 去 GitHub 安装 / 管理 App</a>
-          <a className="quiet-button" href={GITHUB_APPS_SETTINGS} target="_blank" rel="noreferrer"><ExternalLink size={14} aria-hidden="true" /> 我的 GitHub Apps</a>
+          <a className="primary-button primary-button--inline" href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer" title="在新窗口打开"><ExternalLink size={15} aria-hidden="true" /> 去 GitHub 安装 / 管理 App</a>
+          <a className="quiet-button" href={GITHUB_APPS_SETTINGS} target="_blank" rel="noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 我的 GitHub Apps</a>
           <button className="quiet-button" type="button" disabled={syncRepos.isPending || !cfg?.app_id_configured || !cfg?.private_key_configured} onClick={() => { setSyncMessage(""); syncRepos.mutate(); }}>
             {syncRepos.isPending ? "同步中…" : "从 GitHub 同步仓库"}
           </button>
@@ -278,7 +278,7 @@ export function GitHubPage() {
             <button className="quiet-button" type="button" disabled={installations.isFetching} onClick={() => void installations.refetch()}>
               {installations.isFetching ? "刷新中…" : "刷新"}
             </button>
-            <a className="quiet-button" href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer"><ExternalLink size={14} aria-hidden="true" /> 去 GitHub 安装</a>
+            <a className="quiet-button" href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 去 GitHub 安装</a>
           </div>
         </div>
         {installations.isError ? <ApiErrorAlert error={installations.error} title="无法加载 Installation" /> : null}
@@ -287,7 +287,7 @@ export function GitHubPage() {
           const items = installations.data?.items;
           if (!items || items.length === 0) {
             return (
-              <EmptyState eyebrow="等待事件" title="尚未收到 Installation" description="请先在 GitHub 安装 App。" action={<a href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer">去 GitHub 安装 App</a>} />
+              <EmptyState eyebrow="等待事件" title="尚未收到 Installation" description="请先在 GitHub 安装 App。" action={<a href={GITHUB_INSTALLATIONS} target="_blank" rel="noreferrer" title="在新窗口打开">去 GitHub 安装 App</a>} />
             );
           }
           return (
@@ -299,7 +299,7 @@ export function GitHubPage() {
                   <span className="muted">installation {inst.installation_id > 0 ? inst.installation_id : "—"}</span>
                   <span className="muted">{inst.suspended === "true" ? "已挂起" : "正常"}</span>
                   {inst.installation_id > 0 ? (
-                    <a className="quiet-button" href={`https://github.com/settings/installations/${inst.installation_id}`} target="_blank" rel="noreferrer">配置</a>
+                    <a className="quiet-button" href={`https://github.com/settings/installations/${inst.installation_id}`} target="_blank" rel="noreferrer" title="在新窗口打开">配置</a>
                   ) : null}
                 </li>
               ))}
