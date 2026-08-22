@@ -48,3 +48,9 @@
 | --- | --- | --- |
 | `alert_kind` | `dependabot` / `code_scanning` / `secret_scanning` | 告警来源 |
 | `state` | `open` / `dismissed` / `fixed` / `withdrawn` | 告警状态；`withdrawn`（已撤回）由对账检测到源端告警消失后写入 |
+
+## GET /api/v1/starred-releases/trackers
+
+| 参数 | 取值 | 说明 |
+| --- | --- | --- |
+| `state` | `tracking` / `inactive` / `disabled` / `unavailable` | Star Release 追踪状态；`inactive`（无 Release）默认 7 天复查，`disabled` 为手动停用 |
