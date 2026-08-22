@@ -76,6 +76,7 @@ export const StarTrendChart = memo(function StarTrendChart({
               key={r.days}
               type="button"
               className={`quiet-button quiet-button--compact${days === r.days ? " active" : ""}`}
+              aria-pressed={days === r.days}
               onClick={() => onDaysChange(r.days)}
             >
               {r.label}
