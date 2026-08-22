@@ -117,6 +117,19 @@ func (t *responseWriteTracker) WriteHeader(code int) {
 	t.ResponseWriter.WriteHeader(code)
 }
 
+// storeGuardMiddleware 统一保护依赖 Store 的受保护路由：Store 未装配（理论上仅在
+// 非正常启动路径出现）时返回 503 而非 nil 解引用 panic。
+// 各 handler 的分散守卫保留（既有防御），此处兜底未覆盖的分支。
+func (s *server) storeGuardMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.dependencies.Store == nil {
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (t *responseWriteTracker) Write(b []byte) (int, error) {
 	*t.wrote = true
 	return t.ResponseWriter.Write(b)

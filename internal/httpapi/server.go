@@ -208,6 +208,8 @@ func New(dependencies Dependencies) http.Handler {
 
 		api.Group(func(protected chi.Router) {
 			protected.Use(s.authenticationMiddleware)
+			// Store 统一守卫：未装配时受保护路由一律 503，避免各 handler 遗漏 nil 检查。
+			protected.Use(s.storeGuardMiddleware)
 			protected.Get("/auth/session", s.handleSession)
 			protected.Get("/system/version", s.handleVersion)
 			protected.Get("/dashboard", s.handleDashboard)
