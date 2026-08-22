@@ -177,7 +177,7 @@ export function DashboardPage() {
         ok: hasRepos && (hasActiveRepo || baselineRepos.length === 0),
         label: "基线已放行",
         hint: "对账成功会自动结束基线，也可手动「立即放行」",
-        to: "/" as const,
+        to: "/settings" as const,
       },
       {
         id: "channels",
@@ -234,7 +234,7 @@ export function DashboardPage() {
                   <strong>{step.label}</strong>
                   <span className="muted">{step.hint}</span>
                 </div>
-                {!step.ok && step.to !== "/" ? (
+                {!step.ok ? (
                   <Link className="quiet-button quiet-button--compact" to={step.to}>
                     去配置
                   </Link>
