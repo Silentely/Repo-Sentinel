@@ -564,3 +564,42 @@ func TestNormalizeListFilterClampsPageAndPerPage(t *testing.T) {
 		t.Fatalf("钳制后 Offset 应为正，got %d", offset)
 	}
 }
+
+// TestEventCountSinceExcludesArchived 仪表盘「24h 事件」与其它指标同口径：
+// 已归档仓库的近期事件不计入，避免用户归档后指标仍统计其活动。
+func TestEventCountSinceExcludesArchived(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC()
+
+	active, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-cs-a", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "cs-a", FullName: "o/cs-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-cs-b", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusArchived,
+		Owner: "o", Name: "cs-b", FullName: "o/cs-b", IsArchived: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	aid, bid := active.ID, archived.ID
+	for _, ev := range []store.Event{
+		{ID: "ev-cs-1", Source: "webhook", Kind: store.WorkItemKindPR, Action: "opened", RepositoryID: &aid, Title: "active", OccurredAt: now, DedupeFingerprint: "fp-cs-1"},
+		{ID: "ev-cs-2", Source: "webhook", Kind: store.WorkItemKindPR, Action: "opened", RepositoryID: &bid, Title: "archived", OccurredAt: now, DedupeFingerprint: "fp-cs-2"},
+	} {
+		if _, err := data.Events().Create(ctx, ev); err != nil {
+			t.Fatalf("create %s: %v", ev.ID, err)
+		}
+	}
+	got, err := data.Events().CountSince(ctx, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 1 {
+		t.Fatalf("CountSince 应排除归档仓库事件（1 条），got %d", got)
+	}
+}

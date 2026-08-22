@@ -1197,8 +1197,18 @@ func (s *eventStore) List(ctx context.Context, f ListFilter) ([]Event, PageResul
 	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
 }
 
+// CountSince 统计指定时间之后的事件数。与 ListSince 同一归档约定：
+// 已归档仓库的事件不计入，保证仪表盘「24h 事件」与其它指标口径一致。
 func (s *eventStore) CountSince(ctx context.Context, since time.Time) (int, error) {
-	n, err := s.client.Event.Query().Where(event.OccurredAtGTE(since.UTC())).Count(ctx)
+	q := s.client.Event.Query().Where(event.OccurredAtGTE(since.UTC()))
+	ids, err := archivedRepositoryIDs(ctx, s.client)
+	if err != nil {
+		return 0, mapStoreError(err)
+	}
+	if len(ids) > 0 {
+		q = q.Where(event.Or(event.RepositoryIDIsNil(), event.RepositoryIDNotIn(ids...)))
+	}
+	n, err := q.Count(ctx)
 	return n, mapStoreError(err)
 }
 
