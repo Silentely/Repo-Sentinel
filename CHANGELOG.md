@@ -17,6 +17,11 @@
 - 仪表盘 Star 功能关闭时不再发起趋势查询：`starTrend` 查询 enabled 增加功能开关判定（此前仅按面板折叠暂停，无效轮询）
 - 文档同步：AI 分诊注释与 AI 后续改进计划文档中的「15s 独立预算」描述更新为「遵循配置超时」（该硬编码已于 0.4.0 移除）
 - Issue/PR 列表页描述「默认显示 Open」改「默认显示未关闭」，与筛选按钮文案一致；Star Release 同步成功提示「请稍后刷新列表」改「追踪列表将自动更新」，与自动失效刷新行为一致
+- OpenAPI 规范补录 `/api/v1/starred-releases/config`、`/api/v1/starred-releases/trackers` 与 `/api/v1/stats/star-trend` 端点（Agent 发现目录与实际 API 同步）；列表 API 文档补追踪端点参数
+- 仪表盘「24h 事件」口径排除已归档仓库（与 OpenIssues/PR/Actions/Security 的活跃仓限定一致），补回归测试
+- 受保护 API 路由补 Store 统一守卫：未装配时返回 503 而非 nil 解引用（monitor_handlers 多数 handler 此前依赖认证中间件的隐含保护）
+- 接入进度「基线已放行」步骤跳转设置页并渲染「去配置」（基线放行入口在设置页，此前 to=/ 且无操作按钮）；Star 趋势查询失败展示错误条而非误导性「暂无数据」空态
+- Star 趋势范围按钮补 `aria-pressed`；doctor 命令复用 `githubx.RuntimeSettingKey` 常量（此前硬编码键名字符串）
 - GitHub App 页与设置页外链补 `title="在新窗口打开"`，与既有外链提示一致；Star Release 行时间展示统一 `zh-CN` locale
 - 列表分页 `page` 参数补 100000 上限钳制：公开 API 的极端页号不再触发 `Offset` 整数溢出；`NormalizeListFilter` 补回归测试
 - 仪表盘「基线中」指标补跳转设置页（基线放行入口）；接入进度步骤数组 `useMemo` 缓存，减少轮询重渲染重建
