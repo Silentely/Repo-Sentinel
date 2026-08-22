@@ -727,6 +727,32 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				"responses":   map[string]any{"200": jsonResponse("配置", map[string]any{"type": "object"})},
 			},
 		},
+		"/api/v1/starred-releases/config": map[string]any{
+			"get": map[string]any{
+				"summary":     "Star Release 追踪配置",
+				"operationId": "getStarredReleasesConfig",
+				"security":    []any{authed},
+				"responses":   map[string]any{"200": jsonResponse("配置", map[string]any{"type": "object"})},
+			},
+			"put": map[string]any{
+				"summary":     "保存 Star Release 追踪配置",
+				"operationId": "putStarredReleasesConfig",
+				"security":    []any{authed},
+				"responses":   map[string]any{"200": jsonResponse("配置", map[string]any{"type": "object"})},
+			},
+		},
+		"/api/v1/starred-releases/trackers": map[string]any{
+			"get": map[string]any{
+				"summary":     "Star Release 追踪列表",
+				"operationId": "listStarredTrackers",
+				"security":    []any{authed},
+				"parameters": []any{
+					map[string]any{"name": "page", "in": "query", "schema": map[string]any{"type": "integer"}},
+					map[string]any{"name": "per_page", "in": "query", "schema": map[string]any{"type": "integer"}},
+				},
+				"responses": map[string]any{"200": listResponse(map[string]any{"type": "object"})},
+			},
+		},
 		"/api/v1/system/settings": map[string]any{
 			"get": map[string]any{
 				"summary":     "系统设置",
