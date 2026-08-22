@@ -277,12 +277,16 @@ export function DashboardPage() {
           open={openPanels.stars}
           onToggle={() => togglePanel("stars")}
         >
-          <StarTrendChart
-            points={starTrend.data ?? []}
-            days={trendDays}
-            onDaysChange={setTrendDays}
-            loading={starTrend.isPending}
-          />
+          {starTrend.isError ? (
+            <ApiErrorAlert error={starTrend.error} title="无法加载 Star 趋势" />
+          ) : (
+            <StarTrendChart
+              points={starTrend.data ?? []}
+              days={trendDays}
+              onDaysChange={setTrendDays}
+              loading={starTrend.isPending}
+            />
+          )}
         </CollapsiblePanel>
       ) : null}
       <CollapsiblePanel
