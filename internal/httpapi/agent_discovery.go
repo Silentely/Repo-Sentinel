@@ -607,6 +607,17 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				"responses":   map[string]any{"200": jsonResponse("统计", ref("DashboardStats"))},
 			},
 		},
+		"/api/v1/stats/star-trend": map[string]any{
+			"get": map[string]any{
+				"summary":     "Star 增长趋势",
+				"operationId": "starTrend",
+				"security":    []any{authed},
+				"parameters": []any{
+					map[string]any{"name": "days", "in": "query", "schema": map[string]any{"type": "integer", "enum": []int{7, 30, 90, 0}}},
+				},
+				"responses": map[string]any{"200": jsonResponse("按日趋势", map[string]any{"type": "object"})},
+			},
+		},
 		"/api/v1/repositories": map[string]any{
 			"get": map[string]any{
 				"summary":     "仓库列表",
