@@ -91,7 +91,7 @@ jobs:
       - name: Set up pnpm
         # 先装 pnpm 再加入 PATH：setup-node 的 cache:pnpm 需要 pnpm 可执行文件
         # 定位 store 目录，不能依赖 runner 镜像预装（镜像滚动更新可能移除）。
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.34.5
           run_install: false
