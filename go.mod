@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	ariga.io/atlas v1.3.0
 	entgo.io/ent v0.14.6
-	github.com/go-chi/chi/v5 v5.3.1
+	github.com/go-chi/chi/v5 v5.3.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/oklog/ulid/v2 v2.1.2
