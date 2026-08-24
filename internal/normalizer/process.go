@@ -548,7 +548,7 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 		return Result{Repository: &repo, StaleDiscarded: true}, nil
 	}
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
-	fp := Fingerprint("webhook", repo.FullName, kind, ResourceIdentity(kind, saved.Number, 0), action, saved.SourceUpdatedAt, item.StateHash)
+	fp := Fingerprint("webhook", repo.FullName, kind, ResourceIdentity(kind, int64(saved.Number), 0), action, saved.SourceUpdatedAt, item.StateHash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 		p.eventDuplicate(repo, kind, normalizeAction(action))
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
@@ -770,7 +770,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 		return Result{Repository: &repo, StaleDiscarded: true}, nil
 	}
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
-	fp := Fingerprint("webhook", repo.FullName, kind, ResourceIdentity(kind, a.Number, 0), env.Action, updatedAt, hash)
+	fp := Fingerprint("webhook", repo.FullName, kind, ResourceIdentity(kind, int64(a.Number), 0), env.Action, updatedAt, hash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 		p.eventDuplicate(repo, kind, normalizeAction(env.Action))
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil

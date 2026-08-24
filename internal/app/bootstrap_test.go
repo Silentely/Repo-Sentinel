@@ -212,6 +212,28 @@ func testAppConfig(databaseURL string) config.Config {
 	}
 }
 
+// TestBuildStarredPollerUsesExternalPAT 验证 star 枚举客户端透传 external_pat：
+// 配置了 PAT 时拉取配额为 5000 次/小时，匿名仅 60 次/小时易限流。
+func TestBuildStarredPollerUsesExternalPAT(t *testing.T) {
+	databaseURL := "file:" + filepath.Join(t.TempDir(), "starred-pat.db")
+	cfg := testAppConfig(databaseURL)
+	cfg.Encryption.CurrentKey = config.NewSecret(hex.EncodeToString(bytes.Repeat([]byte{0x33}, 32)))
+	cfg.GitHub.ExternalPAT = config.NewSecret("ghp_starred_pat_123")
+
+	built, err := Build(t.Context(), cfg)
+	if err != nil {
+		t.Fatalf("Build 失败: %v", err)
+	}
+	defer built.Close()
+
+	if built.scheduler == nil || built.scheduler.Starred == nil || built.scheduler.Starred.Public == nil {
+		t.Fatal("期望装配 StarredReleasePoller 及其 Public 客户端")
+	}
+	if got := built.scheduler.Starred.Public.PAT; got != "ghp_starred_pat_123" {
+		t.Fatalf("StarredReleasePoller.Public.PAT = %q，期望透传 ExternalPAT", got)
+	}
+}
+
 type closeTrackingStore struct {
 	store.Store
 	closed   atomic.Bool

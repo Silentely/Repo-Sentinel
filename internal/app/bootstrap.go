@@ -149,7 +149,8 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	starred := &syncx.StarredReleasePoller{
 		Store:  data,
 		GitHub: ghClient,
-		Public: &githubx.PublicClient{},
+		// star 枚举复用 external_pat：配置了 PAT 时按 5000 次/小时配额拉取，匿名仅 60 次/小时易限流。
+		Public: &githubx.PublicClient{PAT: cfg.GitHub.ExternalPAT.Reveal()},
 		// Engine 直连实时通知决策（不聚合：release 低频单条，立即投递）。
 		Engine: &rules.Engine{Store: data, AI: aiClient, Logger: logger},
 		Logger: logger,

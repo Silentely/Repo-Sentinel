@@ -169,3 +169,27 @@ func TestListUserStarred(t *testing.T) {
 		t.Fatalf("page2: items=%v link=%q err=%v", items2, link2, err)
 	}
 }
+
+// TestListUserStarredWithPAT 验证配置了 PAT 时请求头携带 Authorization Bearer。
+func TestListUserStarredWithPAT(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/users/octocat/starred" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer ghp_secret_123" {
+			t.Fatalf("Authorization = %q, want %q", got, "Bearer ghp_secret_123")
+		}
+		w.Header().Set("X-RateLimit-Remaining", "4999")
+		w.Write([]byte(`[{"full_name":"octocat/Hello-World","private":false,"fork":false,"archived":false}]`))
+	}))
+	defer srv.Close()
+	p := &PublicClient{PAT: "ghp_secret_123", HTTP: srv.Client(), BaseURL: srv.URL}
+
+	items, _, remaining, err := p.ListUserStarred(context.Background(), "octocat", 1)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("ListUserStarred error: %v", err)
+	}
+	if remaining != 4999 {
+		t.Fatalf("remaining = %d, want 4999", remaining)
+	}
+}

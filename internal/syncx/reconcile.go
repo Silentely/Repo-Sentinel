@@ -271,7 +271,7 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			if err != nil || !updated || baseline {
 				continue
 			}
-			fp := normalizer.Fingerprint("reconcile", repo.FullName, kind, normalizer.ResourceIdentity(kind, saved.Number, 0), "reconcile", saved.SourceUpdatedAt, hash)
+			fp := normalizer.Fingerprint("reconcile", repo.FullName, kind, normalizer.ResourceIdentity(kind, int64(saved.Number), 0), "reconcile", saved.SourceUpdatedAt, hash)
 			if _, err := r.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 				continue
 			}
@@ -542,7 +542,7 @@ func (r *Reconciler) retireMissingAlerts(ctx context.Context, repo store.Reposit
 // 先更新状态再补事件：事件创建失败只丢留痕，不影响状态收口；状态已是 withdrawn 后
 // 终态守卫保证不会重复触发。
 func (r *Reconciler) recordWithdrawnEvent(ctx context.Context, repo store.Repository, kind string, a store.SecurityAlert, now time.Time, hash string) {
-	fp := normalizer.Fingerprint("reconcile", repo.FullName, kind, normalizer.ResourceIdentity(kind, a.AlertNumber, 0), store.AlertStateWithdrawn, now, hash)
+	fp := normalizer.Fingerprint("reconcile", repo.FullName, kind, normalizer.ResourceIdentity(kind, int64(a.AlertNumber), 0), store.AlertStateWithdrawn, now, hash)
 	if _, err := r.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 		return // 幂等：指纹唯一索引兜底，同轮重复落库时直接跳过。
 	}

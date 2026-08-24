@@ -51,6 +51,17 @@ const claimBatchSize = 50
 // 否则历史加密的渠道密钥将无法解密，故收敛为单一来源。
 const AAD = "reposentinel:notify-secret:v1"
 
+type allowPrivateCtxKey struct{}
+
+func withAllowPrivate(ctx context.Context, allow bool) context.Context {
+	return context.WithValue(ctx, allowPrivateCtxKey{}, allow)
+}
+
+func isAllowPrivate(ctx context.Context) bool {
+	v, _ := ctx.Value(allowPrivateCtxKey{}).(bool)
+	return v
+}
+
 // Worker 投递 Outbox。
 type Worker struct {
 	Store   store.Store
@@ -285,7 +296,7 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 		"body_plain": htmlToPlainText(item.BodyText),
 	}
 	raw, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ch.Target, bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(withAllowPrivate(ctx, ch.AllowPrivate), http.MethodPost, ch.Target, bytes.NewReader(raw))
 	if err != nil {
 		return err
 	}
@@ -618,6 +629,21 @@ func isBlockedIP(ip net.IP) bool {
 	return false
 }
 
+func isBlockedIPWithPrivate(ip net.IP, allowPrivate bool) bool {
+	if allowPrivate {
+		if ip.IsUnspecified() {
+			return true
+		}
+		if v4 := ip.To4(); v4 != nil {
+			if v4[0] == 169 && v4[1] == 254 {
+				return true
+			}
+		}
+		return false
+	}
+	return isBlockedIP(ip)
+}
+
 // newSafeHTTPClient 禁止跟随重定向，并在拨号时 pin 到校验过的公网 IP，降低 DNS rebinding 风险。
 func newSafeHTTPClient(timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
@@ -628,9 +654,10 @@ func newSafeHTTPClient(timeout time.Duration) *http.Client {
 			if err != nil {
 				return nil, err
 			}
+			allowPrivate := isAllowPrivate(ctx)
 			// 字面量 IP：直接二次校验。
 			if ip := net.ParseIP(host); ip != nil {
-				if isBlockedIP(ip) {
+				if isBlockedIPWithPrivate(ip, allowPrivate) {
 					return nil, fmt.Errorf("private_target_blocked")
 				}
 				return dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
@@ -641,7 +668,7 @@ func newSafeHTTPClient(timeout time.Duration) *http.Client {
 			}
 			var last error
 			for _, a := range addrs {
-				if isBlockedIP(a.IP) {
+				if isBlockedIPWithPrivate(a.IP, allowPrivate) {
 					last = fmt.Errorf("private_target_blocked")
 					continue
 				}

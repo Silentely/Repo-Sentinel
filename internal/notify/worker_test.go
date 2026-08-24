@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -248,16 +249,32 @@ func TestValidateWebhookURLRejectsNonHTTPSAndPrivate(t *testing.T) {
 
 func TestSafeHTTPClientPinsPublicIPAndBlocksPrivate(t *testing.T) {
 	client := newSafeHTTPClient(3 * time.Second)
-	// 直接拨 loopback 应被 DialContext 拦截（即使 allow_private 在 URL 层放行，拨号仍拦字面量私网由 validate 决定；
-	// 这里验证 Dial 对 127.0.0.1 拒绝）。
 	transport, ok := client.Transport.(*http.Transport)
 	if !ok || transport.DialContext == nil {
 		t.Fatal("expected custom transport")
 	}
+	// 默认未开启 allow_private 时，拨号应拦截 127.0.0.1
 	_, err := transport.DialContext(t.Context(), "tcp", "127.0.0.1:443")
 	if err == nil {
-		t.Fatal("loopback dial should be blocked")
+		t.Fatal("loopback dial should be blocked by default")
 	}
+	// 开启 allow_private 时，元数据 169.254.169.254 仍然被拦截
+	privCtx := withAllowPrivate(t.Context(), true)
+	_, err = transport.DialContext(privCtx, "tcp", "169.254.169.254:443")
+	if err == nil {
+		t.Fatal("metadata IP dial should be blocked even with allow_private")
+	}
+	// 开启 allow_private 时，私网/回环地址应放行：真实建立到回环监听端的连接。
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	conn, err := transport.DialContext(privCtx, "tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("loopback dial should be allowed with allow_private, got %v", err)
+	}
+	conn.Close()
 	if client.CheckRedirect == nil {
 		t.Fatal("CheckRedirect required")
 	}

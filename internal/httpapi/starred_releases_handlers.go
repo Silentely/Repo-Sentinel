@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -71,7 +72,7 @@ func (s *server) handleGetStarredReleasesConfig(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// handlePutStarredReleasesConfig 保存配置；用户名变更后立即触发一轮 star 同步。
+// handlePutStarredReleasesConfig 保存配置；用户名变更后异步触发一轮 star 同步。
 func (s *server) handlePutStarredReleasesConfig(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil {
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
@@ -146,16 +147,20 @@ func (s *server) handlePutStarredReleasesConfig(w http.ResponseWriter, r *http.R
 			return
 		}
 	}
-	// 用户名变更即时生效：强制立即同步，不受定时周期拦截。
+	// 用户名变更即时生效：异步强制立即同步，不受定时周期拦截与 HTTP 请求生命周期约束。
 	if usernameChanged && s.dependencies.StarredPoller != nil {
-		if err := s.dependencies.StarredPoller.SyncStarsNow(ctx); err != nil {
-			s.dependencies.Logger.Warn("starred releases sync after config failed", "error_code", "star_sync_failed", "error", err.Error())
-		}
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			if err := s.dependencies.StarredPoller.SyncStarsNow(bgCtx); err != nil && s.dependencies.Logger != nil {
+				s.dependencies.Logger.Warn("starred releases sync after config failed", "error_code", "star_sync_failed", "error", err.Error())
+			}
+		}()
 	}
 	s.handleGetStarredReleasesConfig(w, r)
 }
 
-// handleSyncStarredReleases 立即执行一轮 star 同步。
+// handleSyncStarredReleases 立即触发一轮 star 同步（异步执行，避免 HTTP 阻塞超时）。
 func (s *server) handleSyncStarredReleases(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil || s.dependencies.StarredPoller == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"started": false})
@@ -165,11 +170,14 @@ func (s *server) handleSyncStarredReleases(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusOK, map[string]any{"started": false})
 		return
 	}
-	// 强制立即同步：手动操作必须绕开定时周期自判。
-	if err := s.dependencies.StarredPoller.SyncStarsNow(r.Context()); err != nil {
-		s.writeMappedError(w, r, err)
-		return
-	}
+	// 异步触发 star 同步，避免成百上千仓库分页拉取导致 HTTP 请求超时。
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if err := s.dependencies.StarredPoller.SyncStarsNow(bgCtx); err != nil && s.dependencies.Logger != nil {
+			s.dependencies.Logger.Warn("manual starred releases sync failed", "error_code", "star_sync_failed", "error", err.Error())
+		}
+	}()
 	writeJSON(w, http.StatusOK, map[string]any{"started": true})
 }
 

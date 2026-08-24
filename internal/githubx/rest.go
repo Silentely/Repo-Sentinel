@@ -356,8 +356,8 @@ type StarredRepoItem struct {
 	Archived bool   `json:"archived"`
 }
 
-// ListUserStarred 匿名拉取用户公开 star 单页（per_page=100）。
-// 返回 link（Link 响应头）供翻页，空串表示末页；匿名访问不携带 PAT。
+// ListUserStarred 拉取用户公开 star 单页（per_page=100）。
+// 返回 link（Link 响应头）供翻页，空串表示末页；携带配置的 PAT（如有）。
 func (c *PublicClient) ListUserStarred(ctx context.Context, username string, page int) ([]StarredRepoItem, string, int, error) {
 	app := &AppClient{
 		HTTP:    c.HTTP,
@@ -374,7 +374,7 @@ func (c *PublicClient) ListUserStarred(ctx context.Context, username string, pag
 	}
 	path := fmt.Sprintf("/users/%s/starred?per_page=100&page=%d", username, page)
 	var items []StarredRepoItem
-	remaining, link, err := app.DoJSONPage(ctx, "GET", path, "", &items)
+	remaining, link, err := app.DoJSONPage(ctx, "GET", path, c.PAT, &items)
 	return items, link, remaining, err
 }
 

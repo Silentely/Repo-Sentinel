@@ -30,8 +30,8 @@ func StateHash(parts ...string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-// ResourceIdentity 生成资源标识字符串。
-func ResourceIdentity(kind string, number int, runID int64) string {
+// ResourceIdentity 生成资源标识字符串。number 采用 int64 避免 32 位系统截断大 ID（如 Release ID）。
+func ResourceIdentity(kind string, number int64, runID int64) string {
 	if runID != 0 {
 		return fmt.Sprintf("run:%d", runID)
 	}

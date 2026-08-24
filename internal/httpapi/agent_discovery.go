@@ -32,6 +32,8 @@ var spaCanonicalPaths = []string{
 	"/security",
 	"/github",
 	"/about",
+	"/settings",
+	"/starred-releases",
 }
 
 // siteOrigin 返回站点的规范外部 Origin（无尾斜杠）。
@@ -390,8 +392,8 @@ func (s *server) siteMarkdownDocument(r *http.Request) string {
 - 认证与注册说明：%[1]s/auth.md
 - OpenAPI 接口描述：%[1]s/openapi.json
 - API 目录（RFC 9727）：%[1]s/.well-known/api-catalog
-- 授权服务器元数据：%[1]s/.well-known/oauth-authorization-server
-- 受保护资源元数据：%[1]s/.well-known/oauth-protected-resource
+- 授权服务器：%[1]s/.well-known/oauth-authorization-server
+- 受保护资源：%[1]s/.well-known/oauth-protected-resource
 - MCP 网关（Streamable HTTP）：%[1]s/mcp
 - MCP Server Card：%[1]s/.well-known/mcp/server-card.json
 - 技能索引：%[1]s/.well-known/agent-skills/index.json

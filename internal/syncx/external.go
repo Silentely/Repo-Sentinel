@@ -108,7 +108,7 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		if isBaseline {
 			continue // 基线不发事件洪流
 		}
-		fp := normalizer.Fingerprint("external_poll", repo.FullName, kind, normalizer.ResourceIdentity(kind, saved.Number, 0), "updated", saved.SourceUpdatedAt, hash)
+		fp := normalizer.Fingerprint("external_poll", repo.FullName, kind, normalizer.ResourceIdentity(kind, int64(saved.Number), 0), "updated", saved.SourceUpdatedAt, hash)
 		if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 			continue
 		}

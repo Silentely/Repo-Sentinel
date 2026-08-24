@@ -525,7 +525,7 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 	stateHash := fmt.Sprintf("id:%d", rel.ID)
 	fp := normalizer.Fingerprint(
 		"starred_releases", fullName, store.ReleaseKind,
-		normalizer.ResourceIdentity(store.ReleaseKind, int(rel.ID), 0),
+		normalizer.ResourceIdentity(store.ReleaseKind, rel.ID, 0),
 		"published", rel.PublishedAt, stateHash,
 	)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {

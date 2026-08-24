@@ -357,7 +357,12 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 	for k, v := range groups {
 		sorted = append(sorted, kv{k, v})
 	}
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].count > sorted[j].count })
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].count != sorted[j].count {
+			return sorted[i].count > sorted[j].count
+		}
+		return sorted[i].kind < sorted[j].kind
+	})
 	for _, g := range sorted {
 		b.WriteString(fmt.Sprintf("%s %s × %d\n", rules.KindEmoji(g.kind), store.KindDisplayName(g.kind), g.count))
 	}
@@ -387,10 +392,9 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 		var line strings.Builder
 		line.WriteString(fmt.Sprintf("• [%s]", status))
 		if repoPrefix != "" {
-			line.WriteString(" " + repoPrefix)
-		}
-		if numStr != "" {
-			line.WriteString(numStr)
+			line.WriteString(" " + repoPrefix + numStr)
+		} else if numStr != "" {
+			line.WriteString(" " + numStr)
 		}
 		line.WriteString(" " + htmlpkg.EscapeString(ev.Title))
 		b.WriteString(line.String() + "\n")

@@ -219,6 +219,9 @@ func TestBuildDigestBody_WithEvents(t *testing.T) {
 	if !strings.Contains(body, "[已打开]") {
 		t.Errorf("期望预览含中文状态「已打开」，实际: %s", body)
 	}
+	if !strings.Contains(body, "[已打开] #8") {
+		t.Errorf("预览行状态与编号间应有空格，实际: %s", body)
+	}
 	if !strings.Contains(body, "[已合并]") {
 		t.Errorf("期望预览含中文状态「已合并」，实际: %s", body)
 	}
