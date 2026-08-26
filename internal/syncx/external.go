@@ -176,7 +176,7 @@ func (p *ExternalPoller) PollAll(ctx context.Context) error {
 				return nil
 			}
 			if p.Logger != nil {
-				p.Logger.Error("external poll failed", "repo", repo.FullName, "error_code", "external_poll_failed")
+				p.Logger.Error("external poll failed", "repo", repo.FullName, "error_code", "external_poll_failed", "error", err.Error())
 			}
 		}
 	}

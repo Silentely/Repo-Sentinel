@@ -67,6 +67,9 @@ func (r Runner) runDoctor(ctx context.Context, args []string) error {
 	if err == nil {
 		fmt.Fprintf(r.stdout, "repos_active=%d\n", stats.ReposActive)
 		fmt.Fprintf(r.stdout, "outbox_dead=%d\n", stats.OutboxDead)
+	} else {
+		// 诊断工具不应静默略过：统计查询失败本身即是重要诊断信号。
+		fmt.Fprintf(r.stdout, "dashboard_stats=error:%s\n", err.Error())
 	}
 	fmt.Fprintf(r.stdout, "doctor=ok\n")
 	return nil

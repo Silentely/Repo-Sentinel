@@ -693,7 +693,7 @@ func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 				return nil
 			}
 			if r.Logger != nil {
-				r.Logger.Error("reconcile failed", "repo", repo.FullName, "error_code", "reconcile_failed")
+				r.Logger.Error("reconcile failed", "repo", repo.FullName, "error_code", "reconcile_failed", "error", err.Error())
 			}
 		}
 		n++

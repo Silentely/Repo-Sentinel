@@ -51,7 +51,7 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 	for page := 1; ; page++ {
 		repos, res, err := r.Store.Repositories().List(ctx, store.ListFilter{Page: page, PerPage: 100})
 		if err != nil {
-			r.warn("load local repositories failed", 0, err)
+			r.warn("load local repositories failed", 0, "installation_repo_map_load_failed", err)
 			break
 		}
 		for _, repo := range repos {
@@ -65,7 +65,7 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 		token, err := r.GitHub.InstallationToken(ctx, inst.InstallationID)
 		if err != nil {
 			result.LastError = err.Error()
-			r.warn("installation token failed", inst.InstallationID, err)
+			r.warn("installation token failed", inst.InstallationID, "installation_token_failed", err)
 			continue
 		}
 		instID := inst.ID
@@ -73,7 +73,7 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 			repos, _, err := r.GitHub.ListInstallationRepositories(ctx, token, page)
 			if err != nil {
 				result.LastError = err.Error()
-				r.warn("list installation repositories failed", inst.InstallationID, err)
+				r.warn("list installation repositories failed", inst.InstallationID, "installation_repo_list_failed", err)
 				break
 			}
 			if len(repos) == 0 {
@@ -156,8 +156,15 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 	return result, nil
 }
 
-func (r *Reconciler) warn(msg string, installationID int64, err error) {
-	if r.Logger != nil {
-		r.Logger.Warn(msg, "installation_id", installationID, "error", err.Error())
+// warn 统一安装同步路径的 Warn 留痕：必带 error_code 便于按码归类检索；
+// installationID 为 0 表示与具体安装无关（如映射加载失败），不挂该字段。
+func (r *Reconciler) warn(msg string, installationID int64, code string, err error) {
+	if r.Logger == nil {
+		return
 	}
+	args := []any{"error_code", code, "error", err.Error()}
+	if installationID > 0 {
+		args = append([]any{"installation_id", installationID}, args...)
+	}
+	r.Logger.Warn(msg, args...)
 }

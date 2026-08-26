@@ -303,7 +303,7 @@ func (p *StarredReleasePoller) underLimit(ctx context.Context, max, added int) b
 
 // probeRelease 对追踪仓做一次 release 探测：决定基线或 inactive（不建事件）。
 func (p *StarredReleasePoller) probeRelease(ctx context.Context, id, fullName string) error {
-	token := p.installationToken(ctx)
+	token := p.installationToken(ctx, "star sync")
 	if token == "" {
 		return nil // 原因已留痕
 	}
@@ -336,6 +336,9 @@ func (p *StarredReleasePoller) probeRelease(ctx context.Context, id, fullName st
 func (p *StarredReleasePoller) removeUnstarred(ctx context.Context, seen map[string]bool) {
 	candidates, err := p.Store.StarredTrackers().ListPollCandidates(ctx, 10000)
 	if err != nil {
+		// 查询失败时本轮 unstar 移除整体跳过：必须留痕，否则数据库抖动期间
+		// 「已 unstar 但追踪未停用」无从定位。
+		p.warn("unstar candidate list failed, skip round", "error_code", "tracker_list_failed", "error", err.Error())
 		return
 	}
 	for _, tk := range candidates {
@@ -386,7 +389,7 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 		return nil
 	}
 	notifyPrerelease := NotifyPrerelease(ctx, p.Store.Settings())
-	token := p.installationToken(ctx)
+	token := p.installationToken(ctx, "release poll")
 	if token == "" {
 		// 令牌不可用（多为 App 未配置/无安装的确定性状态）：推进记账避免每 1m 刷屏。
 		p.lastReleasePoll = now
@@ -566,14 +569,20 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 }
 
 // installationToken 取任一安装的令牌；App 未配置或无安装时留痕并返回空串。
-func (p *StarredReleasePoller) installationToken(ctx context.Context) string {
+// scene 标注调用场景（"star sync" / "release poll"），避免 star 同步探测阶段的
+// 告警日志被误读为 release 轮询问题。
+func (p *StarredReleasePoller) installationToken(ctx context.Context, scene string) string {
 	if p.GitHub == nil || !p.GitHub.Configured() {
-		p.warn("release poll skipped", "reason", "app_not_configured", "error_code", "app_not_configured")
+		p.warn(scene+" skipped", "reason", "app_not_configured", "error_code", "app_not_configured")
 		return ""
 	}
 	installations, err := p.Store.Installations().List(ctx)
-	if err != nil || len(installations) == 0 {
-		p.warn("release poll skipped", "reason", "no_installation", "error_code", "no_installation")
+	if err != nil {
+		p.warn(scene+" skipped", "reason", "installation_list_failed", "error_code", "installation_list_failed", "error", err.Error())
+		return ""
+	}
+	if len(installations) == 0 {
+		p.warn(scene+" skipped", "reason", "no_installation", "error_code", "no_installation")
 		return ""
 	}
 	token, err := p.GitHub.InstallationToken(ctx, installations[0].InstallationID)
