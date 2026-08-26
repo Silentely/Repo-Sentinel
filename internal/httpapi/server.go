@@ -205,6 +205,8 @@ func New(dependencies Dependencies) http.Handler {
 		api.Get("/setup/status", s.handleSetupStatus)
 		api.Post("/setup", s.handleSetup)
 		api.Post("/auth/login", s.handleLogin)
+		// 公开极简构建信息：登录/初始化页页脚展示真实版本（不暴露配置细节）。
+		api.Get("/system/build-info", s.handleBuildInfo)
 
 		api.Group(func(protected chi.Router) {
 			protected.Use(s.authenticationMiddleware)

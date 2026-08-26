@@ -356,54 +356,33 @@ type StarredRepoItem struct {
 	Archived bool   `json:"archived"`
 }
 
-// ListUserStarred 拉取用户公开 star 单页（per_page=100）。
-// 返回 link（Link 响应头）供翻页，空串表示末页；携带配置的 PAT（如有）。
-func (c *PublicClient) ListUserStarred(ctx context.Context, username string, page int) ([]StarredRepoItem, string, int, error) {
-	app := &AppClient{
+// appClient 透出同源 AppClient 供复用其 JSON 请求实现；
+// HTTP/BaseURL 未配置时由 AppClient 请求路径只读回退（共享包级默认客户端，连接池复用）。
+func (c *PublicClient) appClient() *AppClient {
+	return &AppClient{
 		HTTP:    c.HTTP,
 		BaseURL: c.BaseURL,
 	}
-	if app.HTTP == nil {
-		app.HTTP = &http.Client{Timeout: 30 * time.Second}
-	}
-	if app.BaseURL == "" {
-		app.BaseURL = "https://api.github.com"
-	}
+}
+
+// ListUserStarred 拉取用户公开 star 单页（per_page=100）。
+// 返回 link（Link 响应头）供翻页，空串表示末页；携带配置的 PAT（如有）。
+func (c *PublicClient) ListUserStarred(ctx context.Context, username string, page int) ([]StarredRepoItem, string, int, error) {
 	if page <= 0 {
 		page = 1
 	}
 	path := fmt.Sprintf("/users/%s/starred?per_page=100&page=%d", username, page)
 	var items []StarredRepoItem
-	remaining, link, err := app.DoJSONPage(ctx, "GET", path, c.PAT, &items)
+	remaining, link, err := c.appClient().DoJSONPage(ctx, "GET", path, c.PAT, &items)
 	return items, link, remaining, err
 }
 
 // ListPublicIssues 列出公开仓 issues。
 func (c *PublicClient) ListPublicIssues(ctx context.Context, owner, repo string, since *time.Time, page int) ([]IssueItem, int, error) {
-	app := &AppClient{
-		HTTP:    c.HTTP,
-		BaseURL: c.BaseURL,
-	}
-	if app.HTTP == nil {
-		app.HTTP = &http.Client{Timeout: 30 * time.Second}
-	}
-	if app.BaseURL == "" {
-		app.BaseURL = "https://api.github.com"
-	}
-	return app.ListIssues(ctx, c.PAT, owner, repo, since, page)
+	return c.appClient().ListIssues(ctx, c.PAT, owner, repo, since, page)
 }
 
 // GetRepository 拉取公开仓元数据（可选 PAT）。
 func (c *PublicClient) GetRepository(ctx context.Context, owner, repo string) (RepositoryMeta, int, error) {
-	app := &AppClient{
-		HTTP:    c.HTTP,
-		BaseURL: c.BaseURL,
-	}
-	if app.HTTP == nil {
-		app.HTTP = &http.Client{Timeout: 30 * time.Second}
-	}
-	if app.BaseURL == "" {
-		app.BaseURL = "https://api.github.com"
-	}
-	return app.GetRepository(ctx, c.PAT, owner, repo)
+	return c.appClient().GetRepository(ctx, c.PAT, owner, repo)
 }

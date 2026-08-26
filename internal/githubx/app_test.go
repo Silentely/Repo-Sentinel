@@ -392,3 +392,26 @@ func TestInstallationTokenConcurrentSingleFlight(t *testing.T) {
 		t.Fatalf("缓存命中不应新增签发请求，实际 %d", got)
 	}
 }
+
+// TestAppClientConcurrentDefaultHTTP 验证未注入 HTTP 的客户端并发首次调用：
+// 请求路径只读回退包级共享默认客户端，不再懒初始化裸写共享字段
+// （历史上 doJSONReq 并发首次调用会对 c.HTTP 无锁写入，-race 可检出回归）。
+func TestAppClientConcurrentDefaultHTTP(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	c := &AppClient{BaseURL: srv.URL} // 未注入 HTTP：走包级默认客户端
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, _, err := c.ListIssues(ctx, "tok", "o", "r", nil, 1); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+}

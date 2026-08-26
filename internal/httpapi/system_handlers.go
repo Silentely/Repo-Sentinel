@@ -50,6 +50,12 @@ func (s *server) handleVersion(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.localVersion())
 }
 
+// handleBuildInfo 返回公开极简构建信息（仅版本号）。与受保护的 system/version 区分：
+// 后者附带配置状态，仅供已登录管理台；本端点供登录/初始化页页脚展示真实构建版本。
+func (s *server) handleBuildInfo(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"version": s.dependencies.BuildInfo.Version})
+}
+
 func (s *server) handleVersionCheck(w http.ResponseWriter, r *http.Request) {
 	force, _ := strconv.ParseBool(r.URL.Query().Get("force"))
 	local := s.localVersion()

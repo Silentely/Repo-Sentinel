@@ -143,7 +143,7 @@ func (g *Generator) RunMonthly(ctx context.Context, now time.Time) error {
 		return nil
 	}
 
-	title := fmt.Sprintf("📊 月度报告 %s", dateKey)
+	title := fmt.Sprintf("📊 每月报告 %s", dateKey)
 	body, aiUsed := g.reportBody(ctx, title, events, "过去 30 天", now)
 	return g.enqueue(ctx, settingLastMonthly, "report|monthly", dateKey, title, body, map[string]any{
 		"report": "monthly", "period": dateKey, "count": len(events), "ai": aiUsed,

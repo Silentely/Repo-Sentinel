@@ -512,7 +512,7 @@ export function SettingsPage() {
               </select>
             </label>
           ) : null}
-          <label className="check-row"><input type="checkbox" checked={form.reportMonthly} onChange={(e) => set("reportMonthly", e.target.checked)} /><span>启用月度报告</span></label>
+          <label className="check-row"><input type="checkbox" checked={form.reportMonthly} onChange={(e) => set("reportMonthly", e.target.checked)} /><span>启用每月报告</span></label>
           {form.reportMonthly ? (
             <label className="field--plain"><span>每月发送日</span>
               <NumberField min={1} max={28} integer value={form.reportMonthlyDay} onChange={(v) => set("reportMonthlyDay", v)} />

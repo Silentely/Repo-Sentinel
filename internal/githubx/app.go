@@ -245,7 +245,7 @@ func (c *AppClient) fetchInstallationToken(ctx context.Context, installationID i
 	req.Header.Set("Authorization", "Bearer "+jwtToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -299,20 +299,34 @@ func (c *AppClient) doJSONConditional(ctx context.Context, method, path, token, 
 	return rateRemaining, etag, err
 }
 
+// defaultHTTPClient 未注入 HTTP 客户端时的包级共享默认实例（复用连接池）。
+// 请求路径只读共享字段：并行调用不再由懒初始化裸写 c.HTTP/c.BaseURL（数据竞争隐患）。
+var defaultHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+// httpClient 返回请求使用的 HTTP 客户端：未注入时回退包级共享默认（只做只读回退，不回写字段）。
+func (c *AppClient) httpClient() *http.Client {
+	if c.HTTP != nil {
+		return c.HTTP
+	}
+	return defaultHTTPClient
+}
+
+// baseURL 返回 API 基地址：未配置时回退官方地址（只读回退，不回写字段）。
+func (c *AppClient) baseURL() string {
+	if c.BaseURL == "" {
+		return "https://api.github.com"
+	}
+	return c.BaseURL
+}
+
 // doJSONReq 请求 GitHub API 并返回剩余配额、Link header 与响应 ETag。
 // 错误分类：429 与 403（X-RateLimit-Remaining=0 或 body 含 rate limit）→ github_rate_limited；
 // 其余 403/4xx/5xx → HTTPStatusError（403 需区分限流与权限/功能未开启，不能一律当限流）；
 // 304（条件请求命中）→ errNotModified。
 func (c *AppClient) doJSONReq(ctx context.Context, method, path, token, ifNoneMatch string, out any) (rateRemaining int, link, etag string, err error) {
-	if c.HTTP == nil {
-		c.HTTP = &http.Client{Timeout: 30 * time.Second}
-	}
-	if c.BaseURL == "" {
-		c.BaseURL = "https://api.github.com"
-	}
 	full := path
 	if strings.HasPrefix(path, "/") {
-		full = c.BaseURL + path
+		full = c.baseURL() + path
 	}
 	req, err := http.NewRequestWithContext(ctx, method, full, nil)
 	if err != nil {
@@ -328,7 +342,7 @@ func (c *AppClient) doJSONReq(ctx context.Context, method, path, token, ifNoneMa
 	if ifNoneMatch != "" {
 		req.Header.Set("If-None-Match", ifNoneMatch)
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return 0, "", "", err
 	}

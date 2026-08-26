@@ -653,7 +653,7 @@ func TestBuildReportBody_EscapesEventTitle(t *testing.T) {
 
 // buildReportBody 空事件文案应带上周期，避免日/周/月报共用含糊的「期间」。
 func TestBuildReportBody_EmptyUsesPeriod(t *testing.T) {
-	body := buildReportBody("📊 月度报告 2026-08", nil, "过去 30 天", nil, reportGeneratedAt)
+	body := buildReportBody("📊 每月报告 2026-08", nil, "过去 30 天", nil, reportGeneratedAt)
 	if !strings.Contains(body, "📭 过去 30 天无新事件") {
 		t.Fatalf("空事件文案应包含周期，实际: %s", body)
 	}
