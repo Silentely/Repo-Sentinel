@@ -308,7 +308,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                     {it.merged && <span className="merged-badge">Merged</span>}
                     {it.ignored && <span className="ignored-badge">已忽略</span>}
                     {it.repository_full_name ? <span className="event-repo">{it.repository_full_name}</span> : null}
-                    <strong>
+                    <strong title={itemTitle}>
                       #{num} {itemTitle}
                     </strong>
                   </div>
@@ -316,8 +316,8 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                     <span className="muted">{it.author ? ` · ${it.author}` : ""}</span>
                     {it.labels && it.labels.length > 0 && (
                       <div className="labels">
-                        {it.labels.slice(0, 3).map((label, idx) => (
-                          <span key={idx} className="label">
+                        {it.labels.slice(0, 3).map((label) => (
+                          <span key={label} className="label">
                             {label}
                           </span>
                         ))}
@@ -853,7 +853,7 @@ function ActionsList() {
                     {run.run_attempt && run.run_attempt > 1 && <span className="attempt-badge">Attempt #{run.run_attempt}</span>}
                     {run.ignored && <span className="ignored-badge">已忽略</span>}
                     {run.repository_full_name ? <span className="event-repo">{run.repository_full_name}</span> : null}
-                    <strong>
+                    <strong title={name}>
                       {name} #{num}
                     </strong>
                     <span className="muted">{run.head_branch || "—"}</span>
@@ -990,7 +990,7 @@ function SecurityList() {
                   <span className={`event-kind state-${a.state || "open"}`}>{alertKindLabel(a.alert_kind)}</span>
                   {a.ignored && <span className="ignored-badge">已忽略</span>}
                   {a.repository_full_name ? <span className="event-repo">{a.repository_full_name}</span> : null}
-                  <strong>
+                  <strong title={label}>
                     #{num} {label}
                   </strong>
                   <span className="muted">

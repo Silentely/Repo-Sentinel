@@ -2384,7 +2384,11 @@ a.status-item--link:focus-visible {
 .state-timed_out { background: color-mix(in oklch, var(--state-failure) 14%, var(--bg-surface)); color: var(--state-failure); }
 .state-dismissed,
 .state-resolved,
-.state-skipped { background: color-mix(in oklch, var(--state-muted) 14%, var(--bg-surface)); color: var(--state-muted); }
+.state-skipped,
+.state-auto_dismissed,
+.state-withdrawn { background: color-mix(in oklch, var(--state-muted) 14%, var(--bg-surface)); color: var(--state-muted); }
+/* 安全告警终态：已修复与关闭/成功同色（绿色），与「已忽略」类灰色取消态区分。 */
+.state-fixed { background: color-mix(in oklch, var(--state-closed) 16%, var(--bg-surface)); color: var(--state-closed); }
 .state-action_required { background: color-mix(in oklch, var(--state-open) 14%, var(--bg-surface)); color: var(--state-open); }
 .state-in_progress,
 .state-queued,
@@ -2726,9 +2730,12 @@ a.status-item--link:focus-visible {
 }
 
 .severity-critical { color: var(--severity-critical); background: color-mix(in oklch, var(--severity-critical) 14%, transparent); }
-.severity-high { color: var(--severity-high); background: color-mix(in oklch, var(--severity-high) 14%, transparent); }
-.severity-medium { color: var(--severity-medium); background: color-mix(in oklch, var(--severity-medium) 14%, transparent); }
-.severity-low { color: var(--severity-low); background: color-mix(in oklch, var(--severity-low) 14%, transparent); }
+.severity-high,
+.severity-error { color: var(--severity-high); background: color-mix(in oklch, var(--severity-high) 14%, transparent); }
+.severity-medium,
+.severity-warning { color: var(--severity-medium); background: color-mix(in oklch, var(--severity-medium) 14%, transparent); }
+.severity-low,
+.severity-note { color: var(--severity-low); background: color-mix(in oklch, var(--severity-low) 14%, transparent); }
 
 .status-pending { background: color-mix(in oklch, var(--info) 14%, var(--bg-surface)); color: var(--info); }
 .status-sending { background: color-mix(in oklch, var(--warning) 14%, var(--bg-surface)); color: var(--warning); }

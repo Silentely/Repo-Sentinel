@@ -69,7 +69,11 @@ export function StarredReleasesPage() {
   const validateInterval = (raw: string, maxSeconds: number): string => {
     const seconds = parseGoDurationSeconds(raw);
     if (seconds == null) return "周期格式非法，请使用 Go duration 格式（如 6h、10m、1.5h）。";
-    if (seconds < 60 || seconds > maxSeconds) return `周期需在 1 分钟 ~ ${Math.round(maxSeconds / 3600)} 小时之间。`;
+    if (seconds < 60 || seconds > maxSeconds) {
+      // 上限按天/小时表述（30 天上限不会提示成「720 小时」）。
+      const maxHuman = maxSeconds >= 86400 ? `${Math.round(maxSeconds / 86400)} 天` : `${Math.round(maxSeconds / 3600)} 小时`;
+      return `周期需在 1 分钟 ~ ${maxHuman} 之间。`;
+    }
     return "";
   };
 
@@ -240,15 +244,16 @@ export function StarredReleasesPage() {
           </select>
         </div>
         {trackers.isError ? <ApiErrorAlert error={trackers.error} title="无法加载追踪列表" /> : null}
-        {items.length === 0 ? (
+        {/* 空态仅在非加载/非错误时展示，避免与错误条矛盾或首载时闪空态文案 */}
+        {!trackers.isPending && !trackers.isError && items.length === 0 ? (
           <p className="field-hint">暂无追踪记录。保存用户名并点击「立即同步」后，star 仓库会出现在这里。</p>
-        ) : (
+        ) : !trackers.isError ? (
           <ul className="plain-list" aria-label="Star Release 追踪列表">
             {items.map((it) => (
               <TrackerRow key={it.id} item={it} busy={setStateMut.isPending && setStateMut.variables?.id === it.id} onToggle={(state) => setStateMut.mutate({ id: it.id, state })} />
             ))}
           </ul>
-        )}
+        ) : null}
         {total > 20 ? (
           <div className="pager-row">
             <button className="quiet-button quiet-button--compact" type="button" disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>

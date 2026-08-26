@@ -239,6 +239,13 @@ export function OutboxPage() {
                   ? "当前筛选条件下没有记录。"
                   : "配置通知渠道后，实时通知会进入投递队列。"
               }
+              action={
+                // 与 Issues/PR/Actions 页同一约定：筛选清空为操作，不显示导航箭头。
+                statusFilter || channelFilter ? (
+                  <ClearFiltersButton variant="primary" onClick={() => { setStatusFilter(""); setChannelFilter(""); }} />
+                ) : undefined
+              }
+              actionArrow={false}
             />
           }
         >
@@ -253,7 +260,7 @@ export function OutboxPage() {
                 {item.channel_type && (
                   <span className="muted channel-tag">{channelLabel(item.channel_type)}</span>
                 )}
-                <strong>{item.title || item.id}</strong>
+                <strong title={item.title || item.id}>{item.title || item.id}</strong>
                 <span className="muted">尝试 {item.attempt_count} 次</span>
                 {item.last_error_code && <span className="error-code" title={outboxErrorHint(item.last_error_code) || undefined}>{item.last_error_code}</span>}
                 {item.created_at ? <RelativeTime date={item.created_at} className="event-time" /> : null}
