@@ -123,6 +123,11 @@ export const eventsQueryOptions = (perPage = 30) =>
     refetchInterval: 30_000,
   });
 
+/** Outbox 轮询节拍：有待投递/投递中条目时 15s 跟进，空闲（含首次加载前）降为 60s。 */
+const OUTBOX_ACTIVE_STATUSES = new Set(["pending", "sending"]);
+const OUTBOX_ACTIVE_REFETCH_MS = 15_000;
+const OUTBOX_IDLE_REFETCH_MS = 60_000;
+
 /** Outbox 分页查询（参数化：status / channel_type / per_page），仪表盘与发件箱页共用单一实现。 */
 export const outboxQueryOptions = (status = "", channelType = "", perPage = 50) =>
   queryOptions({
@@ -134,7 +139,13 @@ export const outboxQueryOptions = (status = "", channelType = "", perPage = 50) 
       return apiRequest<Page<OutboxItem>>(`/api/v1/notifications/outbox?${params.toString()}`);
     },
     staleTime: 15_000,
-    refetchInterval: 15_000,
+    refetchInterval: (query) => {
+      const items = query.state.data?.items;
+      if (!items?.length) return OUTBOX_IDLE_REFETCH_MS;
+      return items.some((it) => OUTBOX_ACTIVE_STATUSES.has(it.status))
+        ? OUTBOX_ACTIVE_REFETCH_MS
+        : OUTBOX_IDLE_REFETCH_MS;
+    },
   });
 
 export async function activateRepository(id: string): Promise<Repository> {

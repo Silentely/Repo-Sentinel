@@ -205,6 +205,21 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 	seen := make(map[string]bool)
 	added := 0
 	full := true
+	// 全轮共享一次令牌获取：逐仓 register→probe 各自取令牌会每仓查一次 installations 表。
+	token := p.installationToken(ctx, "star sync")
+	// 追踪计数基数全轮只查一次：上限判定 = 基数 + 本轮新增，负值表示计数失败放行
+	//（与原 underLimit「计数失败放行避免误伤采集」语义一致）。
+	trackerBase := -1
+	if counts, err := p.Store.StarredTrackers().CountByState(ctx); err != nil {
+		p.warn("star sync count failed, allow register", "error_code", "tracker_count_failed", "error", err.Error())
+	} else {
+		trackerBase = 0
+		for k, v := range counts {
+			if k != store.TrackerStateDisabled {
+				trackerBase += v
+			}
+		}
+	}
 	// 一次性加载现有追踪记录建 full_name→tracker 映射，避免每仓 GetByFullName 的 N+1 查询
 	//（500 追踪上限用户一轮同步即数百次单查）。加载失败降级逐仓单查并留痕。
 	trackerMap := make(map[string]store.StarredRepoTracker)
@@ -238,7 +253,7 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 				continue // fork/archived 零成本预过滤
 			}
 			seen[it.FullName] = true
-			if err := p.registerIfNew(ctx, it.FullName, max, &added, trackerMap); err != nil {
+			if err := p.registerIfNew(ctx, it.FullName, max, &added, trackerMap, trackerBase, token); err != nil {
 				p.warn("star sync register failed", "repo", it.FullName, "error_code", "star_register_failed", "error", err.Error())
 			}
 		}
@@ -259,7 +274,9 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 // 已 inactive 的仓触发复查探测：到复查时间，或带 release 游标（多为 304 误判，立即自愈）。
 // trackerMap 为 syncStarsLocked 预加载的全量 full_name→tracker 映射（消除逐仓单查）；
 // 注册成功后同步写入该映射，保证同一轮内重复出现的 full_name 幂等。
-func (p *StarredReleasePoller) registerIfNew(ctx context.Context, fullName string, max int, added *int, trackerMap map[string]store.StarredRepoTracker) error {
+// trackerBase/token 均为全轮预取：上限判定不再逐仓查 CountByState，
+// 探测不再逐仓查 installations 表；trackerBase 为负表示计数失败放行。
+func (p *StarredReleasePoller) registerIfNew(ctx context.Context, fullName string, max int, added *int, trackerMap map[string]store.StarredRepoTracker, trackerBase int, token string) error {
 	tracker, ok := trackerMap[fullName]
 	if ok {
 		if tracker.State == store.TrackerStateInactive && tracker.NoReleaseRecheckAt != nil &&
@@ -267,11 +284,11 @@ func (p *StarredReleasePoller) registerIfNew(ctx context.Context, fullName strin
 			// 有 release 游标却 inactive：多为条件请求 304 误判（release 未变化被当成无 release），
 			// 或 release 被整体删除；同步时立即重新探测自愈，不必等 7 天复查。
 			// 无游标的真无 release 仓仍按复查周期。
-			return p.probeRelease(ctx, tracker.ID, fullName)
+			return p.probeRelease(ctx, token, tracker.ID, fullName)
 		}
 		return nil
 	}
-	if !p.underLimit(ctx, max, *added) {
+	if trackerBase >= 0 && trackerBase+*added >= max {
 		p.warn("star tracker limit reached, skip", "repo", fullName, "max", max, "error_code", "tracker_limit_reached")
 		return nil
 	}
@@ -286,27 +303,12 @@ func (p *StarredReleasePoller) registerIfNew(ctx context.Context, fullName strin
 	trackerMap[fullName] = tracker
 	*added++
 	// 首次探测：拉一次 release 判断基线或 inactive（不通知，避免历史洪泛）。
-	return p.probeRelease(ctx, tracker.ID, fullName)
-}
-
-// underLimit 判定当前追踪数（disabled 不计）加本轮新增是否未超上限。
-func (p *StarredReleasePoller) underLimit(ctx context.Context, max, added int) bool {
-	counts, err := p.Store.StarredTrackers().CountByState(ctx)
-	if err != nil {
-		return true // 计数失败时放行，避免误伤采集
-	}
-	total := added
-	for k, v := range counts {
-		if k != store.TrackerStateDisabled {
-			total += v
-		}
-	}
-	return total < max
+	return p.probeRelease(ctx, token, tracker.ID, fullName)
 }
 
 // probeRelease 对追踪仓做一次 release 探测：决定基线或 inactive（不建事件）。
-func (p *StarredReleasePoller) probeRelease(ctx context.Context, id, fullName string) error {
-	token := p.installationToken(ctx, "star sync")
+// token 由调用方全轮预取（空串表示令牌不可用，原因已在获取处留痕）。
+func (p *StarredReleasePoller) probeRelease(ctx context.Context, token, id, fullName string) error {
 	if token == "" {
 		return nil // 原因已留痕
 	}

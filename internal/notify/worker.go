@@ -122,8 +122,11 @@ func (w *Worker) tick(ctx context.Context) {
 			channelMap[ch.ID] = ch
 		}
 	}
+	// 同一批内同一渠道的密钥明文复用：积压场景 50 条多为同一渠道，
+	// 避免逐条重复 AES-GCM 解密。解密失败不入缓存，保持逐条错误语义。
+	secrets := make(map[string]string)
 	for _, item := range items {
-		channelType, err := w.deliver(ctx, item, channelMap)
+		channelType, err := w.deliver(ctx, item, channelMap, secrets)
 		if err != nil {
 			if w.Logger != nil {
 				w.Logger.Warn(
@@ -171,7 +174,8 @@ func (w *Worker) tick(ctx context.Context) {
 	}
 }
 
-func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, channelMap map[string]store.NotificationChannel) (string, error) {
+// secrets 为本批内的渠道密钥明文缓存（channelID → 明文），命中时免于重复解密。
+func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, channelMap map[string]store.NotificationChannel, secrets map[string]string) (string, error) {
 	ch, ok := channelMap[item.ChannelID]
 	if !ok {
 		// 映射加载失败时降级单查（与映射命中保持同一语义）。
@@ -181,9 +185,14 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 			return "", err
 		}
 	}
-	secret, err := w.decryptSecret(ctx, ch.SecretEnvelope)
-	if err != nil {
-		return ch.ChannelType, fmt.Errorf("decrypt_secret: %w", err)
+	secret, cached := secrets[item.ChannelID]
+	if !cached {
+		var err error
+		secret, err = w.decryptSecret(ctx, ch.SecretEnvelope)
+		if err != nil {
+			return ch.ChannelType, fmt.Errorf("decrypt_secret: %w", err)
+		}
+		secrets[item.ChannelID] = secret
 	}
 	switch ch.ChannelType {
 	case store.ChannelTelegram:
