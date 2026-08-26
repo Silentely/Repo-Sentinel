@@ -67,6 +67,49 @@ func TestDigestAndTriageEnabled(t *testing.T) {
 	}
 }
 
+// TestClientReplace 验证热更新覆盖全部配置字段（含 release 更新速览开关），
+// 避免管理台保存后旧值残留到进程重启。
+func TestClientReplace(t *testing.T) {
+	c := &Client{APIKey: "k", Enabled: true, ReleaseSummaryEnabled: true}
+	if !c.IsReleaseSummaryEnabled() {
+		t.Fatal("初始 release 更新速览应可用")
+	}
+	c.Replace(&Client{
+		Enabled:               true,
+		APIKey:                "k2",
+		Model:                 "m2",
+		Timeout:               5 * time.Second,
+		MaxTokens:             100,
+		Retries:               2,
+		DigestEnabled:         true,
+		TriageEnabled:         true,
+		ReleaseSummaryEnabled: false,
+	})
+	s := c.Snapshot()
+	if s.ReleaseSummaryEnabled {
+		t.Fatal("替换后 release 更新速览应为关闭")
+	}
+	if c.IsReleaseSummaryEnabled() {
+		t.Fatal("替换后 IsReleaseSummaryEnabled 应为 false")
+	}
+	if s.APIKey != "k2" || s.Model != "m2" || s.Timeout != 5*time.Second || s.MaxTokens != 100 || s.Retries != 2 {
+		t.Fatal("替换后基础配置字段应全部更新")
+	}
+	if !s.DigestEnabled || !s.TriageEnabled {
+		t.Fatal("替换后摘要/分诊开关应更新")
+	}
+	// 未注入 HTTP/Logger 时保留现状，不被清空。
+	httpClient := &http.Client{}
+	c.Replace(&Client{APIKey: "k3", Enabled: true})
+	if c.Snapshot().HTTP != nil {
+		t.Fatal("next 未注入 HTTP 时不应覆盖既有引用")
+	}
+	c.Replace(&Client{APIKey: "k4", Enabled: true, HTTP: httpClient})
+	if c.Snapshot().HTTP != httpClient {
+		t.Fatal("next 注入 HTTP 时应替换既有引用")
+	}
+}
+
 // TestHTTPClientReuse 验证未注入自定义 HTTP 时复用包级共享客户端（连接池复用）。
 func TestHTTPClientReuse(t *testing.T) {
 	c1 := &Client{}

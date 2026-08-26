@@ -141,6 +141,7 @@ func (c *Client) Replace(next *Client) {
 	c.Retries = next.Retries
 	c.DigestEnabled = next.DigestEnabled
 	c.TriageEnabled = next.TriageEnabled
+	c.ReleaseSummaryEnabled = next.ReleaseSummaryEnabled
 	if next.HTTP != nil {
 		c.HTTP = next.HTTP
 	}
