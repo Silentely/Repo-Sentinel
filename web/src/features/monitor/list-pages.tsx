@@ -591,13 +591,15 @@ function RepoCard({
         title: "归档仓库",
         message: `确定在本系统归档「${repoName}」？将关闭监控与全部能力开关，停止采集与通知（不修改 GitHub 侧归档状态）。`,
         confirmLabel: "归档",
+        busyLabel: undefined,
         action: () => onToggle({ is_archived: true }),
       }
     ) : confirmAction === "delete" ? (
       {
         title: "彻底删除仓库",
         message: `确定彻底删除「${repoName}」？将级联清理该仓库的全部本地数据（PR/Issue、事件、告警、快照、游标与待投递通知），不可恢复。GitHub 侧若仍存在该仓库，重新同步后会重新出现。`,
-        confirmLabel: deleting ? "删除中…" : "彻底删除",
+        confirmLabel: "彻底删除",
+        busyLabel: "删除中…",
         action: () => onDelete(repo.id),
       }
     ) : null;
@@ -694,6 +696,7 @@ function RepoCard({
         confirmLabel={confirmContent?.confirmLabel ?? "确认"}
         danger
         busy={deleting}
+        busyLabel={confirmContent?.busyLabel}
         onConfirm={() => {
           const action = confirmContent?.action;
           setConfirmAction(null);

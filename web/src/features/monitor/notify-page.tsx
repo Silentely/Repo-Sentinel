@@ -495,9 +495,10 @@ export function NotifyPage() {
             ? `确定要删除 ${channelLabel(deleteTarget)} 渠道吗？删除后该渠道的待投递记录将无法继续发送。`
             : ""
         }
-        confirmLabel={deleteMut.isPending ? "删除中…" : "删除"}
+        confirmLabel="删除"
         danger
         busy={deleteMut.isPending}
+        busyLabel="删除中…"
         onConfirm={() => {
           const target = deleteTarget;
           setDeleteTarget(null);

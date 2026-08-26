@@ -1,11 +1,12 @@
-import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
+
+import { useModalLayer } from "../lib/use-modal-layer";
 
 /**
  * 样式化确认对话框：替代原生 window.confirm，视觉与操作反馈与整体 UI 一致。
  * 行为与投递详情抽屉对齐：焦点循环、Escape / 点击遮罩取消、打开锁背景滚动、
- * 关闭后焦点归还触发元素。danger 确认（删除类）用实色危险按钮。
+ * 关闭后焦点归还触发元素（统一由 useModalLayer 承担）。danger 确认（删除类）用实色危险按钮。
  */
 export function ConfirmDialog({
   open,
@@ -30,51 +31,7 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    triggerRef.current = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onCancel();
-        return;
-      }
-      // 焦点陷阱：Tab 在对话框内循环，避免焦点逃逸到对话框后的页面内容。
-      if (event.key !== "Tab" || !panelRef.current) {
-        return;
-      }
-      const focusables = panelRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (!first || !last) {
-        return;
-      }
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !panelRef.current.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", onKeyDown);
-      triggerRef.current?.focus();
-    };
-  }, [open, onCancel]);
+  const panelRef = useModalLayer<HTMLDivElement>({ open, onClose: onCancel });
 
   if (!open) {
     return null;

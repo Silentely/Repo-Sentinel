@@ -16,7 +16,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 
@@ -28,6 +28,7 @@ import {
   type AuthenticationResponse,
 } from "../features/auth/api";
 import { dashboardQueryOptions, settingsQueryOptions } from "../features/monitor/api";
+import { useModalLayer } from "../lib/use-modal-layer";
 
 export interface RootLayoutProps {
   session: AuthenticationResponse;
@@ -65,8 +66,13 @@ export function RootLayout({ session }: RootLayoutProps) {
 
   // 移动端抽屉导航：≤640px 时侧边栏变为离屏抽屉，由顶栏菜单按钮唤起。
   const [navOpen, setNavOpen] = useState(false);
-  const sidebarRef = useRef<HTMLElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  // 模态层通用行为（滚动锁/Escape/焦点循环/焦点归还）由 useModalLayer 统一承担。
+  const closeNav = useCallback(() => setNavOpen(false), []);
+  const sidebarRef = useModalLayer<HTMLElement>({
+    open: navOpen,
+    onClose: closeNav,
+    initialFocusSelector: ".app-sidebar__close",
+  });
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   // 浏览器标签页标题随路由更新：多标签场景下能直接看出当前页面。
@@ -94,64 +100,6 @@ export function RootLayout({ session }: RootLayoutProps) {
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, []);
-
-  // 抽屉打开期间：锁定背景滚动、支持 Escape 关闭、Tab 焦点在抽屉内循环。
-  useEffect(() => {
-    if (!navOpen) {
-      return;
-    }
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setNavOpen(false);
-        return;
-      }
-      // 焦点陷阱：Tab 在抽屉内循环，避免焦点逃逸到 scrim 之后的主内容
-      //（打开时焦点已移入抽屉，Tab 向后到末项后回绕，Shift+Tab 反向）。
-      if (event.key !== "Tab" || !sidebarRef.current) {
-        return;
-      }
-      const focusables = sidebarRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusables.length === 0) {
-        return;
-      }
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (!first || !last) {
-        return;
-      }
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !sidebarRef.current.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [navOpen]);
-
-  // 焦点管理：打开时进入抽屉，关闭（含任意关闭路径）后回到菜单按钮。
-  useEffect(() => {
-    if (!navOpen) {
-      return;
-    }
-    const menuButton = menuButtonRef.current;
-    sidebarRef.current?.querySelector<HTMLElement>(".app-sidebar__close")?.focus();
-    return () => menuButton?.focus();
-  }, [navOpen]);
-
-  function closeNav() {
-    setNavOpen(false);
-  }
 
   /** 点击导航链接即时收起抽屉；事件委托处理，避免给每个链接重复绑定。 */
   function handleNavClick(event: React.MouseEvent<HTMLElement>) {
@@ -300,7 +248,6 @@ export function RootLayout({ session }: RootLayoutProps) {
         <header className="app-topbar">
           <div className="app-topbar__lead">
             <button
-              ref={menuButtonRef}
               type="button"
               className="app-topbar__menu"
               aria-expanded={navOpen}

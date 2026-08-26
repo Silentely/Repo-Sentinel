@@ -11,6 +11,7 @@ import { apiRequest } from "../../lib/api/client";
 import { toApiError } from "../../lib/api/errors";
 import { channelLabel, htmlToPlainText, outboxErrorHint, outboxStatusLabel } from "../../lib/format";
 import { useCopyFeedback } from "../../lib/use-copy-feedback";
+import { useModalLayer } from "../../lib/use-modal-layer";
 import { useUrlState } from "../../lib/use-url-state";
 import { ClearFiltersButton, StateFilterButtons } from "./list-shared";
 import { outboxQueryOptions, retryOutbox, type OutboxItem, type Page } from "./api";
@@ -303,8 +304,9 @@ export function OutboxPage() {
         open={retryAllConfirmOpen}
         title="重新排队全部失败投递"
         message={`确定要重新排队全部 ${totalDead} 条失败投递吗？将不受当前筛选限制，按页收集后逐条重新入队。`}
-        confirmLabel={retryAllDeadAcrossPages.isPending ? "收集中…" : "重新排队"}
+        confirmLabel="重新排队"
         busy={retryAllDeadAcrossPages.isPending}
+        busyLabel="收集中…"
         onConfirm={() => {
           setRetryAllConfirmOpen(false);
           retryAllDeadAcrossPages.mutate();
@@ -316,56 +318,11 @@ export function OutboxPage() {
 }
 
 function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () => void }) {
-  const panelRef = useRef<HTMLElement>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
+  // 抽屉生命周期（滚动锁/Escape/焦点循环/焦点归还）统一由 useModalLayer 承担。
+  const panelRef = useModalLayer<HTMLElement>({ open: true, onClose });
   // 复制投递 ID：排查时便于粘贴到日志/工单；失败给出短暂反馈，不打断使用。
   const { isCopied: copiedId, copy: copyText } = useCopyFeedback();
   const copyId = () => void copyText("id", item.id);
-
-  // 抽屉生命周期：记录触发焦点、锁定背景滚动、支持 Escape 关闭与 Tab 焦点循环，
-  // 关闭后归还焦点给触发元素（与移动端导航抽屉行为一致）。
-  useEffect(() => {
-    triggerRef.current = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-        return;
-      }
-      // 焦点陷阱：Tab 在对话框内循环，避免焦点逃逸到抽屉后的页面内容。
-      if (event.key !== "Tab" || !panelRef.current) {
-        return;
-      }
-      const focusables = panelRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusables.length === 0) {
-        return;
-      }
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (!first || !last) {
-        return;
-      }
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !panelRef.current.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", onKeyDown);
-      triggerRef.current?.focus();
-    };
-  }, [onClose]);
 
   return (
     <div className="drawer-overlay" onClick={onClose} role="presentation">
