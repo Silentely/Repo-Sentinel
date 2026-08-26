@@ -1,6 +1,7 @@
 package syncx
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -690,5 +691,55 @@ func TestStarredPollReleases_通知链路(t *testing.T) {
 	outbox, _, _ = env.data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
 	if len(outbox) != 1 {
 		t.Fatalf("重复轮询不应重复投递，got %d", len(outbox))
+	}
+}
+
+// failListAllTrackers 包装真实 trackerStore，仅让 ListAll 注入失败。
+type failListAllTrackers struct {
+	store.StarredTrackerStore
+}
+
+func (s failListAllTrackers) ListAll(context.Context, int) ([]store.StarredRepoTracker, error) {
+	return nil, fmt.Errorf("injected list failure")
+}
+
+// failTrackersStore 仅替换 StarredTrackers 访问器，其余存储方法沿用真实实现。
+type failTrackersStore struct {
+	store.Store
+}
+
+func (s failTrackersStore) StarredTrackers() store.StarredTrackerStore {
+	return failListAllTrackers{s.Store.StarredTrackers()}
+}
+
+// TestStarredSyncStars_映射加载失败中止 守护：预加载 full_name→tracker 映射失败时
+// 整轮中止（下节拍重试），存量 tracker 的状态与 release 游标不被误判为新仓而重置。
+func TestStarredSyncStars_映射加载失败中止(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{
+			{"full_name": "octocat/Hello-World", "fork": false, "archived": false},
+		}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	ctx := t.Context()
+	now := time.Now().UTC()
+	// 预置存量 tracker：用户手动停用（disabled）且带 release 游标——若被误判为新仓，
+	// registerIfNew 的 Upsert 会强制写回 tracking 并清零游标。
+	if err := env.data.StarredTrackers().Upsert(ctx, store.StarredRepoTracker{
+		ID: ulid.Make().String(), FullName: "octocat/Hello-World", State: store.TrackerStateDisabled,
+		FirstSeenAt: now, LastReleaseID: 42, ETag: "e1", CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	env.poller.Store = failTrackersStore{Store: env.data}
+	if err := env.poller.SyncStarsNow(ctx); err != nil {
+		t.Fatal(err)
+	}
+	tk, err := env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk.State != store.TrackerStateDisabled || tk.LastReleaseID != 42 || tk.ETag != "e1" {
+		t.Fatalf("映射加载失败中止不应改写存量追踪状态: %+v", tk)
 	}
 }

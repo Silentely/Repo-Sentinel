@@ -13,11 +13,12 @@
 - 高频低变化查询接入短 TTL 进程内缓存：通知渠道 List（规则引擎/聚合器/outbox 投递热路径，写路径即时失效）、活跃/归档仓 ID 集合（各列表/计数与仪表盘共享一次扫描，repositoryStore 写路径即时失效）、仪表盘聚合统计（3s TTL，约 10 条 SQL/请求收敛为缓存命中）
 - 同步与投递热路径去重复：star 同步一轮内 installation 令牌与追踪计数各只查一次（原每个新仓各查一次），Outbox Worker 同批投递复用同渠道密钥明文；前端 Outbox 查询改条件轮询（有待投递/投递中条目 15s，空闲降 60s）
 - 日志与错误语义收口：reconcile/external 单仓失败 Error 补 error 详情、unstar 候选失败 Warn 留痕、令牌告警按调用方区分 star sync / release poll、installations Warn 统一 error_code、doctor 统计失败输出可读行；InstallationToken 未配置改返回 sentinel ErrAppNotConfigured；业务错误码全部提为常量
-- 前端模态层行为抽取为 `useModalLayer`（滚动锁/Escape/焦点循环/焦点归还），确认对话框/投递详情抽屉/移动端导航抽屉三处复制收敛；ConfirmDialog 统一固定 confirmLabel + busyLabel 范式
+- 前端模态层行为抽取为 `useModalLayer`（滚动锁/Escape/焦点循环/焦点归还），确认对话框/投递详情抽屉/移动端导航抽屉三处复制收敛；ConfirmDialog 统一固定 confirmLabel + busyLabel 范式；导航抽屉焦点归还显式指向菜单按钮（Safari 桌面版点击按钮不聚焦，activeElement 捕获不可靠）
 - GitHub API 客户端请求路径改只读回退包级共享默认 http.Client：PublicClient 不再每次调用新建 http.Client（连接池复用）
 - 定期报告命名统一为「每日摘要 / 每周报告 / 每月报告」（月报标题与设置页开关文案同步）
 - 状态展示一致性：安全告警终态补配色（已修复绿、自动忽略/已撤回灰）、code scanning 严重度别名补底色（error/warning/note）、列表截断标题补 hover 全文提示、投递记录空态补「清除筛选」入口、周期校验上限按天/小时表述
-- 仓库列表查询自动翻页拉全：超过 100 仓后仓库管理页/基线面板/筛选下拉不再静默丢失尾部仓库
+- 仓库列表查询自动翻页拉全：超过 100 仓后仓库管理页/基线面板/筛选下拉不再静默丢失尾部仓库（50 页防御上限防异常 total 拖出无界请求循环）
+- 登录页注入版本时不再请求构建信息端点
 - 事件类别 emoji 收敛为单一来源（`rules.KindEmoji`）：digest 报告分组行不再维护私有 emoji 表，与 rules 通用回退共用，扩展类别只需改一处；`EventStatusLabel` 告警分支移除无意义的严重度判断（两分支返回值相同）
 - 日志留痕一致性：`aggregator reload failed` / `ai runtime reload failed` / 对账限流等待 / 公开 API 配额告警四处 Warn 补语义化 `error_code`，便于按码聚合
 - 仓库基线「立即放行」按钮改行级忙碌反馈：仅当前行禁用并显示「放行中…」（此前全局禁用其它仓库放行按钮），与「对账」按钮行级模式一致
@@ -39,6 +40,7 @@
 ### Fixed
 
 - AI 配置热更新丢失「更新速览」开关：Client.Replace 未拷贝 ReleaseSummaryEnabled，管理台保存后开关保持旧值直到进程重启
+- star 同步预加载追踪映射失败时整轮中止：此前空映射继续执行会把存量追踪误判为新仓，registerIfNew 的 Upsert 强制写回 tracking 并清零游标（静默重置用户停用与复查状态）；中止不推进记账，下个节拍快速重试（回归测试锁定）
 - 更新检查 HTML 回退路径报错引用首个 302 响应的状态码，改为实际取到页面的响应
 - Star 追踪列表空态在加载中与出错时误展示「暂无追踪记录」：补三态守卫
 - 投递记录三个重试入口互不互斥：批量重试进行中可再点其他重试按钮导致并发重复排队，现统一互斥

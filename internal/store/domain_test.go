@@ -307,3 +307,72 @@ func TestStarTrendWindowSeedsBeforeRange(t *testing.T) {
 		}
 	}
 }
+
+// TestStarTrendWindowSeedAndInRangeMerge 守护混合游标：同一仓既有窗口前种值又有窗口内
+// 快照时，窗口首段用种值、快照日起切换为窗口值（种值与窗口快照不能重复计入）。
+func TestStarTrendWindowSeedAndInRangeMerge(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	if _, err := st.Repositories().Upsert(ctx, Repository{ID: "repo-mix", Type: RepositoryTypeInstallation,
+		SyncStatus: SyncStatusActive, Owner: "o", Name: "mix", FullName: "o/mix",
+		StarsEnabled: true, WatchesEnabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	today := time.Now().UTC()
+	for _, s := range []RepoStatSnapshot{
+		{RepositoryID: "repo-mix", Metric: MetricStargazers, Value: 100, SampleDate: today.AddDate(0, 0, -60).Format("2006-01-02")},
+		{RepositoryID: "repo-mix", Metric: MetricStargazers, Value: 130, SampleDate: today.AddDate(0, 0, -5).Format("2006-01-02")},
+	} {
+		if _, err := st.RepoStatSnapshots().Upsert(ctx, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	points, err := st.StarTrend(ctx, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	switchDate := today.AddDate(0, 0, -5).Format("2006-01-02")
+	for _, p := range points {
+		want := int64(100)
+		if p.Date >= switchDate {
+			want = 130
+		}
+		if p.Total != want {
+			t.Fatalf("date %s: 快照日前用种值 100、日后用窗口值 130，got %d", p.Date, p.Total)
+		}
+	}
+}
+
+// TestRepoIDsCacheInvalidatedOnArchive 守护仓 ID 集合缓存的写路径即时失效：
+// 归档操作后 TTL 窗口内再次列表必须立即排除该仓，不能读到归档前集合。
+func TestRepoIDsCacheInvalidatedOnArchive(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	repo, err := st.Repositories().Upsert(ctx, Repository{ID: "repo-arc", Type: RepositoryTypeInstallation,
+		SyncStatus: SyncStatusActive, Owner: "o", Name: "arc", FullName: "o/arc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.WorkItems().UpsertIfNewer(ctx, WorkItem{
+		ID: "wi-arc-1", RepositoryID: repo.ID, Number: 1, Kind: WorkItemKindIssue, State: "open", Title: "t",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 预热缓存：首次列表读出「含该仓」的活跃集合。
+	items, _, err := st.WorkItems().List(ctx, ListFilter{Page: 1, PerPage: 10})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("预热列表应含该仓工作项: %+v %v", items, err)
+	}
+	// 归档后立即列表：缓存必须已失效，不能读到归档前集合。
+	archived := true
+	if err := st.Repositories().UpdateSettings(ctx, repo.ID, RepositorySettings{IsArchived: &archived}); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err = st.WorkItems().List(ctx, ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("归档后工作项应立即从列表消失，got %+v", items)
+	}
+}

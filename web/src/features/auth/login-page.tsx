@@ -28,6 +28,8 @@ export function LoginPage({
   // 页脚版本：优先测试注入值；生产从公开构建信息端点获取，兜底 dev。
   const [buildVersion, setBuildVersion] = useState<string>();
   useEffect(() => {
+    // 调用方已注入版本（测试/内部场景）时不再请求。
+    if (version) return;
     let active = true;
     void apiRequest<{ version: string }>("/api/v1/system/build-info")
       .then((res) => {
@@ -37,7 +39,7 @@ export function LoginPage({
     return () => {
       active = false;
     };
-  }, []);
+  }, [version]);
   const versionText = version ?? buildVersion ?? "dev";
   // 登录页不在 RootLayout 内，标签页标题需独立设置。
   useEffect(() => {

@@ -17,10 +17,17 @@ export function useModalLayer<T extends HTMLElement>({
   open,
   onClose,
   initialFocusSelector,
+  restoreRef,
 }: {
   open: boolean;
   onClose: () => void;
   initialFocusSelector?: string;
+  /**
+   * 关闭时优先归还焦点的元素 ref（如唤出按钮）。
+   * 缺省归还「打开瞬间的焦点元素」（多数浏览器下二者一致；Safari 桌面版点击按钮不聚焦，
+   * 唤出方希望确定性归还时显式传入）。
+   */
+  restoreRef?: RefObject<HTMLElement | null>;
 }): RefObject<T | null> {
   const containerRef = useRef<T>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -74,9 +81,9 @@ export function useModalLayer<T extends HTMLElement>({
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
-      triggerRef.current?.focus();
+      (restoreRef?.current ?? triggerRef.current)?.focus();
     };
-  }, [open, initialFocusSelector]);
+  }, [open, initialFocusSelector, restoreRef]);
 
   return containerRef;
 }

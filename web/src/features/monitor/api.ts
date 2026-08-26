@@ -112,7 +112,11 @@ export const repositoriesQueryOptions = queryOptions({
     const first = await apiRequest<Page<Repository>>("/api/v1/repositories?per_page=100");
     if (first.items.length >= first.total) return first;
     const items = [...first.items];
-    const pageCount = Math.ceil(first.total / first.per_page);
+    // 防御上限：total 异常放大（服务端 bug/代理篡改）时不陷入无界串行请求循环。
+    const pageCount = Math.min(Math.ceil(first.total / first.per_page), 50);
+    if (Math.ceil(first.total / first.per_page) > 50) {
+      console.warn(`仓库总数 ${first.total} 超出防御上限（5000），仅拉取前 50 页`);
+    }
     for (let p = 2; p <= pageCount; p++) {
       const data = await apiRequest<Page<Repository>>(`/api/v1/repositories?per_page=100&page=${p}`);
       items.push(...data.items);

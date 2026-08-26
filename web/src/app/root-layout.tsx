@@ -66,12 +66,15 @@ export function RootLayout({ session }: RootLayoutProps) {
 
   // 移动端抽屉导航：≤640px 时侧边栏变为离屏抽屉，由顶栏菜单按钮唤起。
   const [navOpen, setNavOpen] = useState(false);
-  // 模态层通用行为（滚动锁/Escape/焦点循环/焦点归还）由 useModalLayer 统一承担。
+  // 模态层通用行为（滚动锁/Escape/焦点循环/焦点归还）由 useModalLayer 统一承担；
+  // 焦点归还显式指向菜单按钮（Safari 桌面版点击按钮不聚焦，activeElement 捕获不可靠）。
   const closeNav = useCallback(() => setNavOpen(false), []);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useModalLayer<HTMLElement>({
     open: navOpen,
     onClose: closeNav,
     initialFocusSelector: ".app-sidebar__close",
+    restoreRef: menuButtonRef,
   });
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
@@ -248,6 +251,7 @@ export function RootLayout({ session }: RootLayoutProps) {
         <header className="app-topbar">
           <div className="app-topbar__lead">
             <button
+              ref={menuButtonRef}
               type="button"
               className="app-topbar__menu"
               aria-expanded={navOpen}

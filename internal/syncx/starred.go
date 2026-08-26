@@ -221,10 +221,13 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 		}
 	}
 	// 一次性加载现有追踪记录建 full_name→tracker 映射，避免每仓 GetByFullName 的 N+1 查询
-	//（500 追踪上限用户一轮同步即数百次单查）。加载失败降级逐仓单查并留痕。
+	//（500 追踪上限用户一轮同步即数百次单查）。加载失败必须中止整轮：空映射会把存量
+	// tracker 误判为新仓，registerIfNew 的 Upsert 将强制写回 tracking 并清零游标
+	//（静默重置用户停用与复查状态）；不推进记账，下个节拍快速重试。
 	trackerMap := make(map[string]store.StarredRepoTracker)
 	if candidates, err := p.Store.StarredTrackers().ListAll(ctx, trackerListHardLimit); err != nil {
-		p.warn("star sync tracker map load failed", "error_code", "tracker_map_load_failed", "error", err.Error())
+		p.warn("star sync tracker map load failed, abort round", "error_code", "tracker_map_load_failed", "error", err.Error())
+		return nil
 	} else {
 		for _, tk := range candidates {
 			trackerMap[tk.FullName] = tk
