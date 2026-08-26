@@ -106,8 +106,19 @@ export const dashboardQueryOptions = queryOptions({
 
 export const repositoriesQueryOptions = queryOptions({
   queryKey: ["repositories"] as const,
-  // 列表筛选下拉与仪表盘共用；上限对齐后端 normalizePage(100)。
-  queryFn: () => apiRequest<Page<Repository>>("/api/v1/repositories?per_page=100"),
+  // 列表筛选下拉、仓库页、仪表盘共用；per_page 对齐后端 normalizePage(100)。
+  // 超过一页时循环翻页拉全：此前固定取首页 100 条，尾部仓库在所有消费方静默缺失。
+  queryFn: async (): Promise<Page<Repository>> => {
+    const first = await apiRequest<Page<Repository>>("/api/v1/repositories?per_page=100");
+    if (first.items.length >= first.total) return first;
+    const items = [...first.items];
+    const pageCount = Math.ceil(first.total / first.per_page);
+    for (let p = 2; p <= pageCount; p++) {
+      const data = await apiRequest<Page<Repository>>(`/api/v1/repositories?per_page=100&page=${p}`);
+      items.push(...data.items);
+    }
+    return { ...first, items };
+  },
   staleTime: 15_000,
 });
 

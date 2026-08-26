@@ -127,6 +127,10 @@ export function OutboxPage() {
     ...retryBatchOptions,
   });
 
+  // 三个重试入口互斥：任一重试进行中禁用其余按钮，
+  // 避免同一记录被并发重复排队、批量计数错乱。
+  const anyRetryPending = retry.isPending || retryAllDead.isPending || retryAllDeadAcrossPages.isPending;
+
   // 全局 dead 总数：用于「重试全部失败」按钮的显示条件（无失败时隐藏）。
   // dead 筛选页本身已是 dead 列表，直接复用当前列表 total，避免多余请求。
   const deadTotalQuery = useQuery({
@@ -187,7 +191,7 @@ export function OutboxPage() {
                 className="quiet-button quiet-button--primary-ghost"
                 type="button"
                 onClick={() => retryAllDead.mutate()}
-                disabled={retryAllDead.isPending}
+                disabled={anyRetryPending}
                 aria-busy={retryAllDead.isPending}
               >
                 {retryAllDead.isPending ? (
@@ -202,7 +206,7 @@ export function OutboxPage() {
                 className="quiet-button quiet-button--primary-ghost"
                 type="button"
                 onClick={() => setRetryAllConfirmOpen(true)}
-                disabled={retryAllDeadAcrossPages.isPending}
+                disabled={anyRetryPending}
                 aria-busy={retryAllDeadAcrossPages.isPending}
                 title={`${channelFilter ? `重试${channelLabel(channelFilter)}渠道全部 ` : "跨页重试全部 "}${totalDead} 条失败投递`}
               >
@@ -280,7 +284,7 @@ export function OutboxPage() {
                     type="button"
                     aria-label={`重试投递：${item.title || item.id}`}
                     onClick={() => retry.mutate(item.id)}
-                    disabled={retryBusyId === item.id}
+                    disabled={anyRetryPending}
                   >
                     {retryBusyId === item.id ? "重试中…" : "重试"}
                   </button>

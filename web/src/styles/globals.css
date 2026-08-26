@@ -1760,15 +1760,6 @@ a.status-item--link:focus-visible {
   cursor: not-allowed;
 }
 
-.quiet-button--danger {
-  color: var(--danger);
-}
-
-.quiet-button--danger:hover {
-  background: color-mix(in oklch, var(--danger) 12%, var(--bg-surface));
-  border-color: var(--danger);
-}
-
 .outbox-filters {
   display: flex;
   gap: 0.35rem;

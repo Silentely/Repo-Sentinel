@@ -65,6 +65,8 @@ export function NumberField({ value, min, max, integer, disabled, placeholder, o
       placeholder={placeholder}
       style={{ width: inputWidth }}
       onFocus={() => setFocused(true)}
+      // 阻止浏览器原生 wheel 步进静默改值：滚动页面时只需失焦（触发失焦钳制提交即可）。
+      onWheel={(e) => e.currentTarget.blur()}
       onBlur={() => {
         setFocused(false);
         commit(text);

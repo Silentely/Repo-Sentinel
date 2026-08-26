@@ -6,6 +6,7 @@ import { EmptyState } from "../../components/empty-state";
 import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { apiRequest } from "../../lib/api/client";
 import { toApiError } from "../../lib/api/errors";
+import { useAutoDismiss } from "../../lib/use-auto-dismiss";
 import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import {
   addExternalRepository,
@@ -33,9 +34,9 @@ export function GitHubPage() {
   async function copyWebhook() {
     await copyText("webhook", webhookURL);
   }
-  const [formMessage, setFormMessage] = useState("");
-  const [syncMessage, setSyncMessage] = useState("");
-  const [configMessage, setConfigMessage] = useState("");
+  const [formMessage, setFormMessage] = useAutoDismiss();
+  const [syncMessage, setSyncMessage] = useAutoDismiss();
+  const [configMessage, setConfigMessage] = useAutoDismiss();
   const [appID, setAppID] = useState("");
   const [clientID, setClientID] = useState("");
   const [publicBaseURL, setPublicBaseURL] = useState("");

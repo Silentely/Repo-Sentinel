@@ -8,6 +8,7 @@ import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { toApiError } from "../../lib/api/errors";
 import { channelLabel } from "../../lib/format";
+import { useAutoDismiss } from "../../lib/use-auto-dismiss";
 import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import {
   channelsQueryOptions,
@@ -283,7 +284,7 @@ export function NotifyPage() {
   const channels = useQuery(channelsQueryOptions);
   const settings = useQuery(settingsQueryOptions);
 
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useAutoDismiss();
   const [error, setError] = useState("");
 
   const telegramCh = channels.data?.items.find((ch) => ch.channel_type === "telegram");
