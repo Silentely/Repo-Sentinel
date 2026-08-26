@@ -9,6 +9,15 @@
 ### Changed
 
 - Release 更新速览提示词放宽：要点数量 2-5 → 3-8 条（内容较多时取上限），并明确升级注意事项不得省略；配合输出 token 上限调大，速览可覆盖更多内容
+- Star 趋势查询性能：日聚合改游标线性推进（O(快照数+天数×仓数)，原先逐日全扫）；days>0 时快照查询加日期下界不再载入全部历史，窗口起点的补值种值经 GroupBy 最大日期 + 唯一索引精确取回，曲线起点语义不变
+- 高频低变化查询接入短 TTL 进程内缓存：通知渠道 List（规则引擎/聚合器/outbox 投递热路径，写路径即时失效）、活跃/归档仓 ID 集合（各列表/计数与仪表盘共享一次扫描，repositoryStore 写路径即时失效）、仪表盘聚合统计（3s TTL，约 10 条 SQL/请求收敛为缓存命中）
+- 同步与投递热路径去重复：star 同步一轮内 installation 令牌与追踪计数各只查一次（原每个新仓各查一次），Outbox Worker 同批投递复用同渠道密钥明文；前端 Outbox 查询改条件轮询（有待投递/投递中条目 15s，空闲降 60s）
+- 日志与错误语义收口：reconcile/external 单仓失败 Error 补 error 详情、unstar 候选失败 Warn 留痕、令牌告警按调用方区分 star sync / release poll、installations Warn 统一 error_code、doctor 统计失败输出可读行；InstallationToken 未配置改返回 sentinel ErrAppNotConfigured；业务错误码全部提为常量
+- 前端模态层行为抽取为 `useModalLayer`（滚动锁/Escape/焦点循环/焦点归还），确认对话框/投递详情抽屉/移动端导航抽屉三处复制收敛；ConfirmDialog 统一固定 confirmLabel + busyLabel 范式
+- GitHub API 客户端请求路径改只读回退包级共享默认 http.Client：PublicClient 不再每次调用新建 http.Client（连接池复用）
+- 定期报告命名统一为「每日摘要 / 每周报告 / 每月报告」（月报标题与设置页开关文案同步）
+- 状态展示一致性：安全告警终态补配色（已修复绿、自动忽略/已撤回灰）、code scanning 严重度别名补底色（error/warning/note）、列表截断标题补 hover 全文提示、投递记录空态补「清除筛选」入口、周期校验上限按天/小时表述
+- 仓库列表查询自动翻页拉全：超过 100 仓后仓库管理页/基线面板/筛选下拉不再静默丢失尾部仓库
 - 事件类别 emoji 收敛为单一来源（`rules.KindEmoji`）：digest 报告分组行不再维护私有 emoji 表，与 rules 通用回退共用，扩展类别只需改一处；`EventStatusLabel` 告警分支移除无意义的严重度判断（两分支返回值相同）
 - 日志留痕一致性：`aggregator reload failed` / `ai runtime reload failed` / 对账限流等待 / 公开 API 配额告警四处 Warn 补语义化 `error_code`，便于按码聚合
 - 仓库基线「立即放行」按钮改行级忙碌反馈：仅当前行禁用并显示「放行中…」（此前全局禁用其它仓库放行按钮），与「对账」按钮行级模式一致
@@ -29,6 +38,14 @@
 
 ### Fixed
 
+- AI 配置热更新丢失「更新速览」开关：Client.Replace 未拷贝 ReleaseSummaryEnabled，管理台保存后开关保持旧值直到进程重启
+- 更新检查 HTML 回退路径报错引用首个 302 响应的状态码，改为实际取到页面的响应
+- Star 追踪列表空态在加载中与出错时误展示「暂无追踪记录」：补三态守卫
+- 投递记录三个重试入口互不互斥：批量重试进行中可再点其他重试按钮导致并发重复排队，现统一互斥
+- GitHub 页/通知页成功提示常驻不消退：接入自动消退（与设置页同策略）
+- NumberField 聚焦时鼠标滚轮静默改值：禁用原生 wheel 步进
+- GitHub App 客户端并发首次调用无锁写共享字段（数据竞争隐患），改只读回退
+- 登录页页脚版本号恒为「版本 dev」：新增公开 /api/v1/system/build-info 端点，展示真实构建版本
 - outbox 页批量重试回调收敛：抽 `invalidateOutboxAndDashboard` 与 `retryBatchOptions`，消除三处重复失效逻辑与两份相同 mutation 回调
 - 筛选按钮组抽共享组件 `StateFilterButtons`：投递记录页与列表页共用，样式/aria 不再各自维护
 - outbox「重试本页失败」「重试全部失败」补 `aria-busy`（读屏可感知加载中）
