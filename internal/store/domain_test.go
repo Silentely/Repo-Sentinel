@@ -209,3 +209,66 @@ func TestStarTrendForwardFillAndSum(t *testing.T) {
 		}
 	}
 }
+
+// TestStarTrendWindowSeedsBeforeRange 守护窗口查询的前向补值语义：
+// 仅有窗口前快照的仓必须以「窗口前最近一条」为种值从窗口首日参与求和，
+// 与全量载入的曲线起点一致（否则 days>0 视图会整仓丢失）。
+func TestStarTrendWindowSeedsBeforeRange(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	mkRepo := func(id, full string) string {
+		if _, err := st.Repositories().Upsert(ctx, Repository{ID: id, Type: RepositoryTypeInstallation,
+			SyncStatus: SyncStatusActive, Owner: "o", Name: full, FullName: "o/" + full,
+			StarsEnabled: true, WatchesEnabled: true}); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	r1 := mkRepo("repo-w1", "w1")
+	r2 := mkRepo("repo-w2", "w2")
+	today := time.Now().UTC()
+	// r1 唯一快照远在窗口（7 天）之外：应以种值 7 从窗口首日参与。
+	// r2 快照在窗口内 3 天前：从其快照日起参与。
+	if _, err := st.RepoStatSnapshots().Upsert(ctx, RepoStatSnapshot{
+		RepositoryID: r1, Metric: MetricStargazers, Value: 7, SampleDate: today.AddDate(0, 0, -60).Format("2006-01-02"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	insideDate := today.AddDate(0, 0, -3).Format("2006-01-02")
+	if _, err := st.RepoStatSnapshots().Upsert(ctx, RepoStatSnapshot{
+		RepositoryID: r2, Metric: MetricStargazers, Value: 5, SampleDate: insideDate,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	points, err := st.StarTrend(ctx, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromDate := today.AddDate(0, 0, -6).Format("2006-01-02")
+	if len(points) != 7 || points[0].Date != fromDate {
+		t.Fatalf("窗口应从 %s 起共 7 天，got %+v", fromDate, points)
+	}
+	// 首日 r2 尚无快照：仅 r1 种值参与。
+	if points[0].Total != 7 {
+		t.Fatalf("首日应仅含 r1 种值 7，got %d", points[0].Total)
+	}
+	for _, p := range points {
+		if p.Date >= insideDate && p.Total != 12 {
+			t.Fatalf("%s 起应为 r1 7 + r2 5 = 12，got %d", insideDate, p.Total)
+		}
+	}
+
+	// 3 天窗口把 r2 快照也挤出窗外：两仓均以种值参与，合计恒为 12。
+	seededOnly, err := st.StarTrend(ctx, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seededOnly) != 3 {
+		t.Fatalf("3 天窗口应返回 3 个点，got %+v", seededOnly)
+	}
+	for _, p := range seededOnly {
+		if p.Total != 12 {
+			t.Fatalf("窗口内无快照时种值合计应恒为 12，date %s got %d", p.Date, p.Total)
+		}
+	}
+}

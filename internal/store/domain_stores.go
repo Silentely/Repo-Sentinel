@@ -11,6 +11,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/githubinstallation"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationchannel"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/notificationoutbox"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/predicate"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repository"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repostatsnapshot"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
@@ -596,6 +597,25 @@ func archivedRepositoryIDs(ctx context.Context, client *entclient.Client) ([]str
 		return nil, mapStoreError(err)
 	}
 	return rows, nil
+}
+
+// repositoryIDsByArchived 一次扫描分出活跃/归档两个 ID 集合：
+// 仪表盘同时需要两者时避免对仓库表做两次扫描。
+func repositoryIDsByArchived(ctx context.Context, client *entclient.Client) (active, archived []string, err error) {
+	rows, err := client.Repository.Query().
+		Select(repository.FieldID, repository.FieldIsArchived).
+		All(ctx)
+	if err != nil {
+		return nil, nil, mapStoreError(err)
+	}
+	for _, r := range rows {
+		if r.IsArchived {
+			archived = append(archived, r.ID)
+		} else {
+			active = append(active, r.ID)
+		}
+	}
+	return active, archived, nil
 }
 
 func (s *workItemStore) Get(ctx context.Context, id string) (WorkItem, error) {
@@ -1200,13 +1220,19 @@ func (s *eventStore) List(ctx context.Context, f ListFilter) ([]Event, PageResul
 // CountSince 统计指定时间之后的事件数。与 ListSince 同一归档约定：
 // 已归档仓库的事件不计入，保证仪表盘「24h 事件」与其它指标口径一致。
 func (s *eventStore) CountSince(ctx context.Context, since time.Time) (int, error) {
-	q := s.client.Event.Query().Where(event.OccurredAtGTE(since.UTC()))
 	ids, err := archivedRepositoryIDs(ctx, s.client)
 	if err != nil {
 		return 0, mapStoreError(err)
 	}
-	if len(ids) > 0 {
-		q = q.Where(event.Or(event.RepositoryIDIsNil(), event.RepositoryIDNotIn(ids...)))
+	return countEventsSince(ctx, s.client, since, ids)
+}
+
+// countEventsSince 带预取归档清单的计数实现：调用方已持有归档清单（如 Dashboard）时
+// 免于在同一请求内重复扫描仓库表。
+func countEventsSince(ctx context.Context, client *entclient.Client, since time.Time, archivedIDs []string) (int, error) {
+	q := client.Event.Query().Where(event.OccurredAtGTE(since.UTC()))
+	if len(archivedIDs) > 0 {
+		q = q.Where(event.Or(event.RepositoryIDIsNil(), event.RepositoryIDNotIn(archivedIDs...)))
 	}
 	n, err := q.Count(ctx)
 	return n, mapStoreError(err)
@@ -1663,9 +1689,9 @@ func (s *storeImpl) CleanupRetention(ctx context.Context, policy RetentionPolicy
 // Dashboard 聚合统计。
 func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
 	var stats DashboardStats
-	var err error
-	// 一次取出活跃仓 ID，避免 CountOpen/PR/Actions/Security 各自重复查询。
-	activeIDs, err := activeRepositoryIDs(ctx, s.client)
+	// 一次扫描分出活跃/归档 ID：活跃 ID 供 4 项计数，归档 ID 供 24h 事件排除，
+	// 避免各计数器与 Events().CountSince 重复扫描仓库表。
+	activeIDs, archivedIDs, err := repositoryIDsByArchived(ctx, s.client)
 	if err != nil {
 		return stats, err
 	}
@@ -1706,7 +1732,7 @@ func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
 			return stats, mapStoreError(err)
 		}
 	}
-	if stats.Events24h, err = s.Events().CountSince(ctx, time.Now().UTC().Add(-24*time.Hour)); err != nil {
+	if stats.Events24h, err = countEventsSince(ctx, s.client, time.Now().UTC().Add(-24*time.Hour), archivedIDs); err != nil {
 		return stats, err
 	}
 	if stats.OutboxDead, err = s.Outbox().CountByStatus(ctx, OutboxDead); err != nil {
@@ -1748,14 +1774,30 @@ func (s *storeImpl) StarTrend(ctx context.Context, days int) ([]StarTrendPoint, 
 	if len(repoIDs) == 0 {
 		return []StarTrendPoint{}, nil
 	}
-	rows, err := s.client.RepoStatSnapshot.Query().
-		Where(repostatsnapshot.RepositoryIDIn(repoIDs...), repostatsnapshot.MetricEQ(MetricStargazers)).
-		Order(entclient.Asc(repostatsnapshot.FieldSampleDate)).
-		All(ctx)
+	end := time.Now().UTC().Format("2006-01-02")
+	from := ""
+	if days > 0 {
+		from = time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	}
+	// 窗口查询：days>0 只加载窗口内快照，避免把整个快照历史读进内存。
+	q := s.client.RepoStatSnapshot.Query().
+		Where(repostatsnapshot.RepositoryIDIn(repoIDs...), repostatsnapshot.MetricEQ(MetricStargazers))
+	if days > 0 {
+		q = q.Where(repostatsnapshot.SampleDateGTE(from))
+	}
+	rows, err := q.Order(entclient.Asc(repostatsnapshot.FieldSampleDate)).All(ctx)
 	if err != nil {
 		return nil, mapStoreError(err)
 	}
-	if len(rows) == 0 {
+	// 窗口起点之前可能已有快照（前向补值的种值）：每仓取起点前最近一条，
+	// 使窗口曲线的首日求和与全量载入语义一致。
+	seeds := map[string]int64{}
+	if days > 0 {
+		if seeds, err = s.stargazerSeeds(ctx, repoIDs, from); err != nil {
+			return nil, err
+		}
+	}
+	if len(rows) == 0 && len(seeds) == 0 {
 		return []StarTrendPoint{}, nil
 	}
 	// 按仓库分组，日期升序。
@@ -1770,41 +1812,100 @@ func (s *storeImpl) StarTrend(ctx context.Context, days int) ([]StarTrendPoint, 
 	}
 	start := earliest
 	if days > 0 {
-		from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-		if from > start {
-			start = from
+		// 窗口起点即曲线起点；无种值时起点不得早于首个在窗快照（该日前总数必然为 0，省略）。
+		start = from
+		if len(seeds) == 0 && earliest > from {
+			start = earliest
 		}
 	}
-	end := time.Now().UTC().Format("2006-01-02")
-	// 逐日向前补值求和。
-	totals := map[string]int64{}
-	lastByRepo := map[string]int64{}
-	for d := start; d <= end; {
+	if start > end {
+		return []StarTrendPoint{}, nil
+	}
+	// 逐日向前补值求和：每仓序列升序且日期单增，游标只前进不回头，
+	// 整体 O(快照数 + 天数×仓数)。
+	type repoCursor struct {
+		snaps []RepoStatSnapshot
+		idx   int
+		last  int64
+		has   bool
+	}
+	cursors := make(map[string]*repoCursor, len(byRepo)+len(seeds))
+	for id, snaps := range byRepo {
+		cursors[id] = &repoCursor{snaps: snaps}
+	}
+	for id, v := range seeds {
+		if c, ok := cursors[id]; ok {
+			c.last, c.has = v, true
+		} else {
+			cursors[id] = &repoCursor{last: v, has: true}
+		}
+	}
+	out := []StarTrendPoint{}
+	for d := start; ; {
 		var total int64
-		for id, snaps := range byRepo {
-			// 取该仓 <= d 的最近快照值（每仓序列有序，用线性推进即可，仓库量小）。
-			for _, s := range snaps {
-				if s.SampleDate > d {
-					break
-				}
-				lastByRepo[id] = s.Value
+		for _, c := range cursors {
+			for c.idx < len(c.snaps) && c.snaps[c.idx].SampleDate <= d {
+				c.last = c.snaps[c.idx].Value
+				c.has = true
+				c.idx++
 			}
-			if v, ok := lastByRepo[id]; ok {
-				total += v
+			if c.has {
+				total += c.last
 			}
 		}
-		totals[d] = total
-		// 推进日期。
-		t, _ := time.Parse("2006-01-02", d)
-		d = t.AddDate(0, 0, 1).Format("2006-01-02")
-	}
-	out := make([]StarTrendPoint, 0, len(totals))
-	for d := start; d <= end; {
-		out = append(out, StarTrendPoint{Date: d, Total: totals[d]})
+		out = append(out, StarTrendPoint{Date: d, Total: total})
+		if d >= end {
+			break
+		}
 		t, _ := time.Parse("2006-01-02", d)
 		d = t.AddDate(0, 0, 1).Format("2006-01-02")
 	}
 	return out, nil
+}
+
+// stargazerSeeds 返回每仓在窗口起点（不含）之前最近一条 stargazers 快照值，
+// 作为逐日前向补值的种值。先 GroupBy 各仓最大日期（1 次查询），再按
+// (repository_id, metric, sample_date) 唯一索引一次取回对应行，与窗口行数无关。
+func (s *storeImpl) stargazerSeeds(ctx context.Context, repoIDs []string, from string) (map[string]int64, error) {
+	var maxRows []struct {
+		RepositoryID string `json:"repository_id"`
+		MaxDate      string `json:"max_date"`
+	}
+	if err := s.client.RepoStatSnapshot.Query().
+		Where(
+			repostatsnapshot.RepositoryIDIn(repoIDs...),
+			repostatsnapshot.MetricEQ(MetricStargazers),
+			repostatsnapshot.SampleDateLT(from),
+		).
+		GroupBy(repostatsnapshot.FieldRepositoryID).
+		Aggregate(func(sel *entsql.Selector) string {
+			return entsql.As(entsql.Max(repostatsnapshot.FieldSampleDate), "max_date")
+		}).
+		Scan(ctx, &maxRows); err != nil {
+		return nil, mapStoreError(err)
+	}
+	if len(maxRows) == 0 {
+		return map[string]int64{}, nil
+	}
+	preds := make([]predicate.RepoStatSnapshot, 0, len(maxRows))
+	for _, m := range maxRows {
+		preds = append(preds, repostatsnapshot.And(
+			repostatsnapshot.RepositoryIDEQ(m.RepositoryID),
+			repostatsnapshot.SampleDateEQ(m.MaxDate),
+		))
+	}
+	seedRows, err := s.client.RepoStatSnapshot.Query().
+		Where(repostatsnapshot.MetricEQ(MetricStargazers), repostatsnapshot.Or(preds...)).
+		Select(repostatsnapshot.FieldRepositoryID, repostatsnapshot.FieldValue).
+		All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	seeds := make(map[string]int64, len(seedRows))
+	for _, row := range seedRows {
+		seeds[row.RepositoryID] = row.Value
+	}
+	return seeds, nil
 }
 
 // --- repo stat snapshots ---
