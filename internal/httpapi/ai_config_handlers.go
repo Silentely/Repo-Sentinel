@@ -101,7 +101,7 @@ func (s *server) aiRuntime() *ai.RuntimeConfig {
 // rejectAILockedField 字段被环境变量锁定时拒绝写入并返回 true。
 func (s *server) rejectAILockedField(w http.ResponseWriter, r *http.Request, source, field string) bool {
 	if source == "env" {
-		s.writeAPIError(w, r, http.StatusConflict, "ai_field_locked", map[string]any{"field": field})
+		s.writeAPIError(w, r, http.StatusConflict, errorCodeAIFieldLocked, map[string]any{"field": field})
 		return true
 	}
 	return false

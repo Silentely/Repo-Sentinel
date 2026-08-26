@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
-// Run 启动 HTTP、通知 Worker 与 Session 清理，并在取消时按 30 秒预算优雅关闭。
+// Run 启动 HTTP、通知 Worker 与 Session 清理，并在取消时按 gracefulShutdownTimeout 预算优雅关闭。
 func (a *App) Run(ctx context.Context) error {
 	if a == nil || a.httpServer == nil {
 		return newPublicError("internal_error", "应用尚未完成装配。", nil)
@@ -92,7 +93,7 @@ func (a *App) Run(ctx context.Context) error {
 		return runErr
 	}
 	if shutdownErr != nil && !errors.Is(shutdownErr, http.ErrServerClosed) {
-		return newPublicError("shutdown_failed", "HTTP Server 未能在 30 秒内关闭。", shutdownErr)
+		return newPublicError("shutdown_failed", fmt.Sprintf("HTTP Server 未能在 %s 内关闭。", gracefulShutdownTimeout), shutdownErr)
 	}
 	if closeErr != nil {
 		return newPublicError("database_unavailable", "关闭数据库资源失败。", closeErr)

@@ -23,6 +23,20 @@ const (
 	// 与 internal_error（处理过程异常）区分，前端可据此提示服务端状态而非重试。
 	errorCodeServiceUnavailable = "service_unavailable"
 
+	// 业务错误码集中在此定义：处理器与 apiErrorMessage 引用同一常量，
+	// 新增错误码只需补一处声明与一处文案。
+	errorCodeWebhookNotConfigured   = "webhook_not_configured"
+	errorCodeInvalidSignature       = "invalid_signature"
+	errorCodeReconcileUnavailable   = "reconcile_unavailable"
+	errorCodeEncryptionUnavailable  = "encryption_unavailable"
+	errorCodeExternalRepoLimit      = "external_repo_limit"
+	errorCodeGitHubFieldLocked      = "github_field_locked"
+	errorCodeGitHubAppNotConfigured = "github_app_not_configured"
+	errorCodeGitHubNoInstallation   = "github_no_installation"
+	errorCodeReconcileInProgress    = "reconcile_in_progress"
+	errorCodeAIFieldLocked          = "ai_field_locked"
+	errorCodeMethodNotAllowed       = "method_not_allowed"
+
 	// loginRetryAfterSeconds 登录限流响应的 Retry-After 秒数。
 	loginRetryAfterSeconds = "12"
 )
@@ -100,29 +114,29 @@ func apiErrorMessage(errorCode string) string {
 		return "当前状态与请求冲突。"
 	case errorCodeCSRFFailed:
 		return "安全校验失败，请刷新页面后重试。"
-	case "webhook_not_configured":
+	case errorCodeWebhookNotConfigured:
 		return "尚未配置 GitHub Webhook Secret。"
-	case "invalid_signature":
+	case errorCodeInvalidSignature:
 		return "Webhook 签名校验失败。"
-	case "reconcile_unavailable":
+	case errorCodeReconcileUnavailable:
 		return "仓库同步服务当前不可用。"
 	case errorCodeServiceUnavailable:
 		return "服务当前不可用，请稍后重试。"
-	case "encryption_unavailable":
+	case errorCodeEncryptionUnavailable:
 		return "加密主密钥不可用，无法保存敏感配置。"
-	case "external_repo_limit":
+	case errorCodeExternalRepoLimit:
 		return fmt.Sprintf("外部公开仓库已达上限（%d 个）。", store.MaxExternalRepositories)
-	case "github_field_locked":
+	case errorCodeGitHubFieldLocked:
 		return "该字段已由环境变量设置，管理台不能覆盖；请修改部署配置后重启。"
-	case "github_app_not_configured":
+	case errorCodeGitHubAppNotConfigured:
 		return "尚未配置 GitHub App ID 与私钥，无法调用 GitHub API。"
-	case "github_no_installation":
+	case errorCodeGitHubNoInstallation:
 		return "本地尚无 Installation 记录。请先在 GitHub 安装 App，或等待 installation 事件到达。"
-	case "reconcile_in_progress":
+	case errorCodeReconcileInProgress:
 		return "已有对账任务在进行中，请稍后再试。"
-	case "ai_field_locked":
-		return "该字段已由环境变量设置，管理台不能覆盖。"
-	case "method_not_allowed":
+	case errorCodeAIFieldLocked:
+		return "该字段已由环境变量设置，管理台不能覆盖；请修改部署配置后重启。"
+	case errorCodeMethodNotAllowed:
 		return "当前请求方法不受支持。"
 	default:
 		return "服务器暂时无法完成请求，请使用 request_id 排查。"

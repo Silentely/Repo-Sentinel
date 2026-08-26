@@ -95,7 +95,7 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Secret != "" {
 		if s.dependencies.KeyRing == nil {
-			s.writeAPIError(w, r, http.StatusServiceUnavailable, "encryption_unavailable", nil)
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
 			return
 		}
 		env, err := s.dependencies.KeyRing.Encrypt(r.Context(), []byte(body.Secret), []byte(notify.AAD))

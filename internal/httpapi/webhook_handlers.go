@@ -48,12 +48,12 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestIDFromContext(r.Context()),
 			"delivery_id", deliveryID,
 			"event_type", eventType,
-			"error_code", "webhook_not_configured",
+			"error_code", errorCodeWebhookNotConfigured,
 		)
 		// GitHub 对 5xx 会按退避重试：给出明确窗口，避免配置未就绪期间高频重试打满日志与入库。
 		// webhookNotConfiguredRetryAfter 与 errors.go 的登录限流窗口同语义（秒）。
 		w.Header().Set("Retry-After", webhookNotConfiguredRetryAfter)
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, "webhook_not_configured", nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeWebhookNotConfigured, nil)
 		return
 	}
 	if !githubx.VerifySignature(body, r.Header.Get("X-Hub-Signature-256"), secrets...) {
@@ -63,9 +63,9 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 			"request_id", requestIDFromContext(r.Context()),
 			"delivery_id", deliveryID,
 			"event_type", eventType,
-			"error_code", "invalid_signature",
+			"error_code", errorCodeInvalidSignature,
 		)
-		s.writeAPIError(w, r, http.StatusUnauthorized, "invalid_signature", nil)
+		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeInvalidSignature, nil)
 		return
 	}
 

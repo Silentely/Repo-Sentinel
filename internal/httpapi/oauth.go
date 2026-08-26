@@ -85,7 +85,7 @@ func writeOAuthError(w http.ResponseWriter, status int, code, description string
 func (s *server) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		s.writeAPIError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", nil)
+		s.writeAPIError(w, r, http.StatusMethodNotAllowed, errorCodeMethodNotAllowed, nil)
 		return
 	}
 	if err := r.ParseForm(); err != nil {

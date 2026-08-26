@@ -189,7 +189,7 @@ func (c *AppClient) AppJWT() (string, error) {
 // 并发调用同一 installation 时合并为一次签发请求，避免惊群放大 GitHub 调用。
 func (c *AppClient) InstallationToken(ctx context.Context, installationID int64) (string, error) {
 	if !c.Configured() {
-		return "", fmt.Errorf("github_app_not_configured")
+		return "", ErrAppNotConfigured
 	}
 	c.mu.Lock()
 	if c.inflight == nil {

@@ -50,7 +50,7 @@ type githubConfigPutRequest struct {
 // 六个可变字段共用同一锁定语义，避免逐个复制判断。
 func (s *server) rejectEnvLockedField(w http.ResponseWriter, r *http.Request, source, field string) bool {
 	if source == "env" {
-		s.writeAPIError(w, r, http.StatusConflict, "github_field_locked", map[string]any{"field": field})
+		s.writeAPIError(w, r, http.StatusConflict, errorCodeGitHubFieldLocked, map[string]any{"field": field})
 		return true
 	}
 	return false
@@ -131,12 +131,12 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if s.dependencies.KeyRing == nil {
-				s.writeAPIError(w, r, http.StatusServiceUnavailable, "encryption_unavailable", nil)
+				s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
 				return
 			}
 			env, err := githubx.EncryptSecret(r.Context(), s.dependencies.KeyRing, pemText)
 			if err != nil {
-				s.writeAPIError(w, r, http.StatusServiceUnavailable, "encryption_unavailable", nil)
+				s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
 				return
 			}
 			stored.PrivateKeyPEMEnvelope = env
@@ -160,12 +160,12 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if s.dependencies.KeyRing == nil {
-			s.writeAPIError(w, r, http.StatusServiceUnavailable, "encryption_unavailable", nil)
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
 			return
 		}
 		env, err := githubx.EncryptSecret(r.Context(), s.dependencies.KeyRing, strings.TrimSpace(*body.WebhookSecret))
 		if err != nil {
-			s.writeAPIError(w, r, http.StatusServiceUnavailable, "encryption_unavailable", nil)
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
 			return
 		}
 		stored.WebhookSecretEnvelope = env

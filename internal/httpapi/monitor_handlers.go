@@ -82,7 +82,7 @@ func (s *server) handleAddExternalRepository(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if count >= store.MaxExternalRepositories {
-		s.writeAPIError(w, r, http.StatusConflict, "external_repo_limit", nil)
+		s.writeAPIError(w, r, http.StatusConflict, errorCodeExternalRepoLimit, nil)
 		return
 	}
 	now := time.Now().UTC()
@@ -364,16 +364,16 @@ func (s *server) handleSyncInstallationRepositories(w http.ResponseWriter, r *ht
 	}
 	// Reconciler 持有 GitHub App client；nil 视为未装配/未配置。
 	if s.dependencies.Reconciler == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, "github_app_not_configured", nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeGitHubAppNotConfigured, nil)
 		return
 	}
 	result, err := s.dependencies.Reconciler.SyncInstallations(r.Context(), 20)
 	if err != nil {
 		switch {
 		case errors.Is(err, syncx.ErrAppNotConfigured):
-			s.writeAPIError(w, r, http.StatusServiceUnavailable, "github_app_not_configured", nil)
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeGitHubAppNotConfigured, nil)
 		case errors.Is(err, syncx.ErrNoInstallation):
-			s.writeAPIError(w, r, http.StatusConflict, "github_no_installation", nil)
+			s.writeAPIError(w, r, http.StatusConflict, errorCodeGitHubNoInstallation, nil)
 		default:
 			s.writeMappedError(w, r, err)
 		}
@@ -401,7 +401,7 @@ func (s *server) handleSyncInstallationRepositories(w http.ResponseWriter, r *ht
 
 func (s *server) handleReconcileRepository(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Reconciler == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, "reconcile_unavailable", nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeReconcileUnavailable, nil)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -418,12 +418,12 @@ func (s *server) handleReconcileRepository(w http.ResponseWriter, r *http.Reques
 
 func (s *server) handleReconcileAll(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Reconciler == nil {
-		s.writeAPIError(w, r, http.StatusServiceUnavailable, "reconcile_unavailable", nil)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeReconcileUnavailable, nil)
 		return
 	}
 	// 全量对账互斥：连点按钮并发多轮会打爆 GitHub 配额并争抢数据库连接。
 	if !s.reconcileAllRunning.CompareAndSwap(false, true) {
-		s.writeAPIError(w, r, http.StatusConflict, "reconcile_in_progress", nil)
+		s.writeAPIError(w, r, http.StatusConflict, errorCodeReconcileInProgress, nil)
 		return
 	}
 	s.safeGo("reconcile_all", func() {

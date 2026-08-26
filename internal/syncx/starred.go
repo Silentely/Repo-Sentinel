@@ -43,6 +43,9 @@ const (
 	maxPollCandidatesPerRound = 200
 	// maxReleaseNotesStored 事件 PayloadSummary 中保存的 release notes 上限（供更新速览生成输入）。
 	maxReleaseNotesStored = 8000
+	// trackerListHardLimit 追踪记录列表查询的防御性上限：远超 maxTrackers（500），
+	// 仅防病态数据把单轮同步拖垮。
+	trackerListHardLimit = 10000
 )
 
 // StarredReleasePoller 枚举用户 star 仓库并轮询其最新 release。
@@ -205,7 +208,7 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 	// 一次性加载现有追踪记录建 full_name→tracker 映射，避免每仓 GetByFullName 的 N+1 查询
 	//（500 追踪上限用户一轮同步即数百次单查）。加载失败降级逐仓单查并留痕。
 	trackerMap := make(map[string]store.StarredRepoTracker)
-	if candidates, err := p.Store.StarredTrackers().ListAll(ctx, 10000); err != nil {
+	if candidates, err := p.Store.StarredTrackers().ListAll(ctx, trackerListHardLimit); err != nil {
 		p.warn("star sync tracker map load failed", "error_code", "tracker_map_load_failed", "error", err.Error())
 	} else {
 		for _, tk := range candidates {
@@ -334,7 +337,7 @@ func (p *StarredReleasePoller) probeRelease(ctx context.Context, id, fullName st
 
 // removeUnstarred 完整分页拉全后，将不在 star 列表中的 tracking 仓停用（保留记录）。
 func (p *StarredReleasePoller) removeUnstarred(ctx context.Context, seen map[string]bool) {
-	candidates, err := p.Store.StarredTrackers().ListPollCandidates(ctx, 10000)
+	candidates, err := p.Store.StarredTrackers().ListPollCandidates(ctx, trackerListHardLimit)
 	if err != nil {
 		// 查询失败时本轮 unstar 移除整体跳过：必须留痕，否则数据库抖动期间
 		// 「已 unstar 但追踪未停用」无从定位。

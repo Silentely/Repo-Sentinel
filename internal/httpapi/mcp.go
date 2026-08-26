@@ -221,17 +221,17 @@ func mcpJSONResult(requestID any, result any) map[string]any {
 func (s *server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		s.writeAPIError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", nil)
+		s.writeAPIError(w, r, http.StatusMethodNotAllowed, errorCodeMethodNotAllowed, nil)
 		return
 	}
 	mediaType := strings.TrimSpace(strings.SplitN(r.Header.Get("Content-Type"), ";", 2)[0])
 	if mediaType != "application/json" && mediaType != "text/plain" {
-		s.writeAPIError(w, r, http.StatusUnsupportedMediaType, "validation_failed", nil)
+		s.writeAPIError(w, r, http.StatusUnsupportedMediaType, errorCodeValidationFailed, nil)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, mcpMaxBodyBytes))
 	if err != nil {
-		s.writeAPIError(w, r, http.StatusBadRequest, "validation_failed", nil)
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
 	}
 	var request mcpJSONRPCRequest

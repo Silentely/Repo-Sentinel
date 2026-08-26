@@ -251,7 +251,8 @@ func (c *Checker) fetchViaHTMLRedirect(ctx context.Context, htmlLatest string) (
 		tag = tagFromReleaseLocation(resp2.Request.URL.String())
 		finalURL = resp2.Request.URL.String()
 		if tag == "" {
-			return Result{}, fmt.Errorf("无法从 releases/latest 解析 tag（HTTP %d）", resp.StatusCode)
+			// 报错引用实际取到页面的 resp2，避免把首个响应的 302 误报为页面状态码。
+			return Result{}, fmt.Errorf("无法从 releases/latest 解析 tag（HTTP %d）", resp2.StatusCode)
 		}
 	}
 	page := SafeReleasePageURL(finalURL)

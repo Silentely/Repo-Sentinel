@@ -23,6 +23,12 @@ func jitteredDuration(base time.Duration) time.Duration {
 	return base + time.Duration(rand.Int64N(2*int64(ten)+1)-int64(ten))
 }
 
+// 启动窗口：固定延迟 45s 叠加 0~30s 随机抖动，避免与启动风暴重叠。
+const (
+	startupDelayBase = 45 * time.Second
+	startupJitterMax = 30 * time.Second
+)
+
 // Scheduler 驱动对账、外部轮询与每日摘要。
 type Scheduler struct {
 	Reconciler *Reconciler
@@ -79,7 +85,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 	// 启动后短暂延迟再跑，避免与启动风暴重叠；启动窗口与对账/外部轮询周期加 jitter
 	// 错开多实例同时重启的锁步（starred 1m 节拍与 digest 按小时不需要）。
-	startup := time.NewTimer(45*time.Second + time.Duration(rand.Int64N(30_000_000_000)))
+	startup := time.NewTimer(startupDelayBase + time.Duration(rand.Int64N(int64(startupJitterMax))))
 	reconcileT := time.NewTicker(jitteredDuration(s.ReconcileEvery))
 	externalT := time.NewTicker(jitteredDuration(s.ExternalEvery))
 	starredT := time.NewTicker(time.Minute)
