@@ -210,6 +210,41 @@ func TestStarTrendForwardFillAndSum(t *testing.T) {
 	}
 }
 
+// TestChannelListCacheInvalidatedOnWrite 守护渠道列表缓存的写路径即时失效：
+// 通知规则热路径走 List 缓存，渠道变更必须立即对后续 List 可见，不能等 TTL。
+func TestChannelListCacheInvalidatedOnWrite(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	ch, err := st.Channels().Upsert(ctx, NotificationChannel{
+		ChannelType: ChannelTelegram, Name: "ch-a", Enabled: true, Target: "123",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustList := func() []NotificationChannel {
+		items, err := st.Channels().List(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return items
+	}
+	if got := len(mustList()); got != 1 {
+		t.Fatalf("创建后应列出 1 条，got %d", got)
+	}
+	if err := st.Channels().ToggleEnabled(ctx, ch.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if items := mustList(); len(items) == 0 || items[0].Enabled {
+		t.Fatalf("停用后应立即对 List 可见，got %+v", items)
+	}
+	if err := st.Channels().Delete(ctx, ch.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(mustList()); got != 0 {
+		t.Fatalf("删除后应立即对 List 可见，got %d", got)
+	}
+}
+
 // TestStarTrendWindowSeedsBeforeRange 守护窗口查询的前向补值语义：
 // 仅有窗口前快照的仓必须以「窗口前最近一条」为种值从窗口首日参与求和，
 // 与全量载入的曲线起点一致（否则 days>0 视图会整仓丢失）。

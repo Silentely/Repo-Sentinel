@@ -111,7 +111,11 @@ func installationFromEntity(e *entclient.GitHubInstallation) GitHubInstallation 
 
 // --- repositories ---
 
-type repositoryStore struct{ client *entclient.Client }
+type repositoryStore struct {
+	client *entclient.Client
+	// idsCache 与 storeImpl 共享：写路径成功后失效，保证活跃/归档集合立即可见。
+	idsCache *ttlValueCache[cachedRepoIDs]
+}
 
 func (s *repositoryStore) Upsert(ctx context.Context, in Repository) (Repository, error) {
 	now := time.Now().UTC()
@@ -149,6 +153,7 @@ func (s *repositoryStore) Upsert(ctx context.Context, in Repository) (Repository
 		if err != nil {
 			return Repository{}, mapStoreError(err)
 		}
+		s.idsCache.Invalidate()
 		return repositoryFromEntity(entity), nil
 	}
 	if mapStoreError(err) != ErrNotFound {
@@ -197,6 +202,7 @@ func (s *repositoryStore) Upsert(ctx context.Context, in Repository) (Repository
 	if err != nil {
 		return Repository{}, mapStoreError(err)
 	}
+	s.idsCache.Invalidate()
 	return repositoryFromEntity(entity), nil
 }
 
@@ -273,6 +279,9 @@ func (s *repositoryStore) UpdateSyncStatus(ctx context.Context, id, status strin
 		SetSyncStatus(status).
 		SetUpdatedAt(time.Now().UTC()).
 		Exec(ctx)
+	if err == nil {
+		s.idsCache.Invalidate()
+	}
 	return mapStoreError(err)
 }
 
@@ -321,6 +330,7 @@ func (s *repositoryStore) DeleteRepository(ctx context.Context, id string) error
 	if err := tx.Commit(); err != nil {
 		return mapStoreError(err)
 	}
+	s.idsCache.Invalidate()
 	return nil
 }
 
@@ -371,7 +381,11 @@ func (s *repositoryStore) UpdateSettings(ctx context.Context, id string, setting
 			upd.SetWatchesEnabled(true)
 		}
 	}
-	return mapStoreError(upd.Exec(ctx))
+	if err := upd.Exec(ctx); err != nil {
+		return mapStoreError(err)
+	}
+	s.idsCache.Invalidate()
+	return nil
 }
 
 func (s *repositoryStore) CountByType(ctx context.Context, repoType string) (int, error) {
@@ -460,7 +474,11 @@ func webhookDeliveryFromEntity(e *entclient.WebhookDelivery) WebhookDelivery {
 
 // --- work items ---
 
-type workItemStore struct{ client *entclient.Client }
+type workItemStore struct {
+	client *entclient.Client
+	// idsCache 由 storeImpl 共享（见 repoIDSets）；测试直构时可为 nil。
+	idsCache *ttlValueCache[cachedRepoIDs]
+}
 
 func (s *workItemStore) GetByRepoNumber(ctx context.Context, repoID string, number int) (WorkItem, error) {
 	entity, err := s.client.WorkItem.Query().
@@ -574,48 +592,43 @@ func repoFullNameByID(ctx context.Context, client *entclient.Client, ids []strin
 }
 
 // activeRepositoryIDs 返回未归档仓库的 ID 列表。
-func activeRepositoryIDs(ctx context.Context, client *entclient.Client) ([]string, error) {
-	rows, err := client.Repository.Query().
-		Where(repository.IsArchivedEQ(false)).
-		Select(repository.FieldID).
-		Strings(ctx)
-	if err != nil {
-		return nil, mapStoreError(err)
-	}
-	return rows, nil
-}
-
-// archivedRepositoryIDs 返回已归档仓库的 ID 列表。
+// repoIDSets 返回活跃/归档仓库 ID 集合：一次扫描分出两个集合，并经短 TTL 缓存
+// 供列表/计数类查询复用（仓集合变化频率远低于列表查询频率）。缓存为 nil（测试直构
+// 存储访问器）时等价于每次直查；repositoryStore 的写路径会使缓存即时失效。
 // 事件类查询采用「排除归档」而非「仅含活跃」：repository_id 为空的孤儿事件保持可见，
 // 避免历史数据因仓库行缺失而凭空消失。
-func archivedRepositoryIDs(ctx context.Context, client *entclient.Client) ([]string, error) {
-	rows, err := client.Repository.Query().
-		Where(repository.IsArchivedEQ(true)).
-		Select(repository.FieldID).
-		Strings(ctx)
-	if err != nil {
-		return nil, mapStoreError(err)
+func repoIDSets(ctx context.Context, client *entclient.Client, cache *ttlValueCache[cachedRepoIDs]) (cachedRepoIDs, error) {
+	if sets, ok := cache.Get(); ok {
+		return sets, nil
 	}
-	return rows, nil
-}
-
-// repositoryIDsByArchived 一次扫描分出活跃/归档两个 ID 集合：
-// 仪表盘同时需要两者时避免对仓库表做两次扫描。
-func repositoryIDsByArchived(ctx context.Context, client *entclient.Client) (active, archived []string, err error) {
 	rows, err := client.Repository.Query().
 		Select(repository.FieldID, repository.FieldIsArchived).
 		All(ctx)
 	if err != nil {
-		return nil, nil, mapStoreError(err)
+		return cachedRepoIDs{}, mapStoreError(err)
 	}
+	sets := cachedRepoIDs{}
 	for _, r := range rows {
 		if r.IsArchived {
-			archived = append(archived, r.ID)
+			sets.archived = append(sets.archived, r.ID)
 		} else {
-			active = append(active, r.ID)
+			sets.active = append(sets.active, r.ID)
 		}
 	}
-	return active, archived, nil
+	cache.Set(sets)
+	return sets, nil
+}
+
+// activeRepositoryIDs 返回未归档仓库 ID 集合（缓存与排除语义见 repoIDSets）。
+func activeRepositoryIDs(ctx context.Context, client *entclient.Client, cache *ttlValueCache[cachedRepoIDs]) ([]string, error) {
+	sets, err := repoIDSets(ctx, client, cache)
+	return sets.active, err
+}
+
+// archivedRepositoryIDs 返回已归档仓库 ID 集合（缓存与排除语义见 repoIDSets）。
+func archivedRepositoryIDs(ctx context.Context, client *entclient.Client, cache *ttlValueCache[cachedRepoIDs]) ([]string, error) {
+	sets, err := repoIDSets(ctx, client, cache)
+	return sets.archived, err
 }
 
 func (s *workItemStore) Get(ctx context.Context, id string) (WorkItem, error) {
@@ -650,7 +663,7 @@ func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, Pag
 	if f.RepositoryID != "" {
 		q = q.Where(workitem.RepositoryIDEQ(f.RepositoryID))
 	} else if !f.IncludeArchivedRepos {
-		ids, err := activeRepositoryIDs(ctx, s.client)
+		ids, err := activeRepositoryIDs(ctx, s.client, s.idsCache)
 		if err != nil {
 			return nil, PageResult{}, err
 		}
@@ -712,7 +725,7 @@ func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, Pag
 }
 
 func (s *workItemStore) CountOpen(ctx context.Context) (int, error) {
-	ids, err := activeRepositoryIDs(ctx, s.client)
+	ids, err := activeRepositoryIDs(ctx, s.client, s.idsCache)
 	if err != nil {
 		return 0, err
 	}
@@ -744,7 +757,11 @@ func workItemFromEntity(e *entclient.WorkItem) WorkItem {
 
 // --- workflow runs ---
 
-type workflowRunStore struct{ client *entclient.Client }
+type workflowRunStore struct {
+	client *entclient.Client
+	// idsCache 由 storeImpl 共享（见 repoIDSets）；测试直构时可为 nil。
+	idsCache *ttlValueCache[cachedRepoIDs]
+}
 
 func (s *workflowRunStore) GetByRepoRunID(ctx context.Context, repoID string, runID int64) (WorkflowRun, error) {
 	entity, err := s.client.WorkflowRun.Query().
@@ -880,7 +897,7 @@ func (s *workflowRunStore) List(ctx context.Context, f ListFilter) ([]WorkflowRu
 	if f.RepositoryID != "" {
 		q = q.Where(workflowrun.RepositoryIDEQ(f.RepositoryID))
 	} else if !f.IncludeArchivedRepos {
-		ids, err := activeRepositoryIDs(ctx, s.client)
+		ids, err := activeRepositoryIDs(ctx, s.client, s.idsCache)
 		if err != nil {
 			return nil, PageResult{}, err
 		}
@@ -922,7 +939,7 @@ func (s *workflowRunStore) List(ctx context.Context, f ListFilter) ([]WorkflowRu
 }
 
 func (s *workflowRunStore) CountFailed(ctx context.Context) (int, error) {
-	ids, err := activeRepositoryIDs(ctx, s.client)
+	ids, err := activeRepositoryIDs(ctx, s.client, s.idsCache)
 	if err != nil {
 		return 0, err
 	}
@@ -950,7 +967,11 @@ func workflowRunFromEntity(e *entclient.WorkflowRun) WorkflowRun {
 
 // --- security alerts ---
 
-type securityAlertStore struct{ client *entclient.Client }
+type securityAlertStore struct {
+	client *entclient.Client
+	// idsCache 由 storeImpl 共享（见 repoIDSets）；测试直构时可为 nil。
+	idsCache *ttlValueCache[cachedRepoIDs]
+}
 
 func (s *securityAlertStore) GetByIdentity(ctx context.Context, repoID, kind string, number int) (SecurityAlert, error) {
 	entity, err := s.client.SecurityAlert.Query().
@@ -1039,7 +1060,7 @@ func (s *securityAlertStore) List(ctx context.Context, f ListFilter) ([]Security
 	if f.RepositoryID != "" {
 		q = q.Where(securityalert.RepositoryIDEQ(f.RepositoryID))
 	} else if !f.IncludeArchivedRepos {
-		ids, err := activeRepositoryIDs(ctx, s.client)
+		ids, err := activeRepositoryIDs(ctx, s.client, s.idsCache)
 		if err != nil {
 			return nil, PageResult{}, err
 		}
@@ -1084,7 +1105,7 @@ func (s *securityAlertStore) List(ctx context.Context, f ListFilter) ([]Security
 }
 
 func (s *securityAlertStore) CountOpen(ctx context.Context) (int, error) {
-	ids, err := activeRepositoryIDs(ctx, s.client)
+	ids, err := activeRepositoryIDs(ctx, s.client, s.idsCache)
 	if err != nil {
 		return 0, err
 	}
@@ -1130,7 +1151,11 @@ func securityAlertFromEntity(e *entclient.SecurityAlert) SecurityAlert {
 
 // --- events ---
 
-type eventStore struct{ client *entclient.Client }
+type eventStore struct {
+	client *entclient.Client
+	// idsCache 由 storeImpl 共享（见 repoIDSets）；测试直构时可为 nil。
+	idsCache *ttlValueCache[cachedRepoIDs]
+}
 
 func (s *eventStore) Create(ctx context.Context, in Event) (Event, error) {
 	if in.ID == "" {
@@ -1190,7 +1215,7 @@ func (s *eventStore) List(ctx context.Context, f ListFilter) ([]Event, PageResul
 	} else if !f.IncludeArchivedRepos {
 		// 事件列表默认排除已归档仓库（与其他资源列表同一约定）；
 		// 显式按仓库过滤（RepositoryID）或 IncludeArchivedRepos=true 时不受限。
-		ids, err := archivedRepositoryIDs(ctx, s.client)
+		ids, err := archivedRepositoryIDs(ctx, s.client, s.idsCache)
 		if err != nil {
 			return nil, PageResult{}, err
 		}
@@ -1220,7 +1245,7 @@ func (s *eventStore) List(ctx context.Context, f ListFilter) ([]Event, PageResul
 // CountSince 统计指定时间之后的事件数。与 ListSince 同一归档约定：
 // 已归档仓库的事件不计入，保证仪表盘「24h 事件」与其它指标口径一致。
 func (s *eventStore) CountSince(ctx context.Context, since time.Time) (int, error) {
-	ids, err := archivedRepositoryIDs(ctx, s.client)
+	ids, err := archivedRepositoryIDs(ctx, s.client, s.idsCache)
 	if err != nil {
 		return 0, mapStoreError(err)
 	}
@@ -1253,7 +1278,7 @@ func (s *eventStore) ListSince(ctx context.Context, since time.Time, limit int) 
 	q := s.client.Event.Query().
 		Where(event.OccurredAtGTE(since.UTC())).
 		Where(event.SuppressNotificationEQ(false))
-	ids, err := archivedRepositoryIDs(ctx, s.client)
+	ids, err := archivedRepositoryIDs(ctx, s.client, s.idsCache)
 	if err != nil {
 		return nil, err
 	}
@@ -1287,7 +1312,11 @@ func eventFromEntity(e *entclient.Event) Event {
 
 // --- channels ---
 
-type channelStore struct{ client *entclient.Client }
+type channelStore struct {
+	client *entclient.Client
+	// listCache 与 storeImpl 共享（见 storeImpl.channelsCache）；测试直构时可为 nil。
+	listCache *ttlValueCache[[]NotificationChannel]
+}
 
 func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (NotificationChannel, error) {
 	now := time.Now().UTC()
@@ -1306,6 +1335,7 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 			if err != nil {
 				return NotificationChannel{}, mapStoreError(err)
 			}
+			s.listCache.Invalidate()
 			return channelFromEntity(entity), nil
 		}
 	}
@@ -1328,6 +1358,7 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 	if err != nil {
 		return NotificationChannel{}, mapStoreError(err)
 	}
+	s.listCache.Invalidate()
 	return channelFromEntity(entity), nil
 }
 
@@ -1350,6 +1381,9 @@ func (s *channelStore) GetEnabledByType(ctx context.Context, channelType string)
 }
 
 func (s *channelStore) List(ctx context.Context) ([]NotificationChannel, error) {
+	if cached, ok := s.listCache.Get(); ok {
+		return cached, nil
+	}
 	rows, err := s.client.NotificationChannel.Query().All(ctx)
 	if err != nil {
 		return nil, mapStoreError(err)
@@ -1358,6 +1392,7 @@ func (s *channelStore) List(ctx context.Context) ([]NotificationChannel, error) 
 	for _, row := range rows {
 		out = append(out, channelFromEntity(row))
 	}
+	s.listCache.Set(out)
 	return out, nil
 }
 
@@ -1371,11 +1406,17 @@ func (s *channelStore) DisableOthersOfType(ctx context.Context, channelType, kee
 		SetEnabled(false).
 		SetUpdatedAt(time.Now().UTC()).
 		Save(ctx)
+	if err == nil {
+		s.listCache.Invalidate()
+	}
 	return mapStoreError(err)
 }
 
 func (s *channelStore) Delete(ctx context.Context, id string) error {
 	err := s.client.NotificationChannel.DeleteOneID(id).Exec(ctx)
+	if err == nil {
+		s.listCache.Invalidate()
+	}
 	return mapStoreError(err)
 }
 
@@ -1384,6 +1425,9 @@ func (s *channelStore) ToggleEnabled(ctx context.Context, id string, enabled boo
 		SetEnabled(enabled).
 		SetUpdatedAt(time.Now().UTC()).
 		Save(ctx)
+	if err == nil {
+		s.listCache.Invalidate()
+	}
 	return mapStoreError(err)
 }
 
@@ -1686,15 +1730,19 @@ func (s *storeImpl) CleanupRetention(ctx context.Context, policy RetentionPolicy
 	return result, nil
 }
 
-// Dashboard 聚合统计。
+// Dashboard 聚合统计。结果按 dashboardCacheTTL 短缓存：统计容忍秒级陈旧
+// （前端 30s 轮询，直读时 3s 内命中缓存），不做逐写失效；
+// 活跃/归档清单经 repoIDSets 短缓存，与各列表/计数查询共享同一份仓库扫描。
 func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
+	if cached, ok := s.dashboardCache.Get(); ok {
+		return cached, nil
+	}
 	var stats DashboardStats
-	// 一次扫描分出活跃/归档 ID：活跃 ID 供 4 项计数，归档 ID 供 24h 事件排除，
-	// 避免各计数器与 Events().CountSince 重复扫描仓库表。
-	activeIDs, archivedIDs, err := repositoryIDsByArchived(ctx, s.client)
+	sets, err := repoIDSets(ctx, s.client, s.repoIDsCache)
 	if err != nil {
 		return stats, err
 	}
+	activeIDs, archivedIDs := sets.active, sets.archived
 	if len(activeIDs) == 0 {
 		stats.OpenIssues = 0
 		stats.OpenPulls = 0
@@ -1753,6 +1801,7 @@ func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
 	stats.ReposActive = active
 	stats.ReposBaseline = baseline
 	stats.ChannelsEnabled = channels
+	s.dashboardCache.Set(stats)
 	return stats, nil
 }
 

@@ -24,6 +24,15 @@ type storeImpl struct {
 	closeFn func() error
 	// settingsCache 由全部 Settings() 调用共享，保证 webhook/scheduler/http 各 goroutine 读到一致缓存。
 	settingsCache *settingsCache
+	// channelsCache 渠道列表短 TTL 缓存：通知规则/聚合器/outbox 投递的热路径每次事件
+	// 都全表读渠道（正常仅 1-2 行且极少变更），写路径即时失效。
+	channelsCache *ttlValueCache[[]NotificationChannel]
+	// repoIDsCache 活跃/归档仓 ID 集合短 TTL 缓存：各资源列表/计数每请求一次仓库扫描，
+	// 仓集合变化频率远低于列表查询频率；repositoryStore 写路径即时失效。
+	repoIDsCache *ttlValueCache[cachedRepoIDs]
+	// dashboardCache 仪表盘统计短 TTL 缓存：聚合约 10 条 SQL，前端 30s 轮询，
+	// 秒级旧数据对统计语义无感；仅按 TTL 过期（变更不逐个失效，见 Dashboard 注释）。
+	dashboardCache *ttlValueCache[DashboardStats]
 }
 
 // Open 打开数据库、完成安全连通性检查并应用版本化迁移。
@@ -176,9 +185,12 @@ func sqliteDSN(rawURL string) string {
 
 func newStore(client *entclient.Client, closeFn func() error) *storeImpl {
 	return &storeImpl{
-		client:        client,
-		closeFn:       closeFn,
-		settingsCache: newSettingsCache(settingsCacheTTL),
+		client:         client,
+		closeFn:        closeFn,
+		settingsCache:  newSettingsCache(settingsCacheTTL),
+		channelsCache:  newTTLValueCache[[]NotificationChannel](settingsCacheTTL),
+		repoIDsCache:   newTTLValueCache[cachedRepoIDs](settingsCacheTTL),
+		dashboardCache: newTTLValueCache[DashboardStats](dashboardCacheTTL),
 	}
 }
 
@@ -189,14 +201,24 @@ func (s *storeImpl) Settings() SettingsStore {
 }
 func (s *storeImpl) Audits() AuditStore               { return &auditStore{client: s.client} }
 func (s *storeImpl) Installations() InstallationStore { return &installationStore{client: s.client} }
-func (s *storeImpl) Repositories() RepositoryStore    { return &repositoryStore{client: s.client} }
+func (s *storeImpl) Repositories() RepositoryStore {
+	return &repositoryStore{client: s.client, idsCache: s.repoIDsCache}
+}
 func (s *storeImpl) WebhookDeliveries() WebhookDeliveryStore {
 	return &webhookDeliveryStore{client: s.client}
 }
-func (s *storeImpl) WorkItems() WorkItemStore           { return &workItemStore{client: s.client} }
-func (s *storeImpl) WorkflowRuns() WorkflowRunStore     { return &workflowRunStore{client: s.client} }
-func (s *storeImpl) SecurityAlerts() SecurityAlertStore { return &securityAlertStore{client: s.client} }
-func (s *storeImpl) Events() EventStore                 { return &eventStore{client: s.client} }
+func (s *storeImpl) WorkItems() WorkItemStore {
+	return &workItemStore{client: s.client, idsCache: s.repoIDsCache}
+}
+func (s *storeImpl) WorkflowRuns() WorkflowRunStore {
+	return &workflowRunStore{client: s.client, idsCache: s.repoIDsCache}
+}
+func (s *storeImpl) SecurityAlerts() SecurityAlertStore {
+	return &securityAlertStore{client: s.client, idsCache: s.repoIDsCache}
+}
+func (s *storeImpl) Events() EventStore {
+	return &eventStore{client: s.client, idsCache: s.repoIDsCache}
+}
 
 // RepoStatSnapshots 返回仓库指标快照存储访问器。
 func (s *storeImpl) RepoStatSnapshots() RepoStatSnapshotStore {
@@ -207,7 +229,9 @@ func (s *storeImpl) RepoStatSnapshots() RepoStatSnapshotStore {
 func (s *storeImpl) StarredTrackers() StarredTrackerStore {
 	return &starredTrackerStore{client: s.client}
 }
-func (s *storeImpl) Channels() ChannelStore { return &channelStore{client: s.client} }
-func (s *storeImpl) Outbox() OutboxStore    { return &outboxStore{client: s.client} }
-func (s *storeImpl) Cursors() CursorStore   { return &cursorStore{client: s.client} }
-func (s *storeImpl) Close() error           { return s.closeFn() }
+func (s *storeImpl) Channels() ChannelStore {
+	return &channelStore{client: s.client, listCache: s.channelsCache}
+}
+func (s *storeImpl) Outbox() OutboxStore  { return &outboxStore{client: s.client} }
+func (s *storeImpl) Cursors() CursorStore { return &cursorStore{client: s.client} }
+func (s *storeImpl) Close() error         { return s.closeFn() }
