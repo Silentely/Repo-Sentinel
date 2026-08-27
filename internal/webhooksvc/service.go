@@ -66,7 +66,9 @@ func processBudget(aiClient *ai.Client, base time.Duration) time.Duration {
 
 // markFailed 统一处理失败分支：标记投递失败（带语义化错误码）、记录失败指标回调。
 // 标记失败会让行残留 accepted/中间态，影响状态机与重放判断，必须留痕。
-func (s *Service) markFailed(markCtx context.Context, rowID, errorCode string) {
+func (s *Service) markFailed(rowID, errorCode string) {
+	markCtx, cancel := s.markContext()
+	defer cancel()
 	if err := s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, errorCode); err != nil && s.Logger != nil {
 		s.Logger.Warn("webhook mark failed error",
 			"delivery_row_id", rowID,
@@ -76,6 +78,17 @@ func (s *Service) markFailed(markCtx context.Context, rowID, errorCode string) {
 	if s.OnFailed != nil {
 		s.OnFailed()
 	}
+}
+
+// markContext 为单次状态标记建立独立预算：脱离 Background 取消（关闭期间不残留 accepted 行），
+// 且从「标记时刻」起算 5s——处理耗时可长达 processBudget，若在 Process 入口建预算，
+// AI 分诊等慢处理会让标记必然 deadline exceeded（行残留 accepted 被重放、重复投递）。
+func (s *Service) markContext() (context.Context, context.CancelFunc) {
+	base := s.Background
+	if base == nil {
+		base = context.Background()
+	}
+	return context.WithTimeout(context.WithoutCancel(base), 5*time.Second)
 }
 
 // slowThreshold 返回慢处理阈值；实例未设置时用默认值。
@@ -112,13 +125,11 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 			)
 		}
 	}()
-	// 关闭期间 Background 已取消：状态标记必须脱离取消，否则行永久停留在 accepted。
-	markCtx, markCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer markCancel()
+	// 关闭期间 Background 已取消：状态标记必须脱离取消，且预算从标记时刻起算（见 markContext）。
 	proc := &normalizer.Processor{Store: s.Store, Logger: s.Logger}
 	res, err := proc.Process(processCtx, eventType, deliveryID, body)
 	if err != nil {
-		s.markFailed(markCtx, rowID, "normalize_failed")
+		s.markFailed(rowID, "normalize_failed")
 		// 规范化失败时仓库信息尚未解析出来，repo 留空由调用方从日志链路定位。
 		s.logError("webhook normalize failed", deliveryID, eventType, "normalize_failed", "", err.Error(), time.Since(startedAt).Milliseconds())
 		return
@@ -135,11 +146,13 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 		}
 		if err != nil {
 			// 通知已丢：状态必须可查，标记为失败而不是 processed。
-			s.markFailed(markCtx, rowID, "rule_failed")
+			s.markFailed(rowID, "rule_failed")
 			s.logError("rule evaluate failed", deliveryID, eventType, "rule_failed", repoName, err.Error(), time.Since(startedAt).Milliseconds())
 			return
 		}
 	}
+	markCtx, markCancel := s.markContext()
+	defer markCancel()
 	if err := s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryProcessed, ""); err != nil {
 		// 标记失败会让 delivery 行残留 accepted/中间态，影响状态机与重放判断，
 		// 与 markFailed 失败同级别留痕，否则该行永久卡在 accepted 且无迹可查。

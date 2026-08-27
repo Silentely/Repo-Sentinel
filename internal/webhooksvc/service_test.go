@@ -424,3 +424,20 @@ func TestProcessDuplicateFingerprintNoPanic(t *testing.T) {
 		t.Fatalf("重复载荷第二次处理应 processed，got status=%s code=%s", got.Status, got.ErrorCode)
 	}
 }
+
+// TestProcessSlowEvaluateStillMarksProcessed 守护：超过 5s 的处理仍能正确标记 processed
+// （标记预算从「标记时刻」起算，而非 Process 入口）。slowEvaluator 见上文既有定义。
+func TestProcessSlowEvaluateStillMarksProcessed(t *testing.T) {
+	data := openServiceStore(t)
+	seedActiveDemoRepo(t, data)
+	svc := newService(data, slowEvaluator{delay: 6 * time.Second}, t.Context())
+	payload := issueOpenedPayload(t)
+	rowID := seedDelivery(t, data, "delivery-slow", "issues", payload)
+
+	svc.Process(rowID, "issues", "delivery-slow", payload)
+
+	got := mustGetDelivery(t, data, "delivery-slow")
+	if got.Status != store.DeliveryProcessed {
+		t.Fatalf("超过 5s 的处理仍应标记 processed，got status=%s code=%s", got.Status, got.ErrorCode)
+	}
+}

@@ -1060,3 +1060,62 @@ func TestProcessInstallationSuspendedPropagates(t *testing.T) {
 		t.Fatalf("应透传 suspended=true，got %+v", insts)
 	}
 }
+
+// failSnapshotStore 仅让快照 Upsert 注入失败的存储包装。
+type failSnapshotStore struct {
+	store.Store
+}
+
+func (s failSnapshotStore) RepoStatSnapshots() store.RepoStatSnapshotStore {
+	return failingSnapshots{s.Store.RepoStatSnapshots()}
+}
+
+type failingSnapshots struct{ store.RepoStatSnapshotStore }
+
+func (failingSnapshots) Upsert(context.Context, store.RepoStatSnapshot) (store.RepoStatSnapshot, error) {
+	return store.RepoStatSnapshot{}, errors.New("injected snapshot failure")
+}
+
+// TestProcessStarSnapshotFailureDegrades 守护：star 计数快照写失败只降级留痕，
+// 不阻断 star 事件落库（failed 行不参与重放，返回错误会让 star 事件永久丢失）。
+func TestProcessStarSnapshotFailureDegrades(t *testing.T) {
+	st := failSnapshotStore{Store: openProcessStore(t)}
+	p := &normalizer.Processor{Store: st}
+	res, err := p.Process(context.Background(), "star", "dlv-1", starPayload("created", "alice", "2026-08-01T10:00:00Z", 42))
+	if err != nil {
+		t.Fatalf("快照写失败不应阻断 star 事件: %v", err)
+	}
+	if res.Event == nil || res.Event.Kind != store.StarKind {
+		t.Fatalf("star 事件应创建: %+v", res.Event)
+	}
+}
+
+// TestProcessWatchReplayIdempotent 守护：accepted 行重放同一 watch 载荷（同 deliveryID）
+// 事件级幂等——载荷无时间戳，指纹以 deliveryID 为幂等键；不同 delivery 仍各建事件。
+func TestProcessWatchReplayIdempotent(t *testing.T) {
+	st := openProcessStore(t)
+	p := &normalizer.Processor{Store: st}
+	payload := watchPayload("started", "carol")
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if _, err := p.Process(ctx, "watch", "dlv-replay", payload); err != nil {
+			t.Fatal(err)
+		}
+	}
+	countWatch := func() int {
+		items, _, err := st.Events().List(ctx, store.ListFilter{Page: 1, PerPage: 20, Kind: store.WatchKind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(items)
+	}
+	if got := countWatch(); got != 1 {
+		t.Fatalf("同一 delivery 重放应幂等为 1 条 watch 事件，got %d", got)
+	}
+	if _, err := p.Process(ctx, "watch", "dlv-new", payload); err != nil {
+		t.Fatal(err)
+	}
+	if got := countWatch(); got != 2 {
+		t.Fatalf("不同 delivery 应各自建事件，got %d", got)
+	}
+}

@@ -176,9 +176,9 @@ func (p *Processor) Process(ctx context.Context, eventType, deliveryID string, p
 	case "repository":
 		return p.processRepositoryEvent(ctx, env)
 	case "star":
-		return p.processStar(ctx, env)
+		return p.processStar(ctx, env, deliveryID)
 	case "watch":
-		return p.processWatch(ctx, env)
+		return p.processWatch(ctx, env, deliveryID)
 	case "issues":
 		return p.processIssue(ctx, env)
 	case "pull_request":
@@ -356,7 +356,7 @@ const starCountMetric = "stargazers"
 
 // processStar 处理 star 事件：创建事件 + 顺带写当日 star 计数快照。
 // 载荷 repository.stargazers_count 为实时值，写入快照可捕捉对账间隔内的变化。
-func (p *Processor) processStar(ctx context.Context, env envelope) (Result, error) {
+func (p *Processor) processStar(ctx context.Context, env envelope, deliveryID string) (Result, error) {
 	if env.Repository == nil {
 		return Result{}, fmt.Errorf("missing repository")
 	}
@@ -376,22 +376,35 @@ func (p *Processor) processStar(ctx context.Context, env envelope) (Result, erro
 		if _, err := p.Store.RepoStatSnapshots().Upsert(ctx, store.RepoStatSnapshot{
 			RepositoryID: repo.ID, Metric: starCountMetric, Value: env.Repository.StargazersCount, SampleDate: date,
 		}); err != nil {
-			return Result{}, fmt.Errorf("upsert star snapshot: %w", err)
+			// 快照是辅助指标：失败只留痕降级，不能阻断 star 事件落库
+			//（failed 行不参与重放，返回错误会让 star 事件永久丢失）。
+			if p.Logger != nil {
+				p.Logger.Warn("star snapshot upsert failed, continue",
+					"repo", repo.FullName, "error_code", "star_snapshot_upsert_failed", "error", err.Error())
+			}
 		}
 	}
 	actor := strings.TrimSpace(env.Sender.Login)
 	if actor == "" {
 		actor = "unknown"
 	}
-	starredAt := env.StarredAt
-	if starredAt.IsZero() {
-		starredAt = time.Now().UTC()
-	}
 	action := normalizeAction(env.Action)
-	// 同秒多个用户 star 会撞指纹：StateHash 纳入 actor 与纳秒时间戳保证唯一。
-	hash := StateHash(actor, starredAt.UTC().Format(time.RFC3339Nano), action)
+	var starredAt time.Time
+	var hash string
+	var fpTime time.Time
+	if env.StarredAt.IsZero() {
+		// 载荷无 starred_at 的回退分支：以 deliveryID 为幂等键，
+		// accepted 行重放同一载荷时指纹稳定，不产生重复事件。
+		starredAt = time.Now().UTC()
+		hash = StateHash(actor, deliveryID, action)
+	} else {
+		starredAt = env.StarredAt.UTC()
+		fpTime = starredAt
+		// 同秒多个用户 star 会撞指纹：StateHash 纳入 actor 与纳秒时间戳保证唯一。
+		hash = StateHash(actor, starredAt.Format(time.RFC3339Nano), action)
+	}
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
-	fp := Fingerprint("webhook", repo.FullName, store.StarKind, ResourceIdentity(store.StarKind, 0, 0), action, starredAt, hash)
+	fp := Fingerprint("webhook", repo.FullName, store.StarKind, ResourceIdentity(store.StarKind, 0, 0), action, fpTime, hash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 		p.eventDuplicate(repo, store.StarKind, action)
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
@@ -416,7 +429,7 @@ func (p *Processor) processStar(ctx context.Context, env envelope) (Result, erro
 }
 
 // processWatch 处理 watch 事件（GitHub 仅发送 started，无取消事件）。
-func (p *Processor) processWatch(ctx context.Context, env envelope) (Result, error) {
+func (p *Processor) processWatch(ctx context.Context, env envelope, deliveryID string) (Result, error) {
 	if env.Repository == nil {
 		return Result{}, fmt.Errorf("missing repository")
 	}
@@ -434,9 +447,11 @@ func (p *Processor) processWatch(ctx context.Context, env envelope) (Result, err
 	}
 	occurredAt := time.Now().UTC()
 	action := normalizeAction(env.Action)
-	hash := StateHash(actor, occurredAt.Format(time.RFC3339Nano), action)
+	// watch 载荷无时间戳：指纹以 deliveryID 为幂等键，accepted 行重放同一载荷
+	// 不产生重复事件（此前用 time.Now() 参与指纹，重放即新指纹、事件级幂等失效）。
+	hash := StateHash(actor, deliveryID, action)
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
-	fp := Fingerprint("webhook", repo.FullName, store.WatchKind, ResourceIdentity(store.WatchKind, 0, 0), action, occurredAt, hash)
+	fp := Fingerprint("webhook", repo.FullName, store.WatchKind, ResourceIdentity(store.WatchKind, 0, 0), action, time.Time{}, hash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 		p.eventDuplicate(repo, store.WatchKind, action)
 		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
