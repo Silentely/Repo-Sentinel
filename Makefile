@@ -17,7 +17,8 @@ fmt:
 	go fmt ./...
 
 test:
-	go test ./...
+	# 与 CI 一致跑 race（本地 verify 不复现 CI 失败的常见原因）。
+	go test -race ./...
 
 test-frontend:
 	pnpm --dir web typecheck && pnpm --dir web test -- --run

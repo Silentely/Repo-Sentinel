@@ -111,6 +111,24 @@ jobs:
           pnpm typecheck
           pnpm test -- --run
 
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: pnpm exec playwright install --with-deps chromium
+
+      # e2e 覆盖首次设置/登录/移动端抽屉等关键路径；webServer 经 go run 编译生产构建，
+      # 复用 setup-go 的构建缓存。
+      - name: Playwright e2e
+        working-directory: web
+        run: pnpm e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: .test-run-data/playwright-report
+          retention-days: 7
+
   build-and-push:
     needs: [test]
     if: >

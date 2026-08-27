@@ -15,10 +15,13 @@ permissions:
 jobs:
   spam-detection:
     runs-on: ubuntu-latest
-    
+    # AI 分析挂起时兜底（默认 6 小时上限过长）。
+    timeout-minutes: 10
+
     steps:
       - name: Detect and close spam
-        uses: JohnsonRan/nomore-spam@main
+        # 与仓库其他 action 一致按大版本 tag 固定，不跟踪上游 main。
+        uses: JohnsonRan/nomore-spam@v4
         with:
           github-token: ${{ github.token }}
           ai-base-url: ${{ secrets.AI_BASE_URL }}  # 可选：自定义API端点（去除 /chat/completions）
