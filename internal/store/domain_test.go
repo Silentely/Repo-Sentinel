@@ -376,3 +376,49 @@ func TestRepoIDsCacheInvalidatedOnArchive(t *testing.T) {
 		t.Fatalf("归档后工作项应立即从列表消失，got %+v", items)
 	}
 }
+
+// TestOutboxRetryAllDead 守护批量重新排队：dead→pending 并清错误码与锁，
+// pending 条目不受影响，渠道过滤只命中对应渠道。
+func TestOutboxRetryAllDead(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	mk := func(id, ch, status string) {
+		if _, err := st.Outbox().Create(ctx, NotificationOutbox{
+			ID: id, ChannelID: ch, IdempotencyKey: "idem|" + id, Status: status,
+			NextAttemptAt: time.Now().UTC().Add(time.Hour), LastErrorCode: "http_webhook_status_500",
+			Title: "t", BodyText: "b",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("ob-1", "ch-a", OutboxDead)
+	mk("ob-2", "ch-b", OutboxDead)
+	mk("ob-3", "ch-a", OutboxPending)
+
+	// 渠道过滤：只重新排队 ch-a 的 dead。
+	n, err := st.Outbox().RetryAllDead(ctx, []string{"ch-a"}, time.Now().UTC())
+	if err != nil || n != 1 {
+		t.Fatalf("渠道过滤应重新排队 1 条: n=%d err=%v", n, err)
+	}
+	// 全量：剩余 ch-b 的 dead。
+	n, err = st.Outbox().RetryAllDead(ctx, nil, time.Now().UTC())
+	if err != nil || n != 1 {
+		t.Fatalf("全量应重新排队 1 条: n=%d err=%v", n, err)
+	}
+	// 终态核对：无 dead，三条全 pending；重新排队的错误码与锁已清。
+	_, deadPage, err := st.Outbox().List(ctx, ListFilter{Page: 1, PerPage: 10, Status: OutboxDead})
+	if err != nil || deadPage.Total != 0 {
+		t.Fatalf("重排队后不应有 dead: total=%d err=%v", deadPage.Total, err)
+	}
+	items, pendingPage, err := st.Outbox().List(ctx, ListFilter{Page: 1, PerPage: 10, Status: OutboxPending})
+	if err != nil || pendingPage.Total != 3 {
+		t.Fatalf("应全部回到 pending: total=%d err=%v", pendingPage.Total, err)
+	}
+	for _, it := range items {
+		if it.ID == "ob-1" || it.ID == "ob-2" {
+			if it.LastErrorCode != "" || it.LockedUntil != nil {
+				t.Fatalf("重排队后错误码与锁应清空: %+v", it)
+			}
+		}
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -786,5 +787,67 @@ func TestTestChannelCreatesDatedOutbox(t *testing.T) {
 	}
 	if !strings.Contains(items[0].BodyText, "发送于 ") || !strings.Contains(items[0].BodyText, " UTC") {
 		t.Fatalf("测试通知正文应带发送时刻（UTC），实际: %q", items[0].BodyText)
+	}
+}
+
+// TestRetryAllOutboxDeadHandler 守护批量重试端点：单次 UPDATE 语义 + 渠道过滤 + 认证/CSRF。
+func TestRetryAllOutboxDeadHandler(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	ctx := t.Context()
+	if _, err := fixture.store.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-bt", ChannelType: "telegram", Name: "tg", Enabled: true, Target: "1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	mkDead := func(id, ch string) {
+		if _, err := fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
+			ID: id, ChannelID: ch, IdempotencyKey: "idem|" + id, Status: store.OutboxDead,
+			Title: "t", BodyText: "b", LastErrorCode: "http_webhook_status_500",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkDead("ob-h1", "ch-bt")
+	mkDead("ob-h2", "ch-other")
+
+	post := func(path, addr string) *httptest.ResponseRecorder {
+		return fixture.request(t, http.MethodPost, path, `{}`, addr, cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	}
+	// 未认证拒绝。
+	unauth := fixture.request(t, http.MethodPost, "/api/v1/notifications/outbox/retry-dead", `{}`, "127.0.0.1:46330", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	// 渠道过滤：只重新排队该渠道的 dead。
+	resp := post("/api/v1/notifications/outbox/retry-dead?channel_type=telegram", "127.0.0.1:46331")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var first struct {
+		Retried int `json:"retried"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &first); err != nil || first.Retried != 1 {
+		t.Fatalf("渠道过滤应重新排队 1 条: %+v err=%v", first, err)
+	}
+	// 不过滤：剩余全部。
+	resp = post("/api/v1/notifications/outbox/retry-dead", "127.0.0.1:46332")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var second struct {
+		Retried int `json:"retried"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &second); err != nil || second.Retried != 1 {
+		t.Fatalf("全量应重新排队 1 条: %+v err=%v", second, err)
+	}
+	// 再点一次：没有 dead 了。
+	resp = post("/api/v1/notifications/outbox/retry-dead", "127.0.0.1:46333")
+	var third struct {
+		Retried int `json:"retried"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &third); err != nil || third.Retried != 0 {
+		t.Fatalf("无 dead 应返回 0: %+v err=%v", third, err)
 	}
 }

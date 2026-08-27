@@ -145,6 +145,35 @@ func (s *server) handleRetryOutbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "queued", "id": id})
 }
 
+// handleRetryAllOutboxDead 一键重新排队全部（或指定渠道）失败投递：后端单次 UPDATE 完成，
+// 与逐条重试同一字段语义；channel_type → channel_id 解析与列表端点一致。
+func (s *server) handleRetryAllOutboxDead(w http.ResponseWriter, r *http.Request) {
+	channelType := r.URL.Query().Get("channel_type")
+	var channelIDs []string
+	if channelType != "" {
+		channels, err := s.dependencies.Store.Channels().List(r.Context())
+		if err != nil {
+			s.writeMappedError(w, r, err)
+			return
+		}
+		for _, ch := range channels {
+			if ch.ChannelType == channelType {
+				channelIDs = append(channelIDs, ch.ID)
+			}
+		}
+		if len(channelIDs) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"status": "queued", "retried": 0})
+			return
+		}
+	}
+	n, err := s.dependencies.Store.Outbox().RetryAllDead(r.Context(), channelIDs, time.Now().UTC())
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "queued", "retried": n})
+}
+
 func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
 	channelType := chi.URLParam(r, "type")
 	if !validChannelType(channelType) {

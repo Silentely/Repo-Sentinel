@@ -182,6 +182,16 @@ export async function retryOutbox(id: string): Promise<void> {
   });
 }
 
+/** 一键重新排队全部失败投递（可选渠道过滤），后端单次 UPDATE 完成；返回重新排队条数。 */
+export async function retryAllDeadOutbox(channelType = ""): Promise<number> {
+  const params = channelType ? `?channel_type=${encodeURIComponent(channelType)}` : "";
+  const res = await apiRequest<{ retried: number }>(`/api/v1/notifications/outbox/retry-dead${params}`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return res.retried;
+}
+
 export async function upsertChannel(
   type: "telegram" | "http_webhook",
   body: {

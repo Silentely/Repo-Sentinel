@@ -14,7 +14,7 @@ import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import { useModalLayer } from "../../lib/use-modal-layer";
 import { useUrlState } from "../../lib/use-url-state";
 import { ClearFiltersButton, StateFilterButtons } from "./list-shared";
-import { outboxQueryOptions, retryOutbox, type OutboxItem, type Page } from "./api";
+import { outboxQueryOptions, retryAllDeadOutbox, retryOutbox, type OutboxItem, type Page } from "./api";
 
 const statusFilters = [
   { label: "全部", value: "" },
@@ -99,31 +99,12 @@ export function OutboxPage() {
     ...retryBatchOptions,
   });
 
-  // 跨页重试全部失败：先分页收集全部 dead 投递 id（不受当前筛选限制），再逐个重新排队。
-  // 用于失败记录跨多页时一键恢复，避免用户逐页操作。
+  // 跨页重试全部失败：后端单次 UPDATE 完成（渠道口径与按钮计数一致），
+  // 用于失败记录跨多页时一键恢复，避免逐页/逐条操作。
   const retryAllDeadAcrossPages = useMutation({
     mutationFn: async (): Promise<BatchRetryResult> => {
-      const ids: string[] = [];
-      for (let page = 1; ; page++) {
-        // 带上当前渠道筛选：与按钮计数（status=dead 时取当前筛选 total）保持一致，
-        // 避免「仅重试 Telegram 的 3 条」按钮实际重试了所有渠道的失败投递。
-        const params = new URLSearchParams({ per_page: "100", page: String(page), status: "dead" });
-        if (channelFilter) params.set("channel_type", channelFilter);
-        const data = await apiRequest<Page<OutboxItem>>(`/api/v1/notifications/outbox?${params.toString()}`);
-        ids.push(...data.items.map((it) => it.id));
-        if (data.items.length === 0 || page * data.per_page >= data.total) break;
-      }
-      let succeeded = 0;
-      let failed = 0;
-      for (const id of ids) {
-        try {
-          await retryOutbox(id);
-          succeeded += 1;
-        } catch {
-          failed += 1;
-        }
-      }
-      return { succeeded, failed };
+      const retried = await retryAllDeadOutbox(channelFilter);
+      return { succeeded: retried, failed: 0 };
     },
     ...retryBatchOptions,
   });
@@ -303,7 +284,7 @@ export function OutboxPage() {
       <ConfirmDialog
         open={retryAllConfirmOpen}
         title="重新排队全部失败投递"
-        message={`确定要重新排队全部 ${totalDead} 条失败投递吗？将不受当前筛选限制，按页收集后逐条重新入队。`}
+        message={`确定要重新排队全部 ${totalDead} 条失败投递吗？${channelFilter ? `仅重新排队${channelLabel(channelFilter)}渠道，` : ""}一次性入队后立即进入投递队列。`}
         confirmLabel="重新排队"
         busy={retryAllDeadAcrossPages.isPending}
         busyLabel="收集中…"

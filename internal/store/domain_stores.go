@@ -1613,6 +1613,24 @@ func (s *outboxStore) RetryDead(ctx context.Context, id string, next time.Time) 
 		Exec(ctx))
 }
 
+// RetryAllDead 批量重新排队：与 RetryDead 同一字段语义（pending + 立即到期 + 清错误码与锁）。
+func (s *outboxStore) RetryAllDead(ctx context.Context, channelIDs []string, next time.Time) (int, error) {
+	now := time.Now().UTC()
+	q := s.client.NotificationOutbox.Update().
+		Where(notificationoutbox.StatusEQ(OutboxDead))
+	if len(channelIDs) > 0 {
+		q = q.Where(notificationoutbox.ChannelIDIn(channelIDs...))
+	}
+	n, err := q.
+		SetStatus(OutboxPending).
+		SetNextAttemptAt(next.UTC()).
+		SetLastErrorCode("").
+		ClearLockedUntil().
+		SetUpdatedAt(now).
+		Save(ctx)
+	return n, mapStoreError(err)
+}
+
 func (s *outboxStore) DeleteTerminalOlderThan(ctx context.Context, cutoff time.Time) (int, error) {
 	n, err := s.client.NotificationOutbox.Delete().
 		Where(

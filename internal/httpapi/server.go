@@ -239,6 +239,8 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Delete("/notifications/channels/{type}", s.handleDeleteChannel)
 				mutating.Patch("/notifications/channels/{type}/toggle", s.handleToggleChannel)
 				mutating.Post("/notifications/outbox/{id}/retry", s.handleRetryOutbox)
+				// 批量重试失败投递（固定段优先于 {id} 参数段匹配）。
+				mutating.Post("/notifications/outbox/retry-dead", s.handleRetryAllOutboxDead)
 				mutating.Post("/repositories/{id}/activate", s.handleActivateRepository)
 				mutating.Post("/repositories/{id}/reconcile", s.handleReconcileRepository)
 				mutating.Patch("/repositories/{id}/settings", s.handleUpdateRepositorySettings)

@@ -186,36 +186,31 @@ describe("OutboxPage", () => {
     resolveRetry();
   });
 
-  it("重试全部失败时跨页收集 dead 投递并逐个重新排队", async () => {
+  it("重试全部失败经批量端点一次重新排队", async () => {
     // 批量操作需要确认：点击确认对话框中的「重新排队」。
-    try {
-      // 第二页返回空：验证跨页循环在取完时停止，不会死循环。
-      fixtures.apiRequest.mockImplementation(async (path: string) => {
-        if (path.includes("/out-1/retry") || path.includes("/out-2/retry")) {
-          return undefined;
-        }
-        const isPageTwo = path.includes("page=2");
-        return isPageTwo
-          ? { items: [], page: 2, per_page: 100, total: 2 }
-          : fixtures.outbox;
-      });
+    fixtures.apiRequest.mockImplementation(async (path: string) => {
+      if (path.includes("/retry-dead")) {
+        return { retried: 2 };
+      }
+      return fixtures.outbox;
+    });
 
-      renderPage();
-      const retryAllButton = await screen.findByRole("button", { name: "重试全部失败 (2)" });
-      fireEvent.click(retryAllButton);
+    renderPage();
+    const retryAllButton = await screen.findByRole("button", { name: "重试全部失败 (2)" });
+    fireEvent.click(retryAllButton);
 
-      // 确认对话框出现：确认文案与对话框标题可见，取消可关闭。
-      expect(screen.getByRole("dialog", { name: "重新排队全部失败投递" })).toBeInTheDocument();
-      expect(screen.getByText(/确定要重新排队全部 2 条失败投递吗/)).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "重新排队" }));
+    // 确认对话框出现：确认文案与对话框标题可见，取消可关闭。
+    expect(screen.getByRole("dialog", { name: "重新排队全部失败投递" })).toBeInTheDocument();
+    expect(screen.getByText(/确定要重新排队全部 2 条失败投递吗/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新排队" }));
 
-      await waitFor(() => {
-        expect(fixtures.apiRequest.mock.calls.some(([path]) => path.includes("/out-1/retry"))).toBe(true);
-        expect(fixtures.apiRequest.mock.calls.some(([path]) => path.includes("/out-2/retry"))).toBe(true);
-      });
-      expect(await screen.findByText("已重新排队 2 条失败投递。")).toBeInTheDocument();
-    } finally {
-      // 无 confirm mock 需要恢复。
-    }
+    await waitFor(() => {
+      expect(fixtures.apiRequest.mock.calls.some(([path]) => path.includes("/retry-dead"))).toBe(true);
+    });
+    // 批量端点一次调用完成：不再跨页收集后逐条 POST /retry。
+    expect(
+      fixtures.apiRequest.mock.calls.filter(([path]) => path.includes("/out-1/retry") || path.includes("/out-2/retry")),
+    ).toHaveLength(0);
+    expect(await screen.findByText("已重新排队 2 条失败投递。")).toBeInTheDocument();
   });
 });

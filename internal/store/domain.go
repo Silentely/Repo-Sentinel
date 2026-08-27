@@ -642,6 +642,9 @@ type OutboxStore interface {
 	List(context.Context, ListFilter) ([]NotificationOutbox, PageResult, error)
 	CountByStatus(context.Context, string) (int, error)
 	RetryDead(context.Context, string, time.Time) error
+	// RetryAllDead 将全部（或 channelIDs 限定渠道）dead 投递重新排队，返回重新排队条数；
+	// channelIDs 为空切片表示不过滤渠道。单次 UPDATE 完成，与逐条 RetryDead 语义一致。
+	RetryAllDead(context.Context, []string, time.Time) (int, error)
 	// DeleteTerminalOlderThan 删除已终态（sent/dead）且 created_at 早于 cutoff 的投递记录。
 	DeleteTerminalOlderThan(ctx context.Context, cutoff time.Time) (int, error)
 }
