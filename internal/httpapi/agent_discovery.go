@@ -7,7 +7,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 )
 
@@ -359,17 +358,26 @@ func acceptsMarkdown(r *http.Request) bool {
 }
 
 // isMarkdownNegotiablePath 判定路径是否适合返回 markdown 站点说明：
-// 无扩展名的 SPA 路由视为页面；带扩展名的资源（JS/CSS/图片等）不参与协商。
-func isMarkdownNegotiablePath(requestPath string) bool {
-	extension := path.Ext(requestPath)
-	return extension == "" || requestPath == "/"
+// 仅 SPA 规范路由（与 sitemap 同一来源）；任意不存在的无扩展名路径带 markdown 协商
+// 时必须 404 而非 200，否则 Agent 抓错 URL 会把站点说明当有效内容收录。
+func (s *server) isMarkdownNegotiablePath(requestPath string) bool {
+	for _, p := range spaCanonicalPaths {
+		if p == requestPath {
+			return true
+		}
+	}
+	return false
 }
 
 // markdownNegotiationMiddleware 包装 SPA 兜底：Accept: text/markdown 时返回站点 markdown 说明。
 func (s *server) markdownNegotiationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
-			acceptsMarkdown(r) && isMarkdownNegotiablePath(r.URL.Path) {
+			acceptsMarkdown(r) {
+			if !s.isMarkdownNegotiablePath(r.URL.Path) {
+				s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, nil)
+				return
+			}
 			s.writeSiteMarkdown(w, r)
 			return
 		}

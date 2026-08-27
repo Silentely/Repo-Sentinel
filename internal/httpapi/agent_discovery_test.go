@@ -308,6 +308,35 @@ func Test无markdownAccept保持默认(t *testing.T) {
 	}
 }
 
+// TestMarkdown协商不存在路径返回404 守护：不存在的路径带 markdown 协商时必须 404
+// （此前返回 200 站点说明，Agent 抓错 URL 会把错误页当有效内容收录）。
+func TestMarkdown协商不存在路径返回404(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{publicBaseURL: "https://reposentinel.example"})
+	response := fixture.request(
+		t, http.MethodGet, "/typo-page", "", "127.0.0.1:41014", nil,
+		map[string]string{"Accept": "text/markdown"},
+	)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("不存在路径应 404，got %d", response.Code)
+	}
+}
+
+// Test方法不匹配返回405 守护：路径存在但方法不符时返回 405 与语义化错误码（此前与 404 混为一体）。
+func Test方法不匹配返回405(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{publicBaseURL: "https://reposentinel.example"})
+	response := fixture.request(t, http.MethodGet, "/mcp", "", "127.0.0.1:41015", nil, nil)
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET /mcp 应 405，got %d", response.Code)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("405 响应应为 JSON 错误体: %v", err)
+	}
+	if payload["error_code"] != "method_not_allowed" {
+		t.Fatalf("error_code=%v", payload["error_code"])
+	}
+}
+
 // TestOpenAPIJSON结构完整 验证 OpenAPI 3.1 文档关键字段。
 func TestOpenAPIJSON结构完整(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{publicBaseURL: "https://reposentinel.example"})

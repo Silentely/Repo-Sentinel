@@ -83,11 +83,6 @@ func writeOAuthError(w http.ResponseWriter, status int, code, description string
 
 // handleOAuthToken 实现 OAuth 2.0 client_credentials 令牌签发。
 func (s *server) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", http.MethodPost)
-		s.writeAPIError(w, r, http.StatusMethodNotAllowed, errorCodeMethodNotAllowed, nil)
-		return
-	}
 	if err := r.ParseForm(); err != nil {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "请求体不是合法的 application/x-www-form-urlencoded。")
 		return
@@ -112,7 +107,9 @@ func (s *server) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
 			"error_code", errorCodeRateLimited,
 		)
 		w.Header().Set("Retry-After", loginRetryAfterSeconds)
-		writeOAuthError(w, http.StatusTooManyRequests, "invalid_client", "尝试过于频繁，请稍后再试。")
+		// 限流按 RFC 6749 注册码 temporarily_unavailable 返回：
+		// invalid_client 语义是「凭据无效」，会把解析错误字段的客户端引向错误排障方向。
+		writeOAuthError(w, http.StatusTooManyRequests, "temporarily_unavailable", "尝试过于频繁，请稍后再试。")
 		return
 	}
 	configuredID := s.dependencies.Config.OAuth.ClientID

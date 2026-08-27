@@ -220,11 +220,6 @@ func mcpJSONResult(requestID any, result any) map[string]any {
 // handleMCP 实现 MCP Streamable HTTP（POST 单请求 JSON-RPC，无状态）。
 // 认证复用管理 API：Session Cookie 或 OAuth Bearer 均可。
 func (s *server) handleMCP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", http.MethodPost)
-		s.writeAPIError(w, r, http.StatusMethodNotAllowed, errorCodeMethodNotAllowed, nil)
-		return
-	}
 	mediaType := strings.TrimSpace(strings.SplitN(r.Header.Get("Content-Type"), ";", 2)[0])
 	if mediaType != "application/json" && mediaType != "text/plain" {
 		s.writeAPIError(w, r, http.StatusUnsupportedMediaType, errorCodeValidationFailed, nil)

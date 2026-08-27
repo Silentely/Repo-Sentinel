@@ -264,7 +264,11 @@ func New(dependencies Dependencies) http.Handler {
 	})
 	spa := newSPAHandler(dependencies.Frontend, notFound)
 	router.NotFound(s.markdownNegotiationMiddleware(spa).ServeHTTP)
-	router.MethodNotAllowed(notFound.ServeHTTP)
+	// 路径存在但方法不符：返回 405 与语义化错误码（此前与 404 混为一体，MCP/OAuth
+	// 客户端按方法探测时被误导）。
+	router.MethodNotAllowed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.writeAPIError(w, r, http.StatusMethodNotAllowed, errorCodeMethodNotAllowed, nil)
+	}).ServeHTTP)
 	return router
 }
 
