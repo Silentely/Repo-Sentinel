@@ -377,12 +377,11 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 		b.WriteString(fmt.Sprintf("%s %s × %d\n", rules.KindEmoji(g.kind), store.KindDisplayName(g.kind), g.count))
 	}
 
-	// 最近 5 条事件预览（状态中文一眼可读，多仓用户靠仓库名区分归属）
-	maxPreview := maxPreviewEvents
+	// 最近活动预览（状态中文一眼可读，多仓用户靠仓库名区分归属；条数见 maxPreviewEvents）
 	b.WriteString("────────────────\n")
 	b.WriteString("最近活动：\n")
 	for i, ev := range events {
-		if i >= maxPreview {
+		if i >= maxPreviewEvents {
 			break
 		}
 		status := digestStatusLabel(ev)

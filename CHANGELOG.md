@@ -10,7 +10,16 @@
 
 ### Changed
 
-- Release 更新速览提示词放宽：要点数量 2-5 → 3-8 条（内容较多时取上限），并明确升级注意事项不得省略；配合输出 token 上限调大，速览可覆盖更多内容
+- AI 配置健壮性：库内 AI 配置 JSON 损坏/类型不匹配、API Key 信封解密失败均改为报错（此前静默降级为「未配置」，出现「已配置的 AI 突然全没了」且无任何日志）
+- PR 审核一致性：最新评审非 APPROVED/CHANGES_REQUESTED 终态时清空 ReviewDecision（不再出现 COMMENTED+changes_requested 的自矛盾字段对）；webhook 标记失败 Warn 补 delivery_id/event_type
+- ReconcileRepository 拆分为 resolveInstallationToken / syncStarSnapshot / finalizeSyncState 三个私有方法；MaxPages 惰性写共享字段改只读访问器（消除数据竞争隐患）；「github rate low」升 Warn 并补 error_code
+- 更新检查双路径都失败时上报权威 API 路径的错误（403/429 更可操作）；HTTP 客户端改包级共享实例复用连接池
+- SQLite 下显式配置 max_open_conns/max_idle_conns>1 启动前直接拒绝（此前静默忽略，配置面与行为漂移）；存量部署若曾配置，删除该项或改为 1 即可迁移
+- 设置页 AI 表单回填补「仅首次」守卫（保存后 invalidate 回传不再覆盖其它区块未保存编辑）；仪表盘功能开关查询失败补错误条（此前静默按全部启用放行）；FeatureGuard 透传各页功能描述
+- 前端分包实验回退：rolldown-vite 已废弃 manualChunks/advancedChunks 且默认 codeSplitting 覆盖时忽略之；按其原生 codeSplitting 分组后 React 仍落入 recharts 所在 chunk 并被登录页依赖（354K 进首屏），边界不可控，回退到默认分包（recharts 随仪表盘懒 chunk、登录页不承载）
+- 路由补 defaultPendingComponent：lazy chunk 首载期间展示列表骨架而非空白内容区；WebMCP 工具从 bfcache 恢复时重新注册
+- e2e 工程：CI test job 追加 Playwright e2e 阶段（此前只在本机运行）；make test 带 -race 与 CI 对齐；ensureAuthenticated 会话按项目持久化复用（登录限流 5 次突发+12s 补 1，每用例各登一次必 429）
+- 文档同步：版本指南补公开 /api/v1/system/build-info、列表 API 指南补 retry-dead、docs 资产脚本补 guide/list-api 与 reference/release、.env.example 补 Star Release/智能值守/Agent OAuth 三段变量
 - webhook 状态标记预算从「标记时刻」起算：超过 5s 的慢处理（如 AI 分诊）不再必然标记失败导致行残留 accepted 被重放、重复投递
 - watch/star 无时间戳载荷的事件指纹以 deliveryID 为幂等键：accepted 行重放同一载荷不再产生重复事件
 - star 计数快照写失败降级为 Warn 留痕：辅助指标失败不再阻断 star 事件落库
@@ -23,23 +32,6 @@
 - CLI 输出：healthcheck 失败携带探针 URL 与底层原因、backup 输出 size_bytes/duration_ms、doctor 错误单行化、admin reset-password 输出 key=value
 - 聚合热加载不再把「键未设置」当错误（设置页保存任意设置不再打假 Warn）；聚合 flush 回放预算随 AI 配置超时放宽（与 webhook 直发路径同一语义）；webhook 归档联动写失败补 Warn 留痕
 - 文档站 robots.txt 改由构建脚本生成（Sitemap 绝对地址）；llms.txt 补运行时 Agent 发现端点小节
-
-### Fixed
-
-- AI 配置热更新丢失「更新速览」开关：Client.Replace 未拷贝 ReleaseSummaryEnabled，管理台保存后开关保持旧值直到进程重启
-- star 同步预加载追踪映射失败时整轮中止：此前空映射继续执行会把存量追踪误判为新仓，registerIfNewer 的 Upsert 强制写回 tracking 并清零游标（静默重置用户停用与复查状态）；中止不推进记账，下个节拍快速重试（回归测试锁定）
-- JWKS 不再携带对称密钥材料：kty=oct 的 k 参数即 HS256 签名密钥本身，公开即可自签合法 read 令牌；端点仅保留 kid/alg 供轮换识别
-- 主密钥格式非法与「与库内探针不匹配」分流：格式非法报 invalid_encryption_key（与数据库无关），不再误导为数据库密钥不匹配；密码重置 CLI 同步分流；派生密钥未装配改独立 sentinel ErrKeyUnavailable
-- 单条 RetryDead 补 dead 状态守卫：sending 在途行不再被翻回 pending 造成同一通知投递两次
-- 对账 PR enrich 后不再复用 enrich 前旧行做 UpsertIfNewer 判定：enrich 秒级窗口内 webhook 并发写入会被陈旧快照回滚
-- Outbox 页 dead 计数查询带渠道过滤：按钮计数与批量重试实际范围口径一致
-- 更新检查 HTML 回退路径报错引用首个 302 响应的状态码，改为实际取到页面的响应
-- Star 追踪列表空态在加载中与出错时误展示「暂无追踪记录」：补三态守卫
-- 投递记录三个重试入口互不互斥：批量重试进行中可再点其他重试按钮导致并发重复排队，现统一互斥
-- GitHub 页/通知页成功提示常驻不消退：接入自动消退（与设置页同策略）
-- NumberField 聚焦时鼠标滚轮静默改值：禁用原生 wheel 步进
-- GitHub App 客户端并发首次调用无锁写共享字段（数据竞争隐患），改只读回退
-- 登录页页脚版本号恒为「版本 dev」：新增公开 /api/v1/system/build-info 端点，展示真实构建版本
 - Star 趋势查询性能：日聚合改游标线性推进（O(快照数+天数×仓数)，原先逐日全扫）；days>0 时快照查询加日期下界不再载入全部历史，窗口起点的补值种值经 GroupBy 最大日期 + 唯一索引精确取回，曲线起点语义不变
 - 高频低变化查询接入短 TTL 进程内缓存：通知渠道 List（规则引擎/聚合器/outbox 投递热路径，写路径即时失效）、活跃/归档仓 ID 集合（各列表/计数与仪表盘共享一次扫描，repositoryStore 写路径即时失效）、仪表盘聚合统计（3s TTL，约 10 条 SQL/请求收敛为缓存命中）
 - 同步与投递热路径去重复：star 同步一轮内 installation 令牌与追踪计数各只查一次（原每个新仓各查一次），Outbox Worker 同批投递复用同渠道密钥明文；前端 Outbox 查询改条件轮询（有待投递/投递中条目 15s，空闲降 60s）
@@ -71,7 +63,15 @@
 ### Fixed
 
 - AI 配置热更新丢失「更新速览」开关：Client.Replace 未拷贝 ReleaseSummaryEnabled，管理台保存后开关保持旧值直到进程重启
-- star 同步预加载追踪映射失败时整轮中止：此前空映射继续执行会把存量追踪误判为新仓，registerIfNew 的 Upsert 强制写回 tracking 并清零游标（静默重置用户停用与复查状态）；中止不推进记账，下个节拍快速重试（回归测试锁定）
+- star 同步预加载追踪映射失败时整轮中止：此前空映射继续执行会把存量追踪误判为新仓，registerIfNewer 的 Upsert 强制写回 tracking 并清零游标（静默重置用户停用与复查状态）；中止不推进记账，下个节拍快速重试（回归测试锁定）
+- JWKS 不再携带对称密钥材料：kty=oct 的 k 参数即 HS256 签名密钥本身，公开即可自签合法 read 令牌；端点仅保留 kid/alg 供轮换识别
+- 主密钥格式非法与「与库内探针不匹配」分流：格式非法报 invalid_encryption_key（与数据库无关），不再误导为数据库密钥不匹配；密码重置 CLI 同步分流；派生密钥未装配改独立 sentinel ErrKeyUnavailable
+- 单条 RetryDead 补 dead 状态守卫：sending 在途行不再被翻回 pending 造成同一通知投递两次
+- 对账 PR enrich 后不再复用 enrich 前旧行做 UpsertIfNewer 判定：enrich 秒级窗口内 webhook 并发写入会被陈旧快照回滚
+- Outbox 页 dead 计数查询带渠道过滤：按钮计数与批量重试实际范围口径一致
+- e2e 修复陈旧断言：auth.spec Tab 序对齐 GitHub 链接加入后的 DOM 顺序（该断言自 2026-08-09 起静默失效，CI 无 e2e 阶段未暴露）；主题持久化断言改存储层验证（移动端顶栏有意隐藏选择器控件）
+- AI 配置保存后热加载失败返回明确错误（409 ai_runtime_reload_failed）且不再广播半合并运行时（此前 Warn 后仍 Replace 并响应 200）
+- Dockerfile 默认版本 0.3.8 → 0.4.0：本地 docker build 不再产出错误版本号
 - 更新检查 HTML 回退路径报错引用首个 302 响应的状态码，改为实际取到页面的响应
 - Star 追踪列表空态在加载中与出错时误展示「暂无追踪记录」：补三态守卫
 - 投递记录三个重试入口互不互斥：批量重试进行中可再点其他重试按钮导致并发重复排队，现统一互斥
@@ -82,7 +82,6 @@
 - outbox 页批量重试回调收敛：抽 `invalidateOutboxAndDashboard` 与 `retryBatchOptions`，消除三处重复失效逻辑与两份相同 mutation 回调
 - 筛选按钮组抽共享组件 `StateFilterButtons`：投递记录页与列表页共用，样式/aria 不再各自维护
 - outbox「重试本页失败」「重试全部失败」补 `aria-busy`（读屏可感知加载中）
-
 - 设置页密码区块缩进错乱（18 空格）恢复标准缩进
 - `display_test.go` 新增未收录告警动作统一回退与 `KindEmoji` 映射回归测试；`monitor_handlers_test.go` 新增仓库激活单次写回回归测试
 

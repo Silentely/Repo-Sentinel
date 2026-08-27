@@ -341,11 +341,14 @@ func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo s
 			}
 		}
 		item.ReviewState = latestReview.State
-		// 计算审核决策
+		// 计算审核决策：仅两种终态有决策；其余状态（COMMENTED/DISMISSED 等）清空，
+		// 否则旧终态会与新状态残留为矛盾对（如 COMMENTED + changes_requested）。
 		if latestReview.State == "APPROVED" {
 			item.ReviewDecision = "approved"
 		} else if latestReview.State == "CHANGES_REQUESTED" {
 			item.ReviewDecision = "changes_requested"
+		} else {
+			item.ReviewDecision = ""
 		}
 	}
 

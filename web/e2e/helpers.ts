@@ -20,9 +20,17 @@ export async function ensureAuthenticated(page: Page) {
   const stateFile = path.join("../.test-run-data", `auth-${test.info().project.name}.json`);
   if (restoreSession(page, stateFile)) {
     await page.goto("/");
-    // Cookie 仍有效则直达仪表盘；失效（重启清库/会话过期）则回退完整登录流程。
-    if (!page.url().endsWith("/login")) {
-      await expect(page).toHaveURL(/\/$/);
+    // SPA 跳转链（/ → /login|/setup）异步：URL 中间态可能是 "/"，等「仪表盘标题 / 登录按钮 / 设置标题」
+    // 三者其一真正可见后再判定，不能把过渡态误当有效会话。
+    const dashHeading = page.getByRole("heading", { name: "现在是否健康，今天发生了什么。" });
+    const setupHeading = page.getByRole("heading", { name: "创建唯一管理员" });
+    const loginButton = page.getByRole("button", { name: "登录" });
+    await expect(async () => {
+      expect(
+        (await dashHeading.isVisible()) || (await setupHeading.isVisible()) || (await loginButton.isVisible()),
+      ).toBe(true);
+    }).toPass({ timeout: 15_000 });
+    if (await dashHeading.isVisible()) {
       return;
     }
   }

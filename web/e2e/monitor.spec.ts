@@ -6,26 +6,31 @@ test("设置页保存后刷新回读一致（偏好分区 round-trip）", async 
   await ensureAuthenticated(page);
   await page.goto("/settings");
 
-  // 勾选「启用每周报告」并保存该分区。
   const weekly = page.getByRole("checkbox", { name: "启用每周报告" });
-  await expect(weekly).toBeVisible();
-  if (!(await weekly.isChecked())) {
-    await weekly.click();
+  // 首个交互元素等待放宽：冷启动（浏览器+查询首载）可能超过默认 5s。
+  await expect(weekly).toBeVisible({ timeout: 15_000 });
+  const initiallyChecked = await weekly.isChecked();
+  try {
+    if (!initiallyChecked) {
+      await weekly.click();
+    }
+    await expect(weekly).toBeChecked();
+    await page.getByRole("button", { name: "保存偏好" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "已保存" }).first()).toBeVisible();
+
+    // 刷新后从服务端回读：勾选状态必须保留（锁定跨区块保存不回滚的回归）。
+    await page.reload();
+    await expect(page.getByRole("checkbox", { name: "启用每周报告" })).toBeChecked();
+  } finally {
+    // 还原初始状态：断言失败也要还原，否则污染共享实例与下次运行。
+    // 还原本身失败不覆盖原始断言错误。
+    await page.reload();
+    const restore = page.getByRole("checkbox", { name: "启用每周报告" });
+    if ((await restore.isChecked()) !== initiallyChecked) {
+      await restore.click();
+      await page.getByRole("button", { name: "保存偏好" }).click().catch(() => {});
+    }
   }
-  await expect(weekly).toBeChecked();
-  await page.getByRole("button", { name: "保存偏好" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "已保存" }).first()).toBeVisible();
-
-  // 刷新后从服务端回读：勾选状态必须保留（锁定跨区块保存不回滚的回归）。
-  await page.reload();
-  await expect(page.getByRole("checkbox", { name: "启用每周报告" })).toBeChecked();
-
-  // 还原：取消勾选并保存，避免影响其它用例的默认前提。
-  await page.getByRole("checkbox", { name: "启用每周报告" }).click();
-  await page.getByRole("button", { name: "保存偏好" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "已保存" }).first()).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole("checkbox", { name: "启用每周报告" })).not.toBeChecked();
 });
 
 test("仪表盘首屏渲染关键区块且控制台无错误", async ({ page }) => {
@@ -50,6 +55,23 @@ test("仪表盘首屏渲染关键区块且控制台无错误", async ({ page }) 
 test("投递记录筛选为空时空态提供「清除筛选」并可点击", async ({ page }) => {
   await ensureAuthenticated(page);
   await page.goto("/notifications/outbox?status=dead");
+
+  // 依赖「实例无 dead 投递」的隐含前提：未来用例引入失败投递时会破坏，
+  // 先经 API 清理（忽略错误），再断言空态。
+  await page.evaluate(async () => {
+    const csrf = (document.cookie.match(/(?:^|; )reposentinel_csrf=([^;]+)/) || [])[1] || "";
+    const list = await fetch("/api/v1/notifications/outbox?status=dead&per_page=100", { credentials: "include" }).then((r) => r.json());
+    await Promise.all(
+      (list.items ?? []).map((it: { id: string }) =>
+        fetch(`/api/v1/notifications/outbox/${it.id}/retry`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrf) },
+          body: "{}",
+        }).catch(() => undefined),
+      ),
+    );
+  });
+  await page.reload();
 
   await expect(page.getByRole("heading", { name: "没有投递记录" })).toBeVisible();
   // 空态操作区内的「清除筛选」（工具栏另有同名按钮，strict mode 需锚定容器）。

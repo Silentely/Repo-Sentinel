@@ -12,7 +12,8 @@ test("移动端抽屉导航：可开启、可跳转、多种方式关闭", async
   const menuButton = page.getByRole("button", { name: "打开导航菜单" });
 
   // 移动端侧边栏默认离屏隐藏，菜单按钮接管导航入口。
-  await expect(menuButton).toBeVisible();
+  // 首个交互元素等待放宽：冷启动（浏览器+查询首载）可能超过默认 5s。
+  await expect(menuButton).toBeVisible({ timeout: 15_000 });
   await expect(sidebar).toBeHidden();
 
   await menuButton.click();

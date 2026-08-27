@@ -64,6 +64,8 @@ type fakeGitHub struct {
 	repoMetaFn func() any
 	// repoMetaHTTPStatus 可选：元数据端点状态码（缺省 200），用于覆盖快照软失败路径。
 	repoMetaHTTPStatus int
+	// prReviewsState 可选：reviews 端点返回的最新评审状态（缺省 APPROVED）。
+	prReviewsState string
 
 	// 请求计数器（httptest 每个请求独立 goroutine，必须用原子量）。
 	prDetailRequests atomic.Int64 // GET /pulls/{n}：enrich 预算观测点
@@ -152,8 +154,12 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		write([]any{})
 	case rePRReviews.MatchString(path):
+		state := f.prReviewsState
+		if state == "" {
+			state = "APPROVED"
+		}
 		write([]map[string]any{{
-			"id": 1, "state": "APPROVED", "user": map[string]any{"login": "reviewer"},
+			"id": 1, "state": state, "user": map[string]any{"login": "reviewer"},
 			"submitted_at": time.Now().UTC().Format(time.RFC3339),
 		}})
 	case rePRReviewers.MatchString(path):
@@ -1069,5 +1075,51 @@ func TestReconcileWithdrawsMissingCodeScanningAlert(t *testing.T) {
 	}
 	if _, err := data.SecurityAlerts().GetByIdentity(ctx, repo.ID, store.AlertKindCodeScanning, 6); err != nil {
 		t.Fatalf("远端存在的告警 6 应落库: %v", err)
+	}
+}
+
+// TestReconcileRepository评审非终态清空决策 守护：旧行带 changes_requested 时，
+// 最新评审为 COMMENTED（非终态）应清空 ReviewDecision，而非残留旧终态形成
+// COMMENTED + changes_requested 的自矛盾字段对。
+func TestReconcileRepository评审非终态清空决策(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	updated := time.Now().UTC().Truncate(time.Second)
+	// 预置旧行：曾被要求修改（CHANGES_REQUESTED 终态）。
+	if _, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-pr-2", RepositoryID: repo.ID, Number: 2, Kind: store.WorkItemKindPR,
+		State: "open", Title: "增加缓存层", HTMLURL: "https://github.com/acme/demo/pull/2",
+		SourceUpdatedAt: updated.Add(-time.Hour),
+		ReviewState:     "CHANGES_REQUESTED", ReviewDecision: "changes_requested",
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	fake.prReviewsState = "COMMENTED"
+	fake.issuesFn = func(page int) any {
+		return []map[string]any{
+			{
+				"number": 2, "state": "open", "title": "增加缓存层",
+				"html_url":     "https://github.com/acme/demo/pull/2",
+				"pull_request": map[string]any{"url": "https://api.github.com/repos/acme/demo/pulls/2"},
+				"updated_at":   updated.Format(time.RFC3339),
+				"user":         map[string]any{"login": "bob"},
+				"labels":       []any{}, "assignees": []any{},
+			},
+		}
+	}
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("成功路径不应报错: %v", err)
+	}
+	pr, err := data.WorkItems().GetByRepoNumber(ctx, repo.ID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pr.ReviewState != "COMMENTED" {
+		t.Fatalf("ReviewState 应更新为 COMMENTED，got %s", pr.ReviewState)
+	}
+	if pr.ReviewDecision != "" {
+		t.Fatalf("非终态评审应清空 ReviewDecision，got %q", pr.ReviewDecision)
 	}
 }

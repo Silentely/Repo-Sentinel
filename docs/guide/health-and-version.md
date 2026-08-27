@@ -49,7 +49,7 @@ GET /api/v1/system/version
 GET /api/v1/system/build-info
 ```
 
-**无需认证**，仅返回 `{ "version": "0.4.0" }` 一个字段。供登录页页脚等未认证场景展示真实构建版本；不含任何配置状态（需要完整版本信息请用上一条 `system/version`）。
+**无需认证**，仅返回 `{ "version": "x.y.z" }` 一个字段（示例值，以实例实际版本为准）。供登录页页脚等未认证场景展示真实构建版本；不含任何配置状态（需要完整版本信息请用上一条 `system/version`）。
 
 本地未注入 ldflags 时，CLI `version` 可能显示 `dev` / `unknown`，这是预期回退，不会被误判为正式发行版。
 
