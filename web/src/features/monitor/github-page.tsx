@@ -72,7 +72,7 @@ export function GitHubPage() {
     mutationFn: () => syncInstallationRepositories(),
     onSuccess: async (res) => {
       setSyncMessage(
-        `已从 GitHub 同步：${res.imported_or_updated} 个仓库（${res.installations} 个 Installation）。请到仪表盘查看基线；对账成功会自动放行，也可点「立即放行」。`,
+        `已从 GitHub 同步：${res.imported_or_updated} 个仓库（${res.installations} 个 Installation）。请到「设置 → 仓库与基线对账」查看基线；对账成功会自动放行，也可点「立即放行」。`,
       );
       await queryClient.invalidateQueries({ queryKey: ["repositories"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -266,7 +266,7 @@ export function GitHubPage() {
               <li><strong>打开安装页</strong><span>点「去 GitHub 安装」→ 找到 App → Install</span></li>
               <li><strong>选择仓库</strong><span>All 或 Only select，保存后 GitHub 自动推送</span></li>
               <li><strong>回本页刷新</strong><span>Installation 列表出现账号，仪表盘出现仓库</span></li>
-              <li><strong>结束基线</strong><span>对账成功会自动放行；也可在仪表盘点「立即放行」</span></li>
+              <li><strong>结束基线</strong><span>对账成功会自动放行；也可在「设置 → 仓库与基线对账」点「立即放行」</span></li>
             </ol>
           </div>
         </details>

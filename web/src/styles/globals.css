@@ -2,23 +2,6 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --color-canvas: var(--bg-canvas);
-  --color-surface: var(--bg-surface);
-  --color-muted: var(--bg-muted);
-  --color-border-subtle: var(--border-subtle);
-  --color-text-primary: var(--text-primary);
-  --color-text-secondary: var(--text-secondary);
-  --color-text-muted: var(--text-muted);
-  --color-accent: var(--accent);
-  --color-accent-fg: var(--accent-fg);
-  --color-danger: var(--danger);
-  --color-warning: var(--warning);
-  --color-success: var(--success);
-  --color-info: var(--info);
-  --color-severity-critical: var(--severity-critical);
-  --color-severity-high: var(--severity-high);
-  --color-severity-medium: var(--severity-medium);
-  --color-severity-low: var(--severity-low);
   --radius-control: 0.5rem;
   --radius-card: 0.875rem;
   --radius-dialog: 1.125rem;
@@ -898,33 +881,6 @@ a.status-item--link:focus-visible {
   margin-top: 16px;
 }
 
-.onboarding-list {
-  display: grid;
-  gap: 9px;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.onboarding-list li {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 11px 0;
-  border-top: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  font-size: 0.86rem;
-}
-
-.onboarding-list svg {
-  flex: 0 0 auto;
-  color: var(--success);
-}
-
-.onboarding-list li[data-state="next"] svg {
-  color: var(--accent);
-}
-
 /* ── 可折叠面板 ── */
 
 .collapsible-panel__header {
@@ -1775,11 +1731,6 @@ a.status-item--link:focus-visible {
   border: 1px solid color-mix(in oklch, var(--success) 32%, var(--border-subtle));
 }
 
-.onboarding-list .quiet-button {
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
 /* 兼容旧 event-list：长标题截断，动作靠右 */
 .event-list li > strong {
   flex: 1 1 12rem;
@@ -2017,20 +1968,6 @@ a.status-item--link:focus-visible {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px 14px;
-}
-
-.form-grid--section {
-  margin-top: 16px;
-}
-
-.form-grid--section > .section-title {
-  grid-column: 1 / -1;
-  font-size: 0.95rem;
-  margin-bottom: 0;
-}
-
-.form-grid--section > .section-hint {
-  grid-column: 1 / -1;
 }
 
 .form-grid .field--plain {

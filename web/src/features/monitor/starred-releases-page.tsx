@@ -57,6 +57,9 @@ function configBody(form: FormState, cfg: StarredReleasesConfig | undefined): St
   return body;
 }
 
+/** 追踪列表每页条数：查询参数、页数计算与分页条显隐共用单一来源。 */
+const TRACKERS_PER_PAGE = 20;
+
 export function StarredReleasesPage() {
   const queryClient = useQueryClient();
   const config = useQuery(starredReleasesConfigQueryOptions);
@@ -132,11 +135,11 @@ export function StarredReleasesPage() {
   const [stateFilter, setStateFilter] = useUrlState("state", "tracking");
   const trackers = useQuery({
     queryKey: ["starred-releases-trackers", page, stateFilter] as const,
-    queryFn: () => listStarredTrackers({ page, per_page: 20, state: stateFilter || undefined }),
+    queryFn: () => listStarredTrackers({ page, per_page: TRACKERS_PER_PAGE, state: stateFilter || undefined }),
     staleTime: 10_000,
   });
   const total = trackers.data?.total ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / 20));
+  const pageCount = Math.max(1, Math.ceil(total / TRACKERS_PER_PAGE));
   // URL 中 page 超界（如筛选切换后共 3 页但 ?page=99）时钳制回末页，避免「第 99 / 3 页」+ 空列表。
   useEffect(() => {
     if (total > 0 && page > pageCount) {
@@ -254,7 +257,7 @@ export function StarredReleasesPage() {
             ))}
           </ul>
         ) : null}
-        {total > 20 ? (
+        {total > TRACKERS_PER_PAGE ? (
           <div className="pager-row">
             <button className="quiet-button quiet-button--compact" type="button" disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))}>
               上一页

@@ -135,12 +135,17 @@ export function DashboardPage() {
 
   // 最近事件是混合流（Issue/PR/Actions/告警），脚注提供分类快捷入口按需跳转；
   // 按功能开关过滤，避免入口指向被禁用的列表页。
-  const kindQuickLinks = [
-    featureIssues && { to: "/issues", label: "Issues" },
-    featurePRs && { to: "/pull-requests", label: "Pull Requests" },
-    featureActions && { to: "/actions", label: "Actions" },
-    featureAlerts && { to: "/security", label: "安全告警" },
-  ].filter(Boolean) as { to: string; label: string }[];
+  // 纯派生数据：memo 缓存，避免仪表盘 30s 轮询重渲染时反复重建数组。
+  const kindQuickLinks = useMemo(
+    () =>
+      [
+        featureIssues && { to: "/issues", label: "Issues" },
+        featurePRs && { to: "/pull-requests", label: "Pull Requests" },
+        featureActions && { to: "/actions", label: "Actions" },
+        featureAlerts && { to: "/security", label: "安全告警" },
+      ].filter((x): x is { to: string; label: string } => Boolean(x)),
+    [featureIssues, featurePRs, featureActions, featureAlerts],
+  );
 
   const cfg = githubConfig.data;
   const inboundReady = Boolean(cfg?.webhook_secret_configured);
