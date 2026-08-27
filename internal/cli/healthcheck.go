@@ -32,7 +32,8 @@ func (r Runner) runHealthcheck(ctx context.Context, args []string) error {
 	startedAt := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		return cliError{code: "healthcheck_failed", message: "就绪探针不可达。"}
+		// 容器内探针日志是排障唯一线索：带上 URL 与底层原因（连接拒绝/超时/DNS）。
+		return cliError{code: "healthcheck_failed", message: fmt.Sprintf("就绪探针不可达（url=%s, error=%s）。", url, err)}
 	}
 	defer resp.Body.Close()
 	latency := time.Since(startedAt)

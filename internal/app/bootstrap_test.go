@@ -292,3 +292,18 @@ func (s *fakeHTTPRuntime) Shutdown(ctx context.Context) error {
 	s.stopOnce.Do(func() { close(s.stopped) })
 	return nil
 }
+
+// TestValidateEncryptionKey区分格式非法与不匹配 守护：主密钥格式非法报
+// invalid_encryption_key（配置问题，与数据库无关），不误报为「与库内探针不匹配」。
+func TestValidateEncryptionKey区分格式非法与不匹配(t *testing.T) {
+	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: "file:" + filepath.Join(t.TempDir(), "enc.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = data.Close() }()
+
+	cfg := config.EncryptionConfig{CurrentKey: config.NewSecret("not-a-valid-key!!!")}
+	if _, err := validateEncryptionKey(t.Context(), data, cfg); !errors.Is(err, cryptox.ErrInvalidEncryptionKey) {
+		t.Fatalf("格式非法应报 invalid_encryption_key: %v", err)
+	}
+}

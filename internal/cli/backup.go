@@ -59,10 +59,15 @@ func (r Runner) backupSQLite(dbURL, out string) error {
 			return err
 		}
 	}
+	startedAt := time.Now()
 	if _, err := db.Exec("VACUUM INTO ?", out); err != nil {
 		return fmt.Errorf("vacuum into failed: %w", err)
 	}
 	fmt.Fprintf(r.stdout, "backup=%s\n", out)
+	// 产物体积与耗时：0 字节损坏备份与正常备份此前输出相同格式，无法区分。
+	if info, err := os.Stat(out); err == nil {
+		fmt.Fprintf(r.stdout, "size_bytes=%d duration_ms=%d\n", info.Size(), time.Since(startedAt).Milliseconds())
+	}
 	fmt.Fprintf(r.stdout, "note=请同时备份 REPOSENTINEL_ENCRYPTION_KEY\n")
 	return nil
 }
@@ -74,11 +79,15 @@ func (r Runner) backupPostgres(ctx context.Context, dbURL, out string) error {
 	if !strings.HasSuffix(out, ".dump") {
 		out = out + ".dump"
 	}
+	startedAt := time.Now()
 	cmd := exec.CommandContext(ctx, "pg_dump", "--format=custom", "--file="+out, dbURL)
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("pg_dump failed: %w (%s)", err, string(b))
 	}
 	fmt.Fprintf(r.stdout, "backup=%s\n", out)
+	if info, err := os.Stat(out); err == nil {
+		fmt.Fprintf(r.stdout, "size_bytes=%d duration_ms=%d\n", info.Size(), time.Since(startedAt).Milliseconds())
+	}
 	fmt.Fprintf(r.stdout, "note=请同时备份 REPOSENTINEL_ENCRYPTION_KEY\n")
 	return nil
 }

@@ -20,7 +20,9 @@ const (
 	keyRingMask       = "[REDACTED]"
 )
 
-var errInvalidEncryptionKey = errors.New("invalid_encryption_key")
+// ErrInvalidEncryptionKey 主密钥格式非法（hex/base64 解码失败或长度不符）。
+// 定义为包级 sentinel：app 层据此区分「格式非法」与「与库内探针不匹配」两种启动失败。
+var ErrInvalidEncryptionKey = errors.New("invalid_encryption_key")
 
 // KeyRing 保存当前与上一把数据加密密钥对应的 AEAD 实例。
 // 字段保持私有，并通过格式化方法阻止密钥材料进入日志或诊断文本。
@@ -45,22 +47,22 @@ type keyMaterial struct {
 func NewKeyRing(cfg config.EncryptionConfig) (KeyRing, error) {
 	currentKey, err := decodeEncryptionKey(cfg.CurrentKey, true)
 	if err != nil {
-		return KeyRing{}, errInvalidEncryptionKey
+		return KeyRing{}, ErrInvalidEncryptionKey
 	}
 	current, err := newKeyMaterial(currentKey)
 	if err != nil {
-		return KeyRing{}, errInvalidEncryptionKey
+		return KeyRing{}, ErrInvalidEncryptionKey
 	}
 
 	previousKey, err := decodeEncryptionKey(cfg.PreviousKey, false)
 	if err != nil {
-		return KeyRing{}, errInvalidEncryptionKey
+		return KeyRing{}, ErrInvalidEncryptionKey
 	}
 	var previous keyMaterial
 	if len(previousKey) > 0 {
 		previous, err = newKeyMaterial(previousKey)
 		if err != nil {
-			return KeyRing{}, errInvalidEncryptionKey
+			return KeyRing{}, ErrInvalidEncryptionKey
 		}
 	}
 
@@ -71,7 +73,7 @@ func decodeEncryptionKey(secret config.Secret, required bool) ([]byte, error) {
 	encoded := secret.Reveal()
 	if encoded == "" {
 		if required {
-			return nil, errInvalidEncryptionKey
+			return nil, ErrInvalidEncryptionKey
 		}
 		return nil, nil
 	}
@@ -84,17 +86,17 @@ func decodeEncryptionKey(secret config.Secret, required bool) ([]byte, error) {
 			return decoded, nil
 		}
 	}
-	return nil, errInvalidEncryptionKey
+	return nil, ErrInvalidEncryptionKey
 }
 
 func newKeyMaterial(key []byte) (keyMaterial, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return keyMaterial{}, errInvalidEncryptionKey
+		return keyMaterial{}, ErrInvalidEncryptionKey
 	}
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		return keyMaterial{}, errInvalidEncryptionKey
+		return keyMaterial{}, ErrInvalidEncryptionKey
 	}
 	digest := sha256.Sum256(key)
 	return keyMaterial{
@@ -110,7 +112,7 @@ func newKeyMaterial(key []byte) (keyMaterial, error) {
 // 派生密钥仅用于 OAuth 访问令牌签名等次级用途，绝不外泄主密钥材料。
 func (k KeyRing) DeriveHMACKey(aad []byte) ([]byte, error) {
 	if !k.current.available {
-		return nil, errInvalidEncryptionKey
+		return nil, ErrInvalidEncryptionKey
 	}
 	var nonce [12]byte
 	const plaintext = "reposentinel:derive:hmac:v1"

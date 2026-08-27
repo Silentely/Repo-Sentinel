@@ -69,7 +69,9 @@ func (r Runner) runDoctor(ctx context.Context, args []string) error {
 		fmt.Fprintf(r.stdout, "outbox_dead=%d\n", stats.OutboxDead)
 	} else {
 		// 诊断工具不应静默略过：统计查询失败本身即是重要诊断信号。
-		fmt.Fprintf(r.stdout, "dashboard_stats=error:%s\n", err.Error())
+		// 错误单行化：底层错误可能含换行（Ent/driver 多行错误），不能撑破 key=value 行格式。
+		replacer := strings.NewReplacer("\n", " ", "\r", " ")
+		fmt.Fprintf(r.stdout, "dashboard_stats=error:%s\n", replacer.Replace(err.Error()))
 	}
 	fmt.Fprintf(r.stdout, "doctor=ok\n")
 	return nil

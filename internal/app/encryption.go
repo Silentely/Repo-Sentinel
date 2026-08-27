@@ -44,6 +44,11 @@ func validateEncryptionKey(
 	}
 	ring, err := cryptox.NewKeyRing(cfg)
 	if err != nil {
+		// 区分两类失败：格式非法是配置问题（与数据库无关），
+		// 不能被误报为「与库内探针不匹配」而把排障引向数据库。
+		if errors.Is(err, cryptox.ErrInvalidEncryptionKey) {
+			return nil, cryptox.ErrInvalidEncryptionKey
+		}
 		return nil, cryptox.ErrEncryptionKeyMismatch
 	}
 	if !probeExists {

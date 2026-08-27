@@ -79,6 +79,13 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 
 	keyRing, err := dependencies.validateEncryption(ctx, data, cfg.Encryption)
 	if err != nil {
+		if errors.Is(err, cryptox.ErrInvalidEncryptionKey) {
+			return nil, newPublicError(
+				"invalid_encryption_key",
+				"主密钥格式非法：需 64 位 hex 或 32 字节 base64（与数据库无关，请检查 REPOSENTINEL_ENCRYPTION_KEY 取值）。",
+				cryptox.ErrInvalidEncryptionKey,
+			)
+		}
 		if errors.Is(err, cryptox.ErrEncryptionKeyMismatch) {
 			return nil, newPublicError(
 				"encryption_key_mismatch",
