@@ -17,7 +17,7 @@ import { EmptyState } from "../components/empty-state";
 import { ApiError } from "../lib/api/errors";
 import { queryClient } from "../lib/query-client";
 import { RootLayout, RouteLoading } from "./root-layout";
-import { RouteErrorFallback, RouteNotFoundFallback } from "./route-fallbacks";
+import { RouteErrorFallback, RouteNotFoundFallback, RoutePendingFallback } from "./route-fallbacks";
 
 // 全部页面按路由拆分 chunk（含认证链路，其表单校验库体量不小）。
 const LoginPage = lazy(() => import("../features/auth/login-page").then((m) => ({ default: m.LoginPage })));
@@ -158,6 +158,7 @@ export const router = createRouter({
   defaultPreload: "intent",
   defaultErrorComponent: RouteErrorFallback,
   defaultNotFoundComponent: RouteNotFoundFallback,
+  defaultPendingComponent: RoutePendingFallback,
 });
 
 declare module "@tanstack/react-router" {

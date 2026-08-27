@@ -7,10 +7,18 @@ import "./styles/tokens.css";
 import "./styles/globals.css";
 
 // 页面加载即尝试注册 WebMCP 工具；不支持的环境静默跳过。
-// 持有 AbortController：页面卸载（pagehide）时 abort 注销工具，避免工具残留在
-// SPA 前进后退后的旧页面上下文（此前 controller 被丢弃，注销逻辑从未触发）。
-const webmcpController = registerWebMCPTools();
-window.addEventListener("pagehide", () => webmcpController?.abort(), { once: true });
+// 持有 AbortController：页面卸载（pagehide）时 abort 注销工具；
+// 从 bfcache 后退恢复（pageshow.persisted）时重新注册，避免工具被永久注销。
+let webmcpController = registerWebMCPTools();
+window.addEventListener("pagehide", () => {
+  webmcpController?.abort();
+  webmcpController = null;
+});
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted && !webmcpController) {
+    webmcpController = registerWebMCPTools();
+  }
+});
 
 const root = document.getElementById("root");
 if (!root) {
