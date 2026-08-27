@@ -213,6 +213,11 @@ export function DashboardPage() {
         <ApiErrorAlert error={dashboard.error} title="无法加载仪表盘" />
       ) : null}
 
+      {/* 功能开关查询失败不能静默按「全部启用」放行：与 FeatureGuard 的报错策略一致。 */}
+      {settings.isError ? (
+        <ApiErrorAlert error={settings.error} title="无法加载功能开关，功能可见性暂按全部启用展示" />
+      ) : null}
+
       {showSetup ? (
         <section className="onboarding-card setup-progress" aria-labelledby="setup-progress-title">
           <div className="onboarding-card__header">

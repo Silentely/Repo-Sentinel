@@ -373,7 +373,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
 
 export function IssuesPage() {
   return (
-    <FeatureGuard featureKey="feature.issues" featureName="Issues">
+    <FeatureGuard featureKey="feature.issues" featureName="Issues" description="自有仓与外部公开仓的 Issue 列表。默认显示未关闭，已归档仓库与已忽略项不计入。">
       <WorkItemsList
         kind="issue"
         title="Issues"
@@ -385,7 +385,7 @@ export function IssuesPage() {
 
 export function PullRequestsPage() {
   return (
-    <FeatureGuard featureKey="feature.pull_requests" featureName="Pull Requests">
+    <FeatureGuard featureKey="feature.pull_requests" featureName="Pull Requests" description="自有仓与外部公开仓的 PR 列表。默认显示未关闭，已归档仓库与已忽略项不计入。">
       <WorkItemsList
         kind="pull_request"
         title="Pull Requests"
@@ -886,7 +886,7 @@ function ActionsList() {
 
 export function ActionsPage() {
   return (
-    <FeatureGuard featureKey="feature.actions" featureName="Actions">
+    <FeatureGuard featureKey="feature.actions" featureName="Actions" description="Workflow Run 结论与恢复状态。依赖 GitHub App 的 Actions 只读权限与 workflow_run 事件；也可在仪表盘触发对账补拉。">
       <ActionsList />
     </FeatureGuard>
   );
@@ -1021,7 +1021,7 @@ function SecurityList() {
 
 export function SecurityPage() {
   return (
-    <FeatureGuard featureKey="feature.security_alerts" featureName="安全告警">
+    <FeatureGuard featureKey="feature.security_alerts" featureName="安全告警" description="Dependabot / Code Scanning / Secret Scanning 安全告警。">
       <SecurityList />
     </FeatureGuard>
   );

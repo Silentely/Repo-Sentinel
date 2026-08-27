@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CheckCircle2, CircleDashed, ExternalLink } from "lucide-react";
@@ -221,10 +221,14 @@ export function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   // AI 集成配置：表单值由查询快照回填，API Key 留空表示不更新。
+  // 与 useSettingsForm 同一守卫：仅首次到达时整体回填，保存后 invalidate 回传的
+  // 新快照不应覆盖其它区块尚未保存的编辑。
   const aiConfig = useQuery(aiConfigQueryOptions);
   const [aiForm, setAIForm] = useState<AIFormState>(() => aiFormFromConfig(undefined));
+  const aiHydratedRef = useRef(false);
   useEffect(() => {
-    if (!aiConfig.data) return;
+    if (!aiConfig.data || aiHydratedRef.current) return;
+    aiHydratedRef.current = true;
     setAIForm(aiFormFromConfig(aiConfig.data));
   }, [aiConfig.data]);
   const setAI = <K extends keyof AIFormState>(key: K, value: AIFormState[K]) => {
@@ -310,8 +314,14 @@ export function SettingsPage() {
   // ---- 仓库与基线对账（自仪表盘迁入）----
   const repoItems = repos.data?.items ?? [];
   // 排除已归档，避免归档仓继续占位；派生数据缓存避免每渲染重建。
-  const visibleRepos = repoItems.filter((r) => !r.is_archived && r.sync_status !== "archived");
-  const baselineRepos = visibleRepos.filter((r) => r.sync_status === "baseline_sync");
+  const visibleRepos = useMemo(
+    () => repoItems.filter((r) => !r.is_archived && r.sync_status !== "archived"),
+    [repoItems],
+  );
+  const baselineRepos = useMemo(
+    () => visibleRepos.filter((r) => r.sync_status === "baseline_sync"),
+    [visibleRepos],
+  );
   // 行级忙碌与对账错误：只让当前操作的行转圈，失败时在对应区块内提示。
   const [reconcileBusyId, setReconcileBusyId] = useState<string | null>(null);
   const [reconcileError, setReconcileError] = useState<string | null>(null);
