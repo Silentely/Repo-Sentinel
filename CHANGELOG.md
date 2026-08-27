@@ -29,7 +29,10 @@
 - AI 配置热更新丢失「更新速览」开关：Client.Replace 未拷贝 ReleaseSummaryEnabled，管理台保存后开关保持旧值直到进程重启
 - star 同步预加载追踪映射失败时整轮中止：此前空映射继续执行会把存量追踪误判为新仓，registerIfNewer 的 Upsert 强制写回 tracking 并清零游标（静默重置用户停用与复查状态）；中止不推进记账，下个节拍快速重试（回归测试锁定）
 - JWKS 不再携带对称密钥材料：kty=oct 的 k 参数即 HS256 签名密钥本身，公开即可自签合法 read 令牌；端点仅保留 kid/alg 供轮换识别
-- 主密钥格式非法与「与库内探针不匹配」分流：格式非法报 invalid_encryption_key（与数据库无关），不再误导为数据库密钥不匹配
+- 主密钥格式非法与「与库内探针不匹配」分流：格式非法报 invalid_encryption_key（与数据库无关），不再误导为数据库密钥不匹配；密码重置 CLI 同步分流；派生密钥未装配改独立 sentinel ErrKeyUnavailable
+- 单条 RetryDead 补 dead 状态守卫：sending 在途行不再被翻回 pending 造成同一通知投递两次
+- 对账 PR enrich 后不再复用 enrich 前旧行做 UpsertIfNewer 判定：enrich 秒级窗口内 webhook 并发写入会被陈旧快照回滚
+- Outbox 页 dead 计数查询带渠道过滤：按钮计数与批量重试实际范围口径一致
 - 更新检查 HTML 回退路径报错引用首个 302 响应的状态码，改为实际取到页面的响应
 - Star 追踪列表空态在加载中与出错时误展示「暂无追踪记录」：补三态守卫
 - 投递记录三个重试入口互不互斥：批量重试进行中可再点其他重试按钮导致并发重复排队，现统一互斥
