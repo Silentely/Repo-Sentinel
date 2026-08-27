@@ -147,6 +147,15 @@ function writeLlmsTxt() {
 
 RepoSentinel 通过 GitHub App Webhook 监控自有仓库的 Issue、PR、Actions 与安全告警，支持可靠通知（Telegram / HTTP Webhook）与值守仪表盘。默认 SQLite，可选 PostgreSQL，Docker Compose 可部署。
 
+## 运行时 Agent 发现端点（部署实例）
+
+- OpenAPI 3.1 接口规范：/openapi.json
+- 认证与令牌说明：/auth.md
+- RFC 9727 API 目录：/.well-known/api-catalog
+- Agent Skills 索引：/.well-known/agent-skills
+- MCP Streamable HTTP 网关：/mcp
+- OAuth 发现元数据：/.well-known/oauth-authorization-server
+
 ## 推荐阅读顺序
 
 1. [功能介绍](${siteUrl}/features)
@@ -162,8 +171,20 @@ ${DOC_PAGES.map((p) => `- [${p.route}](${siteUrl}${p.route === "/" ? "/" : p.rou
   fs.writeFileSync(path.join(publicDir, "llms.txt"), body);
 }
 
+// robots.txt 由脚本生成（gitignore，不再入库）：
+// Sitemap 必须是绝对地址——相对路径多数爬虫会忽略。
+function writeRobotsTxt() {
+  const body = `User-agent: *
+Allow: /
+
+Sitemap: ${siteUrl}/sitemap.xml
+`;
+  fs.writeFileSync(path.join(publicDir, "robots.txt"), body);
+}
+
 ensureDir(publicDir);
 copySources();
 writeSitemap();
 writeLlmsTxt();
-console.log("[docs-assets] prepared _sources, sitemap.xml, llms.txt");
+writeRobotsTxt();
+console.log("[docs-assets] prepared _sources, sitemap.xml, llms.txt, robots.txt");

@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -279,9 +280,18 @@ func newFakeHTTPRuntime() *fakeHTTPRuntime {
 	}
 }
 
+func (s *fakeHTTPRuntime) Addr() string { return "127.0.0.1:0" }
+
 func (s *fakeHTTPRuntime) ListenAndServe() error {
 	close(s.started)
 	<-s.stopped
+	return http.ErrServerClosed
+}
+
+func (s *fakeHTTPRuntime) Serve(ln net.Listener) error {
+	close(s.started)
+	<-s.stopped
+	_ = ln.Close()
 	return http.ErrServerClosed
 }
 

@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/http"
+	"path"
 	"strings"
 )
 
@@ -16,6 +17,10 @@ const agentDiscoveryLinkHeader = "</.well-known/api-catalog>; rel=\"api-catalog\
 	"</openapi.json>; rel=\"service-desc\"; type=\"application/openapi+json\", " +
 	"</auth.md>; rel=\"service-doc\"; type=\"text/markdown\", " +
 	"</sitemap.xml>; rel=\"describedby\"; type=\"application/xml\""
+
+// discoveryCacheControl 是全部 Agent 发现文档的统一缓存策略（5 分钟）：
+// 发现文档随部署配置变化，过长 TTL 会让配置变更迟迟不可见；此前 300/3600 两档混用无语义依据。
+const discoveryCacheControl = "public, max-age=300"
 
 // spaCanonicalPaths 是管理台 SPA 的规范路由，须与 web/src/app/router.tsx 保持一致。
 var spaCanonicalPaths = []string{
@@ -79,7 +84,7 @@ func (s *server) handleSitemapXML(w http.ResponseWriter, r *http.Request) {
 	b.WriteString("</urlset>")
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", discoveryCacheControl)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(b.String()))
 }
@@ -99,15 +104,18 @@ Sitemap: %s/sitemap.xml
 `, origin)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", discoveryCacheControl)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
 }
 
-// agentLinkHeadersMiddleware 为全部 GET/HEAD 响应附加 Agent 发现 Link 头。
+// agentLinkHeadersMiddleware 为页面类路径与 API 响应附加 Agent 发现 Link 头：
+// 带扩展名的静态资产（JS/CSS/图片）与 /metrics 不附加——SPA 一次加载几十个资产，
+// 每个响应都带约 300 字节 Link 头是无谓带宽。
 func agentLinkHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+			r.URL.Path != "/metrics" && path.Ext(r.URL.Path) == "" {
 			w.Header().Add("Link", agentDiscoveryLinkHeader)
 		}
 		next.ServeHTTP(w, r)
@@ -118,7 +126,7 @@ func agentLinkHeadersMiddleware(next http.Handler) http.Handler {
 func (s *server) handleAuthMD(w http.ResponseWriter, r *http.Request) {
 	body := s.authMDDocument(r)
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", discoveryCacheControl)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
 }
@@ -203,7 +211,7 @@ func (s *server) handleWellKnownAPICatalog(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.Header().Set("Content-Type", "application/linkset+json; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", discoveryCacheControl)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
 }
@@ -211,7 +219,7 @@ func (s *server) handleWellKnownAPICatalog(w http.ResponseWriter, r *http.Reques
 // handleWellKnownOAuthAuthorizationServer 输出 RFC 8414 授权服务器元数据。
 func (s *server) handleWellKnownOAuthAuthorizationServer(w http.ResponseWriter, r *http.Request) {
 	origin := s.siteOrigin(r)
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", discoveryCacheControl)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"issuer":                                origin,
 		"authorization_endpoint":                origin + "/oauth/authorize",
@@ -228,7 +236,7 @@ func (s *server) handleWellKnownOAuthAuthorizationServer(w http.ResponseWriter, 
 // handleWellKnownOAuthProtectedResource 输出 RFC 9728 受保护资源元数据。
 func (s *server) handleWellKnownOAuthProtectedResource(w http.ResponseWriter, r *http.Request) {
 	origin := s.siteOrigin(r)
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", discoveryCacheControl)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"resource":                 origin + "/api/v1",
 		"authorization_servers":    []string{origin},
@@ -281,7 +289,7 @@ RepoSentinel 是自托管的 GitHub 仓库值守平台。本技能说明如何�
 func (s *server) handleWellKnownAgentSkillsIndex(w http.ResponseWriter, r *http.Request) {
 	artifact := []byte(s.reposentinelAgentSkillMD(r))
 	digest := sha256.Sum256(artifact)
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", discoveryCacheControl)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
 		"skills": []any{
@@ -300,7 +308,7 @@ func (s *server) handleWellKnownAgentSkillsIndex(w http.ResponseWriter, r *http.
 func (s *server) handleAgentSkillsArtifact(w http.ResponseWriter, r *http.Request) {
 	body := s.reposentinelAgentSkillMD(r)
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", discoveryCacheControl)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
 }
@@ -312,7 +320,7 @@ func (s *server) handleWellKnownMCPCard(w http.ResponseWriter, r *http.Request) 
 	if version == "" {
 		version = "dev"
 	}
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", discoveryCacheControl)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
 		"name":    "io.reposentinel/admin",
@@ -923,6 +931,6 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 // handleOpenAPIJSON 输出当前实例的 OpenAPI 3.1 描述。
 func (s *server) handleOpenAPIJSON(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/openapi+json; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", discoveryCacheControl)
 	writeJSON(w, http.StatusOK, s.openAPISpec(r))
 }

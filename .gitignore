@@ -73,3 +73,4 @@ evolver.pid
 coding-trajectories.jsonl
 .env.evolver
 .env.evolver.local
+docs/public/robots.txt

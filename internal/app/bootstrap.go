@@ -43,7 +43,7 @@ func defaultBuildDependencies() buildDependencies {
 		openFrontend:       webassets.Files,
 		newLogger:          newLogger,
 		newHTTPServer: func(addr string, handler http.Handler) httpRuntime {
-			return &http.Server{
+			return httpServerRuntime{&http.Server{
 				Addr:              addr,
 				Handler:           handler,
 				ReadHeaderTimeout: 10 * time.Second,
@@ -52,7 +52,7 @@ func defaultBuildDependencies() buildDependencies {
 				// 慢响应留出余量；读侧仍由 ReadTimeout（30s）保护，无需同步放宽。
 				WriteTimeout: 45 * time.Second,
 				IdleTimeout:  60 * time.Second,
-			}
+			}}
 		},
 	}
 }
@@ -222,20 +222,10 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		logger:          logger,
 		cleanupInterval: defaultCleanupInterval,
 		scheduler:       scheduler,
+		httpAddr:        cfg.HTTP.Addr,
+		databaseDriver:  cfg.Database.Driver,
 	}
 	workerOwned = false
-	readiness.Set(true)
-	info := buildinfo.Current()
-	logger.Info(
-		"reposentinel ready",
-		"version", info.Version,
-		"git_sha", info.GitSHA,
-		"build_time", info.BuildTime,
-		"build_channel", info.BuildChannel,
-		"database_driver", cfg.Database.Driver,
-		"schema_version", SupportedSchemaVersion,
-		"http_addr", cfg.HTTP.Addr,
-	)
 	return built, nil
 }
 

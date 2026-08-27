@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,9 +33,16 @@ const (
 )
 
 type httpRuntime interface {
+	Addr() string
 	ListenAndServe() error
+	Serve(net.Listener) error
 	Shutdown(context.Context) error
 }
+
+// httpServerRuntime 包装 *http.Server 暴露 Addr 访问器（接口需要）。
+type httpServerRuntime struct{ *http.Server }
+
+func (r httpServerRuntime) Addr() string { return r.Server.Addr }
 
 // App 保存完成装配的运行时及其生命周期资源。
 type App struct {
@@ -48,8 +57,11 @@ type App struct {
 	workerCtx       context.Context
 	workerCancel    context.CancelFunc
 	scheduler       *syncx.Scheduler
-	closeOnce       sync.Once
-	closeErr        error
+	// 就绪日志与监听地址/驱动：Build 记录，Run 在监听成功后才输出 ready。
+	httpAddr       string
+	databaseDriver string
+	closeOnce      sync.Once
+	closeErr       error
 }
 
 // Close 幂等关闭 App 持有的资源。

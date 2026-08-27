@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
+	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/httpapi"
@@ -61,8 +63,36 @@ func (a *App) Run(ctx context.Context) error {
 	}()
 
 	serverResult := make(chan error, 1)
+	// 先显式监听再宣告就绪：此前 Build 末尾即 Set(true) + ready 日志，
+	// 端口占用时进程先报 ready 再以 http_server_failed 退出（假就绪窗口）。
+	ln, err := net.Listen("tcp", a.httpServer.Addr())
+	if err != nil {
+		if a.workerCancel != nil {
+			a.workerCancel()
+		}
+		<-workerDone
+		<-retentionDone
+		<-notifyDone
+		<-schedDone
+		_ = a.Close()
+		return newPublicError("http_server_failed", "HTTP Server 监听失败。", err)
+	}
+	if a.readiness != nil {
+		a.readiness.Set(true)
+	}
+	info := buildinfo.Current()
+	a.logger.Info(
+		"reposentinel ready",
+		"version", info.Version,
+		"git_sha", info.GitSHA,
+		"build_time", info.BuildTime,
+		"build_channel", info.BuildChannel,
+		"database_driver", a.databaseDriver,
+		"schema_version", SupportedSchemaVersion,
+		"http_addr", a.httpAddr,
+	)
 	go func() {
-		serverResult <- a.httpServer.ListenAndServe()
+		serverResult <- a.httpServer.Serve(ln)
 	}()
 
 	var runErr error
