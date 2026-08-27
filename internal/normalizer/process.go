@@ -197,7 +197,7 @@ func (p *Processor) Process(ctx context.Context, eventType, deliveryID string, p
 }
 
 func (p *Processor) ensureRepository(ctx context.Context, gh *ghRepository, installationID *string) (store.Repository, error) {
-	return NormalizeRepository(ctx, p.Store, gh, installationID)
+	return NormalizeRepository(ctx, p.Store, gh, installationID, p.Logger)
 }
 
 func (p *Processor) processInstallation(ctx context.Context, eventType string, env envelope, payload []byte) (Result, error) {

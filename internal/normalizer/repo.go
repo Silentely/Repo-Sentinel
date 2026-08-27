@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -36,7 +37,8 @@ func (g *ghRepository) GetOwnerLogin() string    { return g.Owner.Login }
 
 // NormalizeRepository 将 GitHub 仓库数据规范化为本地仓库记录并写入存储。
 // 处理 owner/name 解析、归档联动、基线状态等逻辑，供 Webhook 处理器与 HTTP handler 共用。
-func NormalizeRepository(ctx context.Context, s store.Store, gh repoSource, installationID *string) (store.Repository, error) {
+// logger 可选：归档联动写失败（GitHub 已归档但本地能力开关未收口）时 Warn 留痕。
+func NormalizeRepository(ctx context.Context, s store.Store, gh repoSource, installationID *string, logger *slog.Logger) (store.Repository, error) {
 	if gh.GetFullName() == "" {
 		return store.Repository{}, fmt.Errorf("missing repository")
 	}
@@ -85,6 +87,10 @@ func NormalizeRepository(ctx context.Context, s store.Store, gh repoSource, inst
 			archived := true
 			if uerr := s.Repositories().UpdateSettings(ctx, existing.ID, store.RepositorySettings{IsArchived: &archived}); uerr == nil {
 				in.SyncStatus = store.SyncStatusArchived
+			} else if logger != nil {
+				// 联动失败会留下「GitHub 已归档但本地能力开关未收口」的不一致，必须留痕。
+				logger.Warn("repository archive link update failed",
+					"repo", gh.GetFullName(), "error_code", "archive_link_failed", "error", uerr.Error())
 			}
 		}
 		// 本地归档标记不被单条 payload 抹掉：取消归档仅经 unarchived 事件或设置页操作。

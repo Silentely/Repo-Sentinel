@@ -28,7 +28,7 @@ func TestNormalizeRepositoryCreatesNew(t *testing.T) {
 			Login string `json:"login"`
 		}{Login: "acme"},
 	}
-	repo, err := NormalizeRepository(context.Background(), data, gh, nil)
+	repo, err := NormalizeRepository(context.Background(), data, gh, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestNormalizeRepositoryArchivedLinksSettings(t *testing.T) {
 			Login string `json:"login"`
 		}{Login: "acme"},
 	}
-	repo, err := NormalizeRepository(context.Background(), data, gh, nil)
+	repo, err := NormalizeRepository(context.Background(), data, gh, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

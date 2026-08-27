@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -447,5 +448,30 @@ func TestAggregatorReloadFromSettings(t *testing.T) {
 	}
 	if agg.Window != 120*time.Second {
 		t.Fatalf("非法值不应覆盖现有配置: %v", agg.Window)
+	}
+}
+
+// TestAggregatorReloadFromUnsetKeys 守护：notify.* 键从未设置（默认实例常态）时
+// 热加载按「保留现值」语义返回 nil，不报错误（此前 ErrNotFound 透传产生假 Warn）。
+func TestAggregatorReloadFromUnsetKeys(t *testing.T) {
+	data := openTestStore(t)
+	agg := NewAggregator(data, time.Minute, 3, time.Minute)
+	if err := agg.ReloadFrom(t.Context()); err != nil {
+		t.Fatalf("键未设置应保留现值不报错: %v", err)
+	}
+	if agg.Window != time.Minute || agg.BurstThreshold != 3 || agg.BurstWindow != time.Minute {
+		t.Fatalf("未设置键不应改动现值: window=%v threshold=%d burst=%v", agg.Window, agg.BurstThreshold, agg.BurstWindow)
+	}
+}
+
+// TestAggregatorFlushBudget 守护：flush 预算下限 30s，AI 配置超时更高时随之放宽
+// （与 webhook 直发路径同一语义，避免聚合回放被硬顶截断）。
+func TestAggregatorFlushBudget(t *testing.T) {
+	data := openTestStore(t)
+	if got := (&Aggregator{Store: data}).flushBudget(); got != 30*time.Second {
+		t.Fatalf("无 AI 时应为下限 30s，got %v", got)
+	}
+	if got := (&Aggregator{Store: data, AI: &ai.Client{Enabled: true, APIKey: "k", Timeout: 45 * time.Second}}).flushBudget(); got != 55*time.Second {
+		t.Fatalf("AI 45s 超时应放宽为 55s，got %v", got)
 	}
 }

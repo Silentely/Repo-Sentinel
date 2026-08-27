@@ -83,10 +83,15 @@ func (a *Aggregator) ReloadFrom(ctx context.Context) error {
 	return nil
 }
 
-// readPositiveIntSetting 读取整型设置；键不存在或值非法时返回 0。
+// readPositiveIntSetting 读取整型设置；键不存在或值非法时返回 0（不算错误）。
+// 仅真实 DB 错误上抛：三个键都未设置是常态（默认实例），此前把 ErrNotFound 透传导致
+// 设置页保存任意设置都打「aggregator reload failed」假 Warn。
 func readPositiveIntSetting(ctx context.Context, st store.Store, key string) (int, error) {
 	row, err := st.Settings().Get(ctx, key)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	var v float64
@@ -180,6 +185,21 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	return nil
 }
 
+// flushBudget 聚合 flush 单事件回放预算：下限 30s；AI 配置超时更高时按「超时+余量」放宽，
+// 与 webhook 直发路径同一语义（避免同一事件「直发有 AI 段落、聚合回放被 30s 硬顶截断」）。
+func (a *Aggregator) flushBudget() time.Duration {
+	const (
+		minBudget = 30 * time.Second
+		margin    = 10 * time.Second
+	)
+	if a.AI != nil {
+		if budget := a.AI.EffectiveTimeout() + margin; budget > minBudget {
+			return budget
+		}
+	}
+	return minBudget
+}
+
 func (a *Aggregator) flush(key string) {
 	a.mu.Lock()
 	b, ok := a.buckets[key]
@@ -190,7 +210,7 @@ func (a *Aggregator) flush(key string) {
 	delete(a.buckets, key)
 	a.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), a.flushBudget())
 	defer cancel()
 	if len(b.events) == 1 {
 		// 单事件回放：走实时通知评估。失败留痕，避免聚合窗口内的通知静默丢失。
