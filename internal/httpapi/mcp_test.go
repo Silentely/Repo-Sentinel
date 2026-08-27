@@ -229,3 +229,35 @@ func TestMCP会话Cookie亦可访问(t *testing.T) {
 		t.Fatalf("ping 缺少 result: %+v", payload)
 	}
 }
+
+// TestMCPInitialize协议版本与serverInfo 守护：协商版本随响应头回写、
+// serverInfo.version 在 dev 构建下回退非空。
+func TestMCPInitialize协议版本与serverInfo(t *testing.T) {
+	fixture := oauthFixture(t)
+	token := mcpAccessToken(t, fixture)
+	auth := map[string]string{"Authorization": "Bearer " + token}
+
+	resp := fixture.requestWithContentType(t, http.MethodPost, "/mcp",
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}`,
+		"application/json", "127.0.0.1:43002", nil, auth)
+	if got := resp.Header().Get("MCP-Protocol-Version"); got != "2025-03-26" {
+		t.Fatalf("协商版本应随响应头回写，got %q", got)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	result, _ := payload["result"].(map[string]any)
+	info, _ := result["serverInfo"].(map[string]any)
+	if v, _ := info["version"].(string); v == "" {
+		t.Fatalf("serverInfo.version 不应为空: %+v", info)
+	}
+
+	// 未指定协议版本：回默认版本头。
+	resp2 := fixture.requestWithContentType(t, http.MethodPost, "/mcp",
+		`{"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}`,
+		"application/json", "127.0.0.1:43003", nil, auth)
+	if got := resp2.Header().Get("MCP-Protocol-Version"); got != mcpDefaultProtocolVersion {
+		t.Fatalf("未协商时应回默认协议版本头，got %q", got)
+	}
+}

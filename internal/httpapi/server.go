@@ -200,7 +200,7 @@ func New(dependencies Dependencies) http.Handler {
 	router.Get("/oauth/authorize", s.handleOAuthAuthorize)
 	router.Post("/oauth/authorize", s.handleOAuthAuthorize)
 	router.Post("/oauth/token", s.handleOAuthToken)
-	router.Post("/mcp", s.authenticationMiddleware(http.HandlerFunc(s.handleMCP)).ServeHTTP)
+	router.Post("/mcp", s.authenticationMiddleware(s.storeGuardMiddleware(http.HandlerFunc(s.handleMCP))).ServeHTTP)
 	router.Route("/api/v1", func(api chi.Router) {
 		api.Get("/setup/status", s.handleSetupStatus)
 		api.Post("/setup", s.handleSetup)

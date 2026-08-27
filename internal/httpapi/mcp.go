@@ -271,7 +271,7 @@ func (s *server) dispatchMCP(r *http.Request, request mcpJSONRPCRequest) map[str
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo": map[string]any{
 				"name":    "reposentinel",
-				"version": s.dependencies.BuildInfo.Version,
+				"version": mcpServerVersion(s.dependencies.BuildInfo.Version),
 			},
 		})
 	case "ping":
@@ -329,10 +329,26 @@ func (s *server) handleMCPToolCall(ctx context.Context, request mcpJSONRPCReques
 	return mcpJSONError(request.ID, mcpInvalidParams, fmt.Sprintf("Unknown tool: %s", name))
 }
 
-// writeMCPJSON 以 application/json 输出 MCP 响应并携带协议版本头。
+// mcpServerVersion 返回对外展示的版本：dev 构建的 BuildInfo.Version 为空时回退 "dev"，
+// 与 MCP Server Card 的取值一致。
+func mcpServerVersion(version string) string {
+	if version == "" {
+		return "dev"
+	}
+	return version
+}
+
+// writeMCPJSON 以 application/json 输出 MCP 响应并携带协议版本头：
+// initialize 协商出的版本随响应回写，其余方法回默认版本。
 func writeMCPJSON(w http.ResponseWriter, body map[string]any) {
+	version := mcpDefaultProtocolVersion
+	if result, ok := body["result"].(map[string]any); ok {
+		if v, ok := result["protocolVersion"].(string); ok && v != "" {
+			version = v
+		}
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("MCP-Protocol-Version", mcpDefaultProtocolVersion)
+	w.Header().Set("MCP-Protocol-Version", version)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(body)
