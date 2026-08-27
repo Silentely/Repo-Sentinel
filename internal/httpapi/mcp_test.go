@@ -143,6 +143,29 @@ func TestMCPToolsCall返回真实数据(t *testing.T) {
 	}
 }
 
+// TestMCPListRepositories类型过滤 守护 type 枚举值与存储取值一致：
+// github_installation / external_public 是真实存储值（此前 schema 写的 github/external 永远查空）。
+func TestMCPListRepositories类型过滤(t *testing.T) {
+	fixture := oauthFixture(t)
+	token := mcpAccessToken(t, fixture)
+	if _, err := fixture.store.Repositories().Upsert(t.Context(), store.Repository{
+		ID: "repo-mcp-t1", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "acme", Name: "app", FullName: "acme/app",
+	}); err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+	_, payload := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"list_repositories","arguments":{"type":"github_installation"}}}`)
+	text := mcpResultText(t, payload)
+	if !strings.Contains(text, "acme/app") {
+		t.Fatalf("type=github_installation 应命中安装仓: %s", text)
+	}
+	_, payload = mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"list_repositories","arguments":{"type":"external_public"}}}`)
+	text = mcpResultText(t, payload)
+	if strings.Contains(text, "acme/app") {
+		t.Fatalf("type=external_public 不应命中安装仓: %s", text)
+	}
+}
+
 func mcpResultText(t *testing.T, payload map[string]any) string {
 	t.Helper()
 	result, ok := payload["result"].(map[string]any)

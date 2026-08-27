@@ -324,7 +324,7 @@ func TestOpenAPIJSON结构完整(t *testing.T) {
 		t.Fatalf("openapi=%v", spec["openapi"])
 	}
 	paths, ok := spec["paths"].(map[string]any)
-	if !ok || paths["/api/v1/dashboard"] == nil || paths["/oauth/token"] == nil || paths["/health/ready"] == nil {
+	if !ok || paths["/api/v1/dashboard"] == nil || paths["/oauth/token"] == nil || paths["/health/ready"] == nil || paths["/api/v1/system/build-info"] == nil {
 		t.Fatalf("paths 缺少关键端点: %v", paths)
 	}
 	components, ok := spec["components"].(map[string]any)

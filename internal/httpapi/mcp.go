@@ -57,11 +57,11 @@ func (s *server) mcpTools() []mcpTool {
 		},
 		{
 			name:        "list_repositories",
-			description: "列出仓库，可按 type=github|external 过滤，支持分页。",
+			description: "列出仓库，可按 type=github_installation|external_public 过滤，支持分页。",
 			inputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"type":     map[string]any{"type": "string", "enum": []string{"github", "external"}},
+					"type":     map[string]any{"type": "string", "enum": []string{"github_installation", "external_public"}},
 					"page":     map[string]any{"type": "integer", "minimum": 1},
 					"per_page": map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
 				},
@@ -126,11 +126,12 @@ func (s *server) mcpTools() []mcpTool {
 		},
 		{
 			name:        "list_security_alerts",
-			description: "列出安全告警，可按 state=open|closed、severity 过滤，支持分页。",
+			description: "列出安全告警，可按 state（open/fixed/dismissed/auto_dismissed/withdrawn 等）、severity 过滤，支持分页。",
 			inputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"state":    map[string]any{"type": "string", "enum": []string{"open", "closed"}},
+					// state 自由透传（与 REST 一致）：枚举会挡住 withdrawn 等新状态。
+					"state":    map[string]any{"type": "string"},
 					"severity": map[string]any{"type": "string"},
 					"page":     map[string]any{"type": "integer", "minimum": 1},
 					"per_page": map[string]any{"type": "integer", "minimum": 1, "maximum": 100},

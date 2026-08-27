@@ -259,12 +259,16 @@ RepoSentinel 是自托管的 GitHub 仓库值守平台。本技能说明如何�
 ## 查询端点（均只读）
 
 - GET /api/v1/dashboard — 概览统计（开放 Issue/PR、失败 Actions、开放安全告警等）。
-- GET /api/v1/repositories?type=installation|external — 仓库列表（installation=自有安装仓，external=外部公开仓）。
+- GET /api/v1/repositories?type=github_installation|external_public — 仓库列表（github_installation=自有安装仓，external_public=外部公开仓）。
 - GET /api/v1/work-items?kind=issue|pull_request&state=open|closed&repository_id=... — Issue/PR 列表。
 - GET /api/v1/workflow-runs?conclusion=failure&repository_id=... — Actions 运行列表。
-- GET /api/v1/security-alerts?state=open&severity=... — 安全告警列表。
+- GET /api/v1/security-alerts?state=open&severity=... — 安全告警列表（state 可取 open/fixed/dismissed/auto_dismissed/withdrawn 等）。
 - GET /api/v1/events — 最近事件流。
 - GET /api/v1/notifications/outbox — 通知发件箱（投递状态）。
+- GET /api/v1/stats/star-trend?days=7|30|90|0 — Star 增长趋势（0 为全部）。
+- GET /api/v1/starred-releases/trackers?state=tracking|inactive|disabled|unavailable — Star Release 追踪列表。
+- GET /api/v1/system/version — 版本与 GitHub 配置状态（需令牌）。
+- GET /api/v1/system/build-info — 极简构建信息（仅版本号，公开无需令牌）。
 
 ## 分页
 
@@ -599,6 +603,17 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				"operationId": "systemVersion",
 				"security":    []any{authed},
 				"responses":   map[string]any{"200": jsonResponse("版本信息", map[string]any{"type": "object"})},
+			},
+		},
+		"/api/v1/system/build-info": map[string]any{
+			"get": map[string]any{
+				"summary":     "公开极简构建信息（仅版本号）",
+				"operationId": "systemBuildInfo",
+				// 公开端点：登录页页脚展示真实构建版本，不要求认证。
+				"responses": map[string]any{"200": jsonResponse("构建信息", map[string]any{
+					"type":       "object",
+					"properties": map[string]any{"version": map[string]any{"type": "string"}},
+				})},
 			},
 		},
 		"/api/v1/dashboard": map[string]any{
