@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
 
 func testKeyRing(t *testing.T) *cryptox.KeyRing {
@@ -219,5 +221,47 @@ func TestRuntimeRetriesSource(t *testing.T) {
 	env0 := RuntimeFromEnv(config.AIConfig{Retries: 0})
 	if env0.Snapshot().RetriesSource != "env" {
 		t.Fatalf("env 显式 0 应标记 env，实际 %s", env0.Snapshot().RetriesSource)
+	}
+}
+
+// TestLoadStoredConfig损坏即报错 守护：库内 AI 配置 JSON 损坏时返回错误，
+// 而非静默返回零值（否则「已配置的 AI 突然全没了」且无任何日志）。
+func TestLoadStoredConfig损坏即报错(t *testing.T) {
+	data := openRuntimeStore(t)
+	// 注意：存储层拒绝语法非法的 JSON，损坏语义用「类型不匹配」表达（数组无法解码为配置结构）。
+	if _, err := data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: RuntimeSettingKey,
+		ValueJSON: json.RawMessage(`["corrupt"]`), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadStoredConfig(t.Context(), data); err == nil {
+		t.Fatal("损坏的 AI 配置应报错")
+	}
+}
+
+// TestMergeFromStore解密失败即报错 守护：API Key 信封无法解密时返回错误，
+// 而非静默降级为「未配置」（AI 全部不工作但配置页显示已配置）。
+func TestMergeFromStore解密失败即报错(t *testing.T) {
+	data := openRuntimeStore(t)
+	// 用另一把密钥加密的信封：当前 keyRing 解不开。
+	otherKey := make([]byte, 32)
+	otherKey[0] = 0xff
+	otherRing, err := cryptox.NewKeyRing(config.EncryptionConfig{
+		CurrentKey: config.NewSecret(base64.RawStdEncoding.EncodeToString(otherKey)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := EncryptAPIKey(t.Context(), &otherRing, "sk-other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveStoredConfig(t.Context(), data, StoredConfig{APIKeyEnvelope: env}); err != nil {
+		t.Fatal(err)
+	}
+	rt := RuntimeFromEnv(config.AIConfig{})
+	if err := MergeFromStore(t.Context(), data, testKeyRing(t), rt); err == nil {
+		t.Fatal("信封无法用当前密钥解密时应报错")
 	}
 }

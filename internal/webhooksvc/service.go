@@ -66,12 +66,15 @@ func processBudget(aiClient *ai.Client, base time.Duration) time.Duration {
 
 // markFailed 统一处理失败分支：标记投递失败（带语义化错误码）、记录失败指标回调。
 // 标记失败会让行残留 accepted/中间态，影响状态机与重放判断，必须留痕。
-func (s *Service) markFailed(rowID, errorCode string) {
+// deliveryID/eventType 与 logError 对齐：排障按 GitHub delivery_id 检索时不致漏掉该条 Warn。
+func (s *Service) markFailed(rowID, deliveryID, eventType, errorCode string) {
 	markCtx, cancel := s.markContext()
 	defer cancel()
 	if err := s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, errorCode); err != nil && s.Logger != nil {
 		s.Logger.Warn("webhook mark failed error",
 			"delivery_row_id", rowID,
+			"delivery_id", deliveryID,
+			"event_type", eventType,
 			"error_code", "mark_failed",
 			"error", err.Error())
 	}
@@ -134,7 +137,7 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	proc := &normalizer.Processor{Store: s.Store, Logger: s.Logger}
 	res, err := proc.Process(processCtx, eventType, deliveryID, body)
 	if err != nil {
-		s.markFailed(rowID, "normalize_failed")
+		s.markFailed(rowID, deliveryID, eventType, "normalize_failed")
 		// 规范化失败时仓库信息尚未解析出来，repo 留空由调用方从日志链路定位。
 		s.logError("webhook normalize failed", deliveryID, eventType, "normalize_failed", "", err.Error(), time.Since(startedAt).Milliseconds())
 		return
@@ -151,7 +154,7 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 		}
 		if err != nil {
 			// 通知已丢：状态必须可查，标记为失败而不是 processed。
-			s.markFailed(rowID, "rule_failed")
+			s.markFailed(rowID, deliveryID, eventType, "rule_failed")
 			s.logError("rule evaluate failed", deliveryID, eventType, "rule_failed", repoName, err.Error(), time.Since(startedAt).Milliseconds())
 			return
 		}

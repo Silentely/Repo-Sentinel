@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -171,6 +172,8 @@ func (r *RuntimeConfig) Client() *Client {
 }
 
 // LoadStoredConfig 读取数据库中的 AI 配置；不存在时返回零值。
+// 库内值损坏（手改库、历史 bug 写入）时报错而非静默返回零值——
+// 否则「管理台配的 AI 突然全没了」且无任何日志可查。
 func LoadStoredConfig(ctx context.Context, data store.Store) (StoredConfig, error) {
 	var stored StoredConfig
 	if data == nil {
@@ -183,7 +186,9 @@ func LoadStoredConfig(ctx context.Context, data store.Store) (StoredConfig, erro
 		}
 		return stored, err
 	}
-	_ = json.Unmarshal(setting.ValueJSON, &stored)
+	if err := json.Unmarshal(setting.ValueJSON, &stored); err != nil {
+		return StoredConfig{}, fmt.Errorf("parse ai runtime config: %w", err)
+	}
 	return stored, nil
 }
 
@@ -264,7 +269,13 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 		snap.RetriesSource = "database"
 	}
 	if strings.TrimSpace(snap.APIKey) == "" && strings.TrimSpace(stored.APIKeyEnvelope) != "" && keyRing != nil {
-		if plain, err := DecryptAPIKey(ctx, keyRing, stored.APIKeyEnvelope); err == nil && plain != "" {
+		plain, err := DecryptAPIKey(ctx, keyRing, stored.APIKeyEnvelope)
+		if err != nil {
+			// 主密钥探针已验证通过后的解密失败 = 信封损坏：报错而非静默降级为「未配置」
+			//（否则 AI 全部不工作但配置页显示已配置，无从排查）。
+			return fmt.Errorf("decrypt ai api key: %w", err)
+		}
+		if plain != "" {
 			snap.APIKey = plain
 			snap.APIKeySource = "database"
 		}
