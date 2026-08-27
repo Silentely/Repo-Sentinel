@@ -34,6 +34,8 @@ type RuntimeConfig struct {
 }
 
 // Snapshot 返回当前只读副本，供 HTTP 处理使用。
+// 注意：副本不含 Client 指针（nil）——App 身份经 ApplyToClient 同步到 AppClient，
+// 需要客户端时从持有方获取，勿从快照取（现有调用点依赖 StatusFlags/ApplyToClient 恰好绕开）。
 func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 	if r == nil {
 		return RuntimeConfig{}

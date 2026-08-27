@@ -41,6 +41,16 @@ const (
 // 阈值保守（正常总结远高于此），主要拦截「OK」「无事件」类空泛输出。
 const minSummaryRunes = 12
 
+const (
+	// dailyEventLimit 日报事件量上限；weeklyMonthlyEventLimit 周/月报事件量上限。
+	// 与 ai 包 maxEventLines（200，摘要输入行数）存在隐含联动：拉取量大于输入量时
+	// 超出部分仅进模板预览不进 AI 摘要，调整时同步评估。
+	dailyEventLimit         = 500
+	weeklyMonthlyEventLimit = 1000
+	// maxPreviewEvents 正文「最近活动」预览条数。
+	maxPreviewEvents = 5
+)
+
 // Generator 定期报告生成器：每日摘要 / 每周报告 / 每月报告。
 type Generator struct {
 	Store store.Store
@@ -63,7 +73,7 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 	}
 
 	since := now.Add(-24 * time.Hour)
-	events, err := g.filteredEvents(ctx, since, 500)
+	events, err := g.filteredEvents(ctx, since, dailyEventLimit)
 	if err != nil {
 		return err
 	}
@@ -100,7 +110,7 @@ func (g *Generator) RunWeekly(ctx context.Context, now time.Time) error {
 		return nil
 	}
 
-	events, err := g.filteredEvents(ctx, periodStart.UTC(), 1000)
+	events, err := g.filteredEvents(ctx, periodStart.UTC(), weeklyMonthlyEventLimit)
 	if err != nil {
 		return err
 	}
@@ -135,7 +145,7 @@ func (g *Generator) RunMonthly(ctx context.Context, now time.Time) error {
 		return nil
 	}
 
-	events, err := g.filteredEvents(ctx, now.AddDate(0, 0, -30), 1000)
+	events, err := g.filteredEvents(ctx, now.AddDate(0, 0, -30), weeklyMonthlyEventLimit)
 	if err != nil {
 		return err
 	}
@@ -368,7 +378,7 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 	}
 
 	// 最近 5 条事件预览（状态中文一眼可读，多仓用户靠仓库名区分归属）
-	maxPreview := 5
+	maxPreview := maxPreviewEvents
 	b.WriteString("────────────────\n")
 	b.WriteString("最近活动：\n")
 	for i, ev := range events {

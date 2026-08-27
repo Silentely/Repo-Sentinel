@@ -266,3 +266,27 @@ func requireValidationError(t *testing.T, err error) *ValidationError {
 	}
 	return validationErr
 }
+
+// SQLite 强制单连接：显式配置更大的连接池必须在启动前被拒绝，而非静默忽略。
+func TestSqlite连接池配置被拒绝(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.MaxOpenConns = 10
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("sqlite + max_open_conns>1 应被拒绝")
+	} else if !strings.Contains(err.Error(), "max_open_conns") {
+		t.Fatalf("错误应指向 max_open_conns: %v", err)
+	}
+	cfg.Database.MaxOpenConns = 1
+	cfg.Database.MaxIdleConns = 2
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("sqlite + max_idle_conns>1 应被拒绝")
+	} else if !strings.Contains(err.Error(), "max_idle_conns") {
+		t.Fatalf("错误应指向 max_idle_conns: %v", err)
+	}
+	// 0（未设置）与 1 应通过。
+	cfg.Database.MaxIdleConns = 1
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("sqlite 默认连接池配置应通过: %v", err)
+	}
+}
