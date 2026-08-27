@@ -22,6 +22,16 @@
 | `status` | `pending` / `sending` / `sent` / `dead` | 通知投递状态（重试中的条目仍为 `pending`，由 `attempt_count` 体现） |
 | `channel_type` | 渠道类型（如 `telegram`） | 服务端解析为渠道 ID 集合后下推 SQL；无匹配渠道时返回空页且分页参数已归一化 |
 
+## POST /api/v1/notifications/outbox/retry-dead
+
+一键重新排队全部失败投递，后端单次 UPDATE 完成（与逐条 `POST /notifications/outbox/{id}/retry` 同一字段语义：转 `pending`、立即到期、清空错误码与锁）。
+
+| 参数 | 取值 | 说明 |
+| --- | --- | --- |
+| `channel_type` | 渠道类型（如 `telegram`），可选 | 仅重新排队该渠道的 dead 投递；缺省重试全部渠道 |
+
+响应 `{ "status": "queued", "retried": <重新排队条数> }`。需管理员 Session 与 CSRF。
+
 ## GET /api/v1/repositories
 
 | 参数 | 取值 | 说明 |
