@@ -20,7 +20,7 @@ COPY migrations/ ./migrations/
 COPY web/*.go ./web/
 COPY --from=frontend /src/web/dist ./web/dist
 # 默认版本与根目录 VERSION 保持一致（CI 经 build-arg 覆盖）；本地 docker build 不应产出错误版本号。
-ARG VERSION=0.3.8
+ARG VERSION=0.4.0
 ARG GIT_SHA=unknown
 ARG GIT_BRANCH=unknown
 ARG BUILD_TIME=unknown
