@@ -316,10 +316,8 @@ func (s *server) handleAgentSkillsArtifact(w http.ResponseWriter, r *http.Reques
 // handleWellKnownMCPCard 输出 MCP Server Card（SEP-1649 / experimental-ext-server-card）。
 func (s *server) handleWellKnownMCPCard(w http.ResponseWriter, r *http.Request) {
 	origin := s.siteOrigin(r)
-	version := s.dependencies.BuildInfo.Version
-	if version == "" {
-		version = "dev"
-	}
+	// dev 构建版本回退与 MCP initialize 同一来源。
+	version := mcpServerVersion(s.dependencies.BuildInfo.Version)
 	w.Header().Set("Cache-Control", discoveryCacheControl)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",

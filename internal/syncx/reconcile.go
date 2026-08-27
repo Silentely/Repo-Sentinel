@@ -267,6 +267,9 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 				if stale && enrichBudget > 0 {
 					enrichBudget--
 					r.enrichPullRequest(ctx, token, repo, it.Number, &item)
+					// enrich 耗时秒级：已查旧行的新鲜度判定不能再复用（webhook 并发写入会被回滚），
+					// 传 nil 让 UpsertIfNewer 写入前自查。
+					knownExisting = nil
 				}
 			}
 

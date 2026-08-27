@@ -275,6 +275,18 @@ func (s *server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 	writeListResponse(w, items, page)
 }
 
+// resolveChannelIDsByType 把 channel_type 过滤参数解析为渠道 ID 集合（列表端点与批量重试共用）。
+// 返回空切片表示无任何匹配（调用方按「零结果」处理，不能当「不过滤」）。
+func resolveChannelIDsByType(channels []store.NotificationChannel, channelType string) []string {
+	ids := make([]string, 0, len(channels))
+	for _, ch := range channels {
+		if ch.ChannelType == channelType {
+			ids = append(ids, ch.ID)
+		}
+	}
+	return ids
+}
+
 func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
 	f.Status = r.URL.Query().Get("status")
@@ -287,12 +299,7 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if channelTypeFilter != "" {
-		ids := make([]string, 0, len(channels))
-		for _, ch := range channels {
-			if ch.ChannelType == channelTypeFilter {
-				ids = append(ids, ch.ID)
-			}
-		}
+		ids := resolveChannelIDsByType(channels, channelTypeFilter)
 		if len(ids) == 0 {
 			// 早退分支同样归一化分页参数，保持与其他列表端点响应一致。
 			normalized := store.NormalizeListFilter(f)

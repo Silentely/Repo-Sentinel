@@ -1633,13 +1633,23 @@ func (s *outboxStore) CountByStatus(ctx context.Context, status string) (int, er
 
 func (s *outboxStore) RetryDead(ctx context.Context, id string, next time.Time) error {
 	now := time.Now().UTC()
-	return mapStoreError(s.client.NotificationOutbox.UpdateOneID(id).
+	// 状态守卫：仅 dead 可重试。无守卫时把 worker 正在投递（sending、锁未过期）的行
+	// 清锁翻回 pending，下个 tick 会被重复领取造成同一通知投递两次。
+	n, err := s.client.NotificationOutbox.Update().
+		Where(notificationoutbox.IDEQ(id), notificationoutbox.StatusEQ(OutboxDead)).
 		SetStatus(OutboxPending).
 		SetNextAttemptAt(next.UTC()).
 		SetLastErrorCode("").
 		ClearLockedUntil().
 		SetUpdatedAt(now).
-		Exec(ctx))
+		Save(ctx)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // RetryAllDead 批量重新排队：与 RetryDead 同一字段语义（pending + 立即到期 + 清错误码与锁）。

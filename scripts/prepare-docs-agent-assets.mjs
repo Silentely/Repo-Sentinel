@@ -15,6 +15,10 @@ const docsDir = path.join(root, "docs");
 const publicDir = path.join(docsDir, "public");
 const sourcesDir = path.join(publicDir, "_sources");
 const siteUrl = process.env.VITEPRESS_SITE_URL || "https://example.com";
+if (!process.env.VITEPRESS_SITE_URL) {
+  // sitemap.xml / robots.txt 将携带占位域名：部署流水线必须注入 VITEPRESS_SITE_URL。
+  console.warn("[docs-assets] VITEPRESS_SITE_URL 未设置，sitemap/robots 将使用 https://example.com 占位域名");
+}
 
 const DOC_PAGES = [
   { route: "/", file: "index.md", priority: "1.0", changefreq: "weekly" },

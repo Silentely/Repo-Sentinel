@@ -104,6 +104,11 @@ func (s *Service) slowThreshold() time.Duration {
 func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	ctx := s.Background
 	if ctx == nil {
+		// 误装配（Background 未注入）：行将永久残留 accepted，必须留痕而非静默返回。
+		if s.Logger != nil {
+			s.Logger.Warn("webhook process skipped: background context missing",
+				"delivery_id", deliveryID, "event_type", eventType, "error_code", "background_missing")
+		}
 		return
 	}
 	// 单条处理带超时预算：Background 为应用生命周期 context，无 Deadline；

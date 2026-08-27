@@ -267,8 +267,12 @@ func New(dependencies Dependencies) http.Handler {
 	spa := newSPAHandler(dependencies.Frontend, notFound)
 	router.NotFound(s.markdownNegotiationMiddleware(spa).ServeHTTP)
 	// 路径存在但方法不符：返回 405 与语义化错误码（此前与 404 混为一体，MCP/OAuth
-	// 客户端按方法探测时被误导）。
+	// 客户端按方法探测时被误导）。已知 POST-only 端点补 Allow 提示（RFC 9110 §15.5.6）。
 	router.MethodNotAllowed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mcp", "/oauth/token", "/webhooks/github":
+			w.Header().Set("Allow", http.MethodPost)
+		}
 		s.writeAPIError(w, r, http.StatusMethodNotAllowed, errorCodeMethodNotAllowed, nil)
 	}).ServeHTTP)
 	return router

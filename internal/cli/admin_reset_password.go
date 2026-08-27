@@ -35,7 +35,9 @@ func (r Runner) runAdminResetPassword(ctx context.Context, args []string) error 
 		return err
 	}
 	// key=value 与 doctor/version/backup 输出风格一致，脚本化消费有落点。
-	fmt.Fprintln(r.stdout, "reset=ok sessions_revoked=true")
+	if _, err := fmt.Fprintln(r.stdout, "reset=ok sessions_revoked=true"); err != nil {
+		return err
+	}
 	_, err = fmt.Fprintln(r.stdout, "note=管理员密码已重置，所有旧 Session 已撤销。")
 	return err
 }

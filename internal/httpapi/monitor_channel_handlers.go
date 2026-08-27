@@ -156,11 +156,7 @@ func (s *server) handleRetryAllOutboxDead(w http.ResponseWriter, r *http.Request
 			s.writeMappedError(w, r, err)
 			return
 		}
-		for _, ch := range channels {
-			if ch.ChannelType == channelType {
-				channelIDs = append(channelIDs, ch.ID)
-			}
-		}
+		channelIDs = resolveChannelIDsByType(channels, channelType)
 		if len(channelIDs) == 0 {
 			writeJSON(w, http.StatusOK, map[string]any{"status": "queued", "retried": 0})
 			return

@@ -6,9 +6,37 @@
 
 ### Added
 
+- 新增 `POST /api/v1/notifications/outbox/retry-dead`：一键重新排队全部失败投递（可选 channel_type 过滤），后端单次 UPDATE 完成，与逐条重试同一字段语义；前端「重试全部失败」从跨页收集+逐条串行 POST 改为单调用
+
 ### Changed
 
 - Release 更新速览提示词放宽：要点数量 2-5 → 3-8 条（内容较多时取上限），并明确升级注意事项不得省略；配合输出 token 上限调大，速览可覆盖更多内容
+- webhook 状态标记预算从「标记时刻」起算：超过 5s 的慢处理（如 AI 分诊）不再必然标记失败导致行残留 accepted 被重放、重复投递
+- watch/star 无时间戳载荷的事件指纹以 deliveryID 为幂等键：accepted 行重放同一载荷不再产生重复事件
+- star 计数快照写失败降级为 Warn 留痕：辅助指标失败不再阻断 star 事件落库
+- Outbox 领取从逐行 UPDATE 改批量单条 UPDATE（积压时 51 次 SQL/tick → 2 次）；对账 PR 的 enrich 已查行透传 UpsertIfNewer 复用，同行不再二次 SELECT
+- Agent 发现目录同步：MCP list_repositories type 枚举改真实存储值（github_installation/external_public）、security alerts state 放开自由透传、OpenAPI 补 /api/v1/system/build-info、SKILL.md 修正 type 取值并补 Star 趋势/Star Release 追踪/版本/构建信息端点
+- MCP 网关一致性：/mcp 补 Store 统一守卫（未装配 503 而非 panic）、initialize 的 serverInfo.version dev 回退、MCP-Protocol-Version 响应头随协商结果回写
+- 全局 MethodNotAllowed 返回 405 method_not_allowed（路径存在但方法不符不再返回 404）；Markdown 内容协商收紧到 SPA 规范路径（不存在的路径不再 200 软着陆）；OAuth 令牌端点限流错误码改 RFC 6749 注册的 temporarily_unavailable
+- Agent 发现 Link 头不再附加到带扩展名的静态资产与 /metrics；发现文档缓存 TTL 统一为一档
+- 就绪宣告移到 HTTP 监听成功之后（消除端口占用时「先报 ready 再退出」的假就绪窗口）
+- CLI 输出：healthcheck 失败携带探针 URL 与底层原因、backup 输出 size_bytes/duration_ms、doctor 错误单行化、admin reset-password 输出 key=value
+- 聚合热加载不再把「键未设置」当错误（设置页保存任意设置不再打假 Warn）；聚合 flush 回放预算随 AI 配置超时放宽（与 webhook 直发路径同一语义）；webhook 归档联动写失败补 Warn 留痕
+- 文档站 robots.txt 改由构建脚本生成（Sitemap 绝对地址）；llms.txt 补运行时 Agent 发现端点小节
+
+### Fixed
+
+- AI 配置热更新丢失「更新速览」开关：Client.Replace 未拷贝 ReleaseSummaryEnabled，管理台保存后开关保持旧值直到进程重启
+- star 同步预加载追踪映射失败时整轮中止：此前空映射继续执行会把存量追踪误判为新仓，registerIfNewer 的 Upsert 强制写回 tracking 并清零游标（静默重置用户停用与复查状态）；中止不推进记账，下个节拍快速重试（回归测试锁定）
+- JWKS 不再携带对称密钥材料：kty=oct 的 k 参数即 HS256 签名密钥本身，公开即可自签合法 read 令牌；端点仅保留 kid/alg 供轮换识别
+- 主密钥格式非法与「与库内探针不匹配」分流：格式非法报 invalid_encryption_key（与数据库无关），不再误导为数据库密钥不匹配
+- 更新检查 HTML 回退路径报错引用首个 302 响应的状态码，改为实际取到页面的响应
+- Star 追踪列表空态在加载中与出错时误展示「暂无追踪记录」：补三态守卫
+- 投递记录三个重试入口互不互斥：批量重试进行中可再点其他重试按钮导致并发重复排队，现统一互斥
+- GitHub 页/通知页成功提示常驻不消退：接入自动消退（与设置页同策略）
+- NumberField 聚焦时鼠标滚轮静默改值：禁用原生 wheel 步进
+- GitHub App 客户端并发首次调用无锁写共享字段（数据竞争隐患），改只读回退
+- 登录页页脚版本号恒为「版本 dev」：新增公开 /api/v1/system/build-info 端点，展示真实构建版本
 - Star 趋势查询性能：日聚合改游标线性推进（O(快照数+天数×仓数)，原先逐日全扫）；days>0 时快照查询加日期下界不再载入全部历史，窗口起点的补值种值经 GroupBy 最大日期 + 唯一索引精确取回，曲线起点语义不变
 - 高频低变化查询接入短 TTL 进程内缓存：通知渠道 List（规则引擎/聚合器/outbox 投递热路径，写路径即时失效）、活跃/归档仓 ID 集合（各列表/计数与仪表盘共享一次扫描，repositoryStore 写路径即时失效）、仪表盘聚合统计（3s TTL，约 10 条 SQL/请求收敛为缓存命中）
 - 同步与投递热路径去重复：star 同步一轮内 installation 令牌与追踪计数各只查一次（原每个新仓各查一次），Outbox Worker 同批投递复用同渠道密钥明文；前端 Outbox 查询改条件轮询（有待投递/投递中条目 15s，空闲降 60s）

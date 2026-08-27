@@ -227,7 +227,8 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 	trackerMap := make(map[string]store.StarredRepoTracker)
 	if candidates, err := p.Store.StarredTrackers().ListAll(ctx, trackerListHardLimit); err != nil {
 		p.warn("star sync tracker map load failed, abort round", "error_code", "tracker_map_load_failed", "error", err.Error())
-		return nil
+		// 与 ListUserStarred 失败同类：返回 err（调度器与手动同步可见本轮失败），不推进记账。
+		return err
 	} else {
 		for _, tk := range candidates {
 			trackerMap[tk.FullName] = tk

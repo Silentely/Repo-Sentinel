@@ -732,8 +732,9 @@ func TestStarredSyncStars_映射加载失败中止(t *testing.T) {
 		t.Fatal(err)
 	}
 	env.poller.Store = failTrackersStore{Store: env.data}
-	if err := env.poller.SyncStarsNow(ctx); err != nil {
-		t.Fatal(err)
+	// 中止以错误形式上报（调度器与手动同步可见本轮失败），与 ListUserStarred 失败同类。
+	if err := env.poller.SyncStarsNow(ctx); err == nil {
+		t.Fatal("映射加载失败应返回错误")
 	}
 	tk, err := env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
 	if err != nil {

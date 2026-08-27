@@ -24,6 +24,10 @@ const (
 // 定义为包级 sentinel：app 层据此区分「格式非法」与「与库内探针不匹配」两种启动失败。
 var ErrInvalidEncryptionKey = errors.New("invalid_encryption_key")
 
+// ErrKeyUnavailable 密钥环未装配（未配置主密钥），派生类次级密钥不可用。
+// 与 ErrInvalidEncryptionKey（格式非法）区分：未配置是部署状态问题，不是格式问题。
+var ErrKeyUnavailable = errors.New("encryption_key_unavailable")
+
 // KeyRing 保存当前与上一把数据加密密钥对应的 AEAD 实例。
 // 字段保持私有，并通过格式化方法阻止密钥材料进入日志或诊断文本。
 type KeyRing struct {
@@ -112,7 +116,7 @@ func newKeyMaterial(key []byte) (keyMaterial, error) {
 // 派生密钥仅用于 OAuth 访问令牌签名等次级用途，绝不外泄主密钥材料。
 func (k KeyRing) DeriveHMACKey(aad []byte) ([]byte, error) {
 	if !k.current.available {
-		return nil, ErrInvalidEncryptionKey
+		return nil, ErrKeyUnavailable
 	}
 	var nonce [12]byte
 	const plaintext = "reposentinel:derive:hmac:v1"

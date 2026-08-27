@@ -321,6 +321,21 @@ func TestMarkdown协商不存在路径返回404(t *testing.T) {
 	}
 }
 
+// TestMarkdown协商全部规范路径可用 守护：spaCanonicalPaths 表内路径带 markdown 协商
+// 均返回 200（该表同时服务 sitemap 与 markdown 协商，表内条目必须是有效页面）。
+func TestMarkdown协商全部规范路径可用(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{publicBaseURL: "https://reposentinel.example"})
+	for _, p := range spaCanonicalPaths {
+		response := fixture.request(
+			t, http.MethodGet, p, "", "127.0.0.1:41016", nil,
+			map[string]string{"Accept": "text/markdown"},
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("规范路径 %s markdown 协商应 200，got %d", p, response.Code)
+		}
+	}
+}
+
 // Test方法不匹配返回405 守护：路径存在但方法不符时返回 405 与语义化错误码（此前与 404 混为一体）。
 func Test方法不匹配返回405(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{publicBaseURL: "https://reposentinel.example"})

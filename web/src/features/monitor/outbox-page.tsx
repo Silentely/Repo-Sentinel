@@ -115,10 +115,13 @@ export function OutboxPage() {
 
   // 全局 dead 总数：用于「重试全部失败」按钮的显示条件（无失败时隐藏）。
   // dead 筛选页本身已是 dead 列表，直接复用当前列表 total，避免多余请求。
+  // 计数与批量重试同一渠道口径：按钮上的 N 必须与 retryAllDeadOutbox 实际重试范围一致。
   const deadTotalQuery = useQuery({
-    queryKey: ["outbox", "dead-total"],
+    queryKey: ["outbox", "dead-total", channelFilter],
     queryFn: async (): Promise<number> => {
-      const data = await apiRequest<Page<OutboxItem>>("/api/v1/notifications/outbox?status=dead&per_page=1");
+      const params = new URLSearchParams({ status: "dead", per_page: "1" });
+      if (channelFilter) params.set("channel_type", channelFilter);
+      const data = await apiRequest<Page<OutboxItem>>(`/api/v1/notifications/outbox?${params.toString()}`);
       return data.total;
     },
     staleTime: 30_000,
@@ -193,7 +196,7 @@ export function OutboxPage() {
                 title={`${channelFilter ? `重试${channelLabel(channelFilter)}渠道全部 ` : "跨页重试全部 "}${totalDead} 条失败投递`}
               >
                 {retryAllDeadAcrossPages.isPending ? (
-                  <><Loader2 size={14} className="spin" aria-hidden="true" /> 收集中…</>
+                  <><Loader2 size={14} className="spin" aria-hidden="true" /> 重新排队中…</>
                 ) : (
                   `重试全部失败 (${totalDead})`
                 )}
@@ -287,7 +290,7 @@ export function OutboxPage() {
         message={`确定要重新排队全部 ${totalDead} 条失败投递吗？${channelFilter ? `仅重新排队${channelLabel(channelFilter)}渠道，` : ""}一次性入队后立即进入投递队列。`}
         confirmLabel="重新排队"
         busy={retryAllDeadAcrossPages.isPending}
-        busyLabel="收集中…"
+        busyLabel="重新排队中…"
         onConfirm={() => {
           setRetryAllConfirmOpen(false);
           retryAllDeadAcrossPages.mutate();

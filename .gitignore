@@ -37,6 +37,7 @@ docs/.vitepress/dist/
 docs/public/_sources/
 docs/public/sitemap.xml
 docs/public/llms.txt
+docs/public/robots.txt
 
 # 运行期与本地开发产物
 *.pid
@@ -73,4 +74,3 @@ evolver.pid
 coding-trajectories.jsonl
 .env.evolver
 .env.evolver.local
-docs/public/robots.txt

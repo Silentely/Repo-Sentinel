@@ -269,6 +269,13 @@ func ResetAdminPassword(ctx context.Context, cfg config.Config, newPassword stri
 		}
 	}()
 	if _, err := validateEncryptionKey(ctx, data, cfg.Encryption); err != nil {
+		if errors.Is(err, cryptox.ErrInvalidEncryptionKey) {
+			return newPublicError(
+				"invalid_encryption_key",
+				"主密钥格式非法：需 64 位 hex 或 32 字节 base64（与数据库无关，请检查 REPOSENTINEL_ENCRYPTION_KEY 取值）。",
+				cryptox.ErrInvalidEncryptionKey,
+			)
+		}
 		if errors.Is(err, cryptox.ErrEncryptionKeyMismatch) {
 			return newPublicError(
 				"encryption_key_mismatch",
