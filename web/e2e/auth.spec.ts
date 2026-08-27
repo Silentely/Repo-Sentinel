@@ -10,8 +10,9 @@ test("首次设置、退出、错误凭据与重新登录形成完整认证旅�
   const theme = page.getByRole("combobox", { name: "主题" });
   await theme.selectOption("dark");
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "主题" })).toHaveValue("dark");
+  // 主题持久化按存储层验证：移动端顶栏会隐藏选择器控件（display:none 不在可访问树）。
   await expect(page.locator("html")).toHaveClass(/dark/);
+  expect(await page.evaluate(() => window.localStorage.getItem("reposentinel-theme"))).toBe("dark");
 
   await page.getByRole("textbox", { name: "用户名" }).fill(username);
   await page.getByLabel("密码", { exact: true }).fill("太短");
@@ -30,11 +31,9 @@ test("首次设置、退出、错误凭据与重新登录形成完整认证旅�
   await page.getByRole("button", { name: "退出" }).click();
   await expect(page).toHaveURL(/\/login$/);
 
-  await page.evaluate(() => {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-  });
+  // 页首 Tab 序（DOM 顺序）：GitHub 仓库链接 → 主题 → 用户名 → 密码 → 登录 → CLI 链接。
+  // 显式从首元素聚焦起步：blur() 后浏览器按上次焦点锚点续序，起点不稳定。
+  await page.getByRole("link", { name: "GitHub 仓库" }).focus();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("combobox", { name: "主题" })).toBeFocused();
   await page.keyboard.press("Tab");
@@ -56,5 +55,5 @@ test("首次设置、退出、错误凭据与重新登录形成完整认证旅�
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "现在是否健康，今天发生了什么。" })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "主题" })).toHaveValue("dark");
+  await expect(page.locator("html")).toHaveClass(/dark/);
 });
