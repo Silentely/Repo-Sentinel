@@ -151,8 +151,9 @@ func TestOAuth未配置时拒绝签发(t *testing.T) {
 	}
 }
 
-// TestOAuthJWKS输出签名公钥 验证 jwks 端点。
-func TestOAuthJWKS输出签名公钥(t *testing.T) {
+// TestOAuthJWKS不携带密钥材料 守护 jwks 端点仅提供 kid/算法发现：
+// 对称签名没有可发布的公钥，k 参数即签名密钥本身，公开即允许任何人自签令牌。
+func TestOAuthJWKS不携带密钥材料(t *testing.T) {
 	fixture := oauthFixture(t)
 	response := fixture.request(t, http.MethodGet, "/oauth/jwks", "", "127.0.0.1:42006", nil, nil)
 	if response.Code != http.StatusOK {
@@ -169,8 +170,14 @@ func TestOAuthJWKS输出签名公钥(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("JWKS 不是合法 JSON: %v", err)
 	}
-	if len(payload.Keys) != 1 || payload.Keys[0].Kty != "oct" || payload.Keys[0].Alg != "HS256" || payload.Keys[0].K == "" {
+	if len(payload.Keys) != 1 || payload.Keys[0].Kty != "oct" || payload.Keys[0].Alg != "HS256" {
 		t.Fatalf("JWKS 结构异常: %+v", payload)
+	}
+	if payload.Keys[0].Kid == "" {
+		t.Fatalf("kid 不应为空（轮换识别）: %+v", payload)
+	}
+	if payload.Keys[0].K != "" {
+		t.Fatal("JWKS 不得携带对称密钥材料 k（公开即可自签令牌）")
 	}
 }
 

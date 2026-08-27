@@ -165,7 +165,10 @@ func (s *server) handleOAuthAuthorize(w http.ResponseWriter, _ *http.Request) {
 	writeOAuthError(w, http.StatusBadRequest, "unsupported_response_type", "本实例仅支持 client_credentials 授权流。")
 }
 
-// handleOAuthJWKS 暴露签名公钥（oct 类型），供客户端按 kid 校验令牌签名。
+// handleOAuthJWKS 提供 kid/算法发现（oct 类型不携带密钥材料）。
+// 对称签名（HS256）没有可对外发布的「公钥」：kty=oct 的 k 参数即签名密钥本身，
+// 此前随响应公开导致任何人可自签合法令牌；本实例的验签经 oauthSigningKey 直读，
+// 不依赖该端点，故仅保留 kid 供密钥轮换识别。
 func (s *server) handleOAuthJWKS(w http.ResponseWriter, r *http.Request) {
 	key, err := s.oauthSigningKey()
 	if err != nil {
@@ -180,7 +183,6 @@ func (s *server) handleOAuthJWKS(w http.ResponseWriter, r *http.Request) {
 				"alg": "HS256",
 				"use": "sig",
 				"kid": oauthKeyID(key),
-				"k":   base64.RawURLEncoding.EncodeToString(key),
 			},
 		},
 	})

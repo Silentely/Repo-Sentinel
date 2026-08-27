@@ -167,7 +167,7 @@ func (s *server) authMDDocument(r *http.Request) string {
 
 - 授权服务器：%[1]s/.well-known/oauth-authorization-server
 - 受保护资源：%[1]s/.well-known/oauth-protected-resource
-- 签名公钥：%[1]s/oauth/jwks
+- 密钥标识（kid/算法发现，不携带密钥材料）：%[1]s/oauth/jwks
 
 ## 作用域
 
@@ -542,7 +542,7 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 		},
 		"/oauth/jwks": map[string]any{
 			"get": map[string]any{
-				"summary":     "OAuth 签名公钥（JWKS）",
+				"summary":     "OAuth 密钥标识发现（kid/算法，不携带密钥材料）",
 				"operationId": "oauthJwks",
 				"responses": map[string]any{
 					"200": jsonResponse("JWKS", map[string]any{
