@@ -34,11 +34,17 @@ type Reconciler struct {
 	reconcileAllBusy atomic.Bool
 }
 
+// maxPages 返回单仓单资源翻页预算：未显式配置时取 3。
+// 只读访问器：此前在 ReconcileRepository 内惰性写共享字段（数据竞争隐患），收敛为纯读。
+func (r *Reconciler) maxPages() int {
+	if r.MaxPages <= 0 {
+		return 3
+	}
+	return r.MaxPages
+}
+
 // ReconcileRepository 对单仓执行增量或基线同步。
 func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Repository) error {
-	if r.MaxPages <= 0 {
-		r.MaxPages = 3
-	}
 	if repo.Type != store.RepositoryTypeInstallation {
 		return nil
 	}
@@ -46,27 +52,7 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 	if !repo.MonitorEnabled || repo.IsArchived {
 		return nil
 	}
-	if repo.InstallationID == nil || *repo.InstallationID == "" {
-		return fmt.Errorf("missing_installation")
-	}
-	if r.GitHub == nil || !r.GitHub.Configured() {
-		return ErrAppNotConfigured
-	}
-	inst, err := r.Store.Installations().Get(ctx, *repo.InstallationID)
-	if err != nil {
-		if id, e := strconv.ParseInt(*repo.InstallationID, 10, 64); e == nil {
-			inst, err = r.Store.Installations().GetByInstallationID(ctx, id)
-		}
-	}
-	if err != nil {
-		// 回退：若仅有一个 installation，用于单 App 部署
-		all, listErr := r.Store.Installations().List(ctx)
-		if listErr != nil || len(all) != 1 {
-			return fmt.Errorf("installation_lookup: %w", err)
-		}
-		inst = all[0]
-	}
-	token, err := r.GitHub.InstallationToken(ctx, inst.InstallationID)
+	token, err := r.resolveInstallationToken(ctx, repo)
 	if err != nil {
 		return err
 	}
@@ -85,22 +71,7 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 
 	// 全局功能开关：与「关于与设置 → 功能模块」一致，关闭后整类停止对账。
 	features := store.LoadFeatureFlags(ctx, r.Store.Settings())
-
-	// star 计数快照：独立于各资源同步，失败不阻断主流程（软失败）。
-	if features.Stars && repo.StarsEnabled {
-		if meta, _, err := r.GitHub.GetRepository(ctx, token, repo.Owner, repo.Name); err != nil {
-			if r.Logger != nil {
-				r.Logger.Warn("star snapshot reconcile failed", "repo", repo.FullName, "error_code", "star_snapshot_failed", "error", err.Error())
-			}
-		} else if meta.StargazersCount > 0 {
-			if _, err := r.Store.RepoStatSnapshots().Upsert(ctx, store.RepoStatSnapshot{
-				RepositoryID: repo.ID, Metric: "stargazers", Value: meta.StargazersCount,
-				SampleDate: time.Now().UTC().Format("2006-01-02"),
-			}); err != nil && r.Logger != nil {
-				r.Logger.Warn("star snapshot upsert failed", "repo", repo.FullName, "error_code", "star_snapshot_upsert_failed", "error", err.Error())
-			}
-		}
-	}
+	r.syncStarSnapshot(ctx, token, repo, features)
 
 	wantIssues := features.Issues && repo.IssuesEnabled
 	wantPRs := features.PullRequests && repo.PrEnabled
@@ -158,6 +129,61 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 		}
 	}
 
+	r.finalizeSyncState(ctx, repo, isBaseline, issuesSynced, softFailed)
+	return nil
+}
+
+// resolveInstallationToken 解析仓库所属 installation 并换取访问令牌。
+// 查找顺序：本地 ID → GitHub installation ID → 单 installation 部署回退。
+func (r *Reconciler) resolveInstallationToken(ctx context.Context, repo store.Repository) (string, error) {
+	if repo.InstallationID == nil || *repo.InstallationID == "" {
+		return "", fmt.Errorf("missing_installation")
+	}
+	if r.GitHub == nil || !r.GitHub.Configured() {
+		return "", ErrAppNotConfigured
+	}
+	inst, err := r.Store.Installations().Get(ctx, *repo.InstallationID)
+	if err != nil {
+		if id, e := strconv.ParseInt(*repo.InstallationID, 10, 64); e == nil {
+			inst, err = r.Store.Installations().GetByInstallationID(ctx, id)
+		}
+	}
+	if err != nil {
+		// 回退：若仅有一个 installation，用于单 App 部署
+		all, listErr := r.Store.Installations().List(ctx)
+		if listErr != nil || len(all) != 1 {
+			return "", fmt.Errorf("installation_lookup: %w", err)
+		}
+		inst = all[0]
+	}
+	return r.GitHub.InstallationToken(ctx, inst.InstallationID)
+}
+
+// syncStarSnapshot 采集 star 计数快照：独立于各资源同步，失败不阻断主流程（软失败）。
+func (r *Reconciler) syncStarSnapshot(ctx context.Context, token string, repo store.Repository, features store.FeatureFlags) {
+	if !features.Stars || !repo.StarsEnabled {
+		return
+	}
+	meta, _, err := r.GitHub.GetRepository(ctx, token, repo.Owner, repo.Name)
+	if err != nil {
+		if r.Logger != nil {
+			r.Logger.Warn("star snapshot reconcile failed", "repo", repo.FullName, "error_code", "star_snapshot_failed", "error", err.Error())
+		}
+		return
+	}
+	if meta.StargazersCount <= 0 {
+		return
+	}
+	if _, err := r.Store.RepoStatSnapshots().Upsert(ctx, store.RepoStatSnapshot{
+		RepositoryID: repo.ID, Metric: "stargazers", Value: meta.StargazersCount,
+		SampleDate: time.Now().UTC().Format("2006-01-02"),
+	}); err != nil && r.Logger != nil {
+		r.Logger.Warn("star snapshot upsert failed", "repo", repo.FullName, "error_code", "star_snapshot_upsert_failed", "error", err.Error())
+	}
+}
+
+// finalizeSyncState 推进单仓同步状态：写回同步时间/软失败标记/基线完成态与 issues 游标。
+func (r *Reconciler) finalizeSyncState(ctx context.Context, repo store.Repository, isBaseline, issuesSynced, softFailed bool) {
 	now := time.Now().UTC()
 	repo.LastSyncedAt = &now
 	// 部分失败不能静默抹平：记录痕迹供管理台提示权限不足。
@@ -192,7 +218,6 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 			"issues_synced", issuesSynced,
 			"soft_failed", softFailed)
 	}
-	return nil
 }
 
 // 单仓单轮对账的 PR enrich 预算（每个 PR 需要 reviews/reviewers/detail/check-runs 共 4 次 API 调用）。
@@ -201,14 +226,15 @@ const prEnrichBudgetPerRound = 25
 
 func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Repository, since *time.Time, baseline, wantIssues, wantPRs bool) error {
 	enrichBudget := prEnrichBudgetPerRound
-	for page := 1; page <= r.MaxPages; page++ {
+	for page := 1; page <= r.maxPages(); page++ {
 		items, remaining, err := r.GitHub.ListIssues(ctx, token, repo.Owner, repo.Name, since, page)
 		if err != nil {
 			return err
 		}
 		if remaining > 0 && remaining < 50 {
 			if r.Logger != nil {
-				r.Logger.Info("github rate low", "remaining", remaining, "repo", repo.FullName)
+				// 配额告急需要人工介入：与文件内其余留痕同为 Warn + error_code，可按码聚合告警。
+				r.Logger.Warn("github rate low", "remaining", remaining, "repo", repo.FullName, "error_code", "github_rate_low")
 			}
 		}
 		if len(items) == 0 {
@@ -361,7 +387,7 @@ func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo s
 }
 
 func (r *Reconciler) syncWorkflows(ctx context.Context, token string, repo store.Repository) error {
-	for page := 1; page <= r.MaxPages; page++ {
+	for page := 1; page <= r.maxPages(); page++ {
 		items, _, err := r.GitHub.ListWorkflowRuns(ctx, token, repo.Owner, repo.Name, page)
 		if err != nil {
 			return err
@@ -406,7 +432,7 @@ func (r *Reconciler) syncDependabotAlerts(ctx context.Context, token string, rep
 	var cursor string
 	seen := make(map[int]struct{})
 	complete := false
-	for page := 1; page <= r.MaxPages; page++ {
+	for page := 1; page <= r.maxPages(); page++ {
 		items, next, _, err := r.GitHub.ListDependabotAlerts(ctx, token, repo.Owner, repo.Name, cursor)
 		if err != nil {
 			return err
@@ -441,7 +467,7 @@ func (r *Reconciler) syncPageAlerts(ctx context.Context, token string, repo stor
 	}
 	seen := make(map[int]struct{})
 	complete := false
-	for page := 1; page <= r.MaxPages; page++ {
+	for page := 1; page <= r.maxPages(); page++ {
 		items, _, err := listFn(ctx, token, repo.Owner, repo.Name, page)
 		if err != nil {
 			return err

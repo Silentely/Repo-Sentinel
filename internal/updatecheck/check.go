@@ -113,9 +113,9 @@ func (c *Checker) Check(ctx context.Context, force bool) Result {
 		c.logf("update check ok", "version", res.LatestVersion, "source", res.Source, "cached", false)
 		return res
 	}
-	if lastErr == nil {
-		lastErr = err
-	}
+	// 双路径都失败：优先上报权威 API 路径的错误（403/429 等更可操作，friendlyError 有对应文案），
+	// 而非 HTML 解析错误。
+	lastErr = err
 
 	if stale := c.getCache(true); stale != nil {
 		stale.Source = strings.TrimSuffix(stale.Source, "_stale") + "_stale"
@@ -139,6 +139,18 @@ func (c *Checker) logf(msg string, attrs ...any) {
 	}
 }
 
+// 包级共享客户端：复用连接池，不再每次检查新建（与 ai 包 defaultHTTPClient 同一模式）。
+// noFollow 变体关闭跳转跟随：HTML 主路径自行解析 Location。
+var (
+	defaultHTTPClient     = &http.Client{Timeout: defaultHTTPTimeout}
+	defaultNoFollowClient = &http.Client{
+		Timeout: defaultHTTPTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+)
+
 // client 返回 HTTP 客户端；注入 HTTPClient 时以其为准。
 // noFollow 为真时强制就地读取 Location（HTML 主路径自行解析跳转）。
 func (c *Checker) client(noFollow bool) *http.Client {
@@ -151,13 +163,10 @@ func (c *Checker) client(noFollow bool) *http.Client {
 		}
 		return &cl
 	}
-	cl := &http.Client{Timeout: defaultHTTPTimeout}
 	if noFollow {
-		cl.CheckRedirect = func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
+		return defaultNoFollowClient
 	}
-	return cl
+	return defaultHTTPClient
 }
 
 func (c *Checker) now() time.Time {
