@@ -491,9 +491,20 @@ func (s *workItemStore) GetByRepoNumber(ctx context.Context, repoID string, numb
 }
 
 // UpsertIfNewer 按 source_updated_at / state_hash 防止陈旧回滚。返回 updated=是否写入。
-func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem) (WorkItem, bool, error) {
+// known 为调用方已持有的旧行（如对账 PR enrich 已查）：非 nil 且 ID 非空时直接复用，
+// 避免同一行在同一调用内被二次 SELECT；known.ID 为空按未找到处理（走创建分支）。
+func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem, known *WorkItem) (WorkItem, bool, error) {
 	now := time.Now().UTC()
-	existing, err := s.GetByRepoNumber(ctx, in.RepositoryID, in.Number)
+	var existing WorkItem
+	var err error
+	if known != nil {
+		existing = *known
+		if known.ID == "" {
+			err = ErrNotFound
+		}
+	} else {
+		existing, err = s.GetByRepoNumber(ctx, in.RepositoryID, in.Number)
+	}
 	if err == nil {
 		if in.SourceUpdatedAt.Before(existing.SourceUpdatedAt) {
 			return existing, false, nil
@@ -1523,21 +1534,39 @@ func (s *outboxStore) ClaimDue(ctx context.Context, now time.Time, lockFor time.
 	if err != nil {
 		return nil, mapStoreError(err)
 	}
-	out := make([]NotificationOutbox, 0, len(rows))
+	ids := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if row.LockedUntil != nil && row.LockedUntil.After(now) {
 			continue
 		}
-		entity, err := s.client.NotificationOutbox.UpdateOneID(row.ID).
-			SetStatus(OutboxSending).
-			SetLockedUntil(lockUntil).
-			SetAttemptCount(row.AttemptCount + 1).
-			SetUpdatedAt(now).
-			Save(ctx)
-		if err != nil {
+		ids = append(ids, row.ID)
+	}
+	if len(ids) == 0 {
+		return []NotificationOutbox{}, nil
+	}
+	// 单条 UPDATE 批量领取（逐行 UpdateOneID.Save 积压时是 50 次往返/tick）；
+	// 领取是单进程 worker 顺序投递（见 Worker 注释），不存在跨进程争用，语义与逐行一致：
+	// 全部成功或整体失败（领取失败按批重试，不会半领取）。
+	if _, err := s.client.NotificationOutbox.Update().
+		Where(notificationoutbox.IDIn(ids...)).
+		SetStatus(OutboxSending).
+		SetLockedUntil(lockUntil).
+		SetUpdatedAt(now).
+		AddAttemptCount(1).
+		Save(ctx); err != nil {
+		return nil, mapStoreError(err)
+	}
+	out := make([]NotificationOutbox, 0, len(ids))
+	for _, row := range rows {
+		if row.LockedUntil != nil && row.LockedUntil.After(now) {
 			continue
 		}
-		out = append(out, outboxFromEntity(entity))
+		// 以已执行的状态迁移回填返回体，免去重新 SELECT。
+		row.Status = OutboxSending
+		row.LockedUntil = &lockUntil
+		row.AttemptCount++
+		row.UpdatedAt = now
+		out = append(out, outboxFromEntity(row))
 	}
 	return out, nil
 }

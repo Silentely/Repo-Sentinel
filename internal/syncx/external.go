@@ -101,7 +101,7 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 			Author: it.User.Login, LabelsJSON: labels, HTMLURL: it.HTMLURL,
 			Draft: it.Draft, SourceUpdatedAt: it.UpdatedAt, StateHash: hash,
 		}
-		saved, updated, err := p.Store.WorkItems().UpsertIfNewer(ctx, item)
+		saved, updated, err := p.Store.WorkItems().UpsertIfNewer(ctx, item, nil)
 		if err != nil || !updated {
 			continue
 		}

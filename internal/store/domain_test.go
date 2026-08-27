@@ -355,7 +355,7 @@ func TestRepoIDsCacheInvalidatedOnArchive(t *testing.T) {
 	}
 	if _, _, err := st.WorkItems().UpsertIfNewer(ctx, WorkItem{
 		ID: "wi-arc-1", RepositoryID: repo.ID, Number: 1, Kind: WorkItemKindIssue, State: "open", Title: "t",
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatal(err)
 	}
 	// 预热缓存：首次列表读出「含该仓」的活跃集合。

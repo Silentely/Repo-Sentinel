@@ -550,7 +550,9 @@ type WebhookDeliveryStore interface {
 type WorkItemStore interface {
 	GetByRepoNumber(context.Context, string, int) (WorkItem, error)
 	Get(context.Context, string) (WorkItem, error)
-	UpsertIfNewer(context.Context, WorkItem) (WorkItem, bool, error) // bool=updated
+	// UpsertIfNewer 按 source_updated_at / state_hash 防止陈旧回滚；known 为调用方已持有的
+	// 同 (repository_id, number) 旧行（避免二次查询），nil 或 known.ID 为空时内部自查。bool=updated
+	UpsertIfNewer(context.Context, WorkItem, *WorkItem) (WorkItem, bool, error)
 	List(context.Context, ListFilter) ([]WorkItem, PageResult, error)
 	CountOpen(context.Context) (int, error)
 	SetIgnored(context.Context, string, bool) error

@@ -87,7 +87,7 @@ func Test工作项忽略API需要认证与CSRF并支持列表筛选(t *testing.T
 	item, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
 		ID: "wi-http-1", RepositoryID: repo.ID, Number: 7, Kind: store.WorkItemKindIssue,
 		State: "open", Title: "long-lived issue", SourceUpdatedAt: now, StateHash: "h1",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("upsert work item: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestDashboard统计排除归档仓与已忽略项(t *testing.T) {
 		{ID: "di-3", RepositoryID: archived.ID, Number: 3, Kind: store.WorkItemKindIssue, State: "open", Title: "i3", SourceUpdatedAt: now, StateHash: "3"},
 		{ID: "dp-1", RepositoryID: active.ID, Number: 4, Kind: store.WorkItemKindPR, State: "open", Title: "p1", SourceUpdatedAt: now, StateHash: "4"},
 	} {
-		if _, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, item); err != nil {
+		if _, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, item, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -710,7 +710,7 @@ func TestDeleteRepositoryCascadeViaAPI(t *testing.T) {
 	if _, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
 		ID: "wi-del-1", RepositoryID: repo.ID, Number: 1, Kind: store.WorkItemKindPR,
 		State: "open", Title: "stale pr", SourceUpdatedAt: now, StateHash: "h1",
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("upsert work item: %v", err)
 	}
 	repoID := repo.ID

@@ -967,7 +967,7 @@ func TestProcessRepositoryDeletedCascadeRemovesData(t *testing.T) {
 		ID: "wi-del", RepositoryID: repo.ID, Number: 9, Kind: store.WorkItemKindPR,
 		State: "open", Title: "删除前打开的 PR", Author: "alice",
 		HTMLURL: "https://github.com/acme/demo/pull/9", SourceUpdatedAt: time.Now().UTC(), StateHash: "h-del",
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatal(err)
 	}
 	repoID := repo.ID

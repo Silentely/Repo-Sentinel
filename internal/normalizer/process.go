@@ -555,7 +555,7 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 		p.logSkip(repo, kind, reason)
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
-	saved, updated, err := p.Store.WorkItems().UpsertIfNewer(ctx, item)
+	saved, updated, err := p.Store.WorkItems().UpsertIfNewer(ctx, item, nil)
 	if err != nil {
 		return Result{}, err
 	}

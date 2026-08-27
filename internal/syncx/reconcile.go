@@ -247,8 +247,11 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 
 			// PR 审核/检查状态 enrich（仅对 PR 且非基线同步）：
 			// 每次调用需 4 次 GitHub API，对新/变化/检查进行中的 PR 才触发，且受单轮预算约束。
+			// 已查旧行透传给 UpsertIfNewer 复用（避免同行二次 SELECT）。
+			var knownExisting *store.WorkItem
 			if kind == store.WorkItemKindPR && !baseline {
 				existing, _ := r.Store.WorkItems().GetByRepoNumber(ctx, repo.ID, it.Number)
+				knownExisting = &existing
 				if existing.ID != "" {
 					// 先沿用已存储的审核/检查字段：UpsertIfNewer 用入参全量覆盖，
 					// 预算耗尽跳过 enrich 时不能把已有数据清零。
@@ -267,7 +270,7 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 				}
 			}
 
-			saved, updated, err := r.Store.WorkItems().UpsertIfNewer(ctx, item)
+			saved, updated, err := r.Store.WorkItems().UpsertIfNewer(ctx, item, knownExisting)
 			if err != nil || !updated || baseline {
 				continue
 			}

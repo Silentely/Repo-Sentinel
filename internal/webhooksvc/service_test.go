@@ -271,7 +271,7 @@ func TestProcessSuccessLogCarriesStaleDiscarded(t *testing.T) {
 		State: "closed", Title: "最新状态", Author: "alice",
 		HTMLURL:         "https://github.com/acme/demo/issues/7",
 		SourceUpdatedAt: time.Now().UTC().Add(time.Hour), StateHash: "h-new",
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatal(err)
 	}
 	// 旧时间的 opened 载荷（updated_at 远早于库内状态）。

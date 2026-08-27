@@ -53,7 +53,7 @@ func TestListExcludesArchivedReposAndIgnoredItems(t *testing.T) {
 		{ID: "wi-3", RepositoryID: archived.ID, Number: 3, Kind: store.WorkItemKindIssue, State: "open", Title: "archived open", SourceUpdatedAt: now, StateHash: "a3"},
 		{ID: "wi-4", RepositoryID: active.ID, Number: 4, Kind: store.WorkItemKindPR, State: "open", Title: "active pr", SourceUpdatedAt: now, StateHash: "a4"},
 	} {
-		if _, _, err := data.WorkItems().UpsertIfNewer(ctx, item); err != nil {
+		if _, _, err := data.WorkItems().UpsertIfNewer(ctx, item, nil); err != nil {
 			t.Fatalf("upsert work item %s: %v", item.ID, err)
 		}
 	}
@@ -230,7 +230,7 @@ func TestListIncludeArchivedReposOptIn(t *testing.T) {
 		{ID: "wia-1", RepositoryID: active.ID, Number: 1, Kind: store.WorkItemKindIssue, State: "open", Title: "a", SourceUpdatedAt: now, StateHash: "x1"},
 		{ID: "wia-2", RepositoryID: archived.ID, Number: 2, Kind: store.WorkItemKindIssue, State: "open", Title: "b", SourceUpdatedAt: now, StateHash: "x2"},
 	} {
-		if _, _, err := data.WorkItems().UpsertIfNewer(ctx, item); err != nil {
+		if _, _, err := data.WorkItems().UpsertIfNewer(ctx, item, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -395,7 +395,7 @@ func TestWorkItemListFiltersPRReviewAndCheck(t *testing.T) {
 		{ID: "pr-3", RepositoryID: repo.ID, Number: 3, Kind: store.WorkItemKindPR, State: "open", Title: "reviewing", SourceUpdatedAt: now, StateHash: "p3", ReviewState: "PENDING", CheckStatus: "pending"},
 		{ID: "pr-4", RepositoryID: repo.ID, Number: 4, Kind: store.WorkItemKindPR, State: "open", Title: "no checks", SourceUpdatedAt: now, StateHash: "p4"},
 	} {
-		if _, _, err := data.WorkItems().UpsertIfNewer(ctx, item); err != nil {
+		if _, _, err := data.WorkItems().UpsertIfNewer(ctx, item, nil); err != nil {
 			t.Fatalf("upsert %s: %v", item.ID, err)
 		}
 	}

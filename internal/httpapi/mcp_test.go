@@ -110,7 +110,7 @@ func TestMCPToolsCall返回真实数据(t *testing.T) {
 	_, _, err = fixture.store.WorkItems().UpsertIfNewer(t.Context(), store.WorkItem{
 		ID: "wi-mcp-1", RepositoryID: "repo-mcp-1", Number: 3, Kind: store.WorkItemKindIssue,
 		State: "open", Title: "agent visible issue", SourceUpdatedAt: now, StateHash: "h1",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("upsert work item: %v", err)
 	}

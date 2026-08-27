@@ -39,7 +39,7 @@ func TestDeleteRepositoryCascade(t *testing.T) {
 		ID: "wi-1", RepositoryID: repo.ID, Number: 7, Kind: store.WorkItemKindPR,
 		State: "open", Title: "打开的 PR", Author: "alice", HTMLURL: "https://github.com/acme/demo/pull/7",
 		SourceUpdatedAt: now, StateHash: "h1",
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("upsert work item: %v", err)
 	}
 	if _, _, err := data.WorkflowRuns().UpsertIfNewer(ctx, store.WorkflowRun{
