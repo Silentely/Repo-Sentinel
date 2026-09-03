@@ -87,10 +87,10 @@ export function GitHubPage() {
         body.app_id = appID.trim() === "" ? 0 : Number(appID);
       }
       if (!cfg?.client_id_locked) {
-        body.client_id = clientID;
+        body.client_id = clientID.trim();
       }
       if (!cfg?.public_base_url_locked) {
-        body.public_base_url = publicBaseURL;
+        body.public_base_url = publicBaseURL.trim();
       }
       if (!cfg?.private_key_locked) {
         if (privateKeyPEM.trim()) {

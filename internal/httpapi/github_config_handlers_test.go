@@ -153,3 +153,25 @@ func Test同步Installation仓库需要认证且未配置App时拒绝(t *testing
 	)
 	assertAPIError(t, resp, http.StatusServiceUnavailable, "github_app_not_configured")
 }
+
+func TestGitHubConfigRejectsBlankSecrets(t *testing.T) {
+	ring := testHTTPKeyRing(t)
+	fixture := newHTTPTestFixture(t, httpTestOptions{keyRing: ring})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	// 仅空白字符的 webhook_secret 应被拒绝
+	resp := fixture.request(
+		t, http.MethodPut, "/api/v1/github/config", `{"webhook_secret":"   "}`,
+		"127.0.0.1:44020", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	assertAPIError(t, resp, http.StatusBadRequest, "validation_failed")
+
+	// 仅空白字符的 private_key_pem 应被拒绝
+	respPem := fixture.request(
+		t, http.MethodPut, "/api/v1/github/config", `{"private_key_pem":"   "}`,
+		"127.0.0.1:44021", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	assertAPIError(t, respPem, http.StatusBadRequest, "validation_failed")
+}
