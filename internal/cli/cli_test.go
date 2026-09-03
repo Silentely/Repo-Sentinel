@@ -2,7 +2,10 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"strings"
 	"testing"
+	"github.com/Silentely/Repo-Sentinel/internal/config"
 )
 
 func Test版本命令输出当前开发版本(t *testing.T) {
@@ -26,4 +29,25 @@ func Test缺少命令会失败(t *testing.T) {
 	if err := Run(nil, &stdout, &stderr); err == nil {
 		t.Fatal("缺少命令未返回错误")
 	}
+}
+
+func TestReadPasswordLineNilStdin(t *testing.T) {
+	_, err := readPasswordLine(nil)
+	if err == nil {
+		t.Fatal("expected error on nil stdin")
+	}
+}
+
+func TestShorthandConfigFlags(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	deps := Dependencies{
+		LoadConfig: func(ctx context.Context, opts config.LoadOptions) (config.Config, error) {
+			if opts.ConfigPath != "custom.yaml" {
+				t.Fatalf("expected ConfigPath=custom.yaml, got %q", opts.ConfigPath)
+			}
+			return config.Config{}, nil
+		},
+	}
+	runner := NewRunner(strings.NewReader(""), &stdout, &stderr, deps)
+	_ = runner.Run(t.Context(), []string{"config", "validate", "-c", "custom.yaml"})
 }

@@ -15,6 +15,7 @@ import (
 func (r Runner) runDoctor(ctx context.Context, args []string) error {
 	fs := newFlagSet("doctor")
 	configPath := fs.String("config", "", "配置文件路径")
+	fs.StringVar(configPath, "c", "", "配置文件路径（简写）")
 	if err := fs.Parse(args); err != nil {
 		return newCLIError("doctor 参数无效。")
 	}

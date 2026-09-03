@@ -10,6 +10,7 @@ import (
 func (r Runner) runConfigValidate(ctx context.Context, args []string) error {
 	flags := newFlagSet("config validate")
 	configPath := flags.String("config", "", "配置文件路径")
+	flags.StringVar(configPath, "c", "", "配置文件路径（简写）")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return newCLIError("config validate 参数不合法。")
 	}

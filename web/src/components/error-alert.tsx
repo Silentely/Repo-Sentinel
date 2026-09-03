@@ -15,8 +15,8 @@ export function ErrorAlert({ title, message, errorCode, action }: ErrorAlertProp
     <div className="error-alert" role="alert">
       <AlertCircle aria-hidden="true" size={18} strokeWidth={1.8} />
       <div>
-        <strong>{title}</strong>
-        <p>{message}</p>
+        <strong>{title || "发生错误"}</strong>
+        {message ? <p>{message}</p> : null}
         {errorCode ? <code>{errorCode}</code> : null}
         {action ? <div className="error-alert__action">{action}</div> : null}
       </div>

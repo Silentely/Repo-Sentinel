@@ -19,7 +19,9 @@ import (
 func (r Runner) runBackup(ctx context.Context, args []string) error {
 	fs := newFlagSet("backup")
 	configPath := fs.String("config", "", "配置文件路径")
+	fs.StringVar(configPath, "c", "", "配置文件路径（简写）")
 	output := fs.String("output", "", "备份输出路径")
+	fs.StringVar(output, "o", "", "备份输出路径（简写）")
 	if err := fs.Parse(args); err != nil {
 		return newCLIError("backup 参数无效。")
 	}
@@ -95,7 +97,9 @@ func (r Runner) backupPostgres(ctx context.Context, dbURL, out string) error {
 func (r Runner) runRestore(ctx context.Context, args []string) error {
 	fs := newFlagSet("restore")
 	configPath := fs.String("config", "", "配置文件路径")
+	fs.StringVar(configPath, "c", "", "配置文件路径（简写）")
 	input := fs.String("input", "", "备份文件路径")
+	fs.StringVar(input, "i", "", "备份文件路径（简写）")
 	if err := fs.Parse(args); err != nil {
 		return newCLIError("restore 参数无效。")
 	}

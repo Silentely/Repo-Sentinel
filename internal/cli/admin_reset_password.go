@@ -16,6 +16,7 @@ const maxPasswordInputBytes = 8 * 1024
 func (r Runner) runAdminResetPassword(ctx context.Context, args []string) error {
 	flags := newFlagSet("admin reset-password")
 	configPath := flags.String("config", "", "配置文件路径")
+	flags.StringVar(configPath, "c", "", "配置文件路径（简写）")
 	passwordStdin := flags.Bool("password-stdin", false, "从 stdin 读取一行密码")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return newCLIError("reset-password 参数不合法；密码不得作为命令行参数。")
@@ -43,6 +44,9 @@ func (r Runner) runAdminResetPassword(ctx context.Context, args []string) error 
 }
 
 func readPasswordLine(stdin io.Reader) (string, error) {
+	if stdin == nil {
+		return "", newCLIError("stdin 未提供。")
+	}
 	reader := bufio.NewReader(io.LimitReader(stdin, maxPasswordInputBytes+1))
 	line, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {

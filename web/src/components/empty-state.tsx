@@ -12,10 +12,10 @@ export interface EmptyStateProps {
 
 export function EmptyState({ eyebrow, title, description, action, actionArrow = true }: EmptyStateProps) {
   return (
-    <section className="empty-state">
+    <section className="empty-state" aria-label={title || "空状态"}>
       {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
       <h2>{title}</h2>
-      <p>{description}</p>
+      {description ? <p>{description}</p> : null}
       {action ? (
         <div className="empty-state__action">
           {action}

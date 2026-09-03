@@ -105,6 +105,7 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 func (r Runner) runServe(ctx context.Context, args []string) error {
 	flags := newFlagSet("serve")
 	configPath := flags.String("config", "", "配置文件路径")
+	flags.StringVar(configPath, "c", "", "配置文件路径（简写）")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return newCLIError("serve 参数不合法。")
 	}
