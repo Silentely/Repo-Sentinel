@@ -7,6 +7,13 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
+func TestRenderMessageNilSafe(t *testing.T) {
+	title, body, url := renderMessage(nil, "repo")
+	if title != "" || body != "" || url != "" {
+		t.Fatalf("nil 事件应安全返回空字符串，got title=%q body=%q url=%q", title, body, url)
+	}
+}
+
 func TestRenderMessageIssueOpened(t *testing.T) {
 	num := int64(42)
 	ev := &store.Event{

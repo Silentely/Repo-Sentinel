@@ -165,6 +165,9 @@ type ghAlert struct {
 
 // Process 处理已验签的 Webhook。
 func (p *Processor) Process(ctx context.Context, eventType, deliveryID string, payload []byte) (Result, error) {
+	if len(payload) == 0 {
+		return Result{}, fmt.Errorf("empty payload")
+	}
 	var env envelope
 	if err := json.Unmarshal(payload, &env); err != nil {
 		return Result{}, fmt.Errorf("invalid payload: %w", err)

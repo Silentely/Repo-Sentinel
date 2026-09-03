@@ -228,6 +228,16 @@ func NormalizeListFilter(f ListFilter) ListFilter {
 	f.Status = strings.TrimSpace(f.Status)
 	f.ReviewDecision = strings.TrimSpace(f.ReviewDecision)
 	f.CheckStatus = strings.TrimSpace(f.CheckStatus)
+	if len(f.ChannelIDs) > 0 {
+		cleaned := make([]string, 0, len(f.ChannelIDs))
+		for _, id := range f.ChannelIDs {
+			id = strings.TrimSpace(id)
+			if id != "" {
+				cleaned = append(cleaned, id)
+			}
+		}
+		f.ChannelIDs = cleaned
+	}
 	return f
 }
 

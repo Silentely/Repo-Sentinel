@@ -572,13 +572,17 @@ func TestNormalizeListFilterClampsPageAndPerPage(t *testing.T) {
 		Status:         " sent ",
 		ReviewDecision: " approved ",
 		CheckStatus:    " success ",
+		ChannelIDs:     []string{"  ch-1 ", " ", "", "ch-2  "},
 	})
 	if withSpaces.RepositoryID != "repo-123" ||
 		withSpaces.Kind != "issue" ||
 		withSpaces.State != "open" ||
 		withSpaces.Status != "sent" ||
 		withSpaces.ReviewDecision != "approved" ||
-		withSpaces.CheckStatus != "success" {
+		withSpaces.CheckStatus != "success" ||
+		len(withSpaces.ChannelIDs) != 2 ||
+		withSpaces.ChannelIDs[0] != "ch-1" ||
+		withSpaces.ChannelIDs[1] != "ch-2" {
 		t.Fatalf("字符串过滤项首尾空白未清理: %+v", withSpaces)
 	}
 }

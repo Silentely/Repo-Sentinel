@@ -39,6 +39,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !s.decodeRequestJSON(w, r, &request) {
 		return
 	}
+	request.Username = strings.TrimSpace(request.Username)
 	remoteIP := remoteIPFromContext(r.Context())
 	requestID := requestIDFromContext(r.Context())
 	if !s.dependencies.LoginLimiter.Allow(remoteIP) {

@@ -45,6 +45,7 @@ func (s *server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if !s.decodeRequestJSON(w, r, &request) {
 		return
 	}
+	request.Username = strings.TrimSpace(request.Username)
 	admin, err := s.dependencies.AdminService.BootstrapAdmin(r.Context(), request.Username, request.Password)
 	if errors.Is(err, auth.ErrConflict) {
 		s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, nil)

@@ -68,4 +68,12 @@ describe("NumberField", () => {
     expect(input.style.width).toBe(width);
     expect(onChange).toHaveBeenLastCalledWith(86400);
   });
+
+  it("透传 disabled 与 placeholder 属性", () => {
+    const onChange = vi.fn();
+    render(<NumberField value={10} disabled placeholder="请输入数值" onChange={onChange} />);
+    const input = screen.getByPlaceholderText("请输入数值") as HTMLInputElement;
+    expect(input).toBeDisabled();
+    expect(input).toHaveValue(10);
+  });
 });

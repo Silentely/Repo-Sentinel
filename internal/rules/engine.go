@@ -287,6 +287,9 @@ func isNewSecurityAlert(ev *store.Event) bool {
 }
 
 func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
+	if ev == nil {
+		return "", "", ""
+	}
 	statusEmoji, statusLabel := statusDisplay(ev)
 	// 标题把状态放最前，通知列表/推送预览第一眼就能看出打开还是关闭。
 	title = fmt.Sprintf("%s %s｜%s", statusEmoji, statusLabel, htmlpkg.EscapeString(ev.Title))

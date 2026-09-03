@@ -18,6 +18,21 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
+func TestProcessEmptyPayloadReturnsError(t *testing.T) {
+	dbURL := "file:" + filepath.Join(t.TempDir(), "empty.db")
+	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+
+	proc := &normalizer.Processor{Store: data}
+	_, err = proc.Process(t.Context(), "issues", "d-empty", nil)
+	if err == nil || !strings.Contains(err.Error(), "empty payload") {
+		t.Fatalf("期望 empty payload 错误，实际: %v", err)
+	}
+}
+
 func TestProcessIssueOpenedCreatesEvent(t *testing.T) {
 	dbURL := "file:" + filepath.Join(t.TempDir(), "n.db")
 	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})
