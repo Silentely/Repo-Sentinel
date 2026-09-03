@@ -13,6 +13,8 @@
 
 ### Changed
 
+- 前端 URL 状态 SSR 保护：`useUrlState` 增加 `window` 及 `location` 的存在性前置断言，避免在服务端渲染或无 DOM 环境下抛出引用异常
+- OpenAPI 契约对齐真实运维端点：将历史规划端点准确对齐为 `POST /api/v1/repositories/{id}/activate` 与 `POST /api/v1/repositories/{id}/reconcile`
 - JSON 请求体错误细分与诊断提示：`decodeRequestJSON` 在 400 Bad Request 时透传底层 JSON 语法错误与尾部多余内容检测（如多对象），为客户端提供可操作的报错消息
 - 规则展示与事件格式化空指针防护：`EventStatusLabel` 与 `statusDisplay` 增加对 nil 事件的完备回退防护（回退为 `📌 有更新`），避免在非预期空事件触发时发生恐慌
 - 数据层过滤参数严格清洗：`NormalizeListFilter` 自动去除 `RepositoryID`、`Kind`、`State`、`Status`、`ReviewDecision` 与 `CheckStatus` 等过滤字段首尾空白，避免前端与 API 传参携带无意空白导致数据比对与查询失配
