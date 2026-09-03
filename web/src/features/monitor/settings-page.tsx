@@ -306,6 +306,7 @@ export function SettingsPage() {
   function submitPassword() {
     setPasswordMsg("");
     setPasswordError(undefined);
+    if (!currentPassword.trim()) { setPasswordError("请输入当前密码。"); return; }
     if (Array.from(newPassword).length < 12) { setPasswordError("新密码至少需要 12 个 Unicode 字符。"); return; }
     if (newPassword !== confirmPassword) { setPasswordError("两次输入的新密码不一致。"); return; }
     savePassword.mutate();

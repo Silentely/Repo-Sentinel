@@ -134,6 +134,12 @@ func (s *server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if !s.decodeRequestJSON(w, r, &request) {
 		return
 	}
+	request.CurrentPassword = strings.TrimSpace(request.CurrentPassword)
+	request.NewPassword = strings.TrimSpace(request.NewPassword)
+	if request.CurrentPassword == "" || request.NewPassword == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+		return
+	}
 	session, ok := sessionFromContext(r.Context())
 	if !ok {
 		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)

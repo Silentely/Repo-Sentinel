@@ -180,3 +180,26 @@ func assertAuthCookies(t *testing.T, cookies []*http.Cookie) {
 		t.Fatalf("CSRF Cookie 属性不符合双提交要求: %+v", csrf)
 	}
 }
+
+func TestChangePasswordRejectsBlankPasswords(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrfCookie := cookieByName(t, cookies, CSRFCookieName)
+
+	// 空当前密码
+	blankCurrent := fixture.request(
+		t, http.MethodPost, "/api/v1/auth/password",
+		`{"current_password":"   ","new_password":"valid-new-password"}`,
+		"127.0.0.1:42310", cookies, map[string]string{CSRFHeaderName: csrfCookie.Value},
+	)
+	assertAPIError(t, blankCurrent, http.StatusBadRequest, "validation_failed")
+
+	// 空新密码
+	blankNew := fixture.request(
+		t, http.MethodPost, "/api/v1/auth/password",
+		`{"current_password":"`+httpTestPassword+`","new_password":"   "}`,
+		"127.0.0.1:42311", cookies, map[string]string{CSRFHeaderName: csrfCookie.Value},
+	)
+	assertAPIError(t, blankNew, http.StatusBadRequest, "validation_failed")
+}
