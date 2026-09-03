@@ -34,7 +34,7 @@ func (s *server) handleStarTrend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	days := 30
-	if raw := r.URL.Query().Get("days"); raw != "" {
+	if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
 		if v, err := strconv.Atoi(raw); err == nil && (v == 7 || v == 30 || v == 90 || v == 0) {
 			days = v
 		}
