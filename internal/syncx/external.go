@@ -155,6 +155,9 @@ func (p *ExternalPoller) PollAll(ctx context.Context) error {
 		return err
 	}
 	for _, repo := range repos {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if repo.SyncStatus == store.SyncStatusUnavailable || repo.SyncStatus == store.SyncStatusArchived {
 			continue
 		}

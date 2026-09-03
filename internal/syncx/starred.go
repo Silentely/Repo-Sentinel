@@ -235,6 +235,9 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 		}
 	}
 	for page := 1; ; page++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if page > max/100+2 {
 			// 防御：超出上限页码数后中止，避免异常分页死循环。
 			full = false
@@ -406,6 +409,9 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 	}
 	backfill := 0
 	for _, tk := range candidates {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if backfill >= maxBackfillPerRound {
 			break
 		}
