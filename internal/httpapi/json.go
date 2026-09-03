@@ -63,6 +63,12 @@ func (s *server) decodeRequestJSON(w http.ResponseWriter, r *http.Request, desti
 		})
 		return false
 	}
+	if status == http.StatusUnsupportedMediaType {
+		s.writeAPIError(w, r, status, errorCodeValidationFailed, map[string]any{
+			"message": "请求头 Content-Type 必须为 application/json。",
+		})
+		return false
+	}
 	s.writeAPIError(w, r, status, errorCodeValidationFailed, nil)
 	return false
 }

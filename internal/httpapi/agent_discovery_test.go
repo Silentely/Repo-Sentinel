@@ -371,6 +371,17 @@ func TestOpenAPIJSON结构完整(t *testing.T) {
 	if !ok || paths["/api/v1/dashboard"] == nil || paths["/oauth/token"] == nil || paths["/health/ready"] == nil || paths["/api/v1/system/build-info"] == nil {
 		t.Fatalf("paths 缺少关键端点: %v", paths)
 	}
+	for _, expectedPath := range []string{
+		"/api/v1/notifications/outbox/retry-dead",
+		"/api/v1/notifications/outbox/{id}/retry",
+		"/api/v1/repositories/{id}",
+		"/api/v1/repositories/{id}/baseline",
+		"/api/v1/sync/reconcile",
+	} {
+		if paths[expectedPath] == nil {
+			t.Fatalf("paths 缺少端点 %q", expectedPath)
+		}
+	}
 	components, ok := spec["components"].(map[string]any)
 	if !ok {
 		t.Fatal("缺少 components")

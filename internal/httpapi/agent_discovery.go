@@ -719,6 +719,8 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				"operationId": "listEvents",
 				"security":    []any{authed},
 				"parameters": []any{
+					map[string]any{"name": "repository_id", "in": "query", "schema": map[string]any{"type": "string"}},
+					map[string]any{"name": "kind", "in": "query", "schema": map[string]any{"type": "string"}},
 					map[string]any{"name": "page", "in": "query", "schema": map[string]any{"type": "integer"}},
 					map[string]any{"name": "per_page", "in": "query", "schema": map[string]any{"type": "integer"}},
 				},
@@ -731,6 +733,8 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				"operationId": "listOutbox",
 				"security":    []any{authed},
 				"parameters": []any{
+					map[string]any{"name": "status", "in": "query", "schema": map[string]any{"type": "string", "enum": []string{"pending", "sending", "sent", "failed", "dead"}}},
+					map[string]any{"name": "channel_type", "in": "query", "schema": map[string]any{"type": "string"}},
 					map[string]any{"name": "page", "in": "query", "schema": map[string]any{"type": "integer"}},
 					map[string]any{"name": "per_page", "in": "query", "schema": map[string]any{"type": "integer"}},
 				},
@@ -801,6 +805,55 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				"operationId": "getSystemSettings",
 				"security":    []any{authed},
 				"responses":   map[string]any{"200": jsonResponse("设置", map[string]any{"type": "object"})},
+			},
+		},
+		"/api/v1/notifications/outbox/retry-dead": map[string]any{
+			"post": map[string]any{
+				"summary":     "批量重试死信通知",
+				"operationId": "retryDeadOutbox",
+				"security":    []any{authed},
+				"responses":   map[string]any{"200": jsonResponse("重试结果", map[string]any{"type": "object"})},
+			},
+		},
+		"/api/v1/notifications/outbox/{id}/retry": map[string]any{
+			"post": map[string]any{
+				"summary":     "重试单条死信通知",
+				"operationId": "retryOutboxItem",
+				"security":    []any{authed},
+				"parameters": []any{
+					map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
+				},
+				"responses": map[string]any{"200": jsonResponse("重试结果", map[string]any{"type": "object"})},
+			},
+		},
+		"/api/v1/repositories/{id}": map[string]any{
+			"delete": map[string]any{
+				"summary":     "删除仓库",
+				"operationId": "deleteRepository",
+				"security":    []any{authed},
+				"parameters": []any{
+					map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
+				},
+				"responses": map[string]any{"200": jsonResponse("删除结果", map[string]any{"type": "object"})},
+			},
+		},
+		"/api/v1/repositories/{id}/baseline": map[string]any{
+			"post": map[string]any{
+				"summary":     "触发仓库重新全量基线",
+				"operationId": "baselineRepository",
+				"security":    []any{authed},
+				"parameters": []any{
+					map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
+				},
+				"responses": map[string]any{"200": jsonResponse("基线触发结果", map[string]any{"type": "object"})},
+			},
+		},
+		"/api/v1/sync/reconcile": map[string]any{
+			"post": map[string]any{
+				"summary":     "手动触发系统对账",
+				"operationId": "manualReconcile",
+				"security":    []any{authed},
+				"responses":   map[string]any{"200": jsonResponse("对账触发结果", map[string]any{"type": "object"})},
 			},
 		},
 	}

@@ -7,6 +7,9 @@
 ### Added
 
 - 新增 `POST /api/v1/notifications/outbox/retry-dead`：一键重新排队全部失败投递（可选 channel_type 过滤），后端单次 UPDATE 完成，与逐条重试同一字段语义；前端「重试全部失败」从跨页收集+逐条串行 POST 改为单调用
+- 扩展 MCP 网关工具集：新增 `list_events`（只读最近事件流）、`get_star_trend`（Star 增长趋势数据）、`list_starred_releases`（Star Release 追踪列表），完善 `list_outbox` 状态与渠道类型过滤支持
+- 补齐 OpenAPI 规范契约定义：补充 `POST /api/v1/notifications/outbox/retry-dead`、`POST /api/v1/notifications/outbox/{id}/retry`、`DELETE /api/v1/repositories/{id}`、`POST /api/v1/repositories/{id}/baseline`、`POST /api/v1/sync/reconcile` 完整路由与参数描述
+- 强化 JSON 请求头与响应缓存控制：对不支持的内容协商返回明确 415 细分提示，系统版本与构建信息接口增加 `Cache-Control` 缓存指令保护
 
 ### Changed
 

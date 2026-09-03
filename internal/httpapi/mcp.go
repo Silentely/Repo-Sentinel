@@ -128,14 +128,11 @@ func (s *server) mcpTools() []mcpTool {
 			name:        "list_security_alerts",
 			description: "列出安全告警，可按 state（open/fixed/dismissed/auto_dismissed/withdrawn 等）、severity 过滤，支持分页。",
 			inputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					// state 自由透传（与 REST 一致）：枚举会挡住 withdrawn 等新状态。
-					"state":    map[string]any{"type": "string"},
-					"severity": map[string]any{"type": "string"},
-					"page":     map[string]any{"type": "integer", "minimum": 1},
-					"per_page": map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
-				},
+				// state 自由透传（与 REST 一致）：枚举会挡住 withdrawn 等新状态。
+				"state":    map[string]any{"type": "string"},
+				"severity": map[string]any{"type": "string"},
+				"page":     map[string]any{"type": "integer", "minimum": 1},
+				"per_page": map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
 			},
 			execute: func(ctx context.Context, args map[string]any) (any, error) {
 				filter := mcpListFilter(args)
@@ -149,17 +146,80 @@ func (s *server) mcpTools() []mcpTool {
 			},
 		},
 		{
-			name:        "list_outbox",
-			description: "列出通知发件箱条目及其投递状态，支持分页。",
+			name:        "list_events",
+			description: "列出最近事件流，支持按仓库和类型过滤，支持分页。",
 			inputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
+					"repository_id": map[string]any{"type": "string"},
+					"kind":          map[string]any{"type": "string"},
+					"page":          map[string]any{"type": "integer", "minimum": 1},
+					"per_page":      map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
+				},
+			},
+			execute: func(ctx context.Context, args map[string]any) (any, error) {
+				filter := mcpListFilter(args)
+				filter.RepositoryID = mcpStringArg(args, "repository_id")
+				filter.Kind = mcpStringArg(args, "kind")
+				items, page, err := s.dependencies.Store.Events().List(ctx, filter)
+				if err != nil {
+					return nil, err
+				}
+				return mcpListResult(items, page), nil
+			},
+		},
+		{
+			name:        "get_star_trend",
+			description: "获取 Star 增长趋势数据，支持按天数范围过滤（7/30/90/0，0 表示全部）。",
+			inputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"days": map[string]any{"type": "integer", "enum": []int{7, 30, 90, 0}},
+				},
+			},
+			execute: func(ctx context.Context, args map[string]any) (any, error) {
+				days := mcpIntArg(args, "days")
+				return s.dependencies.Store.StarTrend(ctx, days)
+			},
+		},
+		{
+			name:        "list_starred_releases",
+			description: "列出 Star Release 追踪列表，支持按 state（tracking/inactive/disabled/unavailable）过滤与分页。",
+			inputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"state":    map[string]any{"type": "string", "enum": []string{"tracking", "inactive", "disabled", "unavailable"}},
 					"page":     map[string]any{"type": "integer", "minimum": 1},
 					"per_page": map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
 				},
 			},
 			execute: func(ctx context.Context, args map[string]any) (any, error) {
-				items, page, err := s.dependencies.Store.Outbox().List(ctx, mcpListFilter(args))
+				filter := mcpListFilter(args)
+				filter.State = mcpStringArg(args, "state")
+				items, page, err := s.dependencies.Store.StarredTrackers().List(ctx, filter)
+				if err != nil {
+					return nil, err
+				}
+				return mcpListResult(items, page), nil
+			},
+		},
+		{
+			name:        "list_outbox",
+			description: "列出通知发件箱条目及其投递状态，支持分页与状态过滤。",
+			inputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"status":       map[string]any{"type": "string", "enum": []string{"pending", "sending", "sent", "failed", "dead"}},
+					"channel_type": map[string]any{"type": "string"},
+					"page":         map[string]any{"type": "integer", "minimum": 1},
+					"per_page":     map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
+				},
+			},
+			execute: func(ctx context.Context, args map[string]any) (any, error) {
+				filter := mcpListFilter(args)
+				filter.Status = mcpStringArg(args, "status")
+				filter.Kind = mcpStringArg(args, "channel_type")
+				items, page, err := s.dependencies.Store.Outbox().List(ctx, filter)
 				if err != nil {
 					return nil, err
 				}
@@ -343,8 +403,7 @@ func writeMCPJSON(w http.ResponseWriter, body map[string]any) {
 		}
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("MCP-Protocol-Version", version)
-	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Mcp-Protocol-Version", version)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(body)
 }

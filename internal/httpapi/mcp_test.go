@@ -261,3 +261,48 @@ func TestMCPInitialize协议版本与serverInfo(t *testing.T) {
 		t.Fatalf("未协商时应回默认协议版本头，got %q", got)
 	}
 }
+
+func TestMCPToolsListAndCallExtendedTools(t *testing.T) {
+	fixture := oauthFixture(t)
+	token := mcpAccessToken(t, fixture)
+
+	_, listPayload := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}`)
+	result, ok := listPayload["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("tools/list 缺少 result: %+v", listPayload)
+	}
+	tools, ok := result["tools"].([]any)
+	if !ok {
+		t.Fatalf("tools 不是列表: %+v", result)
+	}
+	names := map[string]bool{}
+	for _, raw := range tools {
+		tool := raw.(map[string]any)
+		if n, ok := tool["name"].(string); ok {
+		names[n] = true
+		}
+	}
+	for _, expected := range []string{"list_events", "get_star_trend", "list_starred_releases", "list_outbox"} {
+		if !names[expected] {
+			t.Fatalf("tools/list 缺少工具 %q", expected)
+		}
+	}
+
+	status, callPayload := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"list_events","arguments":{"per_page":5}}}`)
+	if status != http.StatusOK {
+		t.Fatalf("list_events 状态异常: %d, %+v", status, callPayload)
+	}
+	text := mcpResultText(t, callPayload)
+	if !strings.Contains(text, "items") {
+		t.Fatalf("list_events 结果异常: %s", text)
+	}
+
+	status, outboxPayload := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"list_outbox","arguments":{"status":"sent","per_page":5}}}`)
+	if status != http.StatusOK {
+		t.Fatalf("list_outbox 状态异常: %d, %+v", status, outboxPayload)
+	}
+	text = mcpResultText(t, outboxPayload)
+	if !strings.Contains(text, "items") {
+		t.Fatalf("list_outbox 结果异常: %s", text)
+	}
+}
