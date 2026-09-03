@@ -162,6 +162,30 @@ func (failingOutboxStore) ClaimDue(context.Context, time.Time, time.Duration, in
 	return nil, errors.New("claim boom: database locked")
 }
 
+func TestTruncateLogTitleAndHTMLPlainText(t *testing.T) {
+	rawTitle := "  Title with\nmultiple  lines   and   spaces  "
+	truncated := truncateLogTitle(rawTitle)
+	if truncated != "Title with multiple lines and spaces" {
+		t.Fatalf("unexpected truncated title: %q", truncated)
+	}
+
+	htmlSample := `<p>Hello <b>World</b> &amp; <a href="https://example.com/repo">Repo</a></p>`
+	plain := htmlToPlainText(htmlSample)
+	if !strings.Contains(plain, "Repo (https://example.com/repo)") {
+		t.Fatalf("plain text link missing: %q", plain)
+	}
+	if !strings.Contains(plain, "Hello World &") {
+		t.Fatalf("plain text entity unescape failed: %q", plain)
+	}
+
+	// 兼容单引号与属性修饰
+	singleQuoteSample := `<a class="link" href='https://example.com/pr'>PR #1</a>`
+	plainSQ := htmlToPlainText(singleQuoteSample)
+	if plainSQ != "PR #1 (https://example.com/pr)" {
+		t.Fatalf("single quote link failed: %q", plainSQ)
+	}
+}
+
 // TestTickClaimFailureLogsErrorDetail 领取失败日志必须携带真实错误详情，
 // 否则数据库抖动时只有 error_code 无法判断是连接、锁还是迁移问题。
 func TestTickClaimFailureLogsErrorDetail(t *testing.T) {

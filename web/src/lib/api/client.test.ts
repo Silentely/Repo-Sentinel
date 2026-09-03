@@ -76,4 +76,11 @@ describe("api client 错误解析", () => {
       errorCode: "ai_field_locked",
     });
   });
+
+  it("204 No Content 成功返回 undefined", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    const request = createApiClient({ fetchImpl });
+    const result = await request("/api/v1/logout", { method: "POST" });
+    expect(result).toBeUndefined();
+  });
 });

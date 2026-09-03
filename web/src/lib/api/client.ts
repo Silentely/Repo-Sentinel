@@ -84,7 +84,7 @@ function isSafeMethod(method: string): boolean {
 }
 
 function readBrowserCookie(name: string): string | undefined {
-  if (typeof document === "undefined") {
+  if (typeof document === "undefined" || !document.cookie) {
     return undefined;
   }
   for (const item of document.cookie.split(";")) {
@@ -140,6 +140,10 @@ function redirectToLogin(): void {
   if (typeof window === "undefined" || !window.location || window.location.pathname === "/login") {
     return;
   }
-  window.history.replaceState(null, "", "/login");
-  window.dispatchEvent(new PopStateEvent("popstate"));
+  if (typeof window.history !== "undefined" && typeof window.history.replaceState === "function") {
+    window.history.replaceState(null, "", "/login");
+  }
+  if (typeof window.dispatchEvent === "function") {
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
 }

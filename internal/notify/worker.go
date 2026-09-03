@@ -405,8 +405,9 @@ const bodyDetailLimit = 512
 // 全量写入会让单行日志膨胀，截断保留可读前缀即可。
 const logTitleLimit = 120
 
-// truncateLogTitle 按码点截断日志标题并追加省略号，避免超长标题刷屏。
+// truncateLogTitle 按码点截断日志标题并追加省略号，压缩内部多余空白与换行，避免超长标题刷屏。
 func truncateLogTitle(title string) string {
+	title = strings.TrimSpace(strings.Join(strings.Fields(title), " "))
 	runes := []rune(title)
 	if len(runes) <= logTitleLimit {
 		return title
@@ -503,7 +504,7 @@ const telegramTextLimit = 4000
 
 // htmlLinkRe / htmlTagRe 用于把 Telegram HTML 正文转为纯文本（HTTP Webhook 接收端消费）。
 var (
-	htmlLinkRe = regexp.MustCompile(`<a href="([^"]*)">([^<]*)</a>`)
+	htmlLinkRe = regexp.MustCompile(`<a\s+(?:[^>]*?\s+)?href=["']([^"']*)["'][^>]*>([^<]*)</a>`)
 	htmlTagRe  = regexp.MustCompile(`<[^>]+>`)
 )
 
