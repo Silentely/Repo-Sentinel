@@ -54,7 +54,7 @@ func writeListResponse[T any](w http.ResponseWriter, items []T, page store.PageR
 
 func (s *server) handleListRepositories(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
-	f.Kind = r.URL.Query().Get("type")
+	f.Kind = queryTrimmed(r, "type")
 	items, page, err := s.dependencies.Store.Repositories().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
@@ -162,11 +162,11 @@ func (s *server) handleUpdateRepositorySettings(w http.ResponseWriter, r *http.R
 
 func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
-	f.Kind = r.URL.Query().Get("kind")
-	f.State = r.URL.Query().Get("state")
-	f.RepositoryID = r.URL.Query().Get("repository_id")
+	f.Kind = queryTrimmed(r, "kind")
+	f.State = queryTrimmed(r, "state")
+	f.RepositoryID = queryTrimmed(r, "repository_id")
 	// PR 维度过滤下沉到 SQL：客户端对首页 50 条二次过滤会导致总数失真。
-	f.ReviewDecision = r.URL.Query().Get("review")
+	f.ReviewDecision = queryTrimmed(r, "review")
 	f.CheckStatus = mapCheckStatusParam(r.URL.Query().Get("check"))
 	applyIgnoredFilter(&f, r)
 	// closed 状态应用系统设置的显示限制，避免历史数据无限增长。
@@ -188,8 +188,8 @@ func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
-	f.Status = r.URL.Query().Get("conclusion")
-	f.RepositoryID = r.URL.Query().Get("repository_id")
+	f.Status = queryTrimmed(r, "conclusion")
+	f.RepositoryID = queryTrimmed(r, "repository_id")
 	applyIgnoredFilter(&f, r)
 	items, page, err := s.dependencies.Store.WorkflowRuns().List(r.Context(), f)
 	if err != nil {
@@ -201,9 +201,9 @@ func (s *server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) 
 
 func (s *server) handleListSecurityAlerts(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
-	f.Kind = r.URL.Query().Get("alert_kind")
-	f.State = r.URL.Query().Get("state")
-	f.RepositoryID = r.URL.Query().Get("repository_id")
+	f.Kind = queryTrimmed(r, "alert_kind")
+	f.State = queryTrimmed(r, "state")
+	f.RepositoryID = queryTrimmed(r, "repository_id")
 	applyIgnoredFilter(&f, r)
 	// dismissed/resolved 状态应用显示限制。
 	if f.State != "" && f.State != "open" && f.PerPage == 0 {
@@ -287,8 +287,8 @@ func (s *server) getIntSetting(ctx context.Context, key string, defaultVal int) 
 
 func (s *server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
-	f.Kind = r.URL.Query().Get("kind")
-	f.RepositoryID = r.URL.Query().Get("repository_id")
+	f.Kind = queryTrimmed(r, "kind")
+	f.RepositoryID = queryTrimmed(r, "repository_id")
 	items, page, err := s.dependencies.Store.Events().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
@@ -311,8 +311,8 @@ func resolveChannelIDsByType(channels []store.NotificationChannel, channelType s
 
 func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
-	f.Status = r.URL.Query().Get("status")
-	channelTypeFilter := r.URL.Query().Get("channel_type")
+	f.Status = queryTrimmed(r, "status")
+	channelTypeFilter := queryTrimmed(r, "channel_type")
 	// 渠道查询一次即可：既用于把 channel_type 过滤下沉到 SQL（分页/total 才正确），
 	// 也用于响应中的渠道类型回填。
 	channels, chErr := s.dependencies.Store.Channels().List(r.Context())
@@ -353,6 +353,10 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 		enriched = append(enriched, entry)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": enriched, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+}
+
+func queryTrimmed(r *http.Request, key string) string {
+	return strings.TrimSpace(r.URL.Query().Get(key))
 }
 
 func listFilterFromRequest(r *http.Request) store.ListFilter {
