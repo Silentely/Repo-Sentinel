@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-03T22:55:00Z | ①规则引擎 Evaluate 增加引擎与存储依赖空指针防护；②聚合器 FlushAll、ReloadFrom 与 Evaluate 增加空指针守卫；③单测 rules 全套通过 |
 | 2026-09-03T22:45:00Z | ①handleTestChannel/handleDeleteChannel/handleToggleChannel 路径参数去空；②单仓对账端点 handleReconcileRepository 增加 id 去空校验；③全套 httpapi 测试通过 |
 | 2026-09-03T22:35:00Z | ①增加 queryTrimmed 通用函数；②列表查询过滤参数统一清洗首尾空白；③涵盖仓库、工作项、运行流、告警、事件与发件箱接口 |
 | 2026-09-03T22:25:00Z | ①列表分页请求参数 page/per_page 去空清洗；②资源忽略标记端点 id 参数去空与非空校验；③mapCheckStatusParam 支持大小写不敏感与同义词映射 |

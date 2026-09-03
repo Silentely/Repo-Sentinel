@@ -62,6 +62,9 @@ func NewAggregator(st store.Store, window time.Duration, burstThreshold int, bur
 
 // FlushAll 立即清空并提交所有暂存中的聚合桶（如优雅停机或即时刷新）。
 func (a *Aggregator) FlushAll() {
+	if a == nil {
+		return
+	}
 	a.mu.Lock()
 	keys := make([]string, 0, len(a.buckets))
 	for k, b := range a.buckets {
@@ -79,6 +82,9 @@ func (a *Aggregator) FlushAll() {
 // ReloadFrom 从 system_settings 热加载聚合参数；未设置或非法的键保留当前值。
 // 管理台修改 notify.* 后调用，参数即时生效而无需重启。
 func (a *Aggregator) ReloadFrom(ctx context.Context) error {
+	if a == nil || a.Store == nil {
+		return nil
+	}
 	window, err1 := readPositiveIntSetting(ctx, a.Store, "notify.aggregate_window_sec")
 	threshold, err2 := readPositiveIntSetting(ctx, a.Store, "notify.burst_threshold")
 	burstWindow, err3 := readPositiveIntSetting(ctx, a.Store, "notify.burst_window_sec")
@@ -141,6 +147,9 @@ func categoryOf(ev *store.Event) string {
 
 // Evaluate 带聚合的通知决策。
 func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFullName string) error {
+	if a == nil || a.Store == nil {
+		return errors.New("rules: aggregator store is required")
+	}
 	if res.Event == nil || res.SuppressNotify || res.Event.SuppressNotification {
 		return nil
 	}

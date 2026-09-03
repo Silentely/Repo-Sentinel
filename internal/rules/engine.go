@@ -39,6 +39,9 @@ func (e *Engine) logNotifySkipped(res normalizer.Result, repoFullName, reason st
 
 // Evaluate 根据规范化结果创建通知。
 func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullName string) error {
+	if e == nil {
+		return errors.New("rules: engine is nil")
+	}
 	if res.Event == nil || res.SuppressNotify || res.Event.SuppressNotification {
 		e.logNotifySkipped(res, repoFullName, "suppressed")
 		return nil
@@ -51,6 +54,9 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	if !shouldNotifyRealtime(res.Event) {
 		e.logNotifySkipped(res, repoFullName, "not_realtime")
 		return nil
+	}
+	if e.Store == nil {
+		return errors.New("rules: engine store is required")
 	}
 	channels, err := e.Store.Channels().List(ctx)
 	if err != nil {
