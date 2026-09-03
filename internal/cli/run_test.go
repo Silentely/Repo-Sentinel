@@ -11,6 +11,37 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 )
 
+func TestRunner版本别名支持(t *testing.T) {
+	for _, alias := range []string{"version", "-v", "--version"} {
+		var stdout, stderr bytes.Buffer
+		runner := NewRunner(strings.NewReader(""), &stdout, &stderr, Dependencies{
+			BuildInfo: func() buildinfo.Info {
+				return buildinfo.Info{Version: "1.2.3"}
+			},
+		})
+		if err := runner.Run(t.Context(), []string{alias}); err != nil {
+			t.Fatalf("alias %q 运行失败: %v", alias, err)
+		}
+		if !strings.Contains(stdout.String(), "1.2.3") {
+			t.Fatalf("alias %q 输出不含版本号: %s", alias, stdout.String())
+		}
+	}
+}
+
+func TestRunner帮助命令提示(t *testing.T) {
+	for _, alias := range []string{"help", "-h", "--help"} {
+		var stdout, stderr bytes.Buffer
+		runner := NewRunner(strings.NewReader(""), &stdout, &stderr, Dependencies{})
+		err := runner.Run(t.Context(), []string{alias})
+		if err == nil {
+			t.Fatalf("alias %q 应返回提示错误", alias)
+		}
+		if !strings.Contains(stderr.String(), "可用命令: serve") {
+			t.Fatalf("alias %q 缺少可用命令列表: %s", alias, stderr.String())
+		}
+	}
+}
+
 func TestRunner版本输出完整构建信息(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

@@ -202,6 +202,14 @@ func workflowConclusionEmoji(conclusion string) string {
 		return "🔔"
 	case "skipped":
 		return "⏭️"
+	case "neutral":
+		return "⚪"
+	case "stale":
+		return "⚠️"
+	case "in_progress":
+		return "🔄"
+	case "queued", "requested", "waiting", "pending":
+		return "⏳"
 	default:
 		if store.IsFailureConclusion(conclusion) {
 			return "❌"
@@ -241,6 +249,22 @@ func actionDisplayName(action string) string {
 		return "转为草稿"
 	case "published":
 		return "发布"
+	case "assigned":
+		return "已指派"
+	case "unassigned":
+		return "已取消指派"
+	case "labeled":
+		return "已标记"
+	case "unlabeled":
+		return "已取消标记"
+	case "locked":
+		return "已锁定"
+	case "unlocked":
+		return "已解锁"
+	case "transferred":
+		return "已转移"
+	case "deleted":
+		return "已删除"
 	default:
 		return action
 	}

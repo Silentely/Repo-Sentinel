@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  repoDisplayName,
   alertStateLabel,
   eventActionLabel,
   eventKindLabel,
@@ -18,6 +19,7 @@ describe("formatRelativeTime", () => {
   it("空串与非法日期返回空串", () => {
     expect(formatRelativeTime("")).toBe("");
     expect(formatRelativeTime("not-a-date")).toBe("");
+    expect(formatRelativeTime("2026-08-07T12:00:00Z", new Date("invalid"))).toBe("");
   });
 
   it("60 秒内与未来时间（时钟偏差）归为刚刚，不渲染空白", () => {
@@ -156,5 +158,17 @@ describe("htmlToPlainText", () => {
     expect(got).not.toContain("<b>");
     expect(got).toContain("x < y");
     expect(got).toContain("链接 (https://example.com/a?b=1&c=2)");
+  });
+});
+
+describe("repoDisplayName", () => {
+  it("空值或缺省安全回退空串", () => {
+    expect(repoDisplayName(null)).toBe("");
+    expect(repoDisplayName(undefined)).toBe("");
+  });
+
+  it("支持优先使用 full_name 或 owner/name 拼接", () => {
+    expect(repoDisplayName({ full_name: "acme/repo" })).toBe("acme/repo");
+    expect(repoDisplayName({ owner: "acme", name: "tool" })).toBe("acme/tool");
   });
 });

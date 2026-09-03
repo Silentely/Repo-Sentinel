@@ -23,18 +23,18 @@ export const SUBSCRIBABLE_KINDS: Array<{
   { value: "release", label: "Release", featureKey: "feature.starred_releases" },
 ];
 
-// uiCheckedKinds 将后端的 event_kinds（null=订阅全部）映射为 UI 勾选态数组。
-export function uiCheckedKinds(eventKinds: string[] | null): string[] {
-  if (eventKinds === null) {
+// uiCheckedKinds 将后端的 event_kinds（null/undefined=订阅全部）映射为 UI 勾选态数组。
+export function uiCheckedKinds(eventKinds: string[] | null | undefined): string[] {
+  if (eventKinds === null || eventKinds === undefined) {
     return SUBSCRIBABLE_KINDS.map((k) => k.value);
   }
   return eventKinds;
 }
 
 // subscriptionSummary 用于渠道列表行的订阅摘要展示。
-export function subscriptionSummary(eventKinds: string[] | null, digestEnabled: boolean): string {
+export function subscriptionSummary(eventKinds: string[] | null | undefined, digestEnabled: boolean): string {
   let kindsText: string;
-  if (eventKinds === null || eventKinds.length === SUBSCRIBABLE_KINDS.length) {
+  if (eventKinds === null || eventKinds === undefined || eventKinds.length === SUBSCRIBABLE_KINDS.length) {
     kindsText = "全部类型";
   } else if (eventKinds.length === 0) {
     kindsText = "不接收实时通知";

@@ -78,3 +78,37 @@ func TestKindEmoji(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkflowConclusionEmojiExtended(t *testing.T) {
+	cases := map[string]string{
+		"neutral":     "⚪",
+		"stale":       "⚠️",
+		"in_progress": "🔄",
+		"queued":      "⏳",
+		"pending":     "⏳",
+		"waiting":     "⏳",
+	}
+	for conclusion, want := range cases {
+		if got := workflowConclusionEmoji(conclusion); got != want {
+			t.Errorf("workflowConclusionEmoji(%q) = %q, want %q", conclusion, got, want)
+		}
+	}
+}
+
+func TestActionDisplayNameExtended(t *testing.T) {
+	cases := map[string]string{
+		"assigned":    "已指派",
+		"unassigned":  "已取消指派",
+		"labeled":     "已标记",
+		"unlabeled":   "已取消标记",
+		"locked":      "已锁定",
+		"unlocked":    "已解锁",
+		"transferred": "已转移",
+		"deleted":     "已删除",
+	}
+	for action, want := range cases {
+		if got := actionDisplayName(action); got != want {
+			t.Errorf("actionDisplayName(%q) = %q, want %q", action, got, want)
+		}
+	}
+}

@@ -69,8 +69,10 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 	switch args[0] {
 	case "serve":
 		err = r.runServe(ctx, args[1:])
-	case "version":
+	case "version", "-v", "--version":
 		err = r.runVersion(args[1:])
+	case "help", "-h", "--help":
+		err = newCLIError("可用命令: serve, version, config validate, admin reset-password, doctor, healthcheck, backup, restore。")
 	case "config":
 		if len(args) < 2 || args[1] != "validate" {
 			err = newCLIError("config 仅支持 validate 子命令。")

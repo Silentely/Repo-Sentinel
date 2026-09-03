@@ -15,8 +15,9 @@ describe("SUBSCRIBABLE_KINDS", () => {
 });
 
 describe("uiCheckedKinds", () => {
-  it("null 渲染为全部勾选", () => {
+  it("null 或 undefined 渲染为全部勾选", () => {
     expect(uiCheckedKinds(null)).toEqual(SUBSCRIBABLE_KINDS.map((k) => k.value));
+    expect(uiCheckedKinds(undefined)).toEqual(SUBSCRIBABLE_KINDS.map((k) => k.value));
   });
   it("空数组表示不订阅实时", () => {
     expect(uiCheckedKinds([])).toEqual([]);
@@ -27,9 +28,10 @@ describe("uiCheckedKinds", () => {
 });
 
 describe("subscriptionSummary", () => {
-  it("null 显示全部类型并标注汇总", () => {
+  it("null 或 undefined 显示全部类型并标注汇总", () => {
     expect(subscriptionSummary(null, true)).toContain("全部类型");
     expect(subscriptionSummary(null, true)).toContain("定期汇总");
+    expect(subscriptionSummary(undefined, false)).toContain("全部类型");
   });
   it("空数组显示不接收实时通知", () => {
     expect(subscriptionSummary([], false)).toContain("不接收实时通知");

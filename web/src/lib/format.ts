@@ -6,7 +6,7 @@
 export function formatRelativeTime(dateString: string, now: Date = new Date()): string {
   if (!dateString) return "";
   const date = new Date(dateString);
-  if (isNaN(date.getTime())) return "";
+  if (isNaN(date.getTime()) || isNaN(now.getTime())) return "";
   const diffMs = now.getTime() - date.getTime();
   // 未来时间（客户端与服务端存在时钟偏差、或事件带计划时间）不渲染空白，
   // 与 60 秒内同样归为「刚刚」，避免列表时间列留白。
@@ -42,7 +42,8 @@ export function syncStatusLabel(status: string): string {
 }
 
 /** 仓库显示名：full_name 缺省时回退 owner/name 拼接。 */
-export function repoDisplayName(repo: { full_name?: string; owner?: string; name?: string }): string {
+export function repoDisplayName(repo?: { full_name?: string; owner?: string; name?: string } | null): string {
+  if (!repo) return "";
   return repo.full_name || (repo.owner && repo.name ? `${repo.owner}/${repo.name}` : repo.name || "");
 }
 
