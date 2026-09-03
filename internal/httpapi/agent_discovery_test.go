@@ -375,7 +375,8 @@ func TestOpenAPIJSON结构完整(t *testing.T) {
 		"/api/v1/notifications/outbox/retry-dead",
 		"/api/v1/notifications/outbox/{id}/retry",
 		"/api/v1/repositories/{id}",
-		"/api/v1/repositories/{id}/baseline",
+		"/api/v1/repositories/{id}/activate",
+		"/api/v1/repositories/{id}/reconcile",
 		"/api/v1/sync/reconcile",
 	} {
 		if paths[expectedPath] == nil {

@@ -837,15 +837,26 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				"responses": map[string]any{"200": jsonResponse("删除结果", map[string]any{"type": "object"})},
 			},
 		},
-		"/api/v1/repositories/{id}/baseline": map[string]any{
+		"/api/v1/repositories/{id}/activate": map[string]any{
 			"post": map[string]any{
-				"summary":     "触发仓库重新全量基线",
-				"operationId": "baselineRepository",
+				"summary":     "激活仓库（完成基线）",
+				"operationId": "activateRepository",
 				"security":    []any{authed},
 				"parameters": []any{
 					map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
 				},
-				"responses": map[string]any{"200": jsonResponse("基线触发结果", map[string]any{"type": "object"})},
+				"responses": map[string]any{"200": jsonResponse("激活结果", map[string]any{"type": "object"})},
+			},
+		},
+		"/api/v1/repositories/{id}/reconcile": map[string]any{
+			"post": map[string]any{
+				"summary":     "触发单仓对账",
+				"operationId": "reconcileRepository",
+				"security":    []any{authed},
+				"parameters": []any{
+					map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
+				},
+				"responses": map[string]any{"200": jsonResponse("对账触发结果", map[string]any{"type": "object"})},
 			},
 		},
 		"/api/v1/sync/reconcile": map[string]any{
