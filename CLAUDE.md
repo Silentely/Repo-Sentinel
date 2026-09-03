@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-03T19:05:00Z | ①decodeRequestJSON 在 JSON 语法不合法或请求体存在多余非空数据时透传明确细分原因，排查 API 传参更直观；②验证全量 httpapi 单元测试通过 |
 | 2026-09-03T19:00:00Z | ①EventStatusLabel 与 statusDisplay 增加对 nil 事件的空指针安全回退（📌 有更新），消除格式化潜在 panic；②补充 display 单元测试覆盖 nil 边界；③全套规则引擎回归测试通过 |
 | 2026-09-03T18:55:00Z | ①NormalizeListFilter 对字符串过滤参数（RepositoryID/Kind/State/Status/ReviewDecision/CheckStatus）执行首尾空白清洗，防 SQL 查询失配；②WebMCP 前端网关补充 list_events、get_star_trend、list_starred_releases 工具定义并断言；③全套单元测试与类型校验锁定 |
 | 2026-09-03T18:50:00Z | ①扩展 MCP 工具集：新增 list_events、get_star_trend、list_starred_releases 工具，Outbox 支持状态与渠道类型过滤；②OpenAPI 规范补齐死信重试、仓库删除、基线与对账端点定义并断言；③JSON 请求解码对非 application/json 请求头提供明确 415 细分说明；④系统版本与构建信息接口增加 Cache-Control 标头避免过度缓存；⑤补齐 MCP 工具与 OpenAPI 架构回归测试 |

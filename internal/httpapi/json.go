@@ -13,9 +13,13 @@ const maxJSONBodyBytes int64 = 1 << 20
 
 type jsonDecodeError struct {
 	status int
+	msg    string
 }
 
 func (e jsonDecodeError) Error() string {
+	if e.msg != "" {
+		return e.msg
+	}
 	return "invalid JSON request"
 }
 
@@ -32,10 +36,10 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
 		if errors.As(err, &maxBytesError) {
 			return jsonDecodeError{status: http.StatusRequestEntityTooLarge}
 		}
-		return jsonDecodeError{status: http.StatusBadRequest}
+		return jsonDecodeError{status: http.StatusBadRequest, msg: err.Error()}
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return jsonDecodeError{status: http.StatusBadRequest}
+		return jsonDecodeError{status: http.StatusBadRequest, msg: "请求体只允许包含单个 JSON 对象。"}
 	}
 	return nil
 }
@@ -66,6 +70,12 @@ func (s *server) decodeRequestJSON(w http.ResponseWriter, r *http.Request, desti
 	if status == http.StatusUnsupportedMediaType {
 		s.writeAPIError(w, r, status, errorCodeValidationFailed, map[string]any{
 			"message": "请求头 Content-Type 必须为 application/json。",
+		})
+		return false
+	}
+	if decodeError.msg != "" {
+		s.writeAPIError(w, r, status, errorCodeValidationFailed, map[string]any{
+			"message": decodeError.msg,
 		})
 		return false
 	}
