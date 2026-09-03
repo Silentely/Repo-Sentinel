@@ -96,7 +96,7 @@ function prefsBody(form: SettingsFormState): SystemSettings {
     "digest.local_time": form.digestTime.trim() || "09:00",
     "digest.send_empty": form.digestEmpty,
     "report.weekly_enabled": form.reportWeekly,
-    "report.weekly_day": form.reportWeeklyDay,
+    "report.weekly_day": form.reportWeeklyDay.trim().toLowerCase() || "monday",
     "report.monthly_enabled": form.reportMonthly,
     "report.monthly_day": form.reportMonthlyDay,
     "notify.aggregate_window_sec": form.aggregateSec,

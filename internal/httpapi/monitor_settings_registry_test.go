@@ -6,6 +6,23 @@ import (
 	"testing"
 )
 
+func TestSettingStringTrimValidation(t *testing.T) {
+	tz, _, ok := validateTimezone("  Asia/Shanghai  ")
+	if !ok || tz != "Asia/Shanghai" {
+		t.Fatalf("validateTimezone with spaces failed: %v", tz)
+	}
+
+	timeVal, _, ok := validateLocalTime("  08:30  ")
+	if !ok || timeVal != "08:30" {
+		t.Fatalf("validateLocalTime with spaces failed: %v", timeVal)
+	}
+
+	weekVal, _, ok := validateWeekday("  Friday  ")
+	if !ok || weekVal != "friday" {
+		t.Fatalf("validateWeekday with spaces failed: %v", weekVal)
+	}
+}
+
 // TestSettingRegistryKeysUnique 注册表键必须唯一：重复键会让 GET 默认值/PUT 白名单行为不确定。
 func TestSettingRegistryKeysUnique(t *testing.T) {
 	seen := make(map[string]bool, len(settingSpecs))

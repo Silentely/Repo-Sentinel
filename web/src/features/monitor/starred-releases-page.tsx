@@ -276,12 +276,16 @@ export function StarredReleasesPage() {
 
 export function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: boolean; onToggle: (state: "disabled" | "tracking") => void }) {
   // busy 由父级 mutation 的 variables.id 判定：请求结束自动恢复，不会残留行级忙碌态。
-  const published = item.last_release_published_at ? new Date(item.last_release_published_at).toLocaleString("zh-CN") : "—";
+  let published = "—";
+  if (item.last_release_published_at) {
+    const d = new Date(item.last_release_published_at);
+    published = Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("zh-CN");
+  }
   const url = releaseURL(item.full_name, item.last_release_tag);
   return (
     <li className="tracker-row">
       <span className="tracker-row__main">
-        <a className="tracker-row__name" href={url} target="_blank" rel="noreferrer" title="查看该仓库的 Release">
+        <a className="tracker-row__name" href={url} target="_blank" rel="noopener noreferrer" title="查看该仓库的 Release">
           <code>{item.full_name}</code>
         </a>
         <span className="tracker-row__meta">
@@ -294,7 +298,7 @@ export function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem;
           className="quiet-button quiet-button--compact tracker-row__link"
           href={url}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           aria-label="查看最新 Release"
           title={item.last_release_tag ? `查看 ${item.last_release_tag}` : "查看 Releases"}
         >

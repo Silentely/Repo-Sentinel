@@ -146,9 +146,10 @@ func intRangeSetting(min, max int, message string) func(any) (any, string, bool)
 	}
 }
 
-// validateTimezone 校验 IANA 时区名称。
+// validateTimezone 校验 IANA 时区名称（自动去除首尾空白）。
 func validateTimezone(v any) (any, string, bool) {
 	s, ok := v.(string)
+	s = strings.TrimSpace(s)
 	if !ok || s == "" {
 		return nil, "时区须为 IANA 名称（如 Asia/Shanghai）。", false
 	}
@@ -158,23 +159,24 @@ func validateTimezone(v any) (any, string, bool) {
 	return s, "", true
 }
 
-// validateLocalTime 校验并归一化 HH:MM。
+// validateLocalTime 校验并归一化 HH:MM（自动去除首尾空白）。
 func validateLocalTime(v any) (any, string, bool) {
 	s, ok := v.(string)
 	if !ok {
 		return nil, "时间格式须为 HH:MM。", false
 	}
+	s = strings.TrimSpace(s)
 	normalized, ok := normalizeLocalTime(s)
 	return normalized, "时间格式须为 HH:MM（00:00–23:59）。", ok
 }
 
-// validateWeekday 校验并归一化英文周名（小写）。
+// validateWeekday 校验并归一化英文周名（小写，自动去除首尾空白）。
 func validateWeekday(v any) (any, string, bool) {
 	s, ok := v.(string)
 	if !ok {
 		return nil, "发送日须为英文周名（monday–sunday）。", false
 	}
-	normalized := strings.ToLower(s)
+	normalized := strings.ToLower(strings.TrimSpace(s))
 	if !validWeekdayName(normalized) {
 		return nil, "发送日须为英文周名（monday–sunday）。", false
 	}

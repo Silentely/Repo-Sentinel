@@ -58,4 +58,14 @@ describe("TrackerRow 操作按钮", () => {
     expect(onToggle).toHaveBeenNthCalledWith(1, "tracking");
     expect(onToggle).toHaveBeenNthCalledWith(2, "disabled");
   });
+
+  it("非法发布日期安全回退横线且外部链接具有 noopener noreferrer", () => {
+    render(<TrackerRow item={row({ state: "tracking", last_release_published_at: "invalid-date-format" })} busy={false} onToggle={vi.fn()} />);
+    expect(screen.getByText(/｜ —/)).toBeInTheDocument();
+    const links = screen.getAllByRole("link");
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    }
+  });
 });
