@@ -143,3 +143,23 @@ func TestSetup已有管理员时隐藏端点为NotFound(t *testing.T) {
 	)
 	assertAPIError(t, response, http.StatusNotFound, "not_found")
 }
+
+func TestSetupRejectsBlankCredentials(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+
+	// 空用户名
+	respUser := fixture.request(
+		t, http.MethodPost, "/api/v1/setup",
+		`{"username":"   ","password":"`+httpTestPassword+`"}`,
+		"127.0.0.1:41110", nil, map[string]string{"Host": "127.0.0.1:8080"},
+	)
+	assertAPIError(t, respUser, http.StatusBadRequest, "validation_failed")
+
+	// 空密码
+	respPass := fixture.request(
+		t, http.MethodPost, "/api/v1/setup",
+		`{"username":"admin","password":"   "}`,
+		"127.0.0.1:41111", nil, map[string]string{"Host": "127.0.0.1:8080"},
+	)
+	assertAPIError(t, respPass, http.StatusBadRequest, "validation_failed")
+}

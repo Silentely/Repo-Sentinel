@@ -345,7 +345,8 @@ func (s *server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	apiKey := snap.APIKey
 	if body.APIKey != nil && snap.APIKeySource != "env" {
-		if key := strings.TrimSpace(*body.APIKey); key != "" {
+		key := strings.TrimSpace(*body.APIKey)
+		if key != "" {
 			apiKey = key
 		}
 	}

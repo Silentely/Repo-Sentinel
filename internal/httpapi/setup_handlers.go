@@ -46,6 +46,11 @@ func (s *server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.Username = strings.TrimSpace(request.Username)
+	request.Password = strings.TrimSpace(request.Password)
+	if request.Username == "" || request.Password == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+		return
+	}
 	admin, err := s.dependencies.AdminService.BootstrapAdmin(r.Context(), request.Username, request.Password)
 	if errors.Is(err, auth.ErrConflict) {
 		s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, nil)
