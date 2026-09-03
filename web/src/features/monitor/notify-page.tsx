@@ -117,7 +117,7 @@ function ChannelForm({
         name: title,
         enabled: true,
         target: trimmedTarget,
-        secret: secret || undefined,
+        secret: secret.trim() || undefined,
         event_kinds: kinds,
         digest_enabled: digest,
       });

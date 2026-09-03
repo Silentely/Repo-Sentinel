@@ -294,6 +294,8 @@ func TestValidateWebhookURLRejectsNonHTTPSAndPrivate(t *testing.T) {
 		{"https://localhost/hook", true, true}, // localhost 始终拦截
 		{"https://10.0.0.1/hook", true, false},
 		{"ftp://example.com/hook", false, true},
+		{"  https://example.com/hook  ", false, false},
+		{"   ", false, true},
 		{"", false, true},
 	}
 	for _, tc := range cases {

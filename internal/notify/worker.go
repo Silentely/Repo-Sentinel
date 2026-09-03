@@ -595,6 +595,7 @@ func parseRetryAfter(resp *http.Response) int {
 }
 
 func validateWebhookURL(raw string, allowPrivate bool) error {
+	raw = strings.TrimSpace(raw)
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return fmt.Errorf("invalid_webhook_url")
