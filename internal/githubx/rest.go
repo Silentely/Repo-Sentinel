@@ -154,6 +154,9 @@ func (c *AppClient) ListIssues(ctx context.Context, token, owner, repo string, s
 
 // ListWorkflowRuns 拉取 workflow runs。
 func (c *AppClient) ListWorkflowRuns(ctx context.Context, token, owner, repo string, page int) ([]WorkflowRunItem, int, error) {
+	if page < 1 {
+		page = 1
+	}
 	path := fmt.Sprintf("/repos/%s/%s/actions/runs?per_page=50&page=%d", owner, repo, page)
 	var payload struct {
 		WorkflowRuns []WorkflowRunItem `json:"workflow_runs"`
@@ -190,6 +193,10 @@ func (c *AppClient) ListDependabotAlerts(ctx context.Context, token, owner, repo
 // GitHub 游标分页端点（如 dependabot alerts）的 Link 形如：
 // <https://api.github.com/repos/o/r/dependabot/alerts?after=xxx&per_page=50>; rel="next"
 func parseNextAfter(linkHeader string) string {
+	linkHeader = strings.TrimSpace(linkHeader)
+	if linkHeader == "" {
+		return ""
+	}
 	for _, part := range strings.Split(linkHeader, ",") {
 		seg := strings.SplitN(part, ";", 2)
 		if len(seg) != 2 || !strings.Contains(seg[1], `rel="next"`) {
@@ -208,6 +215,9 @@ func parseNextAfter(linkHeader string) string {
 
 // ListCodeScanningAlerts 拉取 code scanning alerts。
 func (c *AppClient) ListCodeScanningAlerts(ctx context.Context, token, owner, repo string, page int) ([]AlertItem, int, error) {
+	if page < 1 {
+		page = 1
+	}
 	path := fmt.Sprintf("/repos/%s/%s/code-scanning/alerts?per_page=50&page=%d", owner, repo, page)
 	var items []AlertItem
 	remaining, err := c.DoJSON(ctx, "GET", path, token, &items)
@@ -216,6 +226,9 @@ func (c *AppClient) ListCodeScanningAlerts(ctx context.Context, token, owner, re
 
 // ListSecretScanningAlerts 拉取 secret scanning alerts。
 func (c *AppClient) ListSecretScanningAlerts(ctx context.Context, token, owner, repo string, page int) ([]AlertItem, int, error) {
+	if page < 1 {
+		page = 1
+	}
 	path := fmt.Sprintf("/repos/%s/%s/secret-scanning/alerts?per_page=50&page=%d", owner, repo, page)
 	var items []AlertItem
 	remaining, err := c.DoJSON(ctx, "GET", path, token, &items)

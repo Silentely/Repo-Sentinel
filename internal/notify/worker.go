@@ -563,6 +563,9 @@ const maxRetryAfter = 3600
 // parseRetryAfter 解析 HTTP 响应的 Retry-After 响应头，支持整数秒与 HTTP 日期两种格式。
 // 头缺失、格式非法或日期已过期时返回 0，由调用方走固定退避阶梯。
 func parseRetryAfter(resp *http.Response) int {
+	if resp == nil || resp.Header == nil {
+		return 0
+	}
 	h := strings.TrimSpace(resp.Header.Get("Retry-After"))
 	if h == "" {
 		return 0

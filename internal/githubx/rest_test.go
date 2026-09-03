@@ -10,6 +10,18 @@ import (
 	"testing"
 )
 
+func TestParseNextAfterEmptyOrInvalid(t *testing.T) {
+	if got := parseNextAfter(""); got != "" {
+		t.Fatalf("parseNextAfter empty got %q, want empty", got)
+	}
+	if got := parseNextAfter("   "); got != "" {
+		t.Fatalf("parseNextAfter spaces got %q, want empty", got)
+	}
+	if got := parseNextAfter("invalid-link"); got != "" {
+		t.Fatalf("parseNextAfter invalid got %q, want empty", got)
+	}
+}
+
 func TestInstallationRepoImplementsRepoSource(t *testing.T) {
 	var _ RepoSource = (*InstallationRepo)(nil)
 }

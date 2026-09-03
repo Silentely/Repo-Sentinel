@@ -51,13 +51,13 @@ export function ClearFiltersButton({
 }) {
   if (variant === "primary") {
     return (
-      <button type="button" className="primary-button primary-button--inline" onClick={onClick}>
+      <button type="button" className="primary-button primary-button--inline" onClick={onClick} aria-label="清除当前所有筛选条件">
         清除筛选
       </button>
     );
   }
   return (
-    <button className="quiet-button quiet-button--compact" type="button" onClick={onClick}>
+    <button className="quiet-button quiet-button--compact" type="button" onClick={onClick} aria-label="清除当前所有筛选条件">
       清除筛选
     </button>
   );

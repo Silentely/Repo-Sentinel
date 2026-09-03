@@ -8,7 +8,7 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children }: { to: string; children?: ReactNode }) => <a href={to}>{children}</a>,
 }));
 
-import { FeatureGuard } from "./list-shared";
+import { ClearFiltersButton, FeatureGuard } from "./list-shared";
 
 function renderGuard() {
   const queryClient = new QueryClient({
@@ -40,5 +40,14 @@ describe("FeatureGuard 功能开关守卫", () => {
     expect(await screen.findByText("无法加载功能开关")).toBeInTheDocument();
     expect(screen.getByText("服务器错误")).toBeInTheDocument();
     expect(screen.queryByText("守卫内的页面内容")).not.toBeInTheDocument();
+  });
+});
+
+describe("ClearFiltersButton", () => {
+  it("渲染无障碍 aria-label 属性", () => {
+    const fn = vi.fn();
+    render(<ClearFiltersButton onClick={fn} />);
+    const btn = screen.getByRole("button", { name: "清除当前所有筛选条件" });
+    expect(btn).toBeInTheDocument();
   });
 });

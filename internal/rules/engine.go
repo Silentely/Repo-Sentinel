@@ -301,6 +301,7 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 	// 状态置顶：正文第二行再次强化，避免只看字段时漏掉。
 	b.WriteString(fmt.Sprintf("%s <b>状态：%s</b>\n", statusEmoji, htmlpkg.EscapeString(statusLabel)))
 
+	repo = strings.TrimSpace(repo)
 	if repo != "" {
 		b.WriteString(fmt.Sprintf("📦 仓库：<code>%s</code>\n", htmlpkg.EscapeString(repo)))
 	}
@@ -353,10 +354,10 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		b.WriteString(fmt.Sprintf("⏰ 时间：%s\n", ev.OccurredAt.UTC().Format("2006-01-02 15:04 UTC")))
 	}
 
-	if ev.HTMLURL != "" {
+	if link := strings.TrimSpace(ev.HTMLURL); link != "" {
 		b.WriteString("────────────────\n")
-		b.WriteString(fmt.Sprintf("<a href=\"%s\">%s</a>", htmlpkg.EscapeString(ev.HTMLURL), store.GitHubViewLabel))
-		htmlURL = ev.HTMLURL
+		b.WriteString(fmt.Sprintf("<a href=\"%s\">%s</a>", htmlpkg.EscapeString(link), store.GitHubViewLabel))
+		htmlURL = link
 	}
 	return title, b.String(), htmlURL
 }

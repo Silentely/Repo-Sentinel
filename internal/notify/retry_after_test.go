@@ -57,6 +57,15 @@ func TestParseRetryAfter(t *testing.T) {
 
 // 日期恰好等于上限时长：按剩余秒数计算不应封顶（尚未超过上限），
 // 也不应因执行偏差四舍五入越界（ceil 后仍等于上限）。
+func TestParseRetryAfterNilResponseSafe(t *testing.T) {
+	if got := parseRetryAfter(nil); got != 0 {
+		t.Fatalf("parseRetryAfter(nil) = %d, want 0", got)
+	}
+	if got := parseRetryAfter(&http.Response{}); got != 0 {
+		t.Fatalf("parseRetryAfter(empty resp) = %d, want 0", got)
+	}
+}
+
 func TestParseRetryAfterDateAtMax(t *testing.T) {
 	at := time.Now().UTC().Add(time.Duration(maxRetryAfter) * time.Second)
 	resp := &http.Response{Header: http.Header{"Retry-After": []string{at.Format(http.TimeFormat)}}}

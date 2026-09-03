@@ -493,6 +493,10 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 	}
 	issue := env.Issue
 	hash := StateHash(kind, issue.State, issue.Title, issue.User.Login, milestoneTitle(issue.Milestone), strconv.FormatBool(issue.Draft))
+	updatedAt := issue.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
 	item := store.WorkItem{
 		RepositoryID:    repo.ID,
 		Number:          issue.Number,
@@ -505,7 +509,7 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 		Milestone:       milestoneTitle(issue.Milestone),
 		Draft:           issue.Draft,
 		HTMLURL:         issue.HTMLURL,
-		SourceUpdatedAt: issue.UpdatedAt,
+		SourceUpdatedAt: updatedAt,
 		StateHash:       hash,
 	}
 	return p.processWorkItem(ctx, repo, kind, item, env.Action)
@@ -521,6 +525,10 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 	}
 	pr := env.PullRequest
 	hash := StateHash(store.WorkItemKindPR, pr.State, pr.Title, pr.User.Login, milestoneTitle(pr.Milestone), strconv.FormatBool(pr.Draft))
+	updatedAt := pr.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
 	item := store.WorkItem{
 		RepositoryID:    repo.ID,
 		Number:          pr.Number,
@@ -534,7 +542,7 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 		Draft:           pr.Draft,
 		Merged:          pr.Merged,
 		HTMLURL:         pr.HTMLURL,
-		SourceUpdatedAt: pr.UpdatedAt,
+		SourceUpdatedAt: updatedAt,
 		StateHash:       hash,
 	}
 	res, err := p.processWorkItem(ctx, repo, store.WorkItemKindPR, item, env.Action)
@@ -773,6 +781,9 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 	updatedAt := a.UpdatedAt
 	if updatedAt.IsZero() {
 		updatedAt = a.CreatedAt
+	}
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
 	}
 	hash := StateHash(kind, a.State, severity, rule, a.DismissedReason)
 	in := store.SecurityAlert{
