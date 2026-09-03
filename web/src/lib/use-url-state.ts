@@ -13,6 +13,9 @@ export function useUrlState<T extends string = string>(
   parse: (raw: string) => T = ((raw) => raw as T),
 ): [T, (next: T) => void] {
   const [value, setValue] = useState<T>(() => {
+    if (typeof window === "undefined" || !window.location) {
+      return defaultValue as T;
+    }
     const raw = new URLSearchParams(window.location.search).get(key);
     if (raw === null) return defaultValue as T;
     return parse(raw);
@@ -21,6 +24,9 @@ export function useUrlState<T extends string = string>(
   const set = useCallback(
     (next: T) => {
       setValue(next);
+      if (typeof window === "undefined" || !window.location) {
+        return;
+      }
       const params = new URLSearchParams(window.location.search);
       if (next === defaultValue) {
         params.delete(key);
