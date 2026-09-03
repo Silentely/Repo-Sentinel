@@ -172,7 +172,7 @@ func (s *server) handleRetryOutbox(w http.ResponseWriter, r *http.Request) {
 // handleRetryAllOutboxDead 一键重新排队全部（或指定渠道）失败投递：后端单次 UPDATE 完成，
 // 与逐条重试同一字段语义；channel_type → channel_id 解析与列表端点一致。
 func (s *server) handleRetryAllOutboxDead(w http.ResponseWriter, r *http.Request) {
-	channelType := r.URL.Query().Get("channel_type")
+	channelType := strings.TrimSpace(r.URL.Query().Get("channel_type"))
 	var channelIDs []string
 	if channelType != "" {
 		channels, err := s.dependencies.Store.Channels().List(r.Context())
