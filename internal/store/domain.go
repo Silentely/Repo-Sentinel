@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -221,6 +222,12 @@ func NormalizeListFilter(f ListFilter) ListFilter {
 	if f.Page > 100_000 {
 		f.Page = 100_000
 	}
+	f.RepositoryID = strings.TrimSpace(f.RepositoryID)
+	f.Kind = strings.TrimSpace(f.Kind)
+	f.State = strings.TrimSpace(f.State)
+	f.Status = strings.TrimSpace(f.Status)
+	f.ReviewDecision = strings.TrimSpace(f.ReviewDecision)
+	f.CheckStatus = strings.TrimSpace(f.CheckStatus)
 	return f
 }
 

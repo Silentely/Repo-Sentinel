@@ -13,6 +13,7 @@
 
 ### Changed
 
+- 数据层过滤参数严格清洗：`NormalizeListFilter` 自动去除 `RepositoryID`、`Kind`、`State`、`Status`、`ReviewDecision` 与 `CheckStatus` 等过滤字段首尾空白，避免前端与 API 传参携带无意空白导致数据比对与查询失配
 - AI 配置健壮性：库内 AI 配置 JSON 损坏/类型不匹配、API Key 信封解密失败均改为报错（此前静默降级为「未配置」，出现「已配置的 AI 突然全没了」且无任何日志）
 - PR 审核一致性：最新评审非 APPROVED/CHANGES_REQUESTED 终态时清空 ReviewDecision（不再出现 COMMENTED+changes_requested 的自矛盾字段对）；webhook 标记失败 Warn 补 delivery_id/event_type
 - ReconcileRepository 拆分为 resolveInstallationToken / syncStarSnapshot / finalizeSyncState 三个私有方法；MaxPages 惰性写共享字段改只读访问器（消除数据竞争隐患）；「github rate low」升 Warn 并补 error_code

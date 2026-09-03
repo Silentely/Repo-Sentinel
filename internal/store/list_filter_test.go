@@ -563,6 +563,24 @@ func TestNormalizeListFilterClampsPageAndPerPage(t *testing.T) {
 	if offset <= 0 {
 		t.Fatalf("钳制后 Offset 应为正，got %d", offset)
 	}
+
+	// 验证字符串过滤字段首尾空白清理。
+	withSpaces := store.NormalizeListFilter(store.ListFilter{
+		RepositoryID:   "  repo-123  ",
+		Kind:           " issue ",
+		State:          " open ",
+		Status:         " sent ",
+		ReviewDecision: " approved ",
+		CheckStatus:    " success ",
+	})
+	if withSpaces.RepositoryID != "repo-123" ||
+		withSpaces.Kind != "issue" ||
+		withSpaces.State != "open" ||
+		withSpaces.Status != "sent" ||
+		withSpaces.ReviewDecision != "approved" ||
+		withSpaces.CheckStatus != "success" {
+		t.Fatalf("字符串过滤项首尾空白未清理: %+v", withSpaces)
+	}
 }
 
 // TestEventCountSinceExcludesArchived 仪表盘「24h 事件」与其它指标同口径：
