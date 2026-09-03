@@ -195,7 +195,7 @@ func (s *server) handleRetryAllOutboxDead(w http.ResponseWriter, r *http.Request
 }
 
 func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
-	channelType := chi.URLParam(r, "type")
+	channelType := strings.TrimSpace(chi.URLParam(r, "type"))
 	if !validChannelType(channelType) {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
@@ -229,7 +229,7 @@ func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
-	channelType := chi.URLParam(r, "type")
+	channelType := strings.TrimSpace(chi.URLParam(r, "type"))
 	if !validChannelType(channelType) {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
@@ -247,7 +247,7 @@ func (s *server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleToggleChannel(w http.ResponseWriter, r *http.Request) {
-	channelType := chi.URLParam(r, "type")
+	channelType := strings.TrimSpace(chi.URLParam(r, "type"))
 	if !validChannelType(channelType) {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return

@@ -437,7 +437,11 @@ func (s *server) handleReconcileRepository(w http.ResponseWriter, r *http.Reques
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeReconcileUnavailable, nil)
 		return
 	}
-	id := chi.URLParam(r, "id")
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "id"})
+		return
+	}
 	repo, err := s.dependencies.Store.Repositories().Get(r.Context(), id)
 	if err != nil {
 		s.writeMappedError(w, r, err)
