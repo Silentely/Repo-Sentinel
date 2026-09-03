@@ -224,6 +224,11 @@ func (s *server) handleSetStarredTrackerState(w http.ResponseWriter, r *http.Req
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "id"})
+		return
+	}
 	var body struct {
 		State string `json:"state"`
 	}
@@ -234,7 +239,7 @@ func (s *server) handleSetStarredTrackerState(w http.ResponseWriter, r *http.Req
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "state"})
 		return
 	}
-	if err := s.dependencies.Store.StarredTrackers().UpdateState(r.Context(), chi.URLParam(r, "id"), body.State); err != nil {
+	if err := s.dependencies.Store.StarredTrackers().UpdateState(r.Context(), id, body.State); err != nil {
 		s.writeMappedError(w, r, err)
 		return
 	}
