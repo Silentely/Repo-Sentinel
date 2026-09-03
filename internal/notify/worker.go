@@ -482,14 +482,16 @@ func deliveryErrorCode(err error) string {
 func isPermanentDeliveryError(code string) bool {
 	switch code {
 	case "unknown_channel", "telegram_not_configured", "missing_keyring", "decrypt_secret",
-		// 上游确定性拒绝：Chat ID 无效/token 失效/被屏蔽/不存在，重试不会成功
-		"telegram_client_error_400", "telegram_client_error_401",
-		"telegram_client_error_403", "telegram_client_error_404",
-		// 接收端明确拒绝（4xx）：配置或权限问题，直判死信让管理台带出排障文案
-		"http_webhook_client_400", "http_webhook_client_401",
-		"http_webhook_client_403", "http_webhook_client_404",
 		// 配置类：URL 非法 / 私网拦截，保存时即应修正
 		"invalid_webhook_url", "ssrf_blocked", "private_target_blocked":
+		return true
+	}
+	// 上游或接收端明确 4xx 客户端错误（除已被前置转为退避重试的 408/425/429 外），
+	// 重试不可能自动恢复，直判死信让管理台带出排障文案。
+	if strings.HasPrefix(code, "telegram_client_error_") {
+		return true
+	}
+	if strings.HasPrefix(code, "http_webhook_client_") {
 		return true
 	}
 	return false

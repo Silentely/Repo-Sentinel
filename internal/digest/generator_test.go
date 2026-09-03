@@ -43,6 +43,19 @@ func seedTelegram(t *testing.T, data store.Store) {
 	}
 }
 
+func TestAppendReportFooterZeroTime(t *testing.T) {
+	var b strings.Builder
+	appendReportFooter(&b, time.Time{})
+	if b.Len() != 0 {
+		t.Fatalf("零值时间不应输出页脚，got %q", b.String())
+	}
+
+	appendReportFooter(&b, time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC))
+	if !strings.Contains(b.String(), "2026-09-03 12:00 UTC") {
+		t.Fatalf("有效时间应正常输出格式化页脚，got %q", b.String())
+	}
+}
+
 func TestRunOnceSkipsBeforeLocalSendWindow(t *testing.T) {
 	data := openDigestStore(t)
 	seedTelegram(t, data)

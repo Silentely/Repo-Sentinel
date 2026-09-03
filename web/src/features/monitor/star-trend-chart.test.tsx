@@ -49,6 +49,15 @@ describe("starTrendYDomain", () => {
     ])).toEqual([0, 35]);
   });
 
+  it("脏数据或全部无效数值安全回退默认区间", () => {
+    expect(starTrendYDomain([])).toEqual([0, 100]);
+    expect(starTrendYDomain([
+      { date: "2026-08-01", total: Number.NaN },
+      // @ts-expect-error test invalid data
+      { date: "2026-08-02", total: undefined },
+    ])).toEqual([0, 100]);
+  });
+
   it("波动超过 50 时贴近上下 100 的常规观感", () => {
     expect(starTrendYDomain([
       { date: "2026-08-01", total: 2900 },

@@ -35,9 +35,11 @@ export function starTrendYDomain(points: StarTrendPoint[]): [number, number] {
   let min = Infinity;
   let max = -Infinity;
   for (const p of points) {
+    if (typeof p.total !== "number" || Number.isNaN(p.total)) continue;
     if (p.total < min) min = p.total;
     if (p.total > max) max = p.total;
   }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 100];
   const spread = max - min;
   const pad = Math.max(20, Math.min(100, spread * 2));
   return [Math.max(0, min - pad), max + pad];

@@ -415,6 +415,9 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 
 // appendReportFooter 追加报告页脚：生成时间（UTC），与规则通知的「⏰ 时间」格式保持一致。
 func appendReportFooter(b *strings.Builder, generatedAt time.Time) {
+	if generatedAt.IsZero() {
+		return
+	}
 	b.WriteString("────────────────\n")
 	b.WriteString(fmt.Sprintf("⏰ 生成时间：%s\n", generatedAt.UTC().Format("2006-01-02 15:04 UTC")))
 }

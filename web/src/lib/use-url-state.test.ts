@@ -44,14 +44,21 @@ describe("useUrlState", () => {
   it("在 window.location 缺失或受限环境安全回退到默认值", () => {
     const originalLocation = window.location;
     try {
-      // @ts-expect-error simulate missing location
-      delete window.location;
+      Object.defineProperty(window, "location", {
+        value: undefined,
+        writable: true,
+        configurable: true,
+      });
       const { result } = renderHook(() => useUrlState("state", "fallback"));
       expect(result.current[0]).toBe("fallback");
       act(() => result.current[1]("other"));
       expect(result.current[0]).toBe("other");
     } finally {
-      window.location = originalLocation;
+      Object.defineProperty(window, "location", {
+        value: originalLocation,
+        writable: true,
+        configurable: true,
+      });
     }
   });
 });

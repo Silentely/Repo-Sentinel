@@ -13,6 +13,10 @@
 
 ### Changed
 
+- 确定性错误死信判定收口：出站通知投递将上游与接收端明确拒绝的 4xx 状态码统一判定为永久失败并直接进入死信队列，避免无意义的退避重试
+- 定期报告时间戳空值守护：`appendReportFooter` 增加零值时间校验，杜绝未初始化时间输出非法格式化页脚
+- 仓库操作与分页查询上限约束：`handleDeleteRepository` 增加 ID 空白校验，工作项与安全告警查询对 `closed_limit` 增加不超过 100 的上限硬约束
+- 图表坐标计算边界保护：`starTrendYDomain` 增加对非正常数值与 NaN 的清洗过滤与区间回退保护
 - 前端 URL 状态 SSR 保护：`useUrlState` 增加 `window` 及 `location` 的存在性前置断言，避免在服务端渲染或无 DOM 环境下抛出引用异常
 - OpenAPI 契约对齐真实运维端点：将历史规划端点准确对齐为 `POST /api/v1/repositories/{id}/activate` 与 `POST /api/v1/repositories/{id}/reconcile`
 - JSON 请求体错误细分与诊断提示：`decodeRequestJSON` 在 400 Bad Request 时透传底层 JSON 语法错误与尾部多余内容检测（如多对象），为客户端提供可操作的报错消息

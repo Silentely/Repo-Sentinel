@@ -137,7 +137,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function redirectToLogin(): void {
-  if (typeof window === "undefined" || window.location.pathname === "/login") {
+  if (typeof window === "undefined" || !window.location || window.location.pathname === "/login") {
     return;
   }
   window.history.replaceState(null, "", "/login");

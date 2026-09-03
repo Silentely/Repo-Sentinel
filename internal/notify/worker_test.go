@@ -47,6 +47,42 @@ func createPendingOutbox(t *testing.T, st store.Store, id string, attempts int) 
 }
 
 // 限流退避达到重试上限时必须转入死信，否则目标长期 429 会无限重投。
+func TestIsPermanentDeliveryError(t *testing.T) {
+	for _, code := range []string{
+		"unknown_channel",
+		"telegram_not_configured",
+		"missing_keyring",
+		"decrypt_secret",
+		"invalid_webhook_url",
+		"ssrf_blocked",
+		"private_target_blocked",
+		"telegram_client_error_400",
+		"telegram_client_error_403",
+		"telegram_client_error_404",
+		"http_webhook_client_400",
+		"http_webhook_client_404",
+		"http_webhook_client_405",
+		"http_webhook_client_422",
+	} {
+		if !isPermanentDeliveryError(code) {
+			t.Fatalf("code %q 应被识别为确定性永久错误", code)
+		}
+	}
+
+	for _, transient := range []string{
+		"http_webhook_status_500",
+		"http_webhook_status_502",
+		"http_webhook_status_503",
+		"http_webhook_redirect_302",
+		"telegram_http_500",
+		"delivery_failed",
+	} {
+		if isPermanentDeliveryError(transient) {
+			t.Fatalf("code %q 不应被识别为确定性永久错误", transient)
+		}
+	}
+}
+
 func TestHandleFailureRateLimitedExceedsMaxAttemptsGoesDead(t *testing.T) {
 	st := openWorkerTestStore(t)
 	item := createPendingOutbox(t, st, "o-rate-dead", maxAttempts)

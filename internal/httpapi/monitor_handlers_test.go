@@ -851,3 +851,20 @@ func TestRetryAllOutboxDeadHandler(t *testing.T) {
 		t.Fatalf("无 dead 应返回 0: %+v err=%v", third, err)
 	}
 }
+
+func TestDeleteRepositoryRequiresAuthAndHandlesErrors(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	// 未授权应拒绝
+	unauth := fixture.request(t, http.MethodDelete, "/api/v1/repositories/any-id", "", "127.0.0.1:45001", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	// 不存在的仓库返回 404
+	resp404 := fixture.request(t, http.MethodDelete, "/api/v1/repositories/non-existent-repo", "", "127.0.0.1:45001", cookies, map[string]string{
+		CSRFHeaderName: csrf.Value,
+	})
+	assertAPIError(t, resp404, http.StatusNotFound, "not_found")
+}

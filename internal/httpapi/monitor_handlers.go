@@ -122,7 +122,11 @@ func (s *server) handleActivateRepository(w http.ResponseWriter, r *http.Request
 // 游标、待投递通知）。用于 GitHub 侧仓库已删除但 repository.deleted webhook 漏投递
 // （或升级前已处理）时的手动收口；删除不可恢复。
 func (s *server) handleDeleteRepository(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "id"})
+		return
+	}
 	if err := s.dependencies.Store.Repositories().DeleteRepository(r.Context(), id); err != nil {
 		s.writeMappedError(w, r, err)
 		return
@@ -160,6 +164,9 @@ func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
 	// closed 状态应用系统设置的显示限制，避免历史数据无限增长。
 	if f.State == "closed" && f.PerPage == 0 {
 		if limit := s.getIntSetting(r.Context(), "display.closed_limit", 20); limit > 0 {
+			if limit > 100 {
+				limit = 100
+			}
 			f.PerPage = limit
 		}
 	}
@@ -193,6 +200,9 @@ func (s *server) handleListSecurityAlerts(w http.ResponseWriter, r *http.Request
 	// dismissed/resolved 状态应用显示限制。
 	if f.State != "" && f.State != "open" && f.PerPage == 0 {
 		if limit := s.getIntSetting(r.Context(), "display.closed_limit", 20); limit > 0 {
+			if limit > 100 {
+				limit = 100
+			}
 			f.PerPage = limit
 		}
 	}
