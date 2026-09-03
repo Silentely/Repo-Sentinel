@@ -868,3 +868,28 @@ func TestDeleteRepositoryRequiresAuthAndHandlesErrors(t *testing.T) {
 	})
 	assertAPIError(t, resp404, http.StatusNotFound, "not_found")
 }
+
+func TestUpsertChannelInputTrimmingAndRetryOutboxBlankID(t *testing.T) {
+	ring := testHTTPKeyRing(t)
+	fixture := newHTTPTestFixture(t, httpTestOptions{keyRing: ring})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	// 空白 ID 重试返回 404 或 400
+	blankRetry := fixture.request(t, http.MethodPost, "/api/v1/notifications/outbox/%20/retry", "", "127.0.0.1:45001", cookies, map[string]string{
+		CSRFHeaderName: csrf.Value,
+	})
+	if blankRetry.Code != http.StatusBadRequest && blankRetry.Code != http.StatusNotFound {
+		t.Fatalf("空白 ID 重试应返回 400 或 404，实际状态码: %d", blankRetry.Code)
+	}
+
+	// 创建包含多余空白的 Telegram 渠道，应自动清洗
+	upsertPayload := `{"name":"  My TG Channel  ","enabled":true,"target":"  123456  ","secret":"  bot_secret  ","event_kinds":["  issue  ", "  star  "]}`
+	resp := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram", upsertPayload, "127.0.0.1:45001", cookies, map[string]string{
+		CSRFHeaderName: csrf.Value,
+	})
+	if resp.Code != http.StatusOK {
+		t.Fatalf("保存 Telegram 渠道失败: code=%d body=%s", resp.Code, resp.Body.String())
+	}
+}

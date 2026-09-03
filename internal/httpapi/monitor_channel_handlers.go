@@ -39,7 +39,7 @@ func validChannelType(channelType string) bool {
 }
 
 func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
-	channelType := chi.URLParam(r, "type")
+	channelType := strings.TrimSpace(chi.URLParam(r, "type"))
 	if !validChannelType(channelType) {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
@@ -56,12 +56,26 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	if !s.decodeRequestJSON(w, r, &body) {
 		return
 	}
-	// 订阅类型白名单校验。
+	name := strings.TrimSpace(body.Name)
+	target := strings.TrimSpace(body.Target)
+	secret := strings.TrimSpace(body.Secret)
+
+	// 订阅类型白名单校验与修剪去重。
+	var cleanedKinds []string
 	if body.EventKinds != nil {
+		seen := make(map[string]bool)
 		for _, k := range *body.EventKinds {
-			if !store.IsSubscribableKind(k) {
+			trimmed := strings.TrimSpace(k)
+			if trimmed == "" {
+				continue
+			}
+			if !store.IsSubscribableKind(trimmed) {
 				s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 				return
+			}
+			if !seen[trimmed] {
+				seen[trimmed] = true
+				cleanedKinds = append(cleanedKinds, trimmed)
 			}
 		}
 	}
@@ -72,33 +86,39 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ch := store.NotificationChannel{
-		ChannelType: channelType, Name: body.Name, Enabled: body.Enabled,
-		Target: body.Target, AllowPrivate: body.AllowPrivate,
+		ChannelType: channelType, Name: name, Enabled: body.Enabled,
+		Target: target, AllowPrivate: body.AllowPrivate,
 		DigestEnabled: true, // 新渠道默认接收每日汇总
 	}
 	if err == nil {
 		ch.ID = existing.ID
 		ch.SecretEnvelope = existing.SecretEnvelope
+		if ch.Name == "" {
+			ch.Name = existing.Name
+		}
 		// 请求未携带订阅配置时保留现值。
 		ch.EventKinds = existing.EventKinds
 		ch.DigestEnabled = existing.DigestEnabled
 		// 目标留空时保留已有 Chat ID / URL，避免「只改订阅」误清空。
-		if strings.TrimSpace(body.Target) == "" {
+		if target == "" {
 			ch.Target = existing.Target
 		}
 	}
+	if ch.Name == "" {
+		ch.Name = channelType
+	}
 	if body.EventKinds != nil {
-		ch.EventKinds = *body.EventKinds
+		ch.EventKinds = cleanedKinds
 	}
 	if body.DigestEnabled != nil {
 		ch.DigestEnabled = *body.DigestEnabled
 	}
-	if body.Secret != "" {
+	if secret != "" {
 		if s.dependencies.KeyRing == nil {
 			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
 			return
 		}
-		env, err := s.dependencies.KeyRing.Encrypt(r.Context(), []byte(body.Secret), []byte(notify.AAD))
+		env, err := s.dependencies.KeyRing.Encrypt(r.Context(), []byte(secret), []byte(notify.AAD))
 		if err != nil {
 			s.writeMappedError(w, r, err)
 			return
@@ -137,7 +157,11 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleRetryOutbox(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+		return
+	}
 	if err := s.dependencies.Store.Outbox().RetryDead(r.Context(), id, time.Now().UTC()); err != nil {
 		s.writeMappedError(w, r, err)
 		return
