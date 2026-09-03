@@ -247,7 +247,11 @@ func setResourceIgnored[T any](
 	setFn func(ctx context.Context, id string, ignored bool) error,
 	getFn func(ctx context.Context, id string) (T, error),
 ) {
-	id := chi.URLParam(r, "id")
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "id"})
+		return
+	}
 	var body ignoredBody
 	if !s.decodeRequestJSON(w, r, &body) {
 		return
@@ -352,17 +356,17 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 }
 
 func listFilterFromRequest(r *http.Request) store.ListFilter {
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	page, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("page")))
+	perPage, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("per_page")))
 	return store.ListFilter{Page: page, PerPage: perPage}
 }
 
 // mapCheckStatusParam 将对外 API 的检查状态词映射为存储值；未知值视为不过滤。
 func mapCheckStatusParam(v string) string {
-	switch v {
-	case "passed":
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "passed", "success":
 		return "success"
-	case "failed":
+	case "failed", "failure":
 		return "failure"
 	case "pending":
 		return "pending"

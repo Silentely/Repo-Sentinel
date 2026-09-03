@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-03T22:25:00Z | ①列表分页请求参数 page/per_page 去空清洗；②资源忽略标记端点 id 参数去空与非空校验；③mapCheckStatusParam 支持大小写不敏感与同义词映射 |
 | 2026-09-03T22:15:00Z | ①发件箱批量重试端点 channel_type 查询参数去空清洗；②避免带空格渠道类型导致过滤失效；③单测 TestRetryAllOutboxDeadHandler 验证通过 |
 | 2026-09-03T22:05:00Z | ①Star 趋势端点 days 查询参数增加去空容错；②保障包含前导或后置空白的参数正常解析；③回归执行 TestHandleStarTrend 验证通过 |
 | 2026-09-03T21:55:00Z | ①仓库激活与配置更新端点补充 id 参数去空与非空校验；②Star 追踪器状态切换端点补充 tracker id 参数去空与非空校验；③统一空标识统一返回 400 validation_failed |
