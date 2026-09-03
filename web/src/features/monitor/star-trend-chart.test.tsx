@@ -106,4 +106,10 @@ describe("StarTrendChart", () => {
     await user.click(screen.getByRole("button", { name: "90 天" }));
     expect(onDaysChange).toHaveBeenCalledWith(90);
   });
+
+  it("单数据点或缺失日期点安全渲染不崩溃", () => {
+    const single = [{ date: "2026-08-01", total: 42 }];
+    render(<StarTrendChart points={single} days={30} onDaysChange={() => {}} loading={false} />);
+    expect(screen.getByText("42")).toBeTruthy();
+  });
 });

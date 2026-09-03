@@ -237,15 +237,30 @@ func mcpListFilter(args map[string]any) store.ListFilter {
 }
 
 func mcpIntArg(args map[string]any, key string) int {
-	if value, ok := args[key].(float64); ok {
+	if args == nil {
+		return 0
+	}
+	switch value := args[key].(type) {
+	case float64:
 		return int(value)
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case json.Number:
+		if n, err := value.Int64(); err == nil {
+			return int(n)
+		}
 	}
 	return 0
 }
 
 func mcpStringArg(args map[string]any, key string) string {
+	if args == nil {
+		return ""
+	}
 	if value, ok := args[key].(string); ok {
-		return value
+		return strings.TrimSpace(value)
 	}
 	return ""
 }
@@ -351,6 +366,9 @@ func (s *server) dispatchMCP(r *http.Request, request mcpJSONRPCRequest) map[str
 func (s *server) handleMCPToolCall(ctx context.Context, request mcpJSONRPCRequest) map[string]any {
 	name, _ := request.Params["name"].(string)
 	arguments, _ := request.Params["arguments"].(map[string]any)
+	if arguments == nil {
+		arguments = map[string]any{}
+	}
 	for _, tool := range s.mcpTools() {
 		if tool.name != name {
 			continue

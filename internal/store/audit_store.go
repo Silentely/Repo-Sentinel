@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	entclient "github.com/Silentely/Repo-Sentinel/internal/store/ent"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/auditlog"
@@ -12,6 +14,9 @@ type auditStore struct {
 }
 
 func (s *auditStore) Append(ctx context.Context, input AuditLog) (AuditLog, error) {
+	if input.CreatedAt.IsZero() {
+		input.CreatedAt = time.Now().UTC()
+	}
 	entity, err := s.client.AuditLog.Create().
 		SetID(input.ID).
 		SetAction(input.Action).
@@ -52,6 +57,10 @@ func (s *auditStore) List(ctx context.Context, limit, offset int) ([]AuditLog, e
 }
 
 func (s *auditStore) Get(ctx context.Context, id string) (AuditLog, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return AuditLog{}, ErrNotFound
+	}
 	entity, err := s.client.AuditLog.Get(ctx, id)
 	if err != nil {
 		return AuditLog{}, mapStoreError(err)

@@ -40,6 +40,39 @@ func mcpAccessToken(t *testing.T, fixture *httpTestFixture) string {
 	return token
 }
 
+func TestMCPOfflineArgParsers(t *testing.T) {
+	if got := mcpIntArg(nil, "page"); got != 0 {
+		t.Fatalf("mcpIntArg(nil) = %d, want 0", got)
+	}
+	if got := mcpStringArg(nil, "key"); got != "" {
+		t.Fatalf("mcpStringArg(nil) = %q, want empty", got)
+	}
+
+	args := map[string]any{
+		"int_val":     int(42),
+		"int64_val":   int64(100),
+		"float_val":   float64(7),
+		"json_num":    json.Number("88"),
+		"str_trimmed": "  hello sentinel  ",
+	}
+
+	if got := mcpIntArg(args, "int_val"); got != 42 {
+		t.Fatalf("int_val = %d, want 42", got)
+	}
+	if got := mcpIntArg(args, "int64_val"); got != 100 {
+		t.Fatalf("int64_val = %d, want 100", got)
+	}
+	if got := mcpIntArg(args, "float_val"); got != 7 {
+		t.Fatalf("float_val = %d, want 7", got)
+	}
+	if got := mcpIntArg(args, "json_num"); got != 88 {
+		t.Fatalf("json_num = %d, want 88", got)
+	}
+	if got := mcpStringArg(args, "str_trimmed"); got != "hello sentinel" {
+		t.Fatalf("str_trimmed = %q, want hello sentinel", got)
+	}
+}
+
 // TestMCPInitialize返回协议版本与服务器信息 验证 MCP 握手。
 func TestMCPInitialize返回协议版本与服务器信息(t *testing.T) {
 	fixture := oauthFixture(t)

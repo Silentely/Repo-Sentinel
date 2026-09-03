@@ -54,6 +54,15 @@ func Test数据库驱动与PostgresURL验证(t *testing.T) {
 	}
 }
 
+func Test驱动与地址空白兼容(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Database.Driver = " sqlite "
+	cfg.HTTP.Addr = " 127.0.0.1:8080 "
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("空白兼容失败: %v", err)
+	}
+}
+
 func TestHTTP地址必须包含主机与端口(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.HTTP.Addr = "127.0.0.1"

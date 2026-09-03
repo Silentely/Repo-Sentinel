@@ -78,6 +78,9 @@ describe("关于页", () => {
     expect(within(product).getByText("配置参考")).toBeInTheDocument();
     expect(within(product).getByText("常见问题")).toBeInTheDocument();
     expect(within(product).getByRole("link", { name: "打开设置" })).toHaveAttribute("href", "/settings");
+    const githubLink = within(product).getByRole("link", { name: /GitHub 仓库/ });
+    expect(githubLink).toHaveAttribute("target", "_blank");
+    expect(githubLink).toHaveAttribute("rel", "noopener noreferrer");
 
     // 构建与运行区块：版本字段落定展示；Git SHA 直接展示（无复制按钮）；构建时间为绝对日期。
     const build = screen.getByRole("region", { name: "构建与运行" });

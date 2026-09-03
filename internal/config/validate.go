@@ -44,7 +44,8 @@ func newValidationError(field, message string) *ValidationError {
 
 // Validate 校验安全敏感且必须在启动前确定的配置。
 func (cfg Config) Validate() error {
-	switch cfg.Database.Driver {
+	driver := strings.TrimSpace(cfg.Database.Driver)
+	switch driver {
 	case "sqlite":
 	case "postgres":
 		if strings.TrimSpace(cfg.Database.URL) == "" {
@@ -55,14 +56,14 @@ func (cfg Config) Validate() error {
 	}
 	// SQLite 强制单连接（见 store.openDatabase）：显式配置更大的连接池会被静默忽略，
 	// 启动前直接拒绝该组合，避免「配置了但未生效」的漂移。
-	if cfg.Database.Driver == "sqlite" && cfg.Database.MaxOpenConns > 1 {
+	if driver == "sqlite" && cfg.Database.MaxOpenConns > 1 {
 		return newValidationError("database.max_open_conns", "is only effective with postgres (sqlite enforces a single connection)")
 	}
-	if cfg.Database.Driver == "sqlite" && cfg.Database.MaxIdleConns > 1 {
+	if driver == "sqlite" && cfg.Database.MaxIdleConns > 1 {
 		return newValidationError("database.max_idle_conns", "is only effective with postgres (sqlite enforces a single connection)")
 	}
 
-	if _, _, err := net.SplitHostPort(cfg.HTTP.Addr); err != nil {
+	if _, _, err := net.SplitHostPort(strings.TrimSpace(cfg.HTTP.Addr)); err != nil {
 		return newValidationError("http.addr", "must contain a valid host and port")
 	}
 	if !validPublicBaseURL(cfg.HTTP.PublicBaseURL) {

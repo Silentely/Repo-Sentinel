@@ -12,6 +12,7 @@ const RANGES = [
 
 /** X 轴刻度日期短格式：YYYY-MM-DD → MM-DD，避免长日期挤在一起。 */
 function formatXAxisDate(date: string): string {
+  if (!date) return "";
   const parts = date.split("-");
   if (parts.length !== 3) return date;
   return `${parts[1]}-${parts[2]}`;
@@ -63,8 +64,8 @@ export const StarTrendChart = memo(function StarTrendChart({
   // 数据跨年（首末日期不同年，days=0 全量场景）时 X 轴刻度带年份，避免 MM-DD 无法区分跨年月份。
   const first = points[0];
   const last = points[points.length - 1];
-  const spansYears = Boolean(first && last && first.date.slice(0, 4) !== last.date.slice(0, 4));
-  const formatTick = (date: string) => (spansYears ? date.slice(0, 7) : formatXAxisDate(date));
+  const spansYears = Boolean(first?.date && last?.date && first.date.slice(0, 4) !== last.date.slice(0, 4));
+  const formatTick = (date: string) => (!date ? "" : spansYears ? date.slice(0, 7) : formatXAxisDate(date));
   return (
     <div className="star-trend" data-testid="star-trend">
       <div className="star-trend__head">
