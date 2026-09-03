@@ -9,6 +9,16 @@ import (
 // TestAlertWithdrawnDisplay 验证 withdrawn（已撤回）动作的展示映射：
 // 对账差集为被撤回告警落事件、以及未来 GitHub 若推送 withdrawn 动作时，
 // 事件状态标签 / 通知状态 / 通用动作回退三处文案一致，不裸回退英文。
+func TestEventStatusLabelNilSafe(t *testing.T) {
+	if got := EventStatusLabel(nil); got != "有更新" {
+		t.Fatalf("EventStatusLabel(nil) 应回退为 有更新，got %q", got)
+	}
+	emoji, label := statusDisplay(nil)
+	if emoji != "📌" || label != "有更新" {
+		t.Fatalf("statusDisplay(nil) 应回退为 📌 有更新，got %q %q", emoji, label)
+	}
+}
+
 func TestAlertWithdrawnDisplay(t *testing.T) {
 	ev := &store.Event{Kind: store.AlertKindDependabot, Action: store.AlertStateWithdrawn, Severity: "high", Title: "nanoid"}
 	if got := EventStatusLabel(ev); got != "已撤回" {

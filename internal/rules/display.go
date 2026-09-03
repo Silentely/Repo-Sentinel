@@ -14,6 +14,9 @@ import (
 // 与 statusDisplay 的 label 部分同源：PR 草稿判定、工作流结论、告警动作等
 // 语义与实时通知完全一致，digest 包不再维护第二套映射。
 func EventStatusLabel(ev *store.Event) string {
+	if ev == nil {
+		return "有更新"
+	}
 	switch ev.Kind {
 	case store.WorkItemKindIssue:
 		switch ev.Action {
@@ -97,6 +100,9 @@ func EventStatusLabel(ev *store.Event) string {
 
 // statusDisplay 返回事件的状态 emoji 与中文标签，供标题/正文一眼识别开闭与结论。
 func statusDisplay(ev *store.Event) (emoji, label string) {
+	if ev == nil {
+		return "📌", "有更新"
+	}
 	switch ev.Kind {
 	case store.WorkItemKindIssue:
 		switch ev.Action {
