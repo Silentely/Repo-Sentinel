@@ -40,6 +40,20 @@ describe("useUrlState", () => {
     expect(result.current[0]).toBe("");
     expect(new URLSearchParams(window.location.search).has("conclusion")).toBe(false);
   });
+
+  it("在 window.location 缺失或受限环境安全回退到默认值", () => {
+    const originalLocation = window.location;
+    try {
+      // @ts-expect-error simulate missing location
+      delete window.location;
+      const { result } = renderHook(() => useUrlState("state", "fallback"));
+      expect(result.current[0]).toBe("fallback");
+      act(() => result.current[1]("other"));
+      expect(result.current[0]).toBe("other");
+    } finally {
+      window.location = originalLocation;
+    }
+  });
 });
 
 describe("parseIgnoredMode", () => {
