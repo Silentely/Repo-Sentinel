@@ -350,7 +350,7 @@ export function DashboardPage() {
                   </div>
                   <div className="feed-row__actions">
                     {ev.html_url ? (
-                      <a className="quiet-button quiet-button--compact" href={ev.html_url} target="_blank" rel="noreferrer" title="在新窗口打开">
+                      <a className="quiet-button quiet-button--compact" href={ev.html_url} target="_blank" rel="noopener noreferrer" title="在新窗口打开">
                         打开
                       </a>
                     ) : null}

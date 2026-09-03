@@ -94,7 +94,7 @@ export function LoginPage({
           className="auth-shell__github"
           href="https://github.com/Silentely/Repo-Sentinel"
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           aria-label="GitHub 仓库"
           title="GitHub 仓库"
         >
@@ -155,7 +155,7 @@ export function LoginPage({
           <a
             href="https://github.com/Silentely/Repo-Sentinel/blob/main/docs/operations/administrator-access.md#使用-cli-重置密码"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
           >
             使用 CLI 重置密码
           </a>

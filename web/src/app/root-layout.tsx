@@ -273,7 +273,7 @@ export function RootLayout({ session }: RootLayoutProps) {
               className="quiet-button quiet-button--compact"
               href="https://github.com/Silentely/Repo-Sentinel"
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               aria-label="GitHub 仓库"
               title="GitHub 仓库"
             >

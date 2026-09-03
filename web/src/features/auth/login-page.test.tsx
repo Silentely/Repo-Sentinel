@@ -16,7 +16,7 @@ describe("登录页", () => {
     const link = screen.getByRole("link", { name: "GitHub 仓库" });
     expect(link).toHaveAttribute("href", "https://github.com/Silentely/Repo-Sentinel");
     expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", "noreferrer");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("页面载入后用户名输入框自动聚焦", () => {
@@ -38,7 +38,7 @@ describe("登录页", () => {
       "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/operations/administrator-access.md#使用-cli-重置密码",
     );
     expect(recoveryLink).toHaveAttribute("target", "_blank");
-    expect(recoveryLink).toHaveAttribute("rel", "noreferrer");
+    expect(recoveryLink).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.queryByText(/忘记密码/)).not.toBeInTheDocument();
   });
 

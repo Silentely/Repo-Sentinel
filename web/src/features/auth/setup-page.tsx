@@ -60,7 +60,7 @@ export function SetupPage({
           className="auth-shell__github"
           href="https://github.com/Silentely/Repo-Sentinel"
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           aria-label="GitHub 仓库"
           title="GitHub 仓库"
         >

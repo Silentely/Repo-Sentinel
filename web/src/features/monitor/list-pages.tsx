@@ -141,7 +141,7 @@ function ItemActions({
   return (
     <div className="item-actions">
       {htmlUrl ? (
-        <a className="quiet-button" href={htmlUrl} target="_blank" rel="noreferrer" title="在新窗口打开">
+        <a className="quiet-button" href={htmlUrl} target="_blank" rel="noopener noreferrer" title="在新窗口打开">
           在 GitHub 查看
         </a>
       ) : null}
