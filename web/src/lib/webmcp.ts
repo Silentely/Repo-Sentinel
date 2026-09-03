@@ -86,11 +86,11 @@ export function webMCPTools(): WebMCPToolDefinition[] {
     },
     {
       name: "list_security_alerts",
-      description: "列出安全告警，可按 state=open|closed 与 severity 过滤，支持分页。",
+      description: "列出安全告警，可按 state 与 severity 过滤，支持分页。",
       inputSchema: {
         type: "object",
         properties: {
-          state: { type: "string", enum: ["open", "closed"] },
+          state: { type: "string" },
           severity: { type: "string" },
           page: { type: "integer", minimum: 1 },
           per_page: { type: "integer", minimum: 1, maximum: 100 },
@@ -100,6 +100,58 @@ export function webMCPTools(): WebMCPToolDefinition[] {
         fetchJSON("/api/v1/security-alerts", {
           state: stringArg(args, "state"),
           severity: stringArg(args, "severity"),
+          page: intArg(args, "page"),
+          per_page: intArg(args, "per_page"),
+        }),
+    },
+    {
+      name: "list_events",
+      description: "列出最近事件流，可按 repository_id 与 kind 过滤，支持分页。",
+      inputSchema: {
+        type: "object",
+        properties: {
+          repository_id: { type: "string" },
+          kind: { type: "string" },
+          page: { type: "integer", minimum: 1 },
+          per_page: { type: "integer", minimum: 1, maximum: 100 },
+        },
+      },
+      execute: (args) =>
+        fetchJSON("/api/v1/events", {
+          repository_id: stringArg(args, "repository_id"),
+          kind: stringArg(args, "kind"),
+          page: intArg(args, "page"),
+          per_page: intArg(args, "per_page"),
+        }),
+    },
+    {
+      name: "get_star_trend",
+      description: "获取 Star 增长趋势数据，支持按天数筛选（7/30/90/0）。",
+      inputSchema: {
+        type: "object",
+        properties: {
+          days: { type: "integer", enum: [0, 7, 30, 90] },
+        },
+      },
+      execute: (args) =>
+        fetchJSON("/api/v1/stats/star-trend", {
+          days: intArg(args, "days"),
+        }),
+    },
+    {
+      name: "list_starred_releases",
+      description: "列出已追踪 Star 仓库的 Release 追踪状态与最新版本。",
+      inputSchema: {
+        type: "object",
+        properties: {
+          state: { type: "string", enum: ["tracking", "inactive", "disabled", "unavailable"] },
+          page: { type: "integer", minimum: 1 },
+          per_page: { type: "integer", minimum: 1, maximum: 100 },
+        },
+      },
+      execute: (args) =>
+        fetchJSON("/api/v1/starred-releases/trackers", {
+          state: stringArg(args, "state"),
           page: intArg(args, "page"),
           per_page: intArg(args, "per_page"),
         }),

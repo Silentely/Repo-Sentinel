@@ -6,7 +6,14 @@ describe("webmcp 工具集", () => {
   it("暴露关键只读数据工具", () => {
     const tools = webMCPTools();
     const names = tools.map((tool) => tool.name);
-    expect(names).toEqual(["get_dashboard", "list_repositories", "list_security_alerts"]);
+    expect(names).toEqual([
+      "get_dashboard",
+      "list_repositories",
+      "list_security_alerts",
+      "list_events",
+      "get_star_trend",
+      "list_starred_releases",
+    ]);
     for (const tool of tools) {
       expect(tool.description.length).toBeGreaterThan(0);
       expect(tool.inputSchema.type).toBe("object");
@@ -61,7 +68,7 @@ describe("registerWebMCPTools", () => {
     const controller = registerWebMCPTools();
 
     expect(controller).toBeInstanceOf(AbortController);
-    expect(registerTool).toHaveBeenCalledTimes(3);
+    expect(registerTool).toHaveBeenCalledTimes(6);
     for (const call of registerTool.mock.calls) {
       const [tool, options] = call as [unknown, { signal: AbortSignal }];
       expect(tool).toMatchObject({ name: expect.any(String) });
