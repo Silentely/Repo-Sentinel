@@ -311,6 +311,43 @@ func TestMultiInstanceAggregateIdempotency(t *testing.T) {
 	}
 }
 
+func TestAggregatorFlushAll(t *testing.T) {
+	data := openTestStore(t)
+	_ = seedChannel(t, data)
+	agg := NewAggregator(data, 10*time.Minute, 100, 10*time.Minute)
+	repoID := ulid.Make().String()
+	ctx := context.Background()
+
+	// 写入两个不同分类事件
+	ev1 := &store.Event{
+		ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened",
+		Title: "issue 1", RepositoryID: &repoID,
+	}
+	ev2 := &store.Event{
+		ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened",
+		Title: "issue 2", RepositoryID: &repoID,
+	}
+	_ = agg.Evaluate(ctx, normalizer.Result{Event: ev1}, "acme/demo")
+	_ = agg.Evaluate(ctx, normalizer.Result{Event: ev2}, "acme/demo")
+
+	// 桶内尚未触发定时器
+	agg.FlushAll()
+
+	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("FlushAll 后应产生 1 条合并通知，实际 %d", len(items))
+	}
+
+	// 验证 nil store 安全返回 0
+	val, err := readPositiveIntSetting(ctx, nil, "any.key")
+	if err != nil || val != 0 {
+		t.Fatalf("readPositiveIntSetting(nil) = (%d, %v), want (0, nil)", val, err)
+	}
+}
+
 func TestTimeBucket(t *testing.T) {
 	ts := time.Unix(1_700_000_060, 0).UTC()
 	b1 := timeBucket(ts, time.Minute)

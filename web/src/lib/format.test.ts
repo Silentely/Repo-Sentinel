@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   repoDisplayName,
+  syncStatusLabel,
+  outboxStatusLabel,
   alertStateLabel,
   eventActionLabel,
   eventKindLabel,
@@ -117,6 +119,17 @@ describe("alertStateLabel", () => {
   it("未知状态原样回退", () => {
     expect(alertStateLabel("whatever")).toBe("whatever");
     expect(alertStateLabel("")).toBe("—");
+  });
+});
+
+describe("syncStatusLabel / outboxStatusLabel 空安全", () => {
+  it("undefined / null / 空串安全返回空串", () => {
+    expect(syncStatusLabel(undefined)).toBe("");
+    expect(syncStatusLabel(null)).toBe("");
+    expect(syncStatusLabel("")).toBe("");
+    expect(outboxStatusLabel(undefined)).toBe("");
+    expect(outboxStatusLabel(null)).toBe("");
+    expect(outboxStatusLabel("")).toBe("");
   });
 });
 

@@ -60,6 +60,22 @@ func NewAggregator(st store.Store, window time.Duration, burstThreshold int, bur
 	}
 }
 
+// FlushAll 立即清空并提交所有暂存中的聚合桶（如优雅停机或即时刷新）。
+func (a *Aggregator) FlushAll() {
+	a.mu.Lock()
+	keys := make([]string, 0, len(a.buckets))
+	for k, b := range a.buckets {
+		if b.timer != nil {
+			b.timer.Stop()
+		}
+		keys = append(keys, k)
+	}
+	a.mu.Unlock()
+	for _, k := range keys {
+		a.flush(k)
+	}
+}
+
 // ReloadFrom 从 system_settings 热加载聚合参数；未设置或非法的键保留当前值。
 // 管理台修改 notify.* 后调用，参数即时生效而无需重启。
 func (a *Aggregator) ReloadFrom(ctx context.Context) error {
@@ -87,6 +103,9 @@ func (a *Aggregator) ReloadFrom(ctx context.Context) error {
 // 仅真实 DB 错误上抛：三个键都未设置是常态（默认实例），此前把 ErrNotFound 透传导致
 // 设置页保存任意设置都打「aggregator reload failed」假 Warn。
 func readPositiveIntSetting(ctx context.Context, st store.Store, key string) (int, error) {
+	if st == nil {
+		return 0, nil
+	}
 	row, err := st.Settings().Get(ctx, key)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {

@@ -26,7 +26,8 @@ export function formatRelativeTime(dateString: string, now: Date = new Date()): 
 }
 
 /** 仓库同步状态 → 中文展示文案（仪表盘与列表页共用，避免两处维护漂移）。 */
-export function syncStatusLabel(status: string): string {
+export function syncStatusLabel(status?: string | null): string {
+  if (!status) return "";
   switch (status) {
     case "baseline_sync":
       return "基线中";
@@ -62,7 +63,8 @@ export function alertKindLabel(kind?: string): string {
 }
 
 /** Outbox 投递状态 → 中文展示文案（仪表盘与投递记录页共用，消除同枚举中英文并存）。 */
-export function outboxStatusLabel(status: string): string {
+export function outboxStatusLabel(status?: string | null): string {
+  if (!status) return "";
   switch (status) {
     case "pending":
       return "待发送";
@@ -91,7 +93,8 @@ export function channelLabel(channelType?: string): string {
 
 /** 事件类型 → 展示短名（仪表盘事件行用）。Issue/PR/Actions/Star/Watch 与侧栏品牌词一致；
  * 三类安全告警复用 alertKindLabel 中文名，避免同一 kind 在仪表盘与安全页文案分叉。 */
-export function eventKindLabel(kind: string): string {
+export function eventKindLabel(kind?: string | null): string {
+  if (!kind) return "";
   switch (kind) {
     case "issue":
       return "Issue";
