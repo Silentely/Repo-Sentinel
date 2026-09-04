@@ -186,3 +186,53 @@ describe("登录页", () => {
     expect(screen.getByLabelText("用户名")).toBeInTheDocument();
     expect(screen.getByLabelText("密码")).toBeInTheDocument();
   });
+
+  it("动态验证码输入错误时展示剩余次数，达到上限返回密码输入", async () => {
+    const user = userEvent.setup();
+    const loginAction = vi.fn(async () => {
+      return { requires_2fa: true, ticket: "sample-ticket-ulid" };
+    });
+    const login2FAAction = vi.fn().mockRejectedValue(
+      new ApiError({
+        status: 401,
+        errorCode: "invalid_credentials",
+        message: "invalid passcode",
+        details: { remaining_attempts: 2 },
+      }),
+    );
+
+    render(
+      <LoginPage
+        loginAction={loginAction}
+        login2FAAction={login2FAAction}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("用户名"), "Repo Admin");
+    await user.type(screen.getByLabelText("密码"), "管理员密码一二三四五六");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(await screen.findByText("动态验证码")).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("000000"), "111111");
+    await user.click(screen.getByRole("button", { name: "验证并登录" }));
+
+    expect(await screen.findByText(/动态验证码不正确，还可尝试 2 次/)).toBeInTheDocument();
+
+    // 模拟第 3 次失败，返回 remaining_attempts: 0
+    login2FAAction.mockRejectedValueOnce(
+      new ApiError({
+        status: 401,
+        errorCode: "invalid_credentials",
+        message: "ticket expired",
+        details: { remaining_attempts: 0 },
+      }),
+    );
+
+    await user.type(screen.getByPlaceholderText("000000"), "222222");
+    await user.click(screen.getByRole("button", { name: "验证并登录" }));
+
+    // 票据作废，自动退回账号密码输入界面
+    expect(await screen.findByLabelText("用户名")).toBeInTheDocument();
+    expect(screen.getByLabelText("密码")).toBeInTheDocument();
+  });

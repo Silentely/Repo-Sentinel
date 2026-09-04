@@ -85,9 +85,11 @@ export function LoginPage({
       setRequestError(apiErr);
       setPasscode("");
       document.getElementById("login-passcode")?.focus();
+      const details = apiErr.details && typeof apiErr.details === "object" ? (apiErr.details as Record<string, unknown>) : null;
       if (
         apiErr.message.includes("ticket") ||
-        (apiErr.details && typeof apiErr.details === "object" && "reason" in apiErr.details)
+        details?.reason === "ticket_expired_or_invalid" ||
+        details?.remaining_attempts === 0
       ) {
         setTwoFactorTicket(undefined);
       }
@@ -172,7 +174,9 @@ export function LoginPage({
             }
             message={
               twoFactorTicket
-                ? requestError.message || "请检查身份验证器当前展示的 6 位数字（注意时钟是否同步）；若连续输入错误票据将自动作废。"
+                ? (requestError.details && typeof requestError.details === "object" && "remaining_attempts" in requestError.details && typeof (requestError.details as Record<string, unknown>).remaining_attempts === "number")
+                  ? `动态验证码不正确，还可尝试 ${(requestError.details as Record<string, unknown>).remaining_attempts} 次；若超过次数将自动返回重新验证密码。`
+                  : requestError.message || "请检查身份验证器当前展示的 6 位数字（注意时钟是否同步）；若连续输入错误票据将自动作废。"
                 : invalidCredentials
                   ? "请检查输入后重试；若凭据已遗失，请使用 CLI 重置密码。"
                   : rateLimited
