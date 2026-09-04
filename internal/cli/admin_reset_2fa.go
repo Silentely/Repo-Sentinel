@@ -21,9 +21,9 @@ func (r Runner) runAdminReset2FA(ctx context.Context, args []string) error {
 	if err := r.dependencies.ResetAdmin2FA(ctx, cfg); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(r.stdout, "reset=ok 2fa_disabled=true"); err != nil {
+	if _, err := fmt.Fprintln(r.stdout, "reset=ok 2fa_disabled=true sessions_revoked=true"); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(r.stdout, "note=管理员两步验证已重置，可使用用户名和密码直接登录。")
+	_, err = fmt.Fprintln(r.stdout, "note=管理员两步验证已重置，所有旧 Session 已撤销，请使用密码直接登录。")
 	return err
 }

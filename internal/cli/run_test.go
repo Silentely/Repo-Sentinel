@@ -262,7 +262,7 @@ func TestRunnerAdminReset2FA(t *testing.T) {
 	if !called.Load() {
 		t.Fatal("未调用 ResetAdmin2FA")
 	}
-	if !strings.Contains(stdout.String(), "reset=ok 2fa_disabled=true") {
+	if !strings.Contains(stdout.String(), "reset=ok 2fa_disabled=true sessions_revoked=true") {
 		t.Fatalf("输出缺少 reset=ok 2fa_disabled=true: %s", stdout.String())
 	}
 }

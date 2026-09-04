@@ -76,10 +76,15 @@ export function TwoFactorCard() {
 
   function copySecret() {
     if (!setupData?.secret) return;
-    void navigator.clipboard.writeText(setupData.secret).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(setupData.secret)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(() => {});
+    }
   }
 
   return (

@@ -96,3 +96,33 @@ func TestRFC6238ReferenceVectors(t *testing.T) {
 		}
 	}
 }
+
+func TestTOTPSecretFormatRobustness(t *testing.T) {
+	now := time.Unix(1700000000, 0)
+	rawSecret := "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+	expectedCode, err := GenerateTOTPCode(rawSecret, now)
+	if err != nil {
+		t.Fatalf("生成参考验证码失败: %v", err)
+	}
+
+	variants := []string{
+		"GEZD GNBV GY3T QOJQ GEZD GNBV GY3T QOJQ", // 带空格
+		"gezdgnbvgy3tqojqgezdgnbvgy3tqojq",       // 小写
+		"GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ======", // 带 padding
+		"  GEZD GNBV \t\n gy3t qojq GEZDGNBVGY3TQOJQ  ", // 混杂空白符与大小写
+	}
+
+	for _, variant := range variants {
+		code, err := GenerateTOTPCode(variant, now)
+		if err != nil {
+			t.Errorf("变体 %q GenerateTOTPCode 失败: %v", variant, err)
+			continue
+		}
+		if code != expectedCode {
+			t.Errorf("变体 %q 计算出的 code=%s，期望 %s", variant, code, expectedCode)
+		}
+		if !ValidateTOTP(variant, expectedCode, now) {
+			t.Errorf("变体 %q ValidateTOTP 验证失败", variant)
+		}
+	}
+}

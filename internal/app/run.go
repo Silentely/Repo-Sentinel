@@ -16,6 +16,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/httpapi"
 	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
 
 // Run 启动 HTTP、通知 Worker 与 Session 清理，并在取消时按 gracefulShutdownTimeout 预算优雅关闭。
@@ -326,8 +327,28 @@ func ResetAdmin2FA(ctx context.Context, cfg config.Config) (returnedErr error) {
 		}
 		return newPublicError("database_unavailable", "无法校验数据库中的加密状态。", err)
 	}
-	if err := auth.DisableTOTP(ctx, data); err != nil {
-		return err
-	}
-	return nil
+	return data.WithTx(ctx, func(txStore store.Store) error {
+		if err := auth.DisableTOTP(ctx, txStore); err != nil {
+			return err
+		}
+		account, err := txStore.Admins().GetOnly(ctx)
+		if err == nil {
+			if _, err := txStore.Sessions().DeleteOthers(ctx, account.ID, ""); err != nil {
+				return err
+			}
+			now := time.Now().UTC()
+			_, _ = txStore.Audits().Append(ctx, store.AuditLog{
+				ID:          ulid.Make().String(),
+				Action:      "admin.2fa_reset_cli",
+				ActorType:   "cli",
+				ActorID:     "local",
+				TargetType:  "admin",
+				TargetID:    account.ID,
+				MetadataJSON: []byte(`{"reset_2fa":true}`),
+				IPAddress:    "127.0.0.1",
+				CreatedAt:   now,
+			})
+		}
+		return nil
+	})
 }
