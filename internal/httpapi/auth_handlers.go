@@ -93,6 +93,28 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.dependencies.LoginLimiter.RecordSuccess(request.Username)
+
+	totpEnabled, _, err := auth.LoadTOTPConfig(r.Context(), s.dependencies.Store, s.dependencies.KeyRing)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	if totpEnabled {
+		ticket := s.getTOTPTickets().CreateTicket(admin.ID, admin.Username, remoteIP)
+		s.dependencies.Logger.Info(
+			"login requires 2fa",
+			"request_id", requestID,
+			"admin_id", admin.ID,
+			"remote_ip", remoteIP,
+		)
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, map[string]any{
+			"requires_2fa": true,
+			"ticket":       ticket,
+		})
+		return
+	}
+
 	created, err := s.dependencies.SessionService.Create(r.Context(), admin.ID, remoteIP, r.UserAgent())
 	if err != nil {
 		s.writeMappedError(w, r, err)
@@ -265,4 +287,177 @@ func (s *server) cookiesSecure() bool {
 		}
 	}
 	return s.secureCookies
+}
+
+
+type login2FARequest struct {
+	Ticket   string `json:"ticket"`
+	Passcode string `json:"passcode"`
+}
+
+func (s *server) handleLogin2FA(w http.ResponseWriter, r *http.Request) {
+	var request login2FARequest
+	if !s.decodeRequestJSON(w, r, &request) {
+		return
+	}
+	request.Ticket = strings.TrimSpace(request.Ticket)
+	request.Passcode = strings.TrimSpace(request.Passcode)
+	remoteIP := remoteIPFromContext(r.Context())
+	requestID := requestIDFromContext(r.Context())
+
+	ticketMgr := s.getTOTPTickets()
+	ticket, ok := ticketMgr.GetTicket(request.Ticket, remoteIP)
+	if !ok {
+		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeInvalidCredentials, map[string]any{
+			"reason": "ticket_expired_or_invalid",
+		})
+		return
+	}
+
+	totpEnabled, secret, err := auth.LoadTOTPConfig(r.Context(), s.dependencies.Store, s.dependencies.KeyRing)
+	if err != nil || !totpEnabled || secret == "" {
+		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeInvalidCredentials, nil)
+		return
+	}
+
+	if !auth.ValidateTOTP(secret, request.Passcode, time.Now().UTC()) {
+		failures := ticketMgr.RecordFailure(request.Ticket)
+		s.dependencies.Logger.Warn(
+			"login 2fa failed",
+			"request_id", requestID,
+			"remote_ip", remoteIP,
+			"username", ticket.Username,
+			"failures", failures,
+		)
+		remaining := 3 - failures
+		if remaining < 0 {
+			remaining = 0
+		}
+		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeInvalidCredentials, map[string]any{
+			"remaining_attempts": remaining,
+		})
+		return
+	}
+
+	ticketMgr.ConsumeTicket(request.Ticket)
+
+	created, err := s.dependencies.SessionService.Create(r.Context(), ticket.AdminID, remoteIP, r.UserAgent())
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	s.dependencies.Logger.Info(
+		"login 2fa success",
+		"request_id", requestID,
+		"admin_id", ticket.AdminID,
+		"remote_ip", remoteIP,
+		"user_agent", r.UserAgent(),
+		"session_id", created.Session.ID,
+	)
+	s.setAuthCookies(w, created)
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, newAuthenticationResponse(auth.Admin{ID: ticket.AdminID, Username: ticket.Username}, created.Session))
+}
+
+func (s *server) handleGet2FA(w http.ResponseWriter, r *http.Request) {
+	enabled, _, err := auth.LoadTOTPConfig(r.Context(), s.dependencies.Store, s.dependencies.KeyRing)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": enabled})
+}
+
+func (s *server) handleSetup2FA(w http.ResponseWriter, r *http.Request) {
+	session, ok := sessionFromContext(r.Context())
+	if !ok {
+		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
+		return
+	}
+	account, err := s.dependencies.AdminStore.Get(r.Context(), session.AdminID)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	secret, err := auth.GenerateTOTPSecret()
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	otpURL := auth.GenerateOTPAuthURL(account.Username, secret, "RepoSentinel")
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]string{
+		"secret":      secret,
+		"otpauth_url": otpURL,
+	})
+}
+
+type enable2FARequest struct {
+	Secret   string `json:"secret"`
+	Passcode string `json:"passcode"`
+}
+
+func (s *server) handleEnable2FA(w http.ResponseWriter, r *http.Request) {
+	var req enable2FARequest
+	if !s.decodeRequestJSON(w, r, &req) {
+		return
+	}
+	req.Secret = strings.TrimSpace(req.Secret)
+	req.Passcode = strings.TrimSpace(req.Passcode)
+	if req.Secret == "" || !auth.ValidateTOTP(req.Secret, req.Passcode, time.Now().UTC()) {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{
+			"field":  "passcode",
+			"reason": "invalid_passcode",
+		})
+		return
+	}
+	if err := auth.SaveTOTPConfig(r.Context(), s.dependencies.Store, s.dependencies.KeyRing, true, req.Secret); err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	session, _ := sessionFromContext(r.Context())
+	s.dependencies.Logger.Info(
+		"totp 2fa enabled",
+		"request_id", requestIDFromContext(r.Context()),
+		"admin_id", session.AdminID,
+	)
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": true})
+}
+
+type disable2FARequest struct {
+	CurrentPassword string `json:"current_password"`
+}
+
+func (s *server) handleDisable2FA(w http.ResponseWriter, r *http.Request) {
+	var req disable2FARequest
+	if !s.decodeRequestJSON(w, r, &req) {
+		return
+	}
+	session, ok := sessionFromContext(r.Context())
+	if !ok {
+		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
+		return
+	}
+	account, err := s.dependencies.AdminStore.Get(r.Context(), session.AdminID)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	if _, err := s.dependencies.AdminService.Authenticate(r.Context(), account.Username, req.CurrentPassword); err != nil {
+		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeInvalidCredentials, nil)
+		return
+	}
+	if err := auth.DisableTOTP(r.Context(), s.dependencies.Store); err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	s.dependencies.Logger.Info(
+		"totp 2fa disabled",
+		"request_id", requestIDFromContext(r.Context()),
+		"admin_id", session.AdminID,
+	)
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
 }

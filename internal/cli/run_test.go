@@ -242,3 +242,27 @@ func (e safeTestError) ErrorCode() string     { return e.code }
 func (e safeTestError) PublicMessage() string { return e.message }
 
 var _ error = safeTestError{}
+
+func TestRunnerAdminReset2FA(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var called atomic.Bool
+	runner := NewRunner(strings.NewReader(""), &stdout, &stderr, Dependencies{
+		LoadConfig: func(context.Context, config.LoadOptions) (config.Config, error) {
+			return config.Config{}, nil
+		},
+		ResetAdmin2FA: func(context.Context, config.Config) error {
+			called.Store(true)
+			return nil
+		},
+	})
+	if err := runner.Run(t.Context(), []string{"admin", "reset-2fa"}); err != nil {
+		t.Fatalf("reset-2fa 运行失败: %v", err)
+	}
+	if !called.Load() {
+		t.Fatal("未调用 ResetAdmin2FA")
+	}
+	if !strings.Contains(stdout.String(), "reset=ok 2fa_disabled=true") {
+		t.Fatalf("输出缺少 reset=ok 2fa_disabled=true: %s", stdout.String())
+	}
+}

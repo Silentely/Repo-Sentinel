@@ -11,7 +11,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 )
 
-const cliUsageMessage = "可用命令: serve, version, config validate, admin reset-password, doctor, healthcheck, backup, restore。"
+const cliUsageMessage = "可用命令: serve, version, config validate, admin reset-password, admin reset-2fa, doctor, healthcheck, backup, restore。"
 
 // Application 是 serve 子命令需要的最小运行时接口。
 type Application interface {
@@ -24,6 +24,7 @@ type Dependencies struct {
 	LoadConfig         func(context.Context, config.LoadOptions) (config.Config, error)
 	BuildApp           func(context.Context, config.Config) (Application, error)
 	ResetAdminPassword func(context.Context, config.Config, string) error
+	ResetAdmin2FA      func(context.Context, config.Config) error
 	BuildInfo          func() buildinfo.Info
 }
 
@@ -57,6 +58,9 @@ func NewRunner(stdin io.Reader, stdout, stderr io.Writer, dependencies Dependenc
 	if dependencies.ResetAdminPassword == nil {
 		dependencies.ResetAdminPassword = app.ResetAdminPassword
 	}
+	if dependencies.ResetAdmin2FA == nil {
+		dependencies.ResetAdmin2FA = app.ResetAdmin2FA
+	}
 	if dependencies.BuildInfo == nil {
 		dependencies.BuildInfo = buildinfo.Current
 	}
@@ -83,10 +87,17 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 			err = r.runConfigValidate(ctx, args[2:])
 		}
 	case "admin":
-		if len(args) < 2 || args[1] != "reset-password" {
-			err = newCLIError("admin 仅支持 reset-password 子命令。")
+		if len(args) < 2 {
+			err = newCLIError("admin 仅支持 reset-password 与 reset-2fa 子命令。")
 		} else {
-			err = r.runAdminResetPassword(ctx, args[2:])
+			switch args[1] {
+			case "reset-password":
+				err = r.runAdminResetPassword(ctx, args[2:])
+			case "reset-2fa":
+				err = r.runAdminReset2FA(ctx, args[2:])
+			default:
+				err = newCLIError("admin 仅支持 reset-password 与 reset-2fa 子命令。")
+			}
 		}
 	case "doctor":
 		err = r.runDoctor(ctx, args[1:])

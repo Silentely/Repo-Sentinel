@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -267,4 +268,165 @@ func TestLoginAccountFailureDelayAndConcurrency(t *testing.T) {
 			t.Fatalf("登录成功后延迟=%v, want 0", delay)
 		}
 	})
+}
+
+func TestTwoFactorAuthenticationFlow(t *testing.T) {
+	ring := testHTTPKeyRing(t)
+	fixture := newHTTPTestFixture(t, httpTestOptions{keyRing: ring})
+	fixture.bootstrapAdmin(t)
+
+	// 1. 未启用 2FA 前，直接登录返回 Session
+	cookies := fixture.login(t, httpTestPassword)
+	assertAuthCookies(t, cookies)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	// 2. 查看 2FA 状态为未启用
+	get2FA := fixture.request(t, http.MethodGet, "/api/v1/admin/2fa", "", "127.0.0.1:40101", cookies, nil)
+	if get2FA.Code != http.StatusOK || !strings.Contains(get2FA.Body.String(), `"enabled":false`) {
+		t.Fatalf("预期 2FA 未启用: %s", get2FA.Body.String())
+	}
+
+	// 3. 请求 setup 2FA
+	setupRes := fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/admin/2fa/setup",
+		"{}",
+		"127.0.0.1:40102",
+		cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	if setupRes.Code != http.StatusOK {
+		t.Fatalf("setup 2FA 失败: %s", setupRes.Body.String())
+	}
+	var setupBody struct {
+		Secret     string `json:"secret"`
+		OTPAuthURL string `json:"otpauth_url"`
+	}
+	if err := json.Unmarshal(setupRes.Body.Bytes(), &setupBody); err != nil || setupBody.Secret == "" {
+		t.Fatalf("解析 setup 响应失败: %v", err)
+	}
+
+	// 4. 使用错误动态码激活 2FA 失败
+	enableFail := fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/admin/2fa/enable",
+		fmt.Sprintf(`{"secret":%q,"passcode":"000000"}`, setupBody.Secret),
+		"127.0.0.1:40103",
+		cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	assertAPIError(t, enableFail, http.StatusBadRequest, "validation_failed")
+
+	// 5. 使用正确动态码激活 2FA 成功
+	now := time.Now().UTC()
+	validCode, err := auth.GenerateTOTPCode(setupBody.Secret, now)
+	if err != nil {
+		t.Fatalf("计算 TOTP 失败: %v", err)
+	}
+	enableOK := fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/admin/2fa/enable",
+		fmt.Sprintf(`{"secret":%q,"passcode":%q}`, setupBody.Secret, validCode),
+		"127.0.0.1:40104",
+		cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	if enableOK.Code != http.StatusOK || !strings.Contains(enableOK.Body.String(), `"enabled":true`) {
+		t.Fatalf("enable 2FA 失败: %s", enableOK.Body.String())
+	}
+
+	// 6. 登出
+	fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/auth/logout",
+		"{}",
+		"127.0.0.1:40105",
+		cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+
+	// 7. 再次登录第一阶段：返回 requires_2fa=true 与 ticket
+	step1Res := fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/auth/login",
+		fmt.Sprintf(`{"username":"Repo Admin","password":%q}`, httpTestPassword),
+		"198.51.100.50:40106",
+		nil,
+		nil,
+	)
+	if step1Res.Code != http.StatusOK {
+		t.Fatalf("登录阶段一失败: %s", step1Res.Body.String())
+	}
+	var step1Body struct {
+		Requires2FA bool   `json:"requires_2fa"`
+		Ticket      string `json:"ticket"`
+	}
+	if err := json.Unmarshal(step1Res.Body.Bytes(), &step1Body); err != nil || !step1Body.Requires2FA || step1Body.Ticket == "" {
+		t.Fatalf("预期 requires_2fa 且 ticket 存在: %+v", step1Body)
+	}
+	if len(step1Res.Result().Cookies()) != 0 {
+		t.Fatal("阶段一不应下发 Session Cookie")
+	}
+
+	// 8. 跨 IP 或错误动态码验证阶段二
+	step2WrongCode := fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/auth/login/2fa",
+		fmt.Sprintf(`{"ticket":%q,"passcode":"111111"}`, step1Body.Ticket),
+		"198.51.100.50:40107",
+		nil,
+		nil,
+	)
+	assertAPIError(t, step2WrongCode, http.StatusUnauthorized, "invalid_credentials")
+
+	// 9. 正确动态码验证阶段二成功
+	now = time.Now().UTC()
+	validCode2, _ := auth.GenerateTOTPCode(setupBody.Secret, now)
+	step2OK := fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/auth/login/2fa",
+		fmt.Sprintf(`{"ticket":%q,"passcode":%q}`, step1Body.Ticket, validCode2),
+		"198.51.100.50:40108",
+		nil,
+		nil,
+	)
+	if step2OK.Code != http.StatusOK {
+		t.Fatalf("两阶段登录失败: %s", step2OK.Body.String())
+	}
+	newCookies := step2OK.Result().Cookies()
+	assertAuthCookies(t, newCookies)
+	newCSRF := cookieByName(t, newCookies, CSRFCookieName)
+
+	// 10. 使用错误密码停用 2FA 失败
+	disableFail := fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/admin/2fa/disable",
+		`{"current_password":"wrong-password"}`,
+		"127.0.0.1:40109",
+		newCookies,
+		map[string]string{CSRFHeaderName: newCSRF.Value},
+	)
+	assertAPIError(t, disableFail, http.StatusUnauthorized, "invalid_credentials")
+
+	// 11. 使用正确密码停用 2FA 成功
+	disableOK := fixture.request(
+		t,
+		http.MethodPost,
+		"/api/v1/admin/2fa/disable",
+		fmt.Sprintf(`{"current_password":%q}`, httpTestPassword),
+		"127.0.0.1:40110",
+		newCookies,
+		map[string]string{CSRFHeaderName: newCSRF.Value},
+	)
+	if disableOK.Code != http.StatusOK || !strings.Contains(disableOK.Body.String(), `"enabled":false`) {
+		t.Fatalf("disable 2FA 失败: %s", disableOK.Body.String())
+	}
 }

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
@@ -93,6 +94,7 @@ type server struct {
 	webhookSem chan struct{}
 	// loginSem 控制 Argon2id 认证并发计算上限，防止 CPU 耗尽。
 	loginSem chan struct{}
+	totpTickets *auth.TOTPTicketManager
 }
 
 // safeGo 以后台 goroutine 执行 fn；panic 只记录日志，不拖垮整个进程。
@@ -111,6 +113,17 @@ func (s *server) safeGo(name string, fn func()) {
 		}()
 		fn()
 	}()
+}
+
+func (s *server) getTOTPTickets() *auth.TOTPTicketManager {
+	if s == nil {
+		return auth.NewTOTPTicketManager(3 * time.Minute)
+	}
+	if s.totpTickets != nil {
+		return s.totpTickets
+	}
+	s.totpTickets = auth.NewTOTPTicketManager(3 * time.Minute)
+	return s.totpTickets
 }
 
 func (s *server) getTrustedProxies() []*net.IPNet {
@@ -179,6 +192,7 @@ func New(dependencies Dependencies) http.Handler {
 		trustedProxies: parseTrustedSubnets(dependencies.Config.HTTP.TrustedProxies),
 		webhookSem:    make(chan struct{}, webhookProcessConcurrency),
 		loginSem:      make(chan struct{}, 3),
+		totpTickets:    auth.NewTOTPTicketManager(3 * time.Minute),
 		webhookSvc: &webhooksvc.Service{
 			Store:      dependencies.Store,
 			Logger:     dependencies.Logger,
@@ -224,6 +238,7 @@ func New(dependencies Dependencies) http.Handler {
 		api.Get("/setup/status", s.handleSetupStatus)
 		api.Post("/setup", s.handleSetup)
 		api.Post("/auth/login", s.handleLogin)
+		api.Post("/auth/login/2fa", s.handleLogin2FA)
 		// 公开极简构建信息：登录页页脚展示真实版本（不暴露配置细节）。
 		api.Get("/system/build-info", s.handleBuildInfo)
 
@@ -249,10 +264,14 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/starred-releases/config", s.handleGetStarredReleasesConfig)
 			protected.Get("/starred-releases/trackers", s.handleListStarredTrackers)
 			protected.Get("/system/settings", s.handleGetSettings)
+			protected.Get("/admin/2fa", s.handleGet2FA)
 			protected.Group(func(mutating chi.Router) {
 				mutating.Use(s.csrfMiddleware)
 				mutating.Post("/auth/logout", s.handleLogout)
 				mutating.Post("/auth/password", s.handleChangePassword)
+				mutating.Post("/admin/2fa/setup", s.handleSetup2FA)
+				mutating.Post("/admin/2fa/enable", s.handleEnable2FA)
+				mutating.Post("/admin/2fa/disable", s.handleDisable2FA)
 				mutating.Put("/notifications/channels/{type}", s.handleUpsertChannel)
 				mutating.Post("/notifications/channels/{type}/test", s.handleTestChannel)
 				mutating.Delete("/notifications/channels/{type}", s.handleDeleteChannel)

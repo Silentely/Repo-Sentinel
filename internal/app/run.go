@@ -294,3 +294,40 @@ func ResetAdminPassword(ctx context.Context, cfg config.Config, newPassword stri
 	}
 	return nil
 }
+
+// ResetAdmin2FA 打开本地依赖、校验主密钥并清除 2FA 设置。
+func ResetAdmin2FA(ctx context.Context, cfg config.Config) (returnedErr error) {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	data, err := store.Open(ctx, cfg.Database)
+	if err != nil {
+		return mapStoreOpenError(err)
+	}
+	defer func() {
+		if closeErr := data.Close(); returnedErr == nil && closeErr != nil {
+			returnedErr = newPublicError("database_unavailable", "关闭数据库资源失败。", closeErr)
+		}
+	}()
+	if _, err := validateEncryptionKey(ctx, data, cfg.Encryption); err != nil {
+		if errors.Is(err, cryptox.ErrInvalidEncryptionKey) {
+			return newPublicError(
+				"invalid_encryption_key",
+				"主密钥格式非法：需 64 位 hex 或 32 字节 base64（与数据库无关，请检查 REPOSENTINEL_ENCRYPTION_KEY 取值）。",
+				cryptox.ErrInvalidEncryptionKey,
+			)
+		}
+		if errors.Is(err, cryptox.ErrEncryptionKeyMismatch) {
+			return newPublicError(
+				"encryption_key_mismatch",
+				"无法验证加密主密钥，请检查当前/上一把密钥与数据库是否匹配。",
+				cryptox.ErrEncryptionKeyMismatch,
+			)
+		}
+		return newPublicError("database_unavailable", "无法校验数据库中的加密状态。", err)
+	}
+	if err := auth.DisableTOTP(ctx, data); err != nil {
+		return err
+	}
+	return nil
+}
