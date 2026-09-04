@@ -35,7 +35,7 @@ describe("登录页", () => {
     const recoveryLink = screen.getByRole("link", { name: "使用 CLI 重置密码" });
     expect(recoveryLink).toHaveAttribute(
       "href",
-      "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/operations/administrator-access.md#使用-cli-重置密码",
+      "https://github.com/Silentely/Repo-Sentinel/blob/main/docs/guide/administrator.md#cli-重置密码",
     );
     expect(recoveryLink).toHaveAttribute("target", "_blank");
     expect(recoveryLink).toHaveAttribute("rel", "noopener noreferrer");

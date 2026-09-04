@@ -153,7 +153,7 @@ export function LoginPage({
 
         <footer className="auth-card__footer">
           <a
-            href="https://github.com/Silentely/Repo-Sentinel/blob/main/docs/operations/administrator-access.md#使用-cli-重置密码"
+            href="https://github.com/Silentely/Repo-Sentinel/blob/main/docs/guide/administrator.md#cli-重置密码"
             target="_blank"
             rel="noopener noreferrer"
           >

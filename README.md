@@ -21,9 +21,13 @@
   ·
   <a href="https://repo.cosr.eu.org/deploy/docker.html">Docker 部署</a>
   ·
-  <a href="https://repo.cosr.eu.org/README.html">文档总览</a>
-  ·
   <a href="https://repo.cosr.eu.org/reference/configuration.html">配置参考</a>
+  ·
+  <a href="https://repo.cosr.eu.org/README.html">文档总览</a>
+</p>
+
+<p align="center">
+  <a href="https://repo.cosr.eu.org"><img src="https://img.shields.io/badge/docs-在线文档-C45C26" alt="Docs"></a>
 </p>
 
 ---
