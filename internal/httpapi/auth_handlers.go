@@ -134,9 +134,8 @@ func (s *server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if !s.decodeRequestJSON(w, r, &request) {
 		return
 	}
-	request.CurrentPassword = strings.TrimSpace(request.CurrentPassword)
-	request.NewPassword = strings.TrimSpace(request.NewPassword)
-	if request.CurrentPassword == "" || request.NewPassword == "" {
+	// 密码是对认证服务不透明的凭据；仅拒绝全空白输入，保留合法的首尾空格。
+	if strings.TrimSpace(request.CurrentPassword) == "" || strings.TrimSpace(request.NewPassword) == "" {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
 	}

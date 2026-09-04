@@ -37,6 +37,7 @@ type storeImpl struct {
 
 // Open 打开数据库、完成安全连通性检查并应用版本化迁移。
 func Open(ctx context.Context, cfg config.DatabaseConfig) (Store, error) {
+	cfg.Driver = strings.TrimSpace(cfg.Driver)
 	db, entDialect, migrationDialect, err := openDatabase(cfg)
 	if err != nil {
 		return nil, err
@@ -58,7 +59,8 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (Store, error) {
 }
 
 func openDatabase(cfg config.DatabaseConfig) (*sql.DB, string, string, error) {
-	switch cfg.Driver {
+	driver := strings.TrimSpace(cfg.Driver)
+	switch driver {
 	case "sqlite":
 		db, err := sql.Open("sqlite", sqliteDSN(cfg.URL))
 		if err != nil {

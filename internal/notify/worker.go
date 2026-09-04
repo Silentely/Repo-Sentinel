@@ -289,7 +289,8 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 }
 
 func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, secret string, item store.NotificationOutbox) error {
-	if err := validateWebhookURL(ch.Target, ch.AllowPrivate); err != nil {
+	target := strings.TrimSpace(ch.Target)
+	if err := validateWebhookURL(target, ch.AllowPrivate); err != nil {
 		return err
 	}
 	now := time.Now().UTC()
@@ -305,7 +306,7 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 		"body_plain": htmlToPlainText(item.BodyText),
 	}
 	raw, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(withAllowPrivate(ctx, ch.AllowPrivate), http.MethodPost, ch.Target, bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(withAllowPrivate(ctx, ch.AllowPrivate), http.MethodPost, target, bytes.NewReader(raw))
 	if err != nil {
 		return err
 	}

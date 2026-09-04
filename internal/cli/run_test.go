@@ -32,12 +32,14 @@ func TestRunner帮助命令提示(t *testing.T) {
 	for _, alias := range []string{"help", "-h", "--help"} {
 		var stdout, stderr bytes.Buffer
 		runner := NewRunner(strings.NewReader(""), &stdout, &stderr, Dependencies{})
-		err := runner.Run(t.Context(), []string{alias})
-		if err == nil {
-			t.Fatalf("alias %q 应返回提示错误", alias)
+		if err := runner.Run(t.Context(), []string{alias}); err != nil {
+			t.Fatalf("alias %q 输出帮助不应失败: %v", alias, err)
 		}
-		if !strings.Contains(stderr.String(), "可用命令: serve") {
-			t.Fatalf("alias %q 缺少可用命令列表: %s", alias, stderr.String())
+		if !strings.Contains(stdout.String(), "可用命令: serve") {
+			t.Fatalf("alias %q 应向 stdout 输出可用命令列表: %s", alias, stdout.String())
+		}
+		if stderr.Len() != 0 {
+			t.Fatalf("alias %q 不应向 stderr 输出帮助: %s", alias, stderr.String())
 		}
 	}
 }

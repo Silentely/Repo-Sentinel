@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -51,6 +52,8 @@ func Load(ctx context.Context, options LoadOptions) (Config, error) {
 	}
 	explicit.maxOpen = explicit.maxOpen || envExplicit.maxOpen
 	explicit.maxIdle = explicit.maxIdle || envExplicit.maxIdle
+	cfg.Database.Driver = strings.TrimSpace(cfg.Database.Driver)
+	cfg.HTTP.Addr = strings.TrimSpace(cfg.HTTP.Addr)
 
 	if cfg.Database.Driver == "postgres" {
 		if !explicit.maxOpen {

@@ -3,12 +3,15 @@ package cli
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 
 	"github.com/Silentely/Repo-Sentinel/internal/app"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 )
+
+const cliUsageMessage = "可用命令: serve, version, config validate, admin reset-password, doctor, healthcheck, backup, restore。"
 
 // Application 是 serve 子命令需要的最小运行时接口。
 type Application interface {
@@ -63,7 +66,7 @@ func NewRunner(stdin io.Reader, stdout, stderr io.Writer, dependencies Dependenc
 // Run 分派 serve/version/config/admin/doctor/healthcheck/backup/restore 子命令，并统一输出安全错误。
 func (r Runner) Run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return reportError(r.stderr, newCLIError("缺少命令，可用命令: serve, version, config validate, admin reset-password, doctor, healthcheck, backup, restore。"))
+		return reportError(r.stderr, newCLIError("缺少命令，"+cliUsageMessage))
 	}
 	var err error
 	switch args[0] {
@@ -72,7 +75,7 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 	case "version", "-v", "--version":
 		err = r.runVersion(args[1:])
 	case "help", "-h", "--help":
-		err = newCLIError("可用命令: serve, version, config validate, admin reset-password, doctor, healthcheck, backup, restore。")
+		_, err = fmt.Fprintln(r.stdout, cliUsageMessage)
 	case "config":
 		if len(args) < 2 || args[1] != "validate" {
 			err = newCLIError("config 仅支持 validate 子命令。")

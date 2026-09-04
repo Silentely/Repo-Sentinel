@@ -77,6 +77,21 @@ describe("api client 错误解析", () => {
     });
   });
 
+  it("成功状态收到非法响应时保留原文摘要", async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response("upstream returned an HTML error page", {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    const request = createApiClient({ fetchImpl });
+
+    await expect(request("/api/v1/ping")).rejects.toMatchObject({
+      errorCode: "invalid_response",
+      message: expect.stringContaining("upstream returned an HTML error page"),
+    });
+  });
+
   it("204 No Content 成功返回 undefined", async () => {
     const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
     const request = createApiClient({ fetchImpl });

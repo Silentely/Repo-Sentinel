@@ -163,3 +163,26 @@ func TestSetupRejectsBlankCredentials(t *testing.T) {
 	)
 	assertAPIError(t, respPass, http.StatusBadRequest, "validation_failed")
 }
+
+func TestSetupPreservesPasswordWhitespace(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	password := " 管理员初始密码一二三四五六 "
+
+	created := fixture.request(
+		t, http.MethodPost, "/api/v1/setup",
+		`{"username":"Repo Admin","password":"`+password+`"}`,
+		"127.0.0.1:41112", nil, map[string]string{"Host": "127.0.0.1:8080"},
+	)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("带首尾空格的合法密码不应阻止 setup，状态=%d，响应=%s", created.Code, created.Body.String())
+	}
+
+	login := fixture.request(
+		t, http.MethodPost, "/api/v1/auth/login",
+		`{"username":"Repo Admin","password":"`+password+`"}`,
+		"127.0.0.1:41113", nil, nil,
+	)
+	if login.Code != http.StatusOK {
+		t.Fatalf("setup 必须保留密码首尾空格以便原值登录，状态=%d，响应=%s", login.Code, login.Body.String())
+	}
+}

@@ -33,7 +33,7 @@ func (r Runner) runBackup(ctx context.Context, args []string) error {
 	if out == "" {
 		out = fmt.Sprintf("reposentinel-backup-%s", time.Now().UTC().Format("20060102T150405Z"))
 	}
-	switch cfg.Database.Driver {
+	switch strings.TrimSpace(cfg.Database.Driver) {
 	case "sqlite":
 		return r.backupSQLite(cfg.Database.URL, out)
 	case "postgres":
@@ -111,7 +111,7 @@ func (r Runner) runRestore(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	switch cfg.Database.Driver {
+	switch strings.TrimSpace(cfg.Database.Driver) {
 	case "sqlite":
 		path := strings.TrimPrefix(cfg.Database.URL, "file:")
 		path = strings.Split(path, "?")[0]

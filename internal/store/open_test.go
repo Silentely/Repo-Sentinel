@@ -54,6 +54,21 @@ func TestOpen拒绝未编码井号的Postgres密码(t *testing.T) {
 	}
 }
 
+func TestOpen接受带空白的SQLite驱动(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	databaseURL := "file:" + filepath.Join(t.TempDir(), "trimmed-driver.db")
+	opened, err := store.Open(t.Context(), config.DatabaseConfig{
+		Driver: " sqlite ",
+		URL:    databaseURL,
+	})
+	if err != nil {
+		t.Fatalf("带空白的 SQLite 驱动应可打开 Store: %v", err)
+	}
+	if err := opened.Close(); err != nil {
+		t.Fatalf("关闭 Store 失败: %v", err)
+	}
+}
+
 func TestOpen拒绝数据库Revision超过程序目录(t *testing.T) {
 	databaseURL := "file:" + filepath.Join(t.TempDir(), "future-revision.db")
 	cfg := config.DatabaseConfig{Driver: "sqlite", URL: databaseURL}

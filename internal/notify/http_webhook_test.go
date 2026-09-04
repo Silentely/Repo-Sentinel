@@ -167,6 +167,17 @@ func TestSendHTTPIncludesPlainBody(t *testing.T) {
 	}
 }
 
+func TestSendHTTPTrimsStoredWebhookTarget(t *testing.T) {
+	w, ch, item := newWebhookHarness(t, func(rw http.ResponseWriter, _ *http.Request) {
+		rw.WriteHeader(http.StatusNoContent)
+	})
+	ch.Target = "  " + ch.Target + "  "
+
+	if err := w.sendHTTP(t.Context(), ch, "", item); err != nil {
+		t.Fatalf("存量渠道 URL 带首尾空格时仍应可投递: %v", err)
+	}
+}
+
 // TestSendHTTPSetsUserAgent 出站投递必须携带明确 User-Agent：
 // 接收端日志/过滤据此识别 RepoSentinel，而非 Go 默认客户端 UA。
 func TestSendHTTPSetsUserAgent(t *testing.T) {

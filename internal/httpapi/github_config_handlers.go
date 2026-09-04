@@ -119,15 +119,11 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 		stored.PrivateKeyPEMEnvelope = ""
 	}
 	if body.PrivateKeyPath != nil || body.PrivateKeyPEM != nil {
-		if s.rejectEnvLockedField(w, r, snap.PrivateKeySource, "private_key") {
-			return
-		}
-		if body.PrivateKeyPEM != nil {
-			pemText := strings.TrimSpace(*body.PrivateKeyPEM)
-			if pemText == "" {
-				s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "private_key_pem"})
+		if body.PrivateKeyPEM != nil && strings.TrimSpace(*body.PrivateKeyPEM) != "" {
+			if s.rejectEnvLockedField(w, r, snap.PrivateKeySource, "private_key") {
 				return
 			}
+			pemText := strings.TrimSpace(*body.PrivateKeyPEM)
 			if err := githubx.ValidatePrivateKeyPEM(pemText); err != nil {
 				s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{
 					"field": "private_key_pem", "reason": "invalid_pem",
@@ -146,6 +142,9 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 			stored.PrivateKeyPEMEnvelope = env
 			stored.PrivateKeyPath = ""
 		} else if body.PrivateKeyPath != nil {
+			if s.rejectEnvLockedField(w, r, snap.PrivateKeySource, "private_key") {
+				return
+			}
 			stored.PrivateKeyPath = strings.TrimSpace(*body.PrivateKeyPath)
 			if stored.PrivateKeyPath != "" {
 				stored.PrivateKeyPEMEnvelope = ""
@@ -160,24 +159,22 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 		stored.WebhookSecretEnvelope = ""
 	}
 	if body.WebhookSecret != nil {
-		if s.rejectEnvLockedField(w, r, snap.WebhookSecretSource, "webhook_secret") {
-			return
-		}
 		secret := strings.TrimSpace(*body.WebhookSecret)
-		if secret == "" {
-			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "webhook_secret"})
-			return
+		if secret != "" {
+			if s.rejectEnvLockedField(w, r, snap.WebhookSecretSource, "webhook_secret") {
+				return
+			}
+			if s.dependencies.KeyRing == nil {
+				s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
+				return
+			}
+			env, err := githubx.EncryptSecret(r.Context(), s.dependencies.KeyRing, secret)
+			if err != nil {
+				s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
+				return
+			}
+			stored.WebhookSecretEnvelope = env
 		}
-		if s.dependencies.KeyRing == nil {
-			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
-			return
-		}
-		env, err := githubx.EncryptSecret(r.Context(), s.dependencies.KeyRing, secret)
-		if err != nil {
-			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
-			return
-		}
-		stored.WebhookSecretEnvelope = env
 	}
 
 	if err := githubx.SaveStoredRuntime(r.Context(), s.dependencies.Store, stored); err != nil {

@@ -83,6 +83,21 @@ func Test环境变量优先于配置文件(t *testing.T) {
 	}
 }
 
+func TestLoad规范化运行时驱动与监听地址(t *testing.T) {
+	cfg, err := Load(context.Background(), LoadOptions{
+		LookupEnv: lookupFromMap(map[string]string{
+			"REPOSENTINEL_DATABASE_DRIVER": " sqlite ",
+			"REPOSENTINEL_HTTP_ADDR":       " 127.0.0.1:8080 ",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("带空白的运行时配置应可加载: %v", err)
+	}
+	if cfg.Database.Driver != "sqlite" || cfg.HTTP.Addr != "127.0.0.1:8080" {
+		t.Fatalf("运行时配置未规范化: driver=%q addr=%q", cfg.Database.Driver, cfg.HTTP.Addr)
+	}
+}
+
 func Test标准日志环境变量优先于前缀别名和配置文件(t *testing.T) {
 	cfg, err := Load(context.Background(), LoadOptions{
 		FileSystem: fstest.MapFS{

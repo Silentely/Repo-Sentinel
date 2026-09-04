@@ -203,3 +203,29 @@ func TestChangePasswordRejectsBlankPasswords(t *testing.T) {
 	)
 	assertAPIError(t, blankNew, http.StatusBadRequest, "validation_failed")
 }
+
+func TestChangePasswordPreservesPasswordWhitespace(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	currentCookies := fixture.login(t, httpTestPassword)
+	csrfCookie := cookieByName(t, currentCookies, CSRFCookieName)
+	newPassword := " 管理员更新密码一二三四五六 "
+
+	changed := fixture.request(
+		t, http.MethodPost, "/api/v1/auth/password",
+		`{"current_password":"`+httpTestPassword+`","new_password":"`+newPassword+`"}`,
+		"127.0.0.1:42312", currentCookies, map[string]string{CSRFHeaderName: csrfCookie.Value},
+	)
+	if changed.Code != http.StatusOK {
+		t.Fatalf("带首尾空格的新密码不应被截断，改密状态=%d，响应=%s", changed.Code, changed.Body.String())
+	}
+
+	login := fixture.request(
+		t, http.MethodPost, "/api/v1/auth/login",
+		`{"username":"Repo Admin","password":"`+newPassword+`"}`,
+		"127.0.0.1:42313", nil, nil,
+	)
+	if login.Code != http.StatusOK {
+		t.Fatalf("改密后必须使用原始新密码登录，状态=%d，响应=%s", login.Code, login.Body.String())
+	}
+}

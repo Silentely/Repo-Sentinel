@@ -58,6 +58,27 @@ func TestBuild加密探针拒绝缺失或错误主密钥(t *testing.T) {
 	}
 }
 
+func TestBuild规范化运行时驱动与监听地址(t *testing.T) {
+	databaseURL := "file:" + filepath.Join(t.TempDir(), "trimmed-runtime-config.db")
+	cfg := testAppConfig(databaseURL)
+	cfg.Encryption.CurrentKey = config.NewSecret(hex.EncodeToString(bytes.Repeat([]byte{0x44}, 32)))
+	cfg.Database.Driver = " sqlite "
+	cfg.HTTP.Addr = " 127.0.0.1:0 "
+
+	built, err := Build(t.Context(), cfg)
+	if err != nil {
+		t.Fatalf("带空白的运行时配置应可装配 App: %v", err)
+	}
+	defer func() {
+		if err := built.Close(); err != nil {
+			t.Errorf("关闭 App 失败: %v", err)
+		}
+	}()
+	if built.databaseDriver != "sqlite" || built.httpAddr != "127.0.0.1:0" {
+		t.Fatalf("App 未保存规范化配置: driver=%q addr=%q", built.databaseDriver, built.httpAddr)
+	}
+}
+
 func TestBuild仅在首次启动消费环境管理员配置(t *testing.T) {
 	databaseURL := "file:" + filepath.Join(t.TempDir(), "bootstrap-admin.db")
 	firstConfig := testAppConfig(databaseURL)

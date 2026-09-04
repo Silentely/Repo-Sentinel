@@ -63,6 +63,8 @@ func Build(ctx context.Context, cfg config.Config) (*App, error) {
 }
 
 func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies buildDependencies) (_ *App, returnedErr error) {
+	cfg.Database.Driver = strings.TrimSpace(cfg.Database.Driver)
+	cfg.HTTP.Addr = strings.TrimSpace(cfg.HTTP.Addr)
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}

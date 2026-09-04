@@ -154,24 +154,50 @@ func Test同步Installation仓库需要认证且未配置App时拒绝(t *testing
 	assertAPIError(t, resp, http.StatusServiceUnavailable, "github_app_not_configured")
 }
 
-func TestGitHubConfigRejectsBlankSecrets(t *testing.T) {
+func TestGitHubConfigBlankSecretsAreNoop(t *testing.T) {
 	ring := testHTTPKeyRing(t)
 	fixture := newHTTPTestFixture(t, httpTestOptions{keyRing: ring})
 	fixture.bootstrapAdmin(t)
 	cookies := fixture.login(t, httpTestPassword)
 	csrf := cookieByName(t, cookies, CSRFCookieName)
 
-	// 仅空白字符的 webhook_secret 应被拒绝
+	configured := fixture.request(
+		t, http.MethodPut, "/api/v1/github/config",
+		`{"private_key_path":"/tmp/reposentinel-test-private-key.pem","webhook_secret":"configured-secret"}`,
+		"127.0.0.1:44019", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	if configured.Code != http.StatusOK {
+		t.Fatalf("准备已有 GitHub 配置失败，状态=%d，响应=%s", configured.Code, configured.Body.String())
+	}
+
+	// 空白 webhook_secret 表示未提供；真正清除由 clear_webhook_secret 控制。
 	resp := fixture.request(
 		t, http.MethodPut, "/api/v1/github/config", `{"webhook_secret":"   "}`,
 		"127.0.0.1:44020", cookies, map[string]string{CSRFHeaderName: csrf.Value},
 	)
-	assertAPIError(t, resp, http.StatusBadRequest, "validation_failed")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("空白 webhook_secret 应保持 no-op，状态=%d，响应=%s", resp.Code, resp.Body.String())
+	}
+	var after githubConfigResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if !after.WebhookSecretConfigured {
+		t.Fatal("空白 webhook_secret 不应清除已有 secret")
+	}
 
-	// 仅空白字符的 private_key_pem 应被拒绝
+	// 空白 private_key_pem 同样表示未提供；真正清除由 clear_private_key 控制。
 	respPem := fixture.request(
 		t, http.MethodPut, "/api/v1/github/config", `{"private_key_pem":"   "}`,
 		"127.0.0.1:44021", cookies, map[string]string{CSRFHeaderName: csrf.Value},
 	)
-	assertAPIError(t, respPem, http.StatusBadRequest, "validation_failed")
+	if respPem.Code != http.StatusOK {
+		t.Fatalf("空白 private_key_pem 应保持 no-op，状态=%d，响应=%s", respPem.Code, respPem.Body.String())
+	}
+	if err := json.Unmarshal(respPem.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.PrivateKeyPath != "/tmp/reposentinel-test-private-key.pem" {
+		t.Fatalf("空白 private_key_pem 不应清除已有路径配置: %+v", after)
+	}
 }

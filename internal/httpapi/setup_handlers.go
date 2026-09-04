@@ -46,8 +46,8 @@ func (s *server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.Username = strings.TrimSpace(request.Username)
-	request.Password = strings.TrimSpace(request.Password)
-	if request.Username == "" || request.Password == "" {
+	// 密码是对认证服务不透明的凭据；仅拒绝全空白输入，保留合法的首尾空格。
+	if request.Username == "" || strings.TrimSpace(request.Password) == "" {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
 	}
