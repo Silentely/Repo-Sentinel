@@ -275,7 +275,6 @@ func (w *statusResponseWriter) Flush() {
 	}
 }
 
-
 func parseTrustedSubnets(subnets []string) []*net.IPNet {
 	var result []*net.IPNet
 	for _, raw := range subnets {

@@ -338,15 +338,15 @@ func ResetAdmin2FA(ctx context.Context, cfg config.Config) (returnedErr error) {
 			}
 			now := time.Now().UTC()
 			_, _ = txStore.Audits().Append(ctx, store.AuditLog{
-				ID:          ulid.Make().String(),
-				Action:      "admin.2fa_reset_cli",
-				ActorType:   "cli",
-				ActorID:     "local",
-				TargetType:  "admin",
-				TargetID:    account.ID,
+				ID:           ulid.Make().String(),
+				Action:       "admin.2fa_reset_cli",
+				ActorType:    "cli",
+				ActorID:      "local",
+				TargetType:   "admin",
+				TargetID:     account.ID,
 				MetadataJSON: []byte(`{"reset_2fa":true}`),
 				IPAddress:    "127.0.0.1",
-				CreatedAt:   now,
+				CreatedAt:    now,
 			})
 		}
 		return nil

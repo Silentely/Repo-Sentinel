@@ -2,12 +2,12 @@ package auth
 
 import (
 	"crypto/hmac"
-	"errors"
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -48,7 +48,6 @@ func GenerateOTPAuthURL(username, secret, issuer string) string {
 
 	return fmt.Sprintf("otpauth://totp/%s?%s", url.PathEscape(label), params.Encode())
 }
-
 
 func decodeBase32Secret(secret string) ([]byte, error) {
 	cleanSecret := strings.Map(func(r rune) rune {

@@ -93,7 +93,7 @@ type server struct {
 	// webhookSem 控制 webhook 后台处理并发；容量见 webhookProcessConcurrency。
 	webhookSem chan struct{}
 	// loginSem 控制 Argon2id 认证并发计算上限，防止 CPU 耗尽。
-	loginSem chan struct{}
+	loginSem    chan struct{}
 	totpTickets *auth.TOTPTicketManager
 }
 
@@ -190,8 +190,8 @@ func New(dependencies Dependencies) http.Handler {
 		dependencies:   dependencies,
 		secureCookies:  usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
 		trustedProxies: parseTrustedSubnets(dependencies.Config.HTTP.TrustedProxies),
-		webhookSem:    make(chan struct{}, webhookProcessConcurrency),
-		loginSem:      make(chan struct{}, 3),
+		webhookSem:     make(chan struct{}, webhookProcessConcurrency),
+		loginSem:       make(chan struct{}, 3),
 		totpTickets:    auth.NewTOTPTicketManager(3 * time.Minute),
 		webhookSvc: &webhooksvc.Service{
 			Store:      dependencies.Store,

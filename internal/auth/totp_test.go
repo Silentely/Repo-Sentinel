@@ -106,9 +106,9 @@ func TestTOTPSecretFormatRobustness(t *testing.T) {
 	}
 
 	variants := []string{
-		"GEZD GNBV GY3T QOJQ GEZD GNBV GY3T QOJQ", // 带空格
-		"gezdgnbvgy3tqojqgezdgnbvgy3tqojq",       // 小写
-		"GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ======", // 带 padding
+		"GEZD GNBV GY3T QOJQ GEZD GNBV GY3T QOJQ",       // 带空格
+		"gezdgnbvgy3tqojqgezdgnbvgy3tqojq",              // 小写
+		"GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ======",        // 带 padding
 		"  GEZD GNBV \t\n gy3t qojq GEZDGNBVGY3TQOJQ  ", // 混杂空白符与大小写
 	}
 
