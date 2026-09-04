@@ -1,5 +1,7 @@
 package auth
 
+import "errors"
+
 type codedError string
 
 func (e codedError) Error() string {
@@ -21,4 +23,6 @@ var (
 	ErrUnauthorized = codedError("unauthorized")
 	// ErrCSRFFailed 统一表示双提交 CSRF 校验缺失或不匹配。
 	ErrCSRFFailed = codedError("csrf_failed")
+	// ErrInvalidTOTPConfig 表示已启用但无法安全读取的 2FA 配置。
+	ErrInvalidTOTPConfig = errors.New("invalid totp configuration")
 )

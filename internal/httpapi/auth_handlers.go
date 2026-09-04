@@ -289,7 +289,6 @@ func (s *server) cookiesSecure() bool {
 	return s.secureCookies
 }
 
-
 type login2FARequest struct {
 	Ticket   string `json:"ticket"`
 	Passcode string `json:"passcode"`
@@ -339,7 +338,14 @@ func (s *server) handleLogin2FA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ticketMgr.ConsumeTicket(request.Ticket)
+	// 校验与消费之间允许并发请求进入；只有原子消费成功者才能创建 Session，
+	// 确保临时票据真正一次性使用。
+	if !ticketMgr.ConsumeTicket(request.Ticket) {
+		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeInvalidCredentials, map[string]any{
+			"reason": "ticket_expired_or_invalid",
+		})
+		return
+	}
 
 	created, err := s.dependencies.SessionService.Create(r.Context(), ticket.AdminID, remoteIP, r.UserAgent())
 	if err != nil {

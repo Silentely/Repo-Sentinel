@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -15,8 +16,8 @@ import (
 
 const (
 	// TOTPSettingKey 是 system_settings 表中 TOTP 二步验证的配置项键名。
-	TOTPSettingKey = "security.totp_config"
-	totpSecretAAD  = "reposentinel:totp-secret:v1"
+	TOTPSettingKey        = "security.totp_config"
+	totpSecretAAD         = "reposentinel:totp-secret:v1"
 	maxTOTPTicketFailures = 3
 	maxActiveTickets      = 2000
 )
@@ -44,16 +45,22 @@ func LoadTOTPConfig(ctx context.Context, data store.Store, ring *cryptox.KeyRing
 
 	var stored StoredTOTPConfig
 	if err := json.Unmarshal(setting.ValueJSON, &stored); err != nil {
-		return false, "", nil
+		return false, "", fmt.Errorf("%w: decode stored config: %v", ErrInvalidTOTPConfig, err)
 	}
 	if !stored.Enabled {
 		return false, "", nil
 	}
 
-	if stored.SecretEnvelope != "" && ring != nil {
+	if stored.SecretEnvelope != "" {
+		if ring == nil {
+			return false, "", fmt.Errorf("%w: key ring unavailable", ErrInvalidTOTPConfig)
+		}
 		decrypted, err := ring.Decrypt(ctx, stored.SecretEnvelope, []byte(totpSecretAAD))
 		if err != nil {
-			return false, "", err
+			return false, "", fmt.Errorf("%w: decrypt secret: %v", ErrInvalidTOTPConfig, err)
+		}
+		if strings.TrimSpace(string(decrypted.Plaintext)) == "" {
+			return false, "", fmt.Errorf("%w: empty decrypted secret", ErrInvalidTOTPConfig)
 		}
 		return true, string(decrypted.Plaintext), nil
 	}
@@ -62,7 +69,7 @@ func LoadTOTPConfig(ctx context.Context, data store.Store, ring *cryptox.KeyRing
 		return true, stored.PlainSecret, nil
 	}
 
-	return false, "", nil
+	return false, "", fmt.Errorf("%w: enabled config has no secret", ErrInvalidTOTPConfig)
 }
 
 // SaveTOTPConfig 加密 TOTP 密钥并保存到数据库。
@@ -213,10 +220,14 @@ func (m *TOTPTicketManager) RecordFailure(ticketID string) int {
 }
 
 // ConsumeTicket 单次成功校验后立刻销毁票据。
-func (m *TOTPTicketManager) ConsumeTicket(ticketID string) {
+func (m *TOTPTicketManager) ConsumeTicket(ticketID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if _, ok := m.tickets[ticketID]; !ok {
+		return false
+	}
 	delete(m.tickets, ticketID)
+	return true
 }
 
 func (m *TOTPTicketManager) prune(now time.Time) {

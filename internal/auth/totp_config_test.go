@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -140,5 +141,36 @@ func TestTOTPTicketManagerSingleActiveTicketPerAdmin(t *testing.T) {
 	// 新 ticket2 仍有效
 	if _, ok := mgr.GetTicket(ticket2, "192.168.1.100"); !ok {
 		t.Fatal("新 ticket 应该有效")
+	}
+}
+
+func TestTOTPTicketManagerConsumeIsSingleWinner(t *testing.T) {
+	mgr := NewTOTPTicketManager(3 * time.Minute)
+	ticket := mgr.CreateTicket("admin-1", "admin", "192.168.1.100")
+
+	if !mgr.ConsumeTicket(ticket) {
+		t.Fatal("首次消费应成功")
+	}
+	if mgr.ConsumeTicket(ticket) {
+		t.Fatal("同一 ticket 的第二次消费应失败")
+	}
+}
+
+func TestLoadTOTPConfigRejectsEnabledConfigWithoutSecret(t *testing.T) {
+	st := testStore(t)
+	_, err := st.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "corrupt-totp",
+		Key:       TOTPSettingKey,
+		ValueJSON: []byte(`{"enabled":true}`),
+		UpdatedAt: time.Now().UTC(),
+		UpdatedBy: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	enabled, secret, err := LoadTOTPConfig(t.Context(), st, testKeyRing(t))
+	if err == nil || !errors.Is(err, ErrInvalidTOTPConfig) {
+		t.Fatalf("缺少密钥的启用配置应返回 ErrInvalidTOTPConfig，得到 enabled=%v secret=%q err=%v", enabled, secret, err)
 	}
 }
