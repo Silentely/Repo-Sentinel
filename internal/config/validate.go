@@ -13,7 +13,7 @@ import (
 const validationFailedCode = "validation_failed"
 
 // maxAITimeout AI 请求超时上界：过大超时会让单条 webhook 后台处理占用
-// 32 并发槽位过久（processBudget = AI timeout + 10s），设置页数字钳制同此上限。
+// 32 并发槽位过久（processBudget = AI timeout + 10s），设置页数字钳制同步上限。
 const maxAITimeout = 10 * time.Minute
 
 // ValidationError 表示可稳定识别且不包含配置原文的校验错误。
@@ -68,6 +68,21 @@ func (cfg Config) Validate() error {
 	}
 	if !validPublicBaseURL(cfg.HTTP.PublicBaseURL) {
 		return newValidationError("http.public_base_url", "must use HTTPS except for localhost or loopback HTTP")
+	}
+	for _, proxy := range cfg.HTTP.TrustedProxies {
+		trimmed := strings.TrimSpace(proxy)
+		if trimmed == "" {
+			return newValidationError("http.trusted_proxies", "must not contain empty elements")
+		}
+		if strings.Contains(trimmed, "/") {
+			if _, _, err := net.ParseCIDR(trimmed); err != nil {
+				return newValidationError("http.trusted_proxies", "must contain valid IP addresses or CIDR blocks")
+			}
+		} else {
+			if net.ParseIP(trimmed) == nil {
+				return newValidationError("http.trusted_proxies", "must contain valid IP addresses or CIDR blocks")
+			}
+		}
 	}
 
 	hasUsername := cfg.Admin.Username != ""
@@ -148,28 +163,25 @@ func validPublicBaseURL(value string) bool {
 		return true
 	case "http":
 		host := strings.ToLower(parsed.Hostname())
-		if host == "localhost" {
-			return true
-		}
-		ip := net.ParseIP(host)
-		return ip != nil && ip.IsLoopback()
+		return host == "localhost" || host == "127.0.0.1" || host == "::1"
 	default:
 		return false
 	}
 }
 
-func validEncryptionKey(secret Secret) bool {
-	value := secret.Reveal()
-	if value == "" {
+func validEncryptionKey(key Secret) bool {
+	raw := key.Reveal()
+	if raw == "" {
 		return true
 	}
-	if decoded, err := hex.DecodeString(value); err == nil && len(decoded) == 32 {
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err == nil && len(decoded) == 32 {
 		return true
 	}
-	for _, encoding := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding} {
-		if decoded, err := encoding.DecodeString(value); err == nil && len(decoded) == 32 {
-			return true
-		}
+	rawStd, err := base64.RawStdEncoding.DecodeString(raw)
+	if err == nil && len(rawStd) == 32 {
+		return true
 	}
-	return false
+	hexDecoded, err := hex.DecodeString(raw)
+	return err == nil && len(hexDecoded) == 32
 }

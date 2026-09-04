@@ -299,3 +299,32 @@ func TestSqlite连接池配置被拒绝(t *testing.T) {
 		t.Fatalf("sqlite 默认连接池配置应通过: %v", err)
 	}
 }
+
+func TestTrustedProxiesValidation(t *testing.T) {
+	t.Run("有效IP与CIDR", func(t *testing.T) {
+		cfg := defaultConfig()
+		cfg.HTTP.TrustedProxies = []string{
+			"127.0.0.1",
+			"::1",
+			"10.0.0.0/8",
+			"172.16.0.0/12",
+			"192.168.1.100",
+			"2001:db8::/32",
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("有效 trusted_proxies 被拒绝: %v", err)
+		}
+	})
+
+	t.Run("空字符串元素被拒绝", func(t *testing.T) {
+		cfg := defaultConfig()
+		cfg.HTTP.TrustedProxies = []string{"127.0.0.1", "  "}
+		requireValidationError(t, cfg.Validate())
+	})
+
+	t.Run("非法IP或CIDR被拒绝", func(t *testing.T) {
+		cfg := defaultConfig()
+		cfg.HTTP.TrustedProxies = []string{"invalid-ip", "10.0.0.0/8"}
+		requireValidationError(t, cfg.Validate())
+	})
+}

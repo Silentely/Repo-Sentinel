@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -81,8 +82,9 @@ type Dependencies struct {
 }
 
 type server struct {
-	dependencies  Dependencies
-	secureCookies bool
+	dependencies   Dependencies
+	secureCookies  bool
+	trustedProxies []*net.IPNet
 	// webhookSvc 承担 Webhook 后台管线（规范化 → 通知 → 状态机），装配一次复用。
 	webhookSvc *webhooksvc.Service
 	// reconcileAllRunning 防止全量对账并发触发（对账会大量调用 GitHub API 并写库）。
@@ -107,6 +109,19 @@ func (s *server) safeGo(name string, fn func()) {
 		}()
 		fn()
 	}()
+}
+
+func (s *server) getTrustedProxies() []*net.IPNet {
+	if s == nil {
+		return nil
+	}
+	if s.trustedProxies != nil {
+		return s.trustedProxies
+	}
+	if len(s.dependencies.Config.HTTP.TrustedProxies) > 0 {
+		return parseTrustedSubnets(s.dependencies.Config.HTTP.TrustedProxies)
+	}
+	return nil
 }
 
 // acquireWebhookSlot 领取 webhook 处理槽位；槽位满时阻塞等待（事件不丢弃）。
@@ -157,8 +172,9 @@ func New(dependencies Dependencies) http.Handler {
 	}
 
 	s := &server{
-		dependencies:  dependencies,
-		secureCookies: usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
+		dependencies:   dependencies,
+		secureCookies:  usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
+		trustedProxies: parseTrustedSubnets(dependencies.Config.HTTP.TrustedProxies),
 		webhookSem:    make(chan struct{}, webhookProcessConcurrency),
 		webhookSvc: &webhooksvc.Service{
 			Store:      dependencies.Store,

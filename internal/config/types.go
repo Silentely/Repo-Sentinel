@@ -84,7 +84,7 @@ type AggregationConfig struct {
 	BurstWindow time.Duration `yaml:"burst_window"`
 }
 
-// LoadOptions 提供可注入的配置来源，避免加载过程依赖隐藏的全局状态。
+// LoadOptions 提供可注入的配置来源，避免加载过程依赖隐晦的全局状态。
 type LoadOptions struct {
 	ConfigPath string
 	FileSystem fs.FS
@@ -93,8 +93,9 @@ type LoadOptions struct {
 
 // HTTPConfig 描述 HTTP 监听地址与对外访问地址。
 type HTTPConfig struct {
-	Addr          string `yaml:"addr"`
-	PublicBaseURL string `yaml:"public_base_url"`
+	Addr           string   `yaml:"addr"`
+	PublicBaseURL  string   `yaml:"public_base_url"`
+	TrustedProxies []string `yaml:"trusted_proxies"`
 }
 
 // DatabaseConfig 描述数据库驱动、连接地址和连接池上限。
@@ -123,7 +124,7 @@ type EncryptionConfig struct {
 	PreviousKey Secret `yaml:"previous_key"`
 }
 
-// GitHubConfig 描述 GitHub App、Webhook 与外部仓库访问凭据。
+// GitHubConfig 描述 GitHub 凭据。
 type GitHubConfig struct {
 	AppID                 int64  `yaml:"app_id"`
 	ClientID              string `yaml:"client_id"`
@@ -131,32 +132,30 @@ type GitHubConfig struct {
 	WebhookSecret         Secret `yaml:"webhook_secret"`
 	WebhookPreviousSecret Secret `yaml:"webhook_previous_secret"`
 	ExternalPAT           Secret `yaml:"external_pat"`
-	// StarredUsername 管理台 star release 追踪的 GitHub 用户名初始值
-	// （也可在管理台设置页填写；此处为 env/配置文件兜底）。
-	StarredUsername string `yaml:"starred_username"`
+	StarredUsername       string `yaml:"starred_username"`
 }
 
-// NotifyConfig 汇总 Telegram 与 HTTP Webhook 通知配置。
+// NotifyConfig 描述 Telegram 和通用 HTTP Webhook 通知目标。
 type NotifyConfig struct {
 	Telegram    TelegramConfig    `yaml:"telegram"`
 	HTTPWebhook HTTPWebhookConfig `yaml:"http_webhook"`
 }
 
-// TelegramConfig 描述 Telegram Bot 通知目标。
+// TelegramConfig 描述 Telegram 机器人通知目标。
 type TelegramConfig struct {
 	Token  Secret `yaml:"token"`
 	ChatID string `yaml:"chat_id"`
 }
 
-// HTTPWebhookConfig 描述 HTTP Webhook 通知目标与私网策略。
+// HTTPWebhookConfig 描述通用 HTTP Webhook 发送目标。
 type HTTPWebhookConfig struct {
 	URL          string `yaml:"url"`
 	Secret       Secret `yaml:"secret"`
 	AllowPrivate bool   `yaml:"allow_private"`
 }
 
-// LoggingConfig 描述结构化日志格式与级别。
+// LoggingConfig 描述日志输出级别与格式。
 type LoggingConfig struct {
-	Format string `yaml:"format"`
 	Level  string `yaml:"level"`
+	Format string `yaml:"format"`
 }

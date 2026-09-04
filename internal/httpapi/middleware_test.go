@@ -459,3 +459,90 @@ func (c *httpTestClock) Advance(delta time.Duration) {
 	defer c.mu.Unlock()
 	c.now = c.now.Add(delta)
 }
+
+func TestRealIPMiddlewareWithTrustedProxies(t *testing.T) {
+	captureRemoteIP := func(s *server) (http.Handler, *string) {
+		var captured string
+		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			captured = remoteIPFromContext(r.Context())
+			w.WriteHeader(http.StatusOK)
+		})
+		return s.realIPMiddleware(inner), &captured
+	}
+
+	t.Run("默认无受信任代理时忽略代理头", func(t *testing.T) {
+		s := &server{dependencies: Dependencies{}}
+		handler, captured := captureRemoteIP(s)
+
+		req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+		req.RemoteAddr = "127.0.0.1:12345"
+		req.Header.Set("X-Forwarded-For", "203.0.113.195")
+		req.Header.Set("X-Real-IP", "203.0.113.196")
+
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+		if *captured != "127.0.0.1" {
+			t.Fatalf("remoteIP=%q, want 127.0.0.1", *captured)
+		}
+	})
+
+	t.Run("直接对端不在受信任代理内时忽略代理头", func(t *testing.T) {
+		s := &server{dependencies: Dependencies{
+			Config: config.Config{
+				HTTP: config.HTTPConfig{
+					TrustedProxies: []string{"127.0.0.1", "10.0.0.0/8"},
+				},
+			},
+		}}
+		handler, captured := captureRemoteIP(s)
+
+		req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+		req.RemoteAddr = "198.51.100.2:12345"
+		req.Header.Set("X-Forwarded-For", "203.0.113.195")
+
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+		if *captured != "198.51.100.2" {
+			t.Fatalf("remoteIP=%q, want 198.51.100.2", *captured)
+		}
+	})
+
+	t.Run("直接对端受信任时从X-Forwarded-For反向提取最右侧不可信IP", func(t *testing.T) {
+		s := &server{dependencies: Dependencies{
+			Config: config.Config{
+				HTTP: config.HTTPConfig{
+					TrustedProxies: []string{"127.0.0.1", "10.0.0.0/8"},
+				},
+			},
+		}}
+		handler, captured := captureRemoteIP(s)
+
+		req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+		req.RemoteAddr = "127.0.0.1:12345"
+		// 客户端 203.0.113.50 经过内部代理 10.0.1.2 转发到本机 127.0.0.1
+		req.Header.Set("X-Forwarded-For", "203.0.113.50, 10.0.1.2")
+
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+		if *captured != "203.0.113.50" {
+			t.Fatalf("remoteIP=%q, want 203.0.113.50", *captured)
+		}
+	})
+
+	t.Run("直接对端受信任且仅提供X-Real-IP时生效", func(t *testing.T) {
+		s := &server{dependencies: Dependencies{
+			Config: config.Config{
+				HTTP: config.HTTPConfig{
+					TrustedProxies: []string{"127.0.0.1"},
+				},
+			},
+		}}
+		handler, captured := captureRemoteIP(s)
+
+		req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+		req.RemoteAddr = "127.0.0.1:12345"
+		req.Header.Set("X-Real-IP", "198.51.100.77")
+
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+		if *captured != "198.51.100.77" {
+			t.Fatalf("remoteIP=%q, want 198.51.100.77", *captured)
+		}
+	})
+}

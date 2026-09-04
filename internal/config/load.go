@@ -200,6 +200,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 	if value, ok := lookup("REPOSENTINEL_PUBLIC_BASE_URL"); ok {
 		cfg.HTTP.PublicBaseURL = value
 	}
+	if value, ok := lookup("REPOSENTINEL_HTTP_TRUSTED_PROXIES"); ok {
+		cfg.HTTP.TrustedProxies = parseStringSliceEnvironment(value)
+	}
 	if value, ok := lookup("REPOSENTINEL_DATABASE_DRIVER"); ok {
 		cfg.Database.Driver = value
 	}
@@ -446,4 +449,15 @@ func parseDurationEnvironment(name, value string) (time.Duration, error) {
 		return 0, newValidationError(name, "must be a duration")
 	}
 	return parsed, nil
+}
+
+func parseStringSliceEnvironment(value string) []string {
+	parts := strings.Split(value, ",")
+	var result []string
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }

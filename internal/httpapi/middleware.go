@@ -50,7 +50,12 @@ func validRequestID(id string) bool {
 
 func (s *server) realIPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		remoteIP := clientIPFromRemoteAddr(r.RemoteAddr)
+		remoteIP := resolveClientIP(
+			r.RemoteAddr,
+			r.Header.Get("X-Forwarded-For"),
+			r.Header.Get("X-Real-IP"),
+			s.getTrustedProxies(),
+		)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), remoteIPContextKey, remoteIP)))
 	})
 }
@@ -268,4 +273,89 @@ func (w *statusResponseWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+
+func parseTrustedSubnets(subnets []string) []*net.IPNet {
+	var result []*net.IPNet
+	for _, raw := range subnets {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if strings.Contains(raw, "/") {
+			_, ipNet, err := net.ParseCIDR(raw)
+			if err == nil && ipNet != nil {
+				result = append(result, ipNet)
+			}
+		} else {
+			ip := net.ParseIP(raw)
+			if ip != nil {
+				var mask net.IPMask
+				if ip.To4() != nil {
+					mask = net.CIDRMask(32, 32)
+				} else {
+					mask = net.CIDRMask(128, 128)
+				}
+				result = append(result, &net.IPNet{IP: ip, Mask: mask})
+			}
+		}
+	}
+	return result
+}
+
+func isIPInSubnets(ip net.IP, subnets []*net.IPNet) bool {
+	if ip == nil {
+		return false
+	}
+	for _, subnet := range subnets {
+		if subnet.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveClientIP(remoteAddr, xff, xRealIP string, trusted []*net.IPNet) string {
+	fallback := clientIPFromRemoteAddr(remoteAddr)
+	if len(trusted) == 0 {
+		return fallback
+	}
+	directIP := net.ParseIP(fallback)
+	if directIP == nil || !isIPInSubnets(directIP, trusted) {
+		return fallback
+	}
+
+	if xff != "" {
+		parts := strings.Split(xff, ",")
+		for i := len(parts) - 1; i >= 0; i-- {
+			candidate := strings.TrimSpace(parts[i])
+			if candidate == "" {
+				continue
+			}
+			parsed := net.ParseIP(candidate)
+			if parsed == nil {
+				continue
+			}
+			if !isIPInSubnets(parsed, trusted) {
+				return parsed.String()
+			}
+		}
+		for _, part := range parts {
+			candidate := strings.TrimSpace(part)
+			parsed := net.ParseIP(candidate)
+			if parsed != nil {
+				return parsed.String()
+			}
+		}
+	}
+
+	if xRealIP != "" {
+		parsed := net.ParseIP(strings.TrimSpace(xRealIP))
+		if parsed != nil {
+			return parsed.String()
+		}
+	}
+
+	return fallback
 }
