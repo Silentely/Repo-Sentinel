@@ -17,13 +17,13 @@
 </p>
 
 <p align="center">
-  <a href="docs/guide/quick-start.md"><strong>快速开始</strong></a>
+  <a href="https://repo.cosr.eu.org/guide/quick-start.html"><strong>快速开始</strong></a>
   ·
-  <a href="docs/deploy/docker.md">Docker 部署</a>
+  <a href="https://repo.cosr.eu.org/deploy/docker.html">Docker 部署</a>
   ·
-  <a href="docs/README.md">文档总览</a>
+  <a href="https://repo.cosr.eu.org/README.html">文档总览</a>
   ·
-  <a href="docs/reference/configuration.md">配置参考</a>
+  <a href="https://repo.cosr.eu.org/reference/configuration.html">配置参考</a>
 </p>
 
 ---
@@ -48,7 +48,7 @@ RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。�
 | **AI 告警分诊（可选）** | 新安全告警通知附带 AI 影响分析与处理建议；默认关闭，支持 OpenAI 兼容端点（可接本地模型） |
 | **管理后台** | 仪表盘 KPI（含 Star 增长曲线，7/30/90/全部）、仓库与基线、最近事件、投递记录、渠道配置、亮/暗主题 |
 | **安全基线** | 单管理员、Argon2id、Session + CSRF、主密钥 AES-GCM、敏感配置掩码 |
-| **运维** | 健康检查、`/metrics`、结构化日志、Docker/GHCR、Compose、文档站 |
+| **运维** | 健康检查、`/metrics`、结构化日志、Docker/GHCR、Compose |
 
 ---
 
@@ -98,7 +98,7 @@ curl -fsS http://127.0.0.1:8080/health/ready
 
 默认镜像：`ghcr.io/silentely/repo-sentinel:latest`。私有包需先 `docker login ghcr.io`。
 
-常用环境变量（完整见 [`.env.example`](.env.example) 与 [配置参考](docs/reference/configuration.md)）：
+常用环境变量（完整见 [`.env.example`](.env.example) 与 [配置参考](https://repo.cosr.eu.org/reference/configuration.html)）：
 
 | 变量 | 用途 |
 |------|------|
@@ -117,7 +117,7 @@ GitHub App Webhook URL：
 https://你的域名/webhooks/github
 ```
 
-完整步骤见 [Docker 部署](docs/deploy/docker.md) 与 [快速开始](docs/guide/quick-start.md)。
+完整步骤见 [Docker 部署](https://repo.cosr.eu.org/deploy/docker.html) 与 [快速开始](https://repo.cosr.eu.org/guide/quick-start.html)。
 
 ### 源码运行
 
@@ -137,35 +137,30 @@ REPOSENTINEL_GITHUB_WEBHOOK_SECRET=dev-secret \
 
 ## 文档
 
-源文件在仓库 **`docs/`** 目录。在 GitHub 上浏览请带 `docs/` 前缀，例如：
+完整使用文档见已部署的**文档站**：[https://repo.cosr.eu.org](https://repo.cosr.eu.org)。
 
-- 运维：[`docs/reference/ops.md`](docs/reference/ops.md)（不是 `/reference/ops`）
-- 配置：[`docs/reference/configuration.md`](docs/reference/configuration.md)
-- 部署：[`docs/deploy/docker.md`](docs/deploy/docker.md)
+| 文档 | 说明 |
+|------|------|
+| [快速开始](https://repo.cosr.eu.org/guide/quick-start.html) | 构建、启动、首次管理员 |
+| [Docker 部署](https://repo.cosr.eu.org/deploy/docker.html) | 镜像、环境变量、SQLite/Postgres、Webhook |
+| [源码部署](https://repo.cosr.eu.org/deploy/source.html) | 本地源码构建与运行 |
+| [反向代理](https://repo.cosr.eu.org/deploy/reverse-proxy.html) | HTTPS/反代部署 |
+| [配置参考](https://repo.cosr.eu.org/reference/configuration.html) | 全部环境变量、数据库、主密钥 |
+| [运维手册](https://repo.cosr.eu.org/reference/ops.html) | 健康检查、备份、升级 |
+| [管理员与 Session](https://repo.cosr.eu.org/guide/administrator.html) | 初始化、改密、CLI 重置 |
+| [健康与版本](https://repo.cosr.eu.org/guide/health-and-version.html) | 运行状态查询与版本 |
+| [列表 API](https://repo.cosr.eu.org/guide/list-api.html) | 事件等列表接口 |
+| [系统架构](https://repo.cosr.eu.org/reference/architecture.html) | 模块与数据流 |
+| [功能介绍](https://repo.cosr.eu.org/features.html) | 能力边界与非目标 |
+| [常见问题](https://repo.cosr.eu.org/faq.html) | 部署与使用排障 |
+| [文档总览](https://repo.cosr.eu.org/README.html) | 完整导航 |
+
+以下为面向维护者与贡献者的仓库文档：
 
 | 文档 | 说明 |
 |------|------|
 | [贡献指南](CONTRIBUTING.md) | Issue / PR 要求与开发约定 |
 | [安全策略](SECURITY.md) | 漏洞报告与部署基线 |
-| [快速开始](docs/guide/quick-start.md) | 构建、启动、首次管理员 |
-| [Docker 部署](docs/deploy/docker.md) | 镜像、环境变量、SQLite/Postgres、Webhook |
-| [配置参考](docs/reference/configuration.md) | 全部环境变量、数据库、主密钥 |
-| [运维手册](docs/reference/ops.md) | 健康检查、备份、升级 |
-| [管理员与 Session](docs/guide/administrator.md) | 初始化、改密、CLI 重置 |
-| [发布与镜像](docs/reference/release.md) | 维护者发版（用户可跳过） |
-| [系统架构](docs/reference/architecture.md) | 模块与数据流 |
-| [功能介绍](docs/features.md) | 能力边界与非目标 |
-| [常见问题](docs/faq.md) | 部署与使用排障 |
-| [文档总览](docs/README.md) | 完整导航 |
-
-本地预览文档站（路径为 `/reference/ops` 等，由 VitePress 提供，**不是** GitHub blob 路径）：
-
-```bash
-npm install
-npm run docs:dev
-```
-
-默认地址 <http://127.0.0.1:5174>。
 
 ---
 
