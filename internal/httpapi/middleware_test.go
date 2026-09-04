@@ -190,6 +190,7 @@ type httpTestFixture struct {
 	store          store.Store
 	adminService   *auth.AdminService
 	sessionService *auth.SessionService
+	loginLimiter   *auth.LoginLimiter
 	clock          *httpTestClock
 	githubRuntime  *githubx.RuntimeConfig
 }
@@ -294,6 +295,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		store:          opened,
 		adminService:   adminService,
 		sessionService: sessionService,
+		loginLimiter:   dependencies.LoginLimiter,
 		clock:          clock,
 		githubRuntime:  ghRuntime,
 	}

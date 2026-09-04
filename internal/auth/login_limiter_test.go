@@ -85,3 +85,43 @@ func Test登录限流并发同一键最多允许五次(t *testing.T) {
 		t.Fatalf("并发同键允许次数=%d，期望恰好 5", allowed.Load())
 	}
 }
+
+func TestLoginLimiterAccountFailurePenalty(t *testing.T) {
+	clock := newFakeClock(time.Date(2026, 7, 27, 20, 0, 0, 0, time.UTC))
+	limiter := NewLoginLimiter(clock)
+
+	// 连续失败 0, 1, 2 次无延迟
+	if d := limiter.DelayFor("admin"); d != 0 {
+		t.Fatalf("0次失败延迟=%v, want 0", d)
+	}
+	limiter.RecordFailure("admin")
+	if d := limiter.DelayFor("admin"); d != 0 {
+		t.Fatalf("1次失败延迟=%v, want 0", d)
+	}
+	limiter.RecordFailure("admin")
+	if d := limiter.DelayFor("admin"); d != 0 {
+		t.Fatalf("2次失败延迟=%v, want 0", d)
+	}
+
+	// 第 3 次失败开始引入渐进式延迟
+	limiter.RecordFailure("admin")
+	if d := limiter.DelayFor("admin"); d != 500*time.Millisecond {
+		t.Fatalf("3次失败延迟=%v, want 500ms", d)
+	}
+
+	limiter.RecordFailure("admin")
+	if d := limiter.DelayFor("admin"); d != 1*time.Second {
+		t.Fatalf("4次失败延迟=%v, want 1s", d)
+	}
+
+	limiter.RecordFailure("admin")
+	if d := limiter.DelayFor("admin"); d != 2*time.Second {
+		t.Fatalf("5次失败延迟=%v, want 2s", d)
+	}
+
+	// 登录成功后失败计数清零
+	limiter.RecordSuccess("admin")
+	if d := limiter.DelayFor("admin"); d != 0 {
+		t.Fatalf("成功清零后延迟=%v, want 0", d)
+	}
+}

@@ -52,8 +52,32 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, r, http.StatusTooManyRequests, errorCodeRateLimited, nil)
 		return
 	}
+	if s.loginSem != nil {
+		select {
+		case s.loginSem <- struct{}{}:
+			defer func() { <-s.loginSem }()
+		case <-time.After(1 * time.Second):
+			s.dependencies.Logger.Warn(
+				"login concurrency limit reached",
+				"request_id", requestID,
+				"remote_ip", remoteIP,
+				"username", request.Username,
+				"error_code", errorCodeRateLimited,
+			)
+			s.writeAPIError(w, r, http.StatusTooManyRequests, errorCodeRateLimited, nil)
+			return
+		}
+	}
+
 	admin, err := s.dependencies.AdminService.Authenticate(r.Context(), request.Username, request.Password)
 	if err != nil {
+		s.dependencies.LoginLimiter.RecordFailure(request.Username)
+		if delay := s.dependencies.LoginLimiter.DelayFor(request.Username); delay > 0 {
+			select {
+			case <-time.After(delay):
+			case <-r.Context().Done():
+			}
+		}
 		// 凭据错误记 Warn；其它错误交 writeMappedError 记 Error，避免重复。
 		// username 用于审计暴力尝试的账号维度，绝不记录密码。
 		if errors.Is(err, auth.ErrInvalidCredentials) {
@@ -68,6 +92,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
+	s.dependencies.LoginLimiter.RecordSuccess(request.Username)
 	created, err := s.dependencies.SessionService.Create(r.Context(), admin.ID, remoteIP, r.UserAgent())
 	if err != nil {
 		s.writeMappedError(w, r, err)

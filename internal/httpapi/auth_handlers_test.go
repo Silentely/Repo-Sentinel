@@ -2,10 +2,12 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 )
@@ -228,4 +230,41 @@ func TestChangePasswordPreservesPasswordWhitespace(t *testing.T) {
 	if login.Code != http.StatusOK {
 		t.Fatalf("改密后必须使用原始新密码登录，状态=%d，响应=%s", login.Code, login.Body.String())
 	}
+}
+
+func TestLoginAccountFailureDelayAndConcurrency(t *testing.T) {
+	t.Run("账号认证失败记录连续失败并在后续引入延迟", func(t *testing.T) {
+		fixture := newHTTPTestFixture(t, httpTestOptions{})
+		fixture.bootstrapAdmin(t)
+
+		// 连续错 3 次
+		for i := 0; i < 3; i++ {
+			ip := fmt.Sprintf("198.51.100.%d", i+1)
+			res := fixture.request(
+				t,
+				http.MethodPost,
+				"/api/v1/auth/login",
+				`{"username":"Repo Admin","password":"wrong-password"}`,
+				ip,
+				nil,
+				nil,
+			)
+			assertAPIError(t, res, http.StatusUnauthorized, "invalid_credentials")
+		}
+
+		// 检查 limiter 对 admin 的延迟惩罚应生效
+		delay := fixture.loginLimiter.DelayFor("Repo Admin")
+		if delay < 500*time.Millisecond {
+			t.Fatalf("连续失败3次后延迟=%v, want >= 500ms", delay)
+		}
+
+		// 正确密码登录成功
+		cookies := fixture.login(t, httpTestPassword)
+		assertAuthCookies(t, cookies)
+
+		// 成功后延迟清零
+		if delay := fixture.loginLimiter.DelayFor("Repo Admin"); delay != 0 {
+			t.Fatalf("登录成功后延迟=%v, want 0", delay)
+		}
+	})
 }

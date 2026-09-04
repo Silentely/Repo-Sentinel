@@ -91,6 +91,8 @@ type server struct {
 	reconcileAllRunning atomic.Bool
 	// webhookSem 控制 webhook 后台处理并发；容量见 webhookProcessConcurrency。
 	webhookSem chan struct{}
+	// loginSem 控制 Argon2id 认证并发计算上限，防止 CPU 耗尽。
+	loginSem chan struct{}
 }
 
 // safeGo 以后台 goroutine 执行 fn；panic 只记录日志，不拖垮整个进程。
@@ -176,6 +178,7 @@ func New(dependencies Dependencies) http.Handler {
 		secureCookies:  usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
 		trustedProxies: parseTrustedSubnets(dependencies.Config.HTTP.TrustedProxies),
 		webhookSem:    make(chan struct{}, webhookProcessConcurrency),
+		loginSem:      make(chan struct{}, 3),
 		webhookSvc: &webhooksvc.Service{
 			Store:      dependencies.Store,
 			Logger:     dependencies.Logger,
