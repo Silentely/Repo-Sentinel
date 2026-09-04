@@ -26,6 +26,7 @@ import {
   type SystemSettings,
 } from "./api";
 import { NumberField } from "./number-field";
+import { TwoFactorCard } from "./two-factor-card";
 
 // ---- 运行设置表单：单一受控表单对象，替代逐字段 useState + 同步 effect ----
 
@@ -645,6 +646,8 @@ export function SettingsPage() {
           {savePassword.isPending ? "更新中…" : "更新密码"}
         </button>
       </section>
+
+      <TwoFactorCard />
     </>
   );
 }

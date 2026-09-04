@@ -129,3 +129,60 @@ describe("登录页", () => {
     resolveLogin?.();
   });
 });
+
+  it("支持两阶段登录：返回 requires_2fa 时平滑切换到验证码输入并提交", async () => {
+    const user = userEvent.setup();
+    const loginAction = vi.fn(async () => {
+      return { requires_2fa: true, ticket: "sample-ticket-ulid" };
+    });
+    const login2FAAction = vi.fn(async () => {});
+    const onAuthenticated = vi.fn();
+
+    render(
+      <LoginPage
+        loginAction={loginAction}
+        login2FAAction={login2FAAction}
+        onAuthenticated={onAuthenticated}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("用户名"), "Repo Admin");
+    await user.type(screen.getByLabelText("密码"), "管理员密码一二三四五六");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    // 切换到 2FA 阶段
+    expect(await screen.findByText("动态验证码")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("6 位数字")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "验证并登录" })).toBeInTheDocument();
+
+    // 输入 6 位动态验证码并提交
+    await user.type(screen.getByPlaceholderText("6 位数字"), "123456");
+    await user.click(screen.getByRole("button", { name: "验证并登录" }));
+
+    expect(login2FAAction).toHaveBeenCalledWith({
+      ticket: "sample-ticket-ulid",
+      passcode: "123456",
+    });
+    expect(onAuthenticated).toHaveBeenCalledWith("/");
+  });
+
+  it("在 2FA 界面点击返回可回到账号密码输入状态", async () => {
+    const user = userEvent.setup();
+    const loginAction = vi.fn(async () => {
+      return { requires_2fa: true, ticket: "sample-ticket-ulid" };
+    });
+
+    render(<LoginPage loginAction={loginAction} />);
+
+    await user.type(screen.getByLabelText("用户名"), "Repo Admin");
+    await user.type(screen.getByLabelText("密码"), "管理员密码一二三四五六");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(await screen.findByText("动态验证码")).toBeInTheDocument();
+
+    const backButton = screen.getByRole("button", { name: "返回重新输入密码" });
+    await user.click(backButton);
+
+    expect(screen.getByLabelText("用户名")).toBeInTheDocument();
+    expect(screen.getByLabelText("密码")).toBeInTheDocument();
+  });

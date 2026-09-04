@@ -46,10 +46,63 @@ export const readyStatusQueryOptions = queryOptions({
   refetchInterval: 30_000,
 });
 
-export async function login(credentials: LoginCredentials): Promise<AuthenticationResponse> {
-  return apiRequest<AuthenticationResponse>("/api/v1/auth/login", {
+export type LoginResult =
+  | { requires_2fa: true; ticket: string }
+  | AuthenticationResponse;
+
+export async function login(credentials: LoginCredentials): Promise<LoginResult> {
+  return apiRequest<LoginResult>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify(credentials),
+  });
+}
+
+export async function login2FA(input: {
+  ticket: string;
+  passcode: string;
+}): Promise<AuthenticationResponse> {
+  return apiRequest<AuthenticationResponse>("/api/v1/auth/login/2fa", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean;
+}
+
+export interface TwoFactorSetup {
+  secret: string;
+  otpauth_url: string;
+}
+
+export async function get2FAStatus(): Promise<TwoFactorStatus> {
+  return apiRequest<TwoFactorStatus>("/api/v1/admin/2fa");
+}
+
+export async function setup2FA(): Promise<TwoFactorSetup> {
+  return apiRequest<TwoFactorSetup>("/api/v1/admin/2fa/setup", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function enable2FA(input: {
+  secret: string;
+  passcode: string;
+}): Promise<TwoFactorStatus> {
+  return apiRequest<TwoFactorStatus>("/api/v1/admin/2fa/enable", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function disable2FA(input: {
+  current_password: string;
+}): Promise<TwoFactorStatus> {
+  return apiRequest<TwoFactorStatus>("/api/v1/admin/2fa/disable", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 

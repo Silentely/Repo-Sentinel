@@ -1,4 +1,4 @@
-import { KeyRound, ShieldCheck, UserRound } from "lucide-react";
+import { KeyRound, ShieldCheck, Smartphone, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -8,22 +8,29 @@ import { ThemeToggle } from "../../components/theme-toggle";
 import { apiRequest } from "../../lib/api/client";
 import { ApiError, toApiError } from "../../lib/api/errors";
 import { AuthCardHeader, AuthField, applyZodErrors } from "./auth-card";
-import { login } from "./api";
+import { login, login2FA, type LoginResult } from "./api";
 import { loginSchema, type LoginCredentials } from "./schemas";
 
 export interface LoginPageProps {
   loginAction?: (credentials: LoginCredentials) => void | Promise<unknown>;
+  login2FAAction?: (input: { ticket: string; passcode: string }) => void | Promise<unknown>;
   onAuthenticated?: (path: "/") => void;
   version?: string;
 }
 
 export function LoginPage({
   loginAction = async (credentials) => {
-    await login(credentials);
+    return login(credentials);
+  },
+  login2FAAction = async (input) => {
+    await login2FA(input);
   },
   onAuthenticated,
   version,
 }: LoginPageProps) {
+  const [twoFactorTicket, setTwoFactorTicket] = useState<string>();
+  const [passcode, setPasscode] = useState("");
+  const [isSubmitting2FA, setIsSubmitting2FA] = useState(false);
   const [requestError, setRequestError] = useState<ApiError>();
   // 页脚版本：优先测试注入值；生产从公开构建信息端点获取，兜底 dev。
   const [buildVersion, setBuildVersion] = useState<string>();
@@ -54,6 +61,41 @@ export function LoginPage({
     formState: { errors, isSubmitting },
   } = useForm<LoginCredentials>({ defaultValues: { username: "", password: "" } });
 
+
+  async function submit2FA(e: React.FormEvent) {
+    e.preventDefault();
+    setRequestError(undefined);
+    const cleanPasscode = passcode.trim();
+    if (cleanPasscode.length !== 6) {
+      setRequestError(
+        new ApiError({
+          status: 400,
+          errorCode: "validation_failed",
+          message: "请输入 6 位动态验证码。",
+        }),
+      );
+      return;
+    }
+    setIsSubmitting2FA(true);
+    try {
+      await login2FAAction({ ticket: twoFactorTicket!, passcode: cleanPasscode });
+      onAuthenticated?.("/");
+    } catch (error) {
+      const apiErr = toApiError(error);
+      setRequestError(apiErr);
+      setPasscode("");
+      document.getElementById("login-passcode")?.focus();
+      if (
+        apiErr.message.includes("ticket") ||
+        (apiErr.details && typeof apiErr.details === "object" && "reason" in apiErr.details)
+      ) {
+        setTwoFactorTicket(undefined);
+      }
+    } finally {
+      setIsSubmitting2FA(false);
+    }
+  }
+
   const submit = handleSubmit(async (values) => {
     setRequestError(undefined);
     clearErrors();
@@ -63,7 +105,13 @@ export function LoginPage({
       return;
     }
     try {
-      await loginAction(parsed.data);
+      const res = (await loginAction(parsed.data)) as LoginResult | undefined;
+      if (res && "requires_2fa" in res && res.requires_2fa && res.ticket) {
+        setTwoFactorTicket(res.ticket);
+        setPasscode("");
+        setRequestError(undefined);
+        return;
+      }
       onAuthenticated?.("/");
     } catch (error) {
       setRequestError(toApiError(error));
@@ -125,31 +173,73 @@ export function LoginPage({
           />
         ) : null}
 
-        <form className="auth-form" onSubmit={submit} noValidate>
-          <AuthField
-            id="login-username"
-            label="用户名"
-            icon={<UserRound aria-hidden="true" size={17} />}
-            autoComplete="username"
-            autoFocus
-            error={errors.username?.message}
-            registration={register("username")}
-          />
+        {twoFactorTicket ? (
+          <form className="auth-form" onSubmit={submit2FA} noValidate>
+            <div className="field">
+              <label htmlFor="login-passcode" className="field__label">
+                <span className="field__icon">
+                  <Smartphone aria-hidden="true" size={17} />
+                </span>
+                <span>动态验证码</span>
+              </label>
+              <input
+                id="login-passcode"
+                className="field__input"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]*"
+                maxLength={6}
+                placeholder="6 位数字"
+                autoFocus
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+              <p className="field__hint">请输入身份验证器（如 Google Authenticator）中的 6 位动态验证码。</p>
+            </div>
 
-          <AuthField
-            id="login-password"
-            label="密码"
-            icon={<KeyRound aria-hidden="true" size={17} />}
-            type="password"
-            autoComplete="current-password"
-            error={errors.password?.message}
-            registration={register("password")}
-          />
+            <button className="primary-button" type="submit" disabled={isSubmitting2FA || passcode.trim().length !== 6}>
+              {isSubmitting2FA ? "正在验证…" : "验证并登录"}
+            </button>
 
-          <button className="primary-button" type="submit" disabled={isSubmitting || rateLimited}>
-            {isSubmitting ? "正在登录…" : "登录"}
-          </button>
-        </form>
+            <button
+              type="button"
+              className="ghost-button ghost-button--inline"
+              onClick={() => {
+                setTwoFactorTicket(undefined);
+                setRequestError(undefined);
+              }}
+            >
+              返回重新输入密码
+            </button>
+          </form>
+        ) : (
+          <form className="auth-form" onSubmit={submit} noValidate>
+            <AuthField
+              id="login-username"
+              label="用户名"
+              icon={<UserRound aria-hidden="true" size={17} />}
+              autoComplete="username"
+              autoFocus
+              error={errors.username?.message}
+              registration={register("username")}
+            />
+
+            <AuthField
+              id="login-password"
+              label="密码"
+              icon={<KeyRound aria-hidden="true" size={17} />}
+              type="password"
+              autoComplete="current-password"
+              error={errors.password?.message}
+              registration={register("password")}
+            />
+
+            <button className="primary-button" type="submit" disabled={isSubmitting || rateLimited}>
+              {isSubmitting ? "正在登录…" : "登录"}
+            </button>
+          </form>
+        )}
 
         <footer className="auth-card__footer">
           <a
