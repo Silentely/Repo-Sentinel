@@ -3,9 +3,9 @@ package cli
 import (
 	"bytes"
 	"context"
+	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"strings"
 	"testing"
-	"github.com/Silentely/Repo-Sentinel/internal/config"
 )
 
 func Test版本命令输出当前开发版本(t *testing.T) {

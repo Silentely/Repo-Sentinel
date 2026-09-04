@@ -312,7 +312,7 @@ func TestMCPToolsListAndCallExtendedTools(t *testing.T) {
 	for _, raw := range tools {
 		tool := raw.(map[string]any)
 		if n, ok := tool["name"].(string); ok {
-		names[n] = true
+			names[n] = true
 		}
 	}
 	for _, expected := range []string{"list_events", "get_star_trend", "list_starred_releases", "list_outbox"} {
