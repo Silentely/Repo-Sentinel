@@ -163,10 +163,18 @@ export function TwoFactorCard() {
               size={12}
               type="text"
               inputMode="numeric"
+              autoComplete="one-time-code"
               maxLength={6}
-              placeholder="6 位数字"
+              placeholder="000000"
+              style={{ letterSpacing: "0.2em", textAlign: "center", fontWeight: 600, fontSize: "1.1rem" }}
               value={verifyCode}
               onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && verifyCode.trim().length === 6 && !enableMutation.isPending) {
+                  e.preventDefault();
+                  enableMutation.mutate();
+                }
+              }}
             />
             <button
               className="primary-button primary-button--inline"
@@ -221,6 +229,12 @@ export function TwoFactorCard() {
               placeholder="请输入当前管理员密码"
               value={disablePassword}
               onChange={(e) => setDisablePassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && disablePassword.trim() && !disableMutation.isPending) {
+                  e.preventDefault();
+                  disableMutation.mutate();
+                }
+              }}
             />
             <button
               className="primary-button primary-button--inline"

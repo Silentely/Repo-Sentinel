@@ -126,3 +126,19 @@ func TestTOTPTicketManager(t *testing.T) {
 		t.Fatal("已消费的 ticket 应被销毁")
 	}
 }
+
+func TestTOTPTicketManagerSingleActiveTicketPerAdmin(t *testing.T) {
+	mgr := NewTOTPTicketManager(3 * time.Minute)
+	ticket1 := mgr.CreateTicket("admin-1", "admin", "192.168.1.100")
+	ticket2 := mgr.CreateTicket("admin-1", "admin", "192.168.1.100")
+
+	// 旧 ticket1 应被作废
+	if _, ok := mgr.GetTicket(ticket1, "192.168.1.100"); ok {
+		t.Fatal("生成新 ticket 后旧 ticket 应被自动作废")
+	}
+
+	// 新 ticket2 仍有效
+	if _, ok := mgr.GetTicket(ticket2, "192.168.1.100"); !ok {
+		t.Fatal("新 ticket 应该有效")
+	}
+}

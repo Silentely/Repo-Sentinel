@@ -18,6 +18,7 @@ const (
 	TOTPSettingKey = "security.totp_config"
 	totpSecretAAD  = "reposentinel:totp-secret:v1"
 	maxTOTPTicketFailures = 3
+	maxActiveTickets      = 2000
 )
 
 // StoredTOTPConfig 持久化在数据库中的 2FA 状态与信封加密密钥。
@@ -136,6 +137,7 @@ func NewTOTPTicketManager(ttl time.Duration) *TOTPTicketManager {
 }
 
 // CreateTicket 创建一个新的临时票据并返回票据 ID。
+// 为保证安全性，同一管理员只允许保留一个最新的活跃票据，旧票据将被自动作废。
 func (m *TOTPTicketManager) CreateTicket(adminID, username, remoteIP string) string {
 	ticketID := ulid.Make().String()
 	m.mu.Lock()
@@ -143,6 +145,26 @@ func (m *TOTPTicketManager) CreateTicket(adminID, username, remoteIP string) str
 
 	now := time.Now().UTC()
 	m.prune(now)
+
+	// 1. 作废该管理员名下所有现存旧票据
+	cleanAdminID := strings.TrimSpace(adminID)
+	if cleanAdminID != "" {
+		for id, ticket := range m.tickets {
+			if ticket.AdminID == cleanAdminID {
+				delete(m.tickets, id)
+			}
+		}
+	}
+
+	// 2. 容量保护：若超出上限，强制清理
+	if len(m.tickets) >= maxActiveTickets {
+		for id := range m.tickets {
+			delete(m.tickets, id)
+			if len(m.tickets) < maxActiveTickets {
+				break
+			}
+		}
+	}
 
 	m.tickets[ticketID] = &TOTPTicket{
 		AdminID:   adminID,

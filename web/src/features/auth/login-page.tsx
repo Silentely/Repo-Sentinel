@@ -161,13 +161,23 @@ export function LoginPage({
 
         {requestError ? (
           <ErrorAlert
-            title={invalidCredentials ? "用户名或密码不正确" : rateLimited ? "尝试过于频繁" : "暂时无法登录"}
+            title={
+              twoFactorTicket
+                ? "动态验证码校验失败"
+                : invalidCredentials
+                  ? "用户名或密码不正确"
+                  : rateLimited
+                    ? "尝试过于频繁"
+                    : "暂时无法登录"
+            }
             message={
-              invalidCredentials
-                ? "请检查输入后重试；若凭据已遗失，请使用 CLI 重置密码。"
-                : rateLimited
-                  ? "登录尝试过多，请稍候片刻再试。限流按来源 IP 生效，更换用户名不会重置额度。"
-                  : requestError.message
+              twoFactorTicket
+                ? requestError.message || "请检查身份验证器当前展示的 6 位数字（注意时钟是否同步）；若连续输入错误票据将自动作废。"
+                : invalidCredentials
+                  ? "请检查输入后重试；若凭据已遗失，请使用 CLI 重置密码。"
+                  : rateLimited
+                    ? "登录尝试过多，请稍候片刻再试。限流按来源 IP 生效，更换用户名不会重置额度。"
+                    : requestError.message
             }
             errorCode={requestError.errorCode}
           />
@@ -190,10 +200,14 @@ export function LoginPage({
                 autoComplete="one-time-code"
                 pattern="[0-9]*"
                 maxLength={6}
-                placeholder="6 位数字"
+                placeholder="000000"
                 autoFocus
+                style={{ letterSpacing: "0.25em", textAlign: "center", fontSize: "1.2rem", fontWeight: 600 }}
                 value={passcode}
-                onChange={(e) => setPasscode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                  setPasscode(val);
+                }}
               />
               <p className="field__hint">请输入身份验证器（如 Google Authenticator）中的 6 位动态验证码。</p>
             </div>

@@ -152,11 +152,11 @@ describe("登录页", () => {
 
     // 切换到 2FA 阶段
     expect(await screen.findByText("动态验证码")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("6 位数字")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("000000")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "验证并登录" })).toBeInTheDocument();
 
     // 输入 6 位动态验证码并提交
-    await user.type(screen.getByPlaceholderText("6 位数字"), "123456");
+    await user.type(screen.getByPlaceholderText("000000"), "123456");
     await user.click(screen.getByRole("button", { name: "验证并登录" }));
 
     expect(login2FAAction).toHaveBeenCalledWith({
