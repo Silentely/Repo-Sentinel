@@ -75,7 +75,7 @@ test("投递记录筛选为空时空态提供「清除筛选」并可点击", as
 
   await expect(page.getByRole("heading", { name: "没有投递记录" })).toBeVisible();
   // 空态操作区内的「清除筛选」（工具栏另有同名按钮，strict mode 需锚定容器）。
-  const clear = page.locator(".empty-state").getByRole("button", { name: "清除筛选" });
+  const clear = page.locator(".empty-state").getByRole("button", { name: "清除当前所有筛选条件" });
   await expect(clear).toBeVisible();
   await clear.click();
   await expect(page).toHaveURL(/\/notifications\/outbox$/);
