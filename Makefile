@@ -11,7 +11,10 @@ BUILD_LDFLAGS := \
 	-X github.com/Silentely/Repo-Sentinel/internal/buildinfo.buildTime=$(BUILD_TIME) \
 	-X github.com/Silentely/Repo-Sentinel/internal/buildinfo.buildChannel=$(BUILD_CHANNEL)
 
-.PHONY: fmt test vet lint build build-production verify test-frontend docs-dev docs-build
+gofmt-check:
+	@test -z "$$(gofmt -l cmd internal migrations)" || (echo "Run 'gofmt -w' on:"; gofmt -l cmd internal migrations; exit 1)
+
+.PHONY: fmt test vet lint build build-production verify test-frontend docs-dev docs-build gofmt-check
 
 fmt:
 	go fmt ./...
@@ -41,4 +44,4 @@ docs-dev:
 docs-build:
 	npm run docs:build
 
-verify: fmt test vet build test-frontend
+verify: gofmt-check fmt test vet build test-frontend
