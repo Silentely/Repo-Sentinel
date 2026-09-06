@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-06T00:00:00Z | 版本 v0.5.0：①两阶段 2FA 登录流程与 TOTP 引擎实现（RFC 6238）、账号级渐进延迟与哈希运算并发保护、CLI 应急重置与会话撤销；②登录页适配 2FA 剩余重试次数提示与超限自动回退、受信任反向代理真实 IP 安全解析；③扩展 MCP 工具集（list_events/get_star_trend/list_starred_releases）与 WebMCP 前端网关对齐、OpenAPI 规范补齐运维端点；④请求体 JSON 解码细分错误语义透出、useUrlState SSR 保护、配置输入与过滤参数统一去空防守、上下文取消感知强化；⑤前端交互与可访问性优化、文档站迁移与示例配置同步 |
 | 2026-09-03T22:55:00Z | ①规则引擎 Evaluate 增加引擎与存储依赖空指针防护；②聚合器 FlushAll、ReloadFrom 与 Evaluate 增加空指针守卫；③单测 rules 全套通过 |
 | 2026-09-03T22:45:00Z | ①handleTestChannel/handleDeleteChannel/handleToggleChannel 路径参数去空；②单仓对账端点 handleReconcileRepository 增加 id 去空校验；③全套 httpapi 测试通过 |
 | 2026-09-03T22:35:00Z | ①增加 queryTrimmed 通用函数；②列表查询过滤参数统一清洗首尾空白；③涵盖仓库、工作项、运行流、告警、事件与发件箱接口 |

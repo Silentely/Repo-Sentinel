@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-06
+
 ### Added
 
 - 新增 `POST /api/v1/notifications/outbox/retry-dead`：一键重新排队全部失败投递（可选 channel_type 过滤），后端单次 UPDATE 完成，与逐条重试同一字段语义；前端「重试全部失败」从跨页收集+逐条串行 POST 改为单调用
