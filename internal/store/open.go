@@ -79,6 +79,8 @@ func openDatabase(cfg config.DatabaseConfig) (*sql.DB, string, string, error) {
 		}
 		db.SetMaxOpenConns(cfg.MaxOpenConns)
 		db.SetMaxIdleConns(cfg.MaxIdleConns)
+		db.SetConnMaxLifetime(time.Hour)
+		db.SetConnMaxIdleTime(10 * time.Minute)
 		return db, dialect.Postgres, "postgres", nil
 	default:
 		return nil, "", "", newOpenError("driver", "数据库驱动须为 sqlite 或 postgres", errDatabaseUnavailable)

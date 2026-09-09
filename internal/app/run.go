@@ -137,24 +137,34 @@ func (a *App) runSessionCleanup(ctx context.Context) {
 		<-ctx.Done()
 		return
 	}
+	// 启动 1 分钟后先执行首次清理对齐，避免频繁部署或重启导致从未清理过期 Session
+	startup := time.NewTimer(time.Minute)
 	ticker := time.NewTicker(a.cleanupInterval)
+	defer startup.Stop()
 	defer ticker.Stop()
+
+	runOnce := func() {
+		deleted, err := a.sessionService.CleanupExpired(ctx)
+		if err != nil {
+			if a.logger != nil {
+				a.logger.Error("session cleanup failed", "error_code", "database_unavailable", "error", err.Error())
+			}
+			return
+		}
+		if a.logger != nil {
+			// 无论删除量都留痕（Debug）：排查"过期 Session 有没有清"不依赖删除数。
+			a.logger.Debug("session cleanup ran", "deleted", deleted)
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-startup.C:
+			runOnce()
 		case <-ticker.C:
-			deleted, err := a.sessionService.CleanupExpired(ctx)
-			if err != nil {
-				if a.logger != nil {
-					a.logger.Error("session cleanup failed", "error_code", "database_unavailable", "error", err.Error())
-				}
-				continue
-			}
-			if a.logger != nil {
-				// 无论删除量都留痕（Debug）：排查"过期 Session 有没有清"不依赖删除数。
-				a.logger.Debug("session cleanup ran", "deleted", deleted)
-			}
+			runOnce()
 		}
 	}
 }

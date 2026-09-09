@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -122,10 +123,49 @@ func (w *Worker) tick(ctx context.Context) {
 			channelMap[ch.ID] = ch
 		}
 	}
-	// 同一批内同一渠道的密钥明文复用：积压场景 50 条多为同一渠道，
-	// 避免逐条重复 AES-GCM 解密。解密失败不入缓存，保持逐条错误语义。
+	// 按渠道聚合：相同渠道的任务保序串行投递（保障同一渠道时序并复用密钥缓存），
+	// 不同渠道之间并发执行（最多 maxConcurrentChannels 并发度），
+	// 彻底消除单个慢 Webhook 外部超时对其他即时告警渠道的队头阻塞（Head-of-Line Blocking）。
+	groups := make(map[string][]store.NotificationOutbox)
+	var channelIDs []string
+	for _, item := range items {
+		if _, exists := groups[item.ChannelID]; !exists {
+			channelIDs = append(channelIDs, item.ChannelID)
+		}
+		groups[item.ChannelID] = append(groups[item.ChannelID], item)
+	}
+
+	sem := make(chan struct{}, maxConcurrentChannels)
+	var wg sync.WaitGroup
+	for _, chID := range channelIDs {
+		chID := chID
+		chItems := groups[chID]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				return
+			}
+			w.deliverChannelItems(ctx, chID, chItems, channelMap)
+		}()
+	}
+	wg.Wait()
+}
+
+// maxConcurrentChannels 单批内并发投递的不同渠道数上限，消除慢 Webhook 对 Telegram 等渠道的队头阻塞。
+const maxConcurrentChannels = 5
+
+// deliverChannelItems 串行投递指定渠道的任务切片，渠道级局部缓存密钥明文。
+func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, items []store.NotificationOutbox, channelMap map[string]store.NotificationChannel) {
+	// 同一渠道单协程串行消费，密钥明文在本协程内局部缓存复用，无需跨协程互斥锁。
 	secrets := make(map[string]string)
 	for _, item := range items {
+		if ctx.Err() != nil {
+			return
+		}
 		channelType, err := w.deliver(ctx, item, channelMap, secrets)
 		if err != nil {
 			if w.Logger != nil {
@@ -701,7 +741,8 @@ func newSafeHTTPClient(timeout time.Duration) *http.Client {
 			return nil, last
 		},
 		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          20,
+		MaxIdleConns:          50,
+		MaxIdleConnsPerHost:   10,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,

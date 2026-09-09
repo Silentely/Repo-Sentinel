@@ -24,6 +24,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 	"github.com/Silentely/Repo-Sentinel/internal/webhooksvc"
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 const (
@@ -219,15 +220,18 @@ func New(dependencies Dependencies) http.Handler {
 	router.Post(githubx.WebhookPath, s.handleGitHubWebhook)
 
 	// Agent 发现端点（RFC 8288 / 9727 / 9728 / 8414、sitemap、MCP、Auth.md）。
-	router.Get("/robots.txt", s.handleRobotsTXT)
-	router.Get("/sitemap.xml", s.handleSitemapXML)
-	router.Get("/auth.md", s.handleAuthMD)
-	router.Get("/openapi.json", s.handleOpenAPIJSON)
-	router.Get("/.well-known/api-catalog", s.handleWellKnownAPICatalog)
-	router.Get("/.well-known/oauth-authorization-server", s.handleWellKnownOAuthAuthorizationServer)
-	router.Get("/.well-known/oauth-protected-resource", s.handleWellKnownOAuthProtectedResource)
-	router.Get("/.well-known/agent-skills/index.json", s.handleWellKnownAgentSkillsIndex)
-	router.Get("/.well-known/agent-skills/reposentinel-api/SKILL.md", s.handleAgentSkillsArtifact)
+	router.Group(func(disco chi.Router) {
+		disco.Use(chimiddleware.Compress(5))
+		disco.Get("/robots.txt", s.handleRobotsTXT)
+		disco.Get("/sitemap.xml", s.handleSitemapXML)
+		disco.Get("/auth.md", s.handleAuthMD)
+		disco.Get("/openapi.json", s.handleOpenAPIJSON)
+		disco.Get("/.well-known/api-catalog", s.handleWellKnownAPICatalog)
+		disco.Get("/.well-known/oauth-authorization-server", s.handleWellKnownOAuthAuthorizationServer)
+		disco.Get("/.well-known/oauth-protected-resource", s.handleWellKnownOAuthProtectedResource)
+		disco.Get("/.well-known/agent-skills/index.json", s.handleWellKnownAgentSkillsIndex)
+		disco.Get("/.well-known/agent-skills/reposentinel-api/SKILL.md", s.handleAgentSkillsArtifact)
+	})
 	router.Get("/.well-known/mcp/server-card.json", s.handleWellKnownMCPCard)
 	router.Get("/oauth/jwks", s.handleOAuthJWKS)
 	router.Get("/oauth/authorize", s.handleOAuthAuthorize)
@@ -235,6 +239,7 @@ func New(dependencies Dependencies) http.Handler {
 	router.Post("/oauth/token", s.handleOAuthToken)
 	router.Post("/mcp", s.authenticationMiddleware(s.storeGuardMiddleware(http.HandlerFunc(s.handleMCP))).ServeHTTP)
 	router.Route("/api/v1", func(api chi.Router) {
+		api.Use(chimiddleware.Compress(5))
 		api.Get("/setup/status", s.handleSetupStatus)
 		api.Post("/setup", s.handleSetup)
 		api.Post("/auth/login", s.handleLogin)

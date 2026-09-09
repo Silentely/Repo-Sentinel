@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -299,9 +300,28 @@ func (c *AppClient) doJSONConditional(ctx context.Context, method, path, token, 
 	return rateRemaining, etag, err
 }
 
+// defaultGitHubTransport 针对出站 GitHub API 优化的 HTTP Transport：
+// 提高 MaxIdleConnsPerHost，避免高频对账与多仓库轮询时因 Go 默认 host 限制 (2) 频繁断开重建 TLS 连接。
+var defaultGitHubTransport = &http.Transport{
+	Proxy: http.ProxyFromEnvironment,
+	DialContext: (&net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	ForceAttemptHTTP2:     true,
+	MaxIdleConns:          100,
+	MaxIdleConnsPerHost:   10,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+}
+
 // defaultHTTPClient 未注入 HTTP 客户端时的包级共享默认实例（复用连接池）。
 // 请求路径只读共享字段：并行调用不再由懒初始化裸写 c.HTTP/c.BaseURL（数据竞争隐患）。
-var defaultHTTPClient = &http.Client{Timeout: 30 * time.Second}
+var defaultHTTPClient = &http.Client{
+	Timeout:   30 * time.Second,
+	Transport: defaultGitHubTransport,
+}
 
 // httpClient 返回请求使用的 HTTP 客户端：未注入时回退包级共享默认（只做只读回退，不回写字段）。
 func (c *AppClient) httpClient() *http.Client {

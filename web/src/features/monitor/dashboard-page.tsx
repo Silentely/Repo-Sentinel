@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
@@ -27,7 +27,9 @@ import {
   settingsQueryOptions,
   starTrendQueryOptions,
 } from "./api";
-import { StarTrendChart } from "./star-trend-chart";
+const StarTrendChart = lazy(() =>
+  import("./star-trend-chart").then((m) => ({ default: m.StarTrendChart })),
+);
 
 type PanelKey = "outbox" | "events" | "stars";
 
@@ -290,12 +292,20 @@ export function DashboardPage() {
           {starTrend.isError ? (
             <ApiErrorAlert error={starTrend.error} title="无法加载 Star 趋势" />
           ) : (
-            <StarTrendChart
-              points={starTrend.data ?? []}
-              days={trendDays}
-              onDaysChange={setTrendDays}
-              loading={starTrend.isPending}
-            />
+            <Suspense
+              fallback={
+                <div className="chart-wrapper p-4 text-center text-sm text-muted">
+                  加载图表组件中…
+                </div>
+              }
+            >
+              <StarTrendChart
+                points={starTrend.data ?? []}
+                days={trendDays}
+                onDaysChange={setTrendDays}
+                loading={starTrend.isPending}
+              />
+            </Suspense>
           )}
         </CollapsiblePanel>
       ) : null}

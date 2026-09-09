@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"math/rand/v2"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/digest"
@@ -40,6 +42,11 @@ type Scheduler struct {
 	ReconcileEvery time.Duration
 	ExternalEvery  time.Duration
 	DigestEvery    time.Duration
+
+	reconcileBusy atomic.Bool
+	externalBusy  atomic.Bool
+	starredBusy   atomic.Bool
+	digestBusy    atomic.Bool
 }
 
 // scheduledTaskTimeout 单次调度任务超时上限：任务挂死（外部依赖慢）时释放 select
@@ -73,6 +80,8 @@ func (s *Scheduler) runScheduledTask(ctx context.Context, task, message, errorCo
 }
 
 // Run 阻塞运行直到 ctx 取消。
+// 各调度任务（对账、外部轮询、Star/Release 轮询、统计摘要）运行在独立协程中，
+// 彻底解耦高耗时全量对账与高频轮询任务，互不阻塞，并各自具备原子防重入互斥。
 func (s *Scheduler) Run(ctx context.Context) {
 	if s.ReconcileEvery <= 0 {
 		s.ReconcileEvery = 6 * time.Hour
@@ -83,23 +92,18 @@ func (s *Scheduler) Run(ctx context.Context) {
 	if s.DigestEvery <= 0 {
 		s.DigestEvery = 1 * time.Hour
 	}
-	// 启动后短暂延迟再跑，避免与启动风暴重叠；启动窗口与对账/外部轮询周期加 jitter
-	// 错开多实例同时重启的锁步（starred 1m 节拍与 digest 按小时不需要）。
-	startup := time.NewTimer(startupDelayBase + time.Duration(rand.Int64N(int64(startupJitterMax))))
-	reconcileT := time.NewTicker(jitteredDuration(s.ReconcileEvery))
-	externalT := time.NewTicker(jitteredDuration(s.ExternalEvery))
-	starredT := time.NewTicker(time.Minute)
-	digestT := time.NewTicker(s.DigestEvery)
-	defer startup.Stop()
-	defer reconcileT.Stop()
-	defer externalT.Stop()
-	defer starredT.Stop()
-	defer digestT.Stop()
 
 	runReconcile := func() {
 		if s.Reconciler == nil {
 			return
 		}
+		if !s.reconcileBusy.CompareAndSwap(false, true) {
+			if s.Logger != nil {
+				s.Logger.Debug("reconcile skipped", "reason", "already_running")
+			}
+			return
+		}
+		defer s.reconcileBusy.Store(false)
 		s.runScheduledTask(ctx, "reconcile", "scheduled reconcile failed", "reconcile_failed", func(taskCtx context.Context) error {
 			err := s.Reconciler.ReconcileAll(taskCtx, 15)
 			// 与 HTTP 手动对账并发时跳过本轮：Reconciler 内部已互斥，正常情况不触发。
@@ -114,14 +118,41 @@ func (s *Scheduler) Run(ctx context.Context) {
 		if s.External == nil {
 			return
 		}
+		if !s.externalBusy.CompareAndSwap(false, true) {
+			if s.Logger != nil {
+				s.Logger.Debug("external poll skipped", "reason", "already_running")
+			}
+			return
+		}
+		defer s.externalBusy.Store(false)
 		s.runScheduledTask(ctx, "external_poll", "scheduled external poll failed", "external_poll_failed", func(taskCtx context.Context) error {
 			return s.External.PollAll(taskCtx)
 		})
+	}
+	runStarredWrapped := func() {
+		if s.Starred == nil {
+			return
+		}
+		if !s.starredBusy.CompareAndSwap(false, true) {
+			if s.Logger != nil {
+				s.Logger.Debug("starred poll skipped", "reason", "already_running")
+			}
+			return
+		}
+		defer s.starredBusy.Store(false)
+		s.runStarred(ctx)
 	}
 	runDigest := func() {
 		if s.Digest == nil {
 			return
 		}
+		if !s.digestBusy.CompareAndSwap(false, true) {
+			if s.Logger != nil {
+				s.Logger.Debug("digest skipped", "reason", "already_running")
+			}
+			return
+		}
+		defer s.digestBusy.Store(false)
 		now := time.Now()
 		s.runScheduledTask(ctx, "digest", "scheduled digest failed", "digest_failed", func(taskCtx context.Context) error {
 			return s.Digest.RunOnce(taskCtx, now)
@@ -134,24 +165,86 @@ func (s *Scheduler) Run(ctx context.Context) {
 		})
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-startup.C:
-			runReconcile()
-			runExternal()
-			s.runStarred(ctx)
-		case <-reconcileT.C:
-			runReconcile()
-		case <-externalT.C:
-			runExternal()
-		case <-starredT.C:
-			s.runStarred(ctx)
-		case <-digestT.C:
-			runDigest()
+	startupDelay := startupDelayBase + time.Duration(rand.Int64N(int64(startupJitterMax)))
+	var wg sync.WaitGroup
+
+	// 1. 对账独立协程
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		startup := time.NewTimer(startupDelay)
+		ticker := time.NewTicker(jitteredDuration(s.ReconcileEvery))
+		defer startup.Stop()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-startup.C:
+				runReconcile()
+			case <-ticker.C:
+				runReconcile()
+			}
 		}
-	}
+	}()
+
+	// 2. 外部仓轮询独立协程
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		startup := time.NewTimer(startupDelay)
+		ticker := time.NewTicker(jitteredDuration(s.ExternalEvery))
+		defer startup.Stop()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-startup.C:
+				runExternal()
+			case <-ticker.C:
+				runExternal()
+			}
+		}
+	}()
+
+	// 3. Star 与 Release 轮询独立协程（1m 基础节拍）
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		startup := time.NewTimer(startupDelay)
+		ticker := time.NewTicker(time.Minute)
+		defer startup.Stop()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-startup.C:
+				runStarredWrapped()
+			case <-ticker.C:
+				runStarredWrapped()
+			}
+		}
+	}()
+
+	// 4. 周期摘要独立协程
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(s.DigestEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				runDigest()
+			}
+		}
+	}()
+
+	wg.Wait()
 }
 
 // runStarred 驱动 star 列表同步与 release 轮询。

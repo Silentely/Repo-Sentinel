@@ -82,16 +82,55 @@ type FeatureFlags struct {
 }
 
 // LoadFeatureFlags 加载全部功能开关；缺省均为 true。
+// 使用 GetMany 单次批量查库并命中/回填进程内短 TTL 缓存，消除 7 次串行 SQL 往返。
 func LoadFeatureFlags(ctx context.Context, settings SettingsStore) FeatureFlags {
-	return FeatureFlags{
-		Issues:          FeatureEnabled(ctx, settings, SettingFeatureIssues),
-		PullRequests:    FeatureEnabled(ctx, settings, SettingFeaturePullRequests),
-		Actions:         FeatureEnabled(ctx, settings, SettingFeatureActions),
-		SecurityAlerts:  FeatureEnabled(ctx, settings, SettingFeatureSecurityAlerts),
-		Stars:           FeatureEnabled(ctx, settings, SettingFeatureStars),
-		Watches:         FeatureEnabled(ctx, settings, SettingFeatureWatches),
-		StarredReleases: FeatureEnabled(ctx, settings, SettingFeatureStarredReleases),
+	flags := FeatureFlags{
+		Issues:          true,
+		PullRequests:    true,
+		Actions:         true,
+		SecurityAlerts:  true,
+		Stars:           true,
+		Watches:         true,
+		StarredReleases: true,
 	}
+	if settings == nil {
+		return flags
+	}
+	rows, err := settings.GetMany(ctx,
+		SettingFeatureIssues,
+		SettingFeaturePullRequests,
+		SettingFeatureActions,
+		SettingFeatureSecurityAlerts,
+		SettingFeatureStars,
+		SettingFeatureWatches,
+		SettingFeatureStarredReleases,
+	)
+	if err != nil {
+		return flags
+	}
+	for _, row := range rows {
+		var v bool
+		if err := json.Unmarshal(row.ValueJSON, &v); err != nil {
+			continue
+		}
+		switch row.Key {
+		case SettingFeatureIssues:
+			flags.Issues = v
+		case SettingFeaturePullRequests:
+			flags.PullRequests = v
+		case SettingFeatureActions:
+			flags.Actions = v
+		case SettingFeatureSecurityAlerts:
+			flags.SecurityAlerts = v
+		case SettingFeatureStars:
+			flags.Stars = v
+		case SettingFeatureWatches:
+			flags.Watches = v
+		case SettingFeatureStarredReleases:
+			flags.StarredReleases = v
+		}
+	}
+	return flags
 }
 
 // AllowsKind 判定当前功能标志是否放行该 kind。

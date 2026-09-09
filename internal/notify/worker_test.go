@@ -379,3 +379,97 @@ func TestHTTPClientDoesNotFollowRedirect(t *testing.T) {
 		t.Fatalf("应只请求一次，实际 %d", hits)
 	}
 }
+
+// TestWorkerCrossChannelConcurrency 验证多渠道任务并发投递，消除队头阻塞。
+func TestWorkerCrossChannelConcurrency(t *testing.T) {
+	ctx := t.Context()
+	data := openWorkerTestStore(t)
+
+	// 准备慢渠道与快渠道的目标服务
+	slowStarted := make(chan struct{})
+	slowRelease := make(chan struct{})
+	fastDelivered := make(chan struct{})
+
+	slowServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(slowStarted)
+		<-slowRelease
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer slowServer.Close()
+
+	fastServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-fastDelivered:
+		default:
+			close(fastDelivered)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer fastServer.Close()
+
+	// 创建两个 webhook 渠道
+	if _, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-slow", ChannelType: store.ChannelHTTPWebhook, Name: "slow", Enabled: true, AllowPrivate: true, Target: slowServer.URL,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-fast", ChannelType: store.ChannelHTTPWebhook, Name: "fast", Enabled: true, AllowPrivate: true, Target: fastServer.URL,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 慢任务排在前面，快任务排在后面
+	now := time.Now().UTC()
+	if _, err := data.Outbox().Create(ctx, store.NotificationOutbox{
+		ID: "ob-slow", ChannelID: "ch-slow", IdempotencyKey: "idem-slow",
+		Status: store.OutboxPending, NextAttemptAt: now.Add(-10 * time.Second),
+		Title: "slow", BodyText: "slow",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.Outbox().Create(ctx, store.NotificationOutbox{
+		ID: "ob-fast", ChannelID: "ch-fast", IdempotencyKey: "idem-fast",
+		Status: store.OutboxPending, NextAttemptAt: now.Add(-5 * time.Second),
+		Title: "fast", BodyText: "fast",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	client := slowServer.Client()
+	w := &Worker{
+		Store:  data,
+		Client: client,
+	}
+
+	tickDone := make(chan struct{})
+	go func() {
+		defer close(tickDone)
+		// 允许测试本地回环目标
+		w.tick(withAllowPrivate(ctx, true))
+	}()
+
+	// 等待慢任务开始
+	select {
+	case <-slowStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("慢渠道任务未在 3s 内启动")
+	}
+
+	// 此时慢任务还在挂起中（slowRelease 尚未关闭），快任务应当已并发完成投递！
+	select {
+	case <-fastDelivered:
+		// 成功！快任务并发完成，未被慢渠道阻塞
+	case <-time.After(2 * time.Second):
+		close(slowRelease)
+		t.Fatal("快渠道任务被慢渠道队头阻塞（未并发执行）")
+	}
+
+	// 释放慢渠道并等待 tick 结束
+	close(slowRelease)
+	select {
+	case <-tickDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("tick 未在 3s 内结束")
+	}
+}

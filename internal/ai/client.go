@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -174,10 +175,33 @@ func (c *Client) IsReleaseSummaryEnabled() bool {
 	return s.Enabled && s.APIKey != "" && s.ReleaseSummaryEnabled
 }
 
+// defaultAITransport 针对出站 AI/LLM 网关长连接优化的 Transport：
+// 调大 MaxIdleConnsPerHost，避免 Go 默认值为 2 导致的频繁断连重连与 TLS 握手开销。
+var defaultAITransport = &http.Transport{
+	Proxy: http.ProxyFromEnvironment,
+	DialContext: (&net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	ForceAttemptHTTP2:     true,
+	MaxIdleConns:          50,
+	MaxIdleConnsPerHost:   10,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+}
+
 // defaultHTTPClient 包级共享默认客户端：复用连接池，避免每次请求新建。
 // 不设 Timeout 字段：请求超时统一由请求上下文承载（doAttempt 每次以配置超时
 // 派生 attemptCtx），避免包级 30s 硬顶截断高于 30s 的超时配置。
-var defaultHTTPClient = &http.Client{}
+// DefaultTransport 返回针对出站 AI/LLM 网关长连接优化的共享 Transport。
+func DefaultTransport() *http.Transport {
+	return defaultAITransport
+}
+
+var defaultHTTPClient = &http.Client{
+	Transport: defaultAITransport,
+}
 
 func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
@@ -468,6 +492,9 @@ func (c *Client) doAttempt(ctx context.Context, s *Client, payload []byte, endpo
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.APIKey)
+	if reqID := RequestIDFromContext(ctx); reqID != "" {
+		req.Header.Set("X-Request-ID", reqID)
+	}
 
 	resp, err := s.httpClient().Do(req)
 	if err != nil {

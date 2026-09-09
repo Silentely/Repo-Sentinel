@@ -457,11 +457,36 @@ func (s *webhookDeliveryStore) MarkProcessed(ctx context.Context, id, status, er
 	return mapStoreError(err)
 }
 
+// retentionBatchSize 单批物理删除条数上限，避免超大事务长期独占写锁造成 busy_timeout。
+const retentionBatchSize = 1000
+
 func (s *webhookDeliveryStore) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error) {
-	n, err := s.client.WebhookDelivery.Delete().
-		Where(webhookdelivery.ReceivedAtLT(cutoff.UTC())).
-		Exec(ctx)
-	return n, mapStoreError(err)
+	total := 0
+	cutoffUTC := cutoff.UTC()
+	for {
+		ids, err := s.client.WebhookDelivery.Query().
+			Where(webhookdelivery.ReceivedAtLT(cutoffUTC)).
+			Limit(retentionBatchSize).
+			Select(webhookdelivery.FieldID).
+			Strings(ctx)
+		if err != nil {
+			return total, mapStoreError(err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		n, err := s.client.WebhookDelivery.Delete().
+			Where(webhookdelivery.IDIn(ids...)).
+			Exec(ctx)
+		if err != nil {
+			return total, mapStoreError(err)
+		}
+		total += n
+		if len(ids) < retentionBatchSize {
+			break
+		}
+	}
+	return total, nil
 }
 
 func webhookDeliveryFromEntity(e *entclient.WebhookDelivery) WebhookDelivery {
@@ -1275,10 +1300,32 @@ func countEventsSince(ctx context.Context, client *entclient.Client, since time.
 }
 
 func (s *eventStore) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error) {
-	n, err := s.client.Event.Delete().
-		Where(event.CreatedAtLT(cutoff.UTC())).
-		Exec(ctx)
-	return n, mapStoreError(err)
+	total := 0
+	cutoffUTC := cutoff.UTC()
+	for {
+		ids, err := s.client.Event.Query().
+			Where(event.CreatedAtLT(cutoffUTC)).
+			Limit(retentionBatchSize).
+			Select(event.FieldID).
+			Strings(ctx)
+		if err != nil {
+			return total, mapStoreError(err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		n, err := s.client.Event.Delete().
+			Where(event.IDIn(ids...)).
+			Exec(ctx)
+		if err != nil {
+			return total, mapStoreError(err)
+		}
+		total += n
+		if len(ids) < retentionBatchSize {
+			break
+		}
+	}
+	return total, nil
 }
 
 // ListSince 每日摘要专用：只取未被抑制（非基线/归档期间产生）且非已归档仓库的事件。
@@ -1510,6 +1557,7 @@ func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (Notifi
 	if in.EventID != nil {
 		c.SetEventID(*in.EventID)
 	}
+	c.SetNillableLockedUntil(in.LockedUntil)
 	entity, err := c.Save(ctx)
 	if err != nil {
 		return NotificationOutbox{}, mapStoreError(err)
@@ -1527,6 +1575,10 @@ func (s *outboxStore) ClaimDue(ctx context.Context, now time.Time, lockFor time.
 		Where(
 			notificationoutbox.StatusIn(OutboxPending, OutboxSending),
 			notificationoutbox.NextAttemptAtLTE(now),
+			notificationoutbox.Or(
+				notificationoutbox.LockedUntilIsNil(),
+				notificationoutbox.LockedUntilLTE(now),
+			),
 		).
 		Order(entclient.Asc(notificationoutbox.FieldNextAttemptAt), entclient.Asc(notificationoutbox.FieldID)).
 		Limit(limit).
@@ -1671,13 +1723,35 @@ func (s *outboxStore) RetryAllDead(ctx context.Context, channelIDs []string, nex
 }
 
 func (s *outboxStore) DeleteTerminalOlderThan(ctx context.Context, cutoff time.Time) (int, error) {
-	n, err := s.client.NotificationOutbox.Delete().
-		Where(
-			notificationoutbox.StatusIn(OutboxSent, OutboxDead),
-			notificationoutbox.CreatedAtLT(cutoff.UTC()),
-		).
-		Exec(ctx)
-	return n, mapStoreError(err)
+	total := 0
+	cutoffUTC := cutoff.UTC()
+	for {
+		ids, err := s.client.NotificationOutbox.Query().
+			Where(
+				notificationoutbox.StatusIn(OutboxSent, OutboxDead),
+				notificationoutbox.CreatedAtLT(cutoffUTC),
+			).
+			Limit(retentionBatchSize).
+			Select(notificationoutbox.FieldID).
+			Strings(ctx)
+		if err != nil {
+			return total, mapStoreError(err)
+		}
+		if len(ids) == 0 {
+			break
+		}
+		n, err := s.client.NotificationOutbox.Delete().
+			Where(notificationoutbox.IDIn(ids...)).
+			Exec(ctx)
+		if err != nil {
+			return total, mapStoreError(err)
+		}
+		total += n
+		if len(ids) < retentionBatchSize {
+			break
+		}
+	}
+	return total, nil
 }
 
 func outboxFromEntity(e *entclient.NotificationOutbox) NotificationOutbox {

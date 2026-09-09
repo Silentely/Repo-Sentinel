@@ -370,7 +370,7 @@ func (s *server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
 	probe := &ai.Client{
 		Enabled: true, BaseURL: baseURL, APIKey: apiKey, Model: model,
 		Timeout: timeout, MaxTokens: maxTokens,
-		HTTP: &http.Client{Timeout: probeTimeout},
+		HTTP: &http.Client{Timeout: probeTimeout, Transport: ai.DefaultTransport()},
 	}
 	latency, err := probe.Ping(r.Context())
 	effectiveModel, effectiveBase := effectiveAIModel(model), effectiveAIBaseURL(baseURL)
