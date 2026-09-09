@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { RelativeTime } from "./relative-time";
 
@@ -34,5 +34,27 @@ describe("RelativeTime", () => {
     expect(container.firstChild).toBeNull();
     rerender(<RelativeTime date="not-a-date" />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it("同一实例从空值切换到有效日期时保持 Hook 顺序", () => {
+    const { container, rerender } = render(<RelativeTime date="" />);
+    rerender(<RelativeTime date="2026-08-08T10:00:00Z" />);
+    expect(container.querySelector("time")).toBeInTheDocument();
+  });
+
+  it("随当前时间推进刷新相对时间", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-08T10:00:30Z"));
+    try {
+      render(<RelativeTime date="2026-08-08T10:00:00Z" />);
+      expect(screen.getByText("刚刚")).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(screen.getByText("1 分钟前")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -216,5 +217,54 @@ func TestSPAETagIfNoneMatch304(t *testing.T) {
 	})
 	if secondResp.Code != http.StatusNotModified {
 		t.Fatalf("If-None-Match 命中期望 304，got %d", secondResp.Code)
+	}
+}
+
+func TestSPAETagTracksCurrentFilesystemContents(t *testing.T) {
+	first := newSPAHandler(fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("first")},
+	}, http.NotFoundHandler())
+	firstResponse := httptest.NewRecorder()
+	first.ServeHTTP(firstResponse, httptest.NewRequest(http.MethodGet, "/", nil))
+	if firstResponse.Code != http.StatusOK {
+		t.Fatalf("首次请求状态=%d", firstResponse.Code)
+	}
+	firstETag := firstResponse.Header().Get("ETag")
+
+	second := newSPAHandler(fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("second")},
+	}, http.NotFoundHandler())
+	secondRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	secondRequest.Header.Set("If-None-Match", firstETag)
+	secondResponse := httptest.NewRecorder()
+	second.ServeHTTP(secondResponse, secondRequest)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("内容变化后不应返回 304，got %d", secondResponse.Code)
+	}
+	if secondETag := secondResponse.Header().Get("ETag"); secondETag == firstETag {
+		t.Fatalf("内容变化后 ETag 不应复用旧值 %q", secondETag)
+	}
+}
+
+func TestSPAGzipNotModifiedIncludesVary(t *testing.T) {
+	handler := newSPAHandler(fstest.MapFS{
+		"assets/app.js": &fstest.MapFile{Data: []byte("console.log('ok');")},
+	}, http.NotFoundHandler())
+	firstRequest := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
+	firstRequest.Header.Set("Accept-Encoding", "gzip")
+	firstResponse := httptest.NewRecorder()
+	handler.ServeHTTP(firstResponse, firstRequest)
+	etag := firstResponse.Header().Get("ETag")
+
+	secondRequest := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
+	secondRequest.Header.Set("Accept-Encoding", "gzip")
+	secondRequest.Header.Set("If-None-Match", etag)
+	secondResponse := httptest.NewRecorder()
+	handler.ServeHTTP(secondResponse, secondRequest)
+	if secondResponse.Code != http.StatusNotModified {
+		t.Fatalf("命中 gzip 缓存应返回 304，got %d", secondResponse.Code)
+	}
+	if vary := secondResponse.Header().Get("Vary"); vary != "Accept-Encoding" {
+		t.Fatalf("gzip 304 的 Vary=%q，期望 Accept-Encoding", vary)
 	}
 }

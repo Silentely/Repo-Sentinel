@@ -12,10 +12,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
-	"sync"
 )
-
-var spaETagCache sync.Map
 
 const (
 	spaIndexCacheControl = "no-cache"
@@ -136,20 +133,20 @@ func (h *spaHandler) serveFile(w http.ResponseWriter, r *http.Request, name, cac
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", cacheControl)
-	var etag string
-	if cached, ok := spaETagCache.Load(name); ok {
-		etag = cached.(string)
-	} else {
-		hash := sha256.Sum256(contents)
-		etag = `"` + hex.EncodeToString(hash[:16]) + `"`
-		spaETagCache.Store(name, etag)
+	// ETag 必须绑定当前内容，不能按路径跨 Handler 或跨 fs.FS 复用。
+	// 使用弱验证器表示 gzip 与 identity 是语义等价的内容表示。
+	hash := sha256.Sum256(contents)
+	etag := `W/"` + hex.EncodeToString(hash[:16]) + `"`
+	compress := acceptsGzip(r.Header.Get("Accept-Encoding")) && r.Header.Get("Range") == "" && compressibleType(contentType)
+	if compress {
+		w.Header().Set("Vary", "Accept-Encoding")
 	}
 	w.Header().Set("ETag", etag)
 
 	// 协商缓存快速返回：若客户端提供的 If-None-Match 与 ETag 匹配，直接返回 304，
 	// 避免不必要的 gzip.Writer 初始化及响应处理。
 	if match := r.Header.Get("If-None-Match"); match != "" {
-		if strings.Contains(match, etag) || match == "*" {
+		if etagMatches(match, etag) {
 			w.WriteHeader(http.StatusNotModified)
 			return true
 		}
@@ -157,7 +154,7 @@ func (h *spaHandler) serveFile(w http.ResponseWriter, r *http.Request, name, cac
 
 	// 文本类资源按客户端能力 gzip 压缩，降低自托管出站带宽；带 Range 的请求不压缩
 	// （gzip 与字节区间语义冲突），非压缩变体仍可被标准缓存按 Vary 区分。
-	if acceptsGzip(r.Header.Get("Accept-Encoding")) && r.Header.Get("Range") == "" && compressibleType(contentType) {
+	if compress {
 		gz := gzip.NewWriter(w)
 		defer gz.Close()
 		gzw := &gzipResponseWriter{ResponseWriter: w, gz: gz}
@@ -166,6 +163,20 @@ func (h *spaHandler) serveFile(w http.ResponseWriter, r *http.Request, name, cac
 	}
 	http.ServeContent(w, r, name, info.ModTime(), bytes.NewReader(contents))
 	return true
+}
+
+// etagMatches 按 If-None-Match 的逗号分隔语义比较验证器；GET/HEAD 允许弱比较。
+func etagMatches(header, current string) bool {
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" {
+			return true
+		}
+		if strings.TrimPrefix(candidate, "W/") == strings.TrimPrefix(current, "W/") {
+			return true
+		}
+	}
+	return false
 }
 
 // gzipResponseWriter 包装 http.ResponseWriter，在写出时移除 Content-Length
@@ -180,7 +191,7 @@ func (w *gzipResponseWriter) WriteHeader(status int) {
 	if status != http.StatusNotModified {
 		w.Header().Del("Content-Length")
 		w.Header().Set("Content-Encoding", "gzip")
-		w.Header().Add("Vary", "Accept-Encoding")
+		w.Header().Set("Vary", "Accept-Encoding")
 	}
 	w.ResponseWriter.WriteHeader(status)
 }
