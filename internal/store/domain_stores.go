@@ -243,6 +243,9 @@ func (s *repositoryStore) List(ctx context.Context, f ListFilter) ([]Repository,
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
 	}
+	if total == 0 || (f.Page-1)*f.PerPage >= total {
+		return []Repository{}, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+	}
 	rows, err := q.Order(entclient.Desc(repository.FieldUpdatedAt), entclient.Asc(repository.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
 	if err != nil {
@@ -740,6 +743,9 @@ func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, Pag
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
 	}
+	if total == 0 || (f.Page-1)*f.PerPage >= total {
+		return []WorkItem{}, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+	}
 	rows, err := q.Order(entclient.Desc(workitem.FieldUpdatedAt), entclient.Asc(workitem.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
 	if err != nil {
@@ -954,6 +960,9 @@ func (s *workflowRunStore) List(ctx context.Context, f ListFilter) ([]WorkflowRu
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
 	}
+	if total == 0 || (f.Page-1)*f.PerPage >= total {
+		return []WorkflowRun{}, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+	}
 	rows, err := q.Order(entclient.Desc(workflowrun.FieldRunUpdatedAt), entclient.Asc(workflowrun.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
 	if err != nil {
@@ -1120,6 +1129,9 @@ func (s *securityAlertStore) List(ctx context.Context, f ListFilter) ([]Security
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
 	}
+	if total == 0 || (f.Page-1)*f.PerPage >= total {
+		return []SecurityAlert{}, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+	}
 	rows, err := q.Order(entclient.Desc(securityalert.FieldSourceUpdatedAt), entclient.Asc(securityalert.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
 	if err != nil {
@@ -1265,6 +1277,9 @@ func (s *eventStore) List(ctx context.Context, f ListFilter) ([]Event, PageResul
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
+	}
+	if total == 0 || (f.Page-1)*f.PerPage >= total {
+		return []Event{}, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
 	}
 	rows, err := q.Order(entclient.Desc(event.FieldOccurredAt), entclient.Asc(event.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
@@ -1665,6 +1680,9 @@ func (s *outboxStore) List(ctx context.Context, f ListFilter) ([]NotificationOut
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, PageResult{}, mapStoreError(err)
+	}
+	if total == 0 || (f.Page-1)*f.PerPage >= total {
+		return []NotificationOutbox{}, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
 	}
 	rows, err := q.Order(entclient.Desc(notificationoutbox.FieldCreatedAt), entclient.Asc(notificationoutbox.FieldID)).
 		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)

@@ -1,8 +1,9 @@
 package httpapi
 
 import (
-	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -53,6 +54,8 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var b strings.Builder
+	b.Grow(2048)
+	var numBuf [24]byte
 	writeMetric := func(name, help, typ string, value uint64) {
 		b.WriteString("# HELP ")
 		b.WriteString(name)
@@ -65,7 +68,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		b.WriteString("\n")
 		b.WriteString(name)
 		b.WriteString(" ")
-		b.WriteString(fmt.Sprintf("%d", value))
+		b.Write(strconv.AppendUint(numBuf[:0], value, 10))
 		b.WriteString("\n")
 	}
 
@@ -112,5 +115,5 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(b.String()))
+	_, _ = io.WriteString(w, b.String())
 }

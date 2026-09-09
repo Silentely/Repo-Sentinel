@@ -252,13 +252,19 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			if kind == store.WorkItemKindPR && !wantPRs {
 				continue
 			}
-			labels := make([]any, 0, len(it.Labels))
-			for _, l := range it.Labels {
-				labels = append(labels, l.Name)
+			var labels []any
+			if len(it.Labels) > 0 {
+				labels = make([]any, len(it.Labels))
+				for i, l := range it.Labels {
+					labels[i] = l.Name
+				}
 			}
-			assignees := make([]any, 0, len(it.Assignees))
-			for _, a := range it.Assignees {
-				assignees = append(assignees, a.Login)
+			var assignees []any
+			if len(it.Assignees) > 0 {
+				assignees = make([]any, len(it.Assignees))
+				for i, a := range it.Assignees {
+					assignees[i] = a.Login
+				}
 			}
 			milestone := ""
 			if it.Milestone != nil {

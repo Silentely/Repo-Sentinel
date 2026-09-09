@@ -8,6 +8,7 @@ import (
 	"fmt"
 	htmlpkg "html"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -308,72 +309,108 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		return "", "", ""
 	}
 	statusEmoji, statusLabel := statusDisplay(ev)
+	escapedTitle := htmlpkg.EscapeString(ev.Title)
 	// 标题把状态放最前，通知列表/推送预览第一眼就能看出打开还是关闭。
-	title = fmt.Sprintf("%s %s｜%s", statusEmoji, statusLabel, htmlpkg.EscapeString(ev.Title))
+	title = fmt.Sprintf("%s %s｜%s", statusEmoji, statusLabel, escapedTitle)
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
-	b.WriteString("────────────────\n")
+	b.Grow(512)
+	b.WriteString("<b>")
+	b.WriteString(title)
+	b.WriteString("</b>\n────────────────\n")
 
 	// 状态置顶：正文第二行再次强化，避免只看字段时漏掉。
-	b.WriteString(fmt.Sprintf("%s <b>状态：%s</b>\n", statusEmoji, htmlpkg.EscapeString(statusLabel)))
+	b.WriteString(statusEmoji)
+	b.WriteString(" <b>状态：")
+	b.WriteString(htmlpkg.EscapeString(statusLabel))
+	b.WriteString("</b>\n")
 
 	repo = strings.TrimSpace(repo)
 	if repo != "" {
-		b.WriteString(fmt.Sprintf("📦 仓库：<code>%s</code>\n", htmlpkg.EscapeString(repo)))
+		b.WriteString("📦 仓库：<code>")
+		b.WriteString(htmlpkg.EscapeString(repo))
+		b.WriteString("</code>\n")
 	}
 
 	if ev.SubjectNumber != nil && ev.Kind != store.ReleaseKind {
-		b.WriteString(fmt.Sprintf("🔢 编号：#%d\n", *ev.SubjectNumber))
+		b.WriteString("🔢 编号：#")
+		b.WriteString(strconv.FormatInt(*ev.SubjectNumber, 10))
+		b.WriteString("\n")
 	}
 
 	// release 事件用版本号（tag_name）替代编号行。
 	if tag := store.PayloadString(ev.PayloadSummary, "tag_name"); tag != "" {
-		b.WriteString(fmt.Sprintf("🏷️ 版本：<code>%s</code>\n", htmlpkg.EscapeString(tag)))
+		b.WriteString("🏷️ 版本：<code>")
+		b.WriteString(htmlpkg.EscapeString(tag))
+		b.WriteString("</code>\n")
 	}
 
-	b.WriteString(fmt.Sprintf("📋 类型：%s\n", htmlpkg.EscapeString(store.KindDisplayName(ev.Kind))))
+	b.WriteString("📋 类型：")
+	b.WriteString(htmlpkg.EscapeString(store.KindDisplayName(ev.Kind)))
+	b.WriteString("\n")
 
 	if ev.Actor != "" {
-		b.WriteString(fmt.Sprintf("👤 操作者：%s\n", htmlpkg.EscapeString(ev.Actor)))
+		b.WriteString("👤 操作者：")
+		b.WriteString(htmlpkg.EscapeString(ev.Actor))
+		b.WriteString("\n")
 	}
 
 	// 安全告警 — 严重度中文化 + 规则/依赖
 	if ev.Severity != "" {
 		sevEmoji := severityEmoji(ev.Severity)
-		b.WriteString(fmt.Sprintf("%s 严重度：%s\n", sevEmoji, htmlpkg.EscapeString(severityDisplayName(ev.Severity))))
+		b.WriteString(sevEmoji)
+		b.WriteString(" 严重度：")
+		b.WriteString(htmlpkg.EscapeString(severityDisplayName(ev.Severity)))
+		b.WriteString("\n")
 	}
 	if rule := store.PayloadString(ev.PayloadSummary, "rule_or_dependency"); rule != "" {
-		b.WriteString(fmt.Sprintf("🛡️ 规则：%s\n", htmlpkg.EscapeString(rule)))
+		b.WriteString("🛡️ 规则：")
+		b.WriteString(htmlpkg.EscapeString(rule))
+		b.WriteString("\n")
 	}
 
 	// Workflow 结论已并入「状态」行，正文只补充分支与工作流名。
 	if branch := store.PayloadString(ev.PayloadSummary, "head_branch"); branch != "" {
-		b.WriteString(fmt.Sprintf("🌿 分支：<code>%s</code>\n", htmlpkg.EscapeString(branch)))
+		b.WriteString("🌿 分支：<code>")
+		b.WriteString(htmlpkg.EscapeString(branch))
+		b.WriteString("</code>\n")
 	}
 	if wfName := store.PayloadString(ev.PayloadSummary, "workflow_name"); wfName != "" {
-		b.WriteString(fmt.Sprintf("⚙️ 工作流：%s\n", htmlpkg.EscapeString(wfName)))
+		b.WriteString("⚙️ 工作流：")
+		b.WriteString(htmlpkg.EscapeString(wfName))
+		b.WriteString("\n")
 	}
 
 	if labels := payloadStringSlice(ev.PayloadSummary, "labels"); len(labels) > 0 {
-		b.WriteString(fmt.Sprintf("🏷️ 标签：%s\n", htmlpkg.EscapeString(strings.Join(labels, ", "))))
+		b.WriteString("🏷️ 标签：")
+		b.WriteString(htmlpkg.EscapeString(strings.Join(labels, ", ")))
+		b.WriteString("\n")
 	}
 
 	if assignees := payloadStringSlice(ev.PayloadSummary, "assignees"); len(assignees) > 0 {
-		b.WriteString(fmt.Sprintf("👥 指派：%s\n", htmlpkg.EscapeString(strings.Join(assignees, ", "))))
+		b.WriteString("👥 指派：")
+		b.WriteString(htmlpkg.EscapeString(strings.Join(assignees, ", ")))
+		b.WriteString("\n")
 	}
 
 	if ms := store.PayloadString(ev.PayloadSummary, "milestone"); ms != "" {
-		b.WriteString(fmt.Sprintf("📅 里程碑：%s\n", htmlpkg.EscapeString(ms)))
+		b.WriteString("📅 里程碑：")
+		b.WriteString(htmlpkg.EscapeString(ms))
+		b.WriteString("\n")
 	}
 
 	if !ev.OccurredAt.IsZero() {
-		b.WriteString(fmt.Sprintf("⏰ 时间：%s\n", ev.OccurredAt.UTC().Format("2006-01-02 15:04 UTC")))
+		b.WriteString("⏰ 时间：")
+		b.WriteString(ev.OccurredAt.UTC().Format("2006-01-02 15:04 UTC"))
+		b.WriteString("\n")
 	}
 
 	if link := strings.TrimSpace(ev.HTMLURL); link != "" {
-		b.WriteString("────────────────\n")
-		b.WriteString(fmt.Sprintf("<a href=\"%s\">%s</a>", htmlpkg.EscapeString(link), store.GitHubViewLabel))
+		b.WriteString("────────────────\n<a href=\"")
+		b.WriteString(htmlpkg.EscapeString(link))
+		b.WriteString("\">")
+		b.WriteString(store.GitHubViewLabel)
+		b.WriteString("</a>")
 		htmlURL = link
 	}
 	return title, b.String(), htmlURL

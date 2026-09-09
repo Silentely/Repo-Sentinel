@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import type { StarTrendPoint } from "./api";
@@ -60,12 +60,26 @@ export const StarTrendChart = memo(function StarTrendChart({
   loading: boolean;
 }) {
   const current = points.length > 0 ? points[points.length - 1]?.total : undefined;
-  const yDomain = starTrendYDomain(points);
+  const yDomain = useMemo(() => starTrendYDomain(points), [points]);
   // 数据跨年（首末日期不同年，days=0 全量场景）时 X 轴刻度带年份，避免 MM-DD 无法区分跨年月份。
-  const first = points[0];
-  const last = points[points.length - 1];
-  const spansYears = Boolean(first?.date && last?.date && first.date.slice(0, 4) !== last.date.slice(0, 4));
-  const formatTick = (date: string) => (!date ? "" : spansYears ? date.slice(0, 7) : formatXAxisDate(date));
+  const spansYears = useMemo(() => {
+    const first = points[0];
+    const last = points[points.length - 1];
+    return Boolean(first?.date && last?.date && first.date.slice(0, 4) !== last.date.slice(0, 4));
+  }, [points]);
+
+  const formatTick = useCallback(
+    (date: string) => (!date ? "" : spansYears ? date.slice(0, 7) : formatXAxisDate(date)),
+    [spansYears],
+  );
+
+  const chartData = useMemo(() => {
+    return points.map((p, i) => ({
+      ...p,
+      // 当日增量：首日无参照置 null，tooltip 据此决定是否显示。
+      delta: i > 0 ? p.total - (points[i - 1]?.total ?? 0) : null,
+    }));
+  }, [points]);
   return (
     <div className="star-trend" data-testid="star-trend">
       <div className="star-trend__head">
@@ -102,11 +116,7 @@ export const StarTrendChart = memo(function StarTrendChart({
       ) : (
         <ResponsiveContainer width="100%" height={240}>
           <LineChart
-            data={points.map((p, i) => ({
-              ...p,
-              // 当日增量：首日无参照置 null，tooltip 据此决定是否显示。
-              delta: i > 0 ? p.total - (points[i - 1]?.total ?? 0) : null,
-            }))}
+            data={chartData}
             margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
           >
             <XAxis

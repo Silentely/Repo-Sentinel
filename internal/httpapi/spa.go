@@ -12,7 +12,10 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 )
+
+var spaETagCache sync.Map
 
 const (
 	spaIndexCacheControl = "no-cache"
@@ -133,9 +136,25 @@ func (h *spaHandler) serveFile(w http.ResponseWriter, r *http.Request, name, cac
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", cacheControl)
-	hash := sha256.Sum256(contents)
-	etag := `"` + hex.EncodeToString(hash[:16]) + `"`
+	var etag string
+	if cached, ok := spaETagCache.Load(name); ok {
+		etag = cached.(string)
+	} else {
+		hash := sha256.Sum256(contents)
+		etag = `"` + hex.EncodeToString(hash[:16]) + `"`
+		spaETagCache.Store(name, etag)
+	}
 	w.Header().Set("ETag", etag)
+
+	// 协商缓存快速返回：若客户端提供的 If-None-Match 与 ETag 匹配，直接返回 304，
+	// 避免不必要的 gzip.Writer 初始化及响应处理。
+	if match := r.Header.Get("If-None-Match"); match != "" {
+		if strings.Contains(match, etag) || match == "*" {
+			w.WriteHeader(http.StatusNotModified)
+			return true
+		}
+	}
+
 	// 文本类资源按客户端能力 gzip 压缩，降低自托管出站带宽；带 Range 的请求不压缩
 	// （gzip 与字节区间语义冲突），非压缩变体仍可被标准缓存按 Vary 区分。
 	if acceptsGzip(r.Header.Get("Accept-Encoding")) && r.Header.Get("Range") == "" && compressibleType(contentType) {

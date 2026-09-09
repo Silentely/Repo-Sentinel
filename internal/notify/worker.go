@@ -563,11 +563,16 @@ func htmlToPlainText(s string) string {
 // 回退到最近的完整位置，避免把残缺标签/实体发给 Telegram 触发 400。
 // 超长场景（AI 摘要、聚合消息、报告）不会因此进入死信。
 func truncateTelegramText(text string) string {
-	runes := []rune(text)
-	if len(runes) <= telegramTextLimit {
+	if len(text) <= telegramTextLimit || utf8.RuneCountInString(text) <= telegramTextLimit {
 		return text
 	}
-	s := string(runes[:telegramTextLimit])
+	// 仅遍历到 telegramTextLimit 码点位置截断，无需对整篇长文本分配 []rune 切片
+	byteIdx := 0
+	for count := 0; count < telegramTextLimit && byteIdx < len(text); count++ {
+		_, size := utf8.DecodeRuneInString(text[byteIdx:])
+		byteIdx += size
+	}
+	s := text[:byteIdx]
 	// 截断点落在开标签中间（如 <a href="..."）时回退到标签开始之前。
 	if lastOpen := strings.LastIndex(s, "<"); lastOpen >= 0 {
 		if lastClose := strings.LastIndex(s, ">"); lastClose < lastOpen {
