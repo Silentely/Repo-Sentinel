@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -99,6 +100,21 @@ func TestReleaseSummaryTruncatesLongNotes(t *testing.T) {
 	req := capture()
 	if len(req.Messages[1].Content) > maxReleaseNotesChars+100 {
 		t.Fatalf("notes 应被截断到上限附近，实际 %d 字符", len(req.Messages[1].Content))
+	}
+}
+
+func TestReleaseSummaryTruncatesMultibyteUTF8Safely(t *testing.T) {
+	client, capture := stubClient(t, `{"choices":[{"message":{"content":"ok"}}]}`)
+	// 构造在 8000 字节边界处跨多字节的中文文本
+	prefix := strings.Repeat("a", maxReleaseNotesChars-1) // 7999 bytes
+	multibyte := prefix + "测试发布说明内容"
+	if _, err := client.ReleaseSummary(t.Context(), "o/r", "v1", multibyte, ""); err != nil {
+		t.Fatal(err)
+	}
+	req := capture()
+	body := req.Messages[1].Content
+	if !utf8.ValidString(body) {
+		t.Fatalf("截断后的 Release 说明不是合法的 UTF-8: %q", body)
 	}
 }
 
