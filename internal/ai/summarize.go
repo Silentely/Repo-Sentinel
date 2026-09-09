@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/textutil"
 )
 
 const summarySystemPrompt = `你是 GitHub 仓库值守助手的报告摘要器。用户会给你一段时间内的事件清单，请用简体中文生成紧凑的自然语言总结，供推送通知使用。要求：
@@ -61,25 +61,10 @@ func (c *Client) TriageAlert(ctx context.Context, ev store.Event, repo string) (
 // ReleaseSummary 生成新 release 的中文总结；失败返回错误，调用方降级为原文链接。
 func (c *Client) ReleaseSummary(ctx context.Context, repo, tag, notes, htmlURL string) (string, error) {
 	if len(notes) > maxReleaseNotesChars {
-		notes = truncateUTF8Bytes(notes, maxReleaseNotesChars) + "\n…（已截断）"
+		notes = textutil.TruncateUTF8Bytes(notes, maxReleaseNotesChars) + "\n…（已截断）"
 	}
 	user := fmt.Sprintf("仓库：%s\n版本：%s\n链接：%s\n发布说明：\n%s", repo, tag, htmlURL, notes)
 	return c.Complete(ctx, releaseSummarySystemPrompt, user)
-}
-
-func truncateUTF8Bytes(value string, limit int) string {
-	if limit <= 0 {
-		return ""
-	}
-	value = strings.ToValidUTF8(value, "")
-	if len(value) <= limit {
-		return value
-	}
-	truncated := value[:limit]
-	for !utf8.ValidString(truncated) {
-		truncated = truncated[:len(truncated)-1]
-	}
-	return truncated
 }
 
 // maxEventLines 单次输入的事件行上限，防止超长输入推高成本与延迟。

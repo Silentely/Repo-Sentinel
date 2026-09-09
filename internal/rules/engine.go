@@ -63,14 +63,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	if err != nil {
 		return err
 	}
-	hasSubscriber := false
-	for _, ch := range channels {
-		if ch.Enabled && ch.AcceptsKind(res.Event.Kind) {
-			hasSubscriber = true
-			break
-		}
-	}
-	if !hasSubscriber {
+	if !hasSubscribedChannel(channels, res.Event.Kind) {
 		e.logNotifySkipped(res, repoFullName, "no_subscriber")
 		return nil
 	}

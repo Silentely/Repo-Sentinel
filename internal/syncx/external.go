@@ -91,12 +91,9 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		if kind == store.WorkItemKindPR && !(features.PullRequests && repo.PrEnabled) {
 			continue
 		}
-		var labels []any
-		if len(it.Labels) > 0 {
-			labels = make([]any, len(it.Labels))
-			for i, l := range it.Labels {
-				labels[i] = l.Name
-			}
+		labels := make([]any, 0, len(it.Labels))
+		for _, l := range it.Labels {
+			labels = append(labels, l.Name)
 		}
 		hash := normalizer.StateHash(kind, it.State, it.Title, it.User.Login, strconv.FormatBool(it.Draft))
 		item := store.WorkItem{

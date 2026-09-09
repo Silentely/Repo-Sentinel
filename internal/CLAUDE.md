@@ -27,6 +27,7 @@
 | `digest` | 日/周/月报告生成 | 见下文 |
 | `buildinfo` | 版本/GitSHA 等 ldflags 元数据 | 见下文 |
 | `updatecheck` | 关于页远程版本检查 | 见下文 |
+| `textutil` | 跨包复用的文本工具（UTF-8 安全截断等） | 见下文 |
 
 ## 入口与启动
 
@@ -62,6 +63,11 @@ CLI 面由 `cli` 暴露。
 ### updatecheck
 
 - soft-fail 远程版本检查；优先 HTML releases 302 解析 tag，回退 JSON API
+
+### textutil
+
+- `TruncateUTF8Bytes`：按字节上限截断且不破坏多字节 UTF-8 字符（先清理非法字节，再回退到完整字符边界）
+- 供 `ai` 的 release notes 输入与 `syncx` 的 release 说明存储共用，避免两处各自实现漂移
 
 ## 数据模型
 

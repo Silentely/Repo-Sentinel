@@ -10,12 +10,12 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/textutil"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -556,7 +556,7 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 	if title == "" {
 		title = rel.TagName
 	}
-	notes := truncateUTF8Bytes(rel.Body, maxReleaseNotesStored)
+	notes := textutil.TruncateUTF8Bytes(rel.Body, maxReleaseNotesStored)
 	// 外部 star 仓不建 Repository 行（tracker 独立表），事件无法挂 RepositoryID；
 	// 仓库名写入 PayloadSummary，供每日摘要预览与 AI 总结回退引用，避免 release 事件丢失归属。
 	ev := store.Event{
@@ -624,19 +624,4 @@ func (p *StarredReleasePoller) warn(msg string, args ...any) {
 	if p.Logger != nil {
 		p.Logger.Warn(msg, args...)
 	}
-}
-
-func truncateUTF8Bytes(value string, limit int) string {
-	if limit <= 0 {
-		return ""
-	}
-	value = strings.ToValidUTF8(value, "")
-	if len(value) <= limit {
-		return value
-	}
-	truncated := value[:limit]
-	for !utf8.ValidString(truncated) {
-		truncated = truncated[:len(truncated)-1]
-	}
-	return truncated
 }
