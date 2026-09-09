@@ -62,6 +62,17 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	if err != nil {
 		return err
 	}
+	hasSubscriber := false
+	for _, ch := range channels {
+		if ch.Enabled && ch.AcceptsKind(res.Event.Kind) {
+			hasSubscriber = true
+			break
+		}
+	}
+	if !hasSubscriber {
+		e.logNotifySkipped(res, repoFullName, "no_subscriber")
+		return nil
+	}
 	title, body, htmlURL := renderMessage(res.Event, repoFullName)
 	// 安全告警分诊：新告警附带影响分析与处理建议；失败保持原文，不阻塞入库。
 	// 是否有接收渠道的检查并入 triageAnalysis，与参与度日志归并一处。

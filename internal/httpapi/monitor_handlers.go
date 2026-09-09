@@ -320,8 +320,18 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, chErr)
 		return
 	}
+	chMap := make(map[string]string, len(channels))
+	var ids []string
 	if channelTypeFilter != "" {
-		ids := resolveChannelIDsByType(channels, channelTypeFilter)
+		ids = make([]string, 0, len(channels))
+	}
+	for _, ch := range channels {
+		chMap[ch.ID] = ch.ChannelType
+		if channelTypeFilter != "" && ch.ChannelType == channelTypeFilter {
+			ids = append(ids, ch.ID)
+		}
+	}
+	if channelTypeFilter != "" {
 		if len(ids) == 0 {
 			// 早退分支同样归一化分页参数，保持与其他列表端点响应一致。
 			normalized := store.NormalizeListFilter(f)
@@ -334,10 +344,6 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeMappedError(w, r, err)
 		return
-	}
-	chMap := make(map[string]string, len(channels))
-	for _, ch := range channels {
-		chMap[ch.ID] = ch.ChannelType
 	}
 	enriched := make([]map[string]any, 0, len(items))
 	for _, item := range items {
