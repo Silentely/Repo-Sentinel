@@ -64,6 +64,11 @@ func processBudget(aiClient *ai.Client, base time.Duration) time.Duration {
 	return budget
 }
 
+// MarkFailed 显式将投递标记为失败（支持外部在生命周期取消或槽位耗尽时调用，避免行残留 accepted）。
+func (s *Service) MarkFailed(rowID, deliveryID, eventType, errorCode string) {
+	s.markFailed(rowID, deliveryID, eventType, errorCode)
+}
+
 // markFailed 统一处理失败分支：标记投递失败（带语义化错误码）、记录失败指标回调。
 // 标记失败会让行残留 accepted/中间态，影响状态机与重放判断，必须留痕。
 // deliveryID/eventType 与 logError 对齐：排障按 GitHub delivery_id 检索时不致漏掉该条 Warn。

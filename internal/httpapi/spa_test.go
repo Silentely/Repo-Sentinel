@@ -194,3 +194,27 @@ func TestSPAGzipNotModified不带编码头(t *testing.T) {
 		t.Fatalf("304 响应不应携带 Content-Encoding，got %q", enc)
 	}
 }
+
+func TestSPAETagIfNoneMatch304(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		frontend: fstest.MapFS{
+			"index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>RepoSentinel</title>")},
+		},
+	})
+
+	firstResp := fixture.request(t, http.MethodGet, "/", "", "127.0.0.1:44011", nil, nil)
+	if firstResp.Code != http.StatusOK {
+		t.Fatalf("首次请求状态=%d", firstResp.Code)
+	}
+	etag := firstResp.Header().Get("ETag")
+	if etag == "" {
+		t.Fatalf("响应必须携带 ETag")
+	}
+
+	secondResp := fixture.request(t, http.MethodGet, "/", "", "127.0.0.1:44012", nil, map[string]string{
+		"If-None-Match": etag,
+	})
+	if secondResp.Code != http.StatusNotModified {
+		t.Fatalf("If-None-Match 命中期望 304，got %d", secondResp.Code)
+	}
+}

@@ -272,6 +272,15 @@ func (g *Generator) repoNames(ctx context.Context, events []store.Event) map[str
 	if len(need) == 0 {
 		return out
 	}
+	// 少量仓库（常见场景：1~3 个仓产生活动）：直接按主键点查，避免全表分页与扫描
+	if len(need) <= 3 {
+		for id := range need {
+			if repo, err := g.Store.Repositories().Get(ctx, id); err == nil {
+				out[id] = repo.FullName
+			}
+		}
+		return out
+	}
 	for page := 1; ; page++ {
 		repos, res, err := g.Store.Repositories().List(ctx, store.ListFilter{Page: page, PerPage: 100})
 		if err != nil {
@@ -282,7 +291,7 @@ func (g *Generator) repoNames(ctx context.Context, events []store.Event) map[str
 				out[repo.ID] = repo.FullName
 			}
 		}
-		if page*res.PerPage >= res.Total || len(repos) == 0 {
+		if len(out) == len(need) || page*res.PerPage >= res.Total || len(repos) == 0 {
 			break
 		}
 	}

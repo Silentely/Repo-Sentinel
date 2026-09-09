@@ -180,6 +180,14 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	}
 	filtered = append(filtered, now)
 	a.bursts[key] = filtered
+	// 防御性内存自清洁：当跟踪的超频键达到规模时剔除已过期的滑动窗口键
+	if len(a.bursts) > 100 {
+		for k, ts := range a.bursts {
+			if len(ts) == 0 || now.Sub(ts[len(ts)-1]) > a.BurstWindow {
+				delete(a.bursts, k)
+			}
+		}
+	}
 	if len(filtered) > a.BurstThreshold {
 		sample := res.Event
 		// 标题带上仓库名：Telegram 推送预览只看标题，无仓库名时无法区分是哪个仓超频。

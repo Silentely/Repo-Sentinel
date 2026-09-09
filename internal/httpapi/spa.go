@@ -3,6 +3,8 @@ package httpapi
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"io/fs"
 	"mime"
@@ -131,6 +133,9 @@ func (h *spaHandler) serveFile(w http.ResponseWriter, r *http.Request, name, cac
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", cacheControl)
+	hash := sha256.Sum256(contents)
+	etag := `"` + hex.EncodeToString(hash[:16]) + `"`
+	w.Header().Set("ETag", etag)
 	// 文本类资源按客户端能力 gzip 压缩，降低自托管出站带宽；带 Range 的请求不压缩
 	// （gzip 与字节区间语义冲突），非压缩变体仍可被标准缓存按 Vary 区分。
 	if acceptsGzip(r.Header.Get("Accept-Encoding")) && r.Header.Get("Range") == "" && compressibleType(contentType) {

@@ -168,6 +168,8 @@ func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body [
 		if s.acquireWebhookSlot(s.dependencies.Background) {
 			defer s.releaseWebhookSlot()
 			s.webhookSvc.Process(rowID, eventType, deliveryID, body)
+		} else if s.webhookSvc != nil {
+			s.webhookSvc.MarkFailed(rowID, deliveryID, eventType, "shutdown_canceled")
 		}
 	})
 }
