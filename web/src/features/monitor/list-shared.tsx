@@ -217,10 +217,10 @@ export function useIgnoreMutation(
     },
     onSettled: async () => {
       setBusyId(null);
-      for (const key of invalidateKeys) {
-        await queryClient.invalidateQueries({ queryKey: [key] });
-      }
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await Promise.all([
+        ...invalidateKeys.map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
     },
     onError: (error) => setErrorMessage(toApiError(error).message || "操作失败"),
   });

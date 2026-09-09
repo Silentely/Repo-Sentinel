@@ -331,8 +331,10 @@ export function SettingsPage() {
   const [reposOpen, setReposOpen] = useState(true);
 
   const invalidateReposAndDashboard = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["repositories"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    ]);
   };
   const activate = useMutation({
     mutationFn: activateRepository,

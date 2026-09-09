@@ -90,8 +90,10 @@ export function StarredReleasesPage() {
   };
 
   const invalidateAll = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["starred-releases-config"] });
-    await queryClient.invalidateQueries({ queryKey: ["starred-releases-trackers"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["starred-releases-config"] }),
+      queryClient.invalidateQueries({ queryKey: ["starred-releases-trackers"] }),
+    ]);
   };
 
   const saveMut = useMutation({
@@ -149,8 +151,10 @@ export function StarredReleasesPage() {
   const setStateMut = useMutation({
     mutationFn: ({ id, state }: { id: string; state: "disabled" | "tracking" }) => setStarredTrackerState(id, state),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["starred-releases-trackers"] });
-      await queryClient.invalidateQueries({ queryKey: ["starred-releases-config"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["starred-releases-trackers"] }),
+        queryClient.invalidateQueries({ queryKey: ["starred-releases-config"] }),
+      ]);
     },
     onError: (err) => setError(toApiError(err).message),
   });

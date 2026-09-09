@@ -91,8 +91,10 @@ export function DashboardPage() {
   const [retryBusyId, setRetryBusyId] = useState<string | null>(null);
 
   const invalidateOutboxAndDashboard = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["outbox"] });
-    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["outbox"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    ]);
   };
 
   // 行级重试错误：失败时在该行旁提示，避免「按钮恢复但无任何反馈」的静默失败。

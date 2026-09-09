@@ -293,8 +293,10 @@ export function NotifyPage() {
   const digestTz = String(settings.data?.["admin.timezone"] ?? "UTC");
 
   const invalidateAll = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["channels"] });
-    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["channels"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    ]);
   };
 
   const testMut = useMutation({

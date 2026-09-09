@@ -460,10 +460,12 @@ export function ReposPage() {
     },
     onSuccess: async () => {
       setSavingId(null);
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      await queryClient.invalidateQueries({ queryKey: ["work-items"] });
-      await queryClient.invalidateQueries({ queryKey: ["workflow-runs"] });
-      await queryClient.invalidateQueries({ queryKey: ["security-alerts"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["work-items"] }),
+        queryClient.invalidateQueries({ queryKey: ["workflow-runs"] }),
+        queryClient.invalidateQueries({ queryKey: ["security-alerts"] }),
+      ]);
     },
   });
 
@@ -480,11 +482,13 @@ export function ReposPage() {
     // onSettled 同时覆盖成功与失败：失败时不清理会让按钮永久停留在「删除中…」。
     onSettled: () => setDeletingId(null),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      await queryClient.invalidateQueries({ queryKey: ["work-items"] });
-      await queryClient.invalidateQueries({ queryKey: ["workflow-runs"] });
-      await queryClient.invalidateQueries({ queryKey: ["security-alerts"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["repositories"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["work-items"] }),
+        queryClient.invalidateQueries({ queryKey: ["workflow-runs"] }),
+        queryClient.invalidateQueries({ queryKey: ["security-alerts"] }),
+      ]);
     },
     onError: (error) => setDeleteError(toApiError(error).message || "删除失败"),
   });

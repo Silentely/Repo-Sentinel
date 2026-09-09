@@ -56,8 +56,10 @@ export function OutboxPage() {
 
   // 重试（单条/批量）成功后刷新投递列表与仪表盘：两处共享同一失效逻辑。
   const invalidateOutboxAndDashboard = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["outbox"] });
-    await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["outbox"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    ]);
   };
 
   const retry = useMutation({

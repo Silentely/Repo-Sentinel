@@ -63,8 +63,10 @@ export function GitHubPage() {
     onSuccess: async () => {
       setExternalName("");
       setFormMessage("外部公开仓库已登记，将进入基线同步。");
-      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["repositories"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
     },
   });
 
@@ -74,9 +76,11 @@ export function GitHubPage() {
       setSyncMessage(
         `已从 GitHub 同步：${res.imported_or_updated} 个仓库（${res.installations} 个 Installation）。请到「设置 → 仓库与基线对账」查看基线；对账成功会自动放行，也可点「立即放行」。`,
       );
-      await queryClient.invalidateQueries({ queryKey: ["repositories"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      await queryClient.invalidateQueries({ queryKey: ["installations"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["repositories"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["installations"] }),
+      ]);
     },
   });
 
@@ -108,8 +112,10 @@ export function GitHubPage() {
       setConfigMessage("GitHub 配置已保存，立即生效（无需重启）。");
       setPrivateKeyPEM("");
       setWebhookSecret("");
-      await queryClient.invalidateQueries({ queryKey: ["github-config"] });
-      await queryClient.invalidateQueries({ queryKey: ["version"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["github-config"] }),
+        queryClient.invalidateQueries({ queryKey: ["version"] }),
+      ]);
     },
   });
 
