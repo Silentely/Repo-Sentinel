@@ -49,7 +49,7 @@ func (w *Worker) sendFeishu(ctx context.Context, ch store.NotificationChannel, s
 
 	elements := []any{
 		map[string]any{
-			"tag": "markdown",
+			"tag":     "markdown",
 			"content": fmt.Sprintf("**%s**\n\n%s", item.Title, plainBody),
 		},
 	}

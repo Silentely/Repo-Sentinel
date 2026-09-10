@@ -3,13 +3,13 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/oklog/ulid/v2"
 	"io"
 	"net/http"
 	"strings"
-	"errors"
 	"time"
-	"github.com/oklog/ulid/v2"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )

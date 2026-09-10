@@ -364,10 +364,10 @@ func TestMCPWriteTools(t *testing.T) {
 
 	// 2. 插入一条 dead outbox 记录并测试 retry_failed_outbox
 	_, _ = fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
-			ID:        "01JMCPDEAD0000000000000001",
-			ChannelID: "ch-1",
-			Status:    store.OutboxDead,
-			Title:     "Dead message",
+		ID:        "01JMCPDEAD0000000000000001",
+		ChannelID: "ch-1",
+		Status:    store.OutboxDead,
+		Title:     "Dead message",
 	})
 	status, callResp := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"retry_failed_outbox","arguments":{}}}`)
 	if status != http.StatusOK {
