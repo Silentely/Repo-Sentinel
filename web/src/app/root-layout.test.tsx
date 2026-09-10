@@ -185,6 +185,7 @@ describe("移动端顶栏标题 mobileTitleFor", () => {
       ["/security", "安全告警"],
       ["/notifications", "渠道配置"],
       ["/notifications/outbox", "投递记录"],
+      ["/webhooks", "Webhook 检查"],
       ["/github", "GitHub App"],
       ["/starred-releases", "Star Release"],
       ["/about", "关于"],

@@ -239,6 +239,16 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 		return ch.ChannelType, w.sendTelegram(ctx, ch.Target, secret, item.BodyText, item.HTMLURL, item.ParseMode)
 	case store.ChannelHTTPWebhook:
 		return ch.ChannelType, w.sendHTTP(ctx, ch, secret, item)
+	case store.ChannelFeishu:
+		return ch.ChannelType, w.sendFeishu(ctx, ch, secret, item)
+	case store.ChannelWeCom:
+		return ch.ChannelType, w.sendWeCom(ctx, ch, secret, item)
+	case store.ChannelDingTalk:
+		return ch.ChannelType, w.sendDingTalk(ctx, ch, secret, item)
+	case store.ChannelDiscord:
+		return ch.ChannelType, w.sendDiscord(ctx, ch, secret, item)
+	case store.ChannelBark:
+		return ch.ChannelType, w.sendBark(ctx, ch, secret, item)
 	default:
 		return ch.ChannelType, fmt.Errorf("unknown_channel")
 	}
@@ -530,10 +540,9 @@ func isPermanentDeliveryError(code string) bool {
 	}
 	// 上游或接收端明确 4xx 客户端错误（除已被前置转为退避重试的 408/425/429 外），
 	// 重试不可能自动恢复，直判死信让管理台带出排障文案。
-	if strings.HasPrefix(code, "telegram_client_error_") {
-		return true
-	}
-	if strings.HasPrefix(code, "http_webhook_client_") {
+	if strings.HasPrefix(code, "telegram_client_error_") ||
+		strings.HasPrefix(code, "http_webhook_client_") ||
+		strings.Contains(code, "_client_error_") {
 		return true
 	}
 	return false

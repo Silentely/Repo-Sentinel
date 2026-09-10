@@ -7,6 +7,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"errors"
+	"time"
+	"github.com/oklog/ulid/v2"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -224,6 +227,126 @@ func (s *server) mcpTools() []mcpTool {
 					return nil, err
 				}
 				return mcpListResult(items, page), nil
+			},
+		},
+		{
+			name:        "trigger_reconciliation",
+			description: "触发仓库数据对账。可指定 repository_id 针对单仓对账；不传则触发全量活跃仓库对账。",
+			inputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"repository_id": map[string]any{"type": "string", "description": "仓库 ID（可选）"},
+				},
+			},
+			execute: func(ctx context.Context, args map[string]any) (any, error) {
+				if s.dependencies.Reconciler == nil {
+					return nil, fmt.Errorf("reconciler_unavailable")
+				}
+				repoID := mcpStringArg(args, "repository_id")
+				if repoID != "" {
+					repo, err := s.dependencies.Store.Repositories().Get(ctx, repoID)
+					if err != nil {
+						return nil, err
+					}
+					s.safeGo("mcp_reconcile_repo", func() {
+						_ = s.dependencies.Reconciler.ReconcileRepository(s.dependencies.Background, repo)
+					})
+					return map[string]any{"status": "queued", "repository_id": repoID}, nil
+				}
+				if !s.reconcileAllRunning.CompareAndSwap(false, true) {
+					return map[string]any{"status": "in_progress", "message": "全量对账已在进行中"}, nil
+				}
+				s.safeGo("mcp_reconcile_all", func() {
+					defer s.reconcileAllRunning.Store(false)
+					_ = s.dependencies.Reconciler.ReconcileAll(s.dependencies.Background, 20)
+				})
+				return map[string]any{"status": "queued", "scope": "all"}, nil
+			},
+		},
+		{
+			name:        "retry_failed_outbox",
+			description: "重新排队重试失败的通知（Outbox Dead 状态）。可指定 id 重试单条，或指定 channel_type 批量重试，均不传则重试所有失败通知。",
+			inputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":           map[string]any{"type": "string", "description": "通知 Outbox ID（可选）"},
+					"channel_type": map[string]any{"type": "string", "description": "渠道类型（可选）"},
+				},
+			},
+			execute: func(ctx context.Context, args map[string]any) (any, error) {
+				id := mcpStringArg(args, "id")
+				if id != "" {
+					if err := s.dependencies.Store.Outbox().RetryDead(ctx, id, time.Now().UTC()); err != nil {
+						return nil, err
+					}
+					return map[string]any{"status": "queued", "id": id, "retried": 1}, nil
+				}
+				chType := mcpStringArg(args, "channel_type")
+				var channelIDs []string
+				if chType != "" {
+					channels, err := s.dependencies.Store.Channels().List(ctx)
+					if err != nil {
+						return nil, err
+					}
+					channelIDs = resolveChannelIDsByType(channels, chType)
+					if len(channelIDs) == 0 {
+						return map[string]any{"status": "queued", "retried": 0}, nil
+					}
+				}
+				n, err := s.dependencies.Store.Outbox().RetryAllDead(ctx, channelIDs, time.Now().UTC())
+				if err != nil {
+					return nil, err
+				}
+				return map[string]any{"status": "queued", "retried": n}, nil
+			},
+		},
+		{
+			name:        "replay_webhook_delivery",
+			description: "根据 Webhook Delivery ID 或内部 ID 重放历史 Webhook 事件，触发规则处理与通知。",
+			inputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "string", "description": "Webhook 记录的内部 ID 或 GitHub delivery_id"},
+				},
+				"required": []string{"id"},
+			},
+			execute: func(ctx context.Context, args map[string]any) (any, error) {
+				id := mcpStringArg(args, "id")
+				if id == "" {
+					return nil, fmt.Errorf("id_required")
+				}
+				d, err := s.dependencies.Store.WebhookDeliveries().Get(ctx, id)
+				if err != nil {
+					if errors.Is(err, store.ErrNotFound) {
+						d, err = s.dependencies.Store.WebhookDeliveries().GetByDeliveryID(ctx, id)
+					}
+					if err != nil {
+						return nil, err
+					}
+				}
+				if len(d.Payload) == 0 {
+					return nil, fmt.Errorf("payload_empty")
+				}
+				replayDeliveryID := fmt.Sprintf("%s-replay-%d", d.DeliveryID, time.Now().UnixNano())
+				newRecord, err := s.dependencies.Store.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
+					ID:                 ulid.Make().String(),
+					DeliveryID:         replayDeliveryID,
+					EventType:          d.EventType,
+					Action:             d.Action,
+					RepositoryFullName: d.RepositoryFullName,
+					Status:             store.DeliveryAccepted,
+					Payload:            d.Payload,
+					ReceivedAt:         time.Now().UTC(),
+				})
+				if err != nil {
+					return nil, err
+				}
+				s.processWebhookAsync(newRecord.ID, newRecord.EventType, newRecord.DeliveryID, newRecord.Payload)
+				return map[string]any{
+					"status":      "replayed",
+					"id":          newRecord.ID,
+					"delivery_id": newRecord.DeliveryID,
+				}, nil
 			},
 		},
 	}

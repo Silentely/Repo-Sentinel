@@ -35,7 +35,7 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 
 // validChannelType 校验渠道类型白名单（telegram / http_webhook）。
 func validChannelType(channelType string) bool {
-	return channelType == store.ChannelTelegram || channelType == store.ChannelHTTPWebhook
+	return store.IsValidChannelType(channelType)
 }
 
 func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +234,7 @@ func (s *server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
 		return
 	}
-	ch, err := s.dependencies.Store.Channels().GetEnabledByType(r.Context(), channelType)
+	ch, err := s.dependencies.Store.Channels().GetByType(r.Context(), channelType)
 	if err != nil {
 		s.writeMappedError(w, r, err)
 		return
@@ -258,26 +258,10 @@ func (s *server) handleToggleChannel(w http.ResponseWriter, r *http.Request) {
 	if !s.decodeRequestJSON(w, r, &body) {
 		return
 	}
-	ch, err := s.dependencies.Store.Channels().GetEnabledByType(r.Context(), channelType)
+	ch, err := s.dependencies.Store.Channels().GetByType(r.Context(), channelType)
 	if err != nil {
-		// 如果没有已启用的渠道，尝试获取任意一个
-		all, listErr := s.dependencies.Store.Channels().List(r.Context())
-		if listErr != nil {
-			s.writeMappedError(w, r, listErr)
-			return
-		}
-		found := false
-		for _, c := range all {
-			if c.ChannelType == channelType {
-				ch = c
-				found = true
-				break
-			}
-		}
-		if !found {
-			s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, nil)
-			return
-		}
+		s.writeMappedError(w, r, err)
+		return
 	}
 	if err := s.dependencies.Store.Channels().ToggleEnabled(r.Context(), ch.ID, body.Enabled); err != nil {
 		s.writeMappedError(w, r, err)

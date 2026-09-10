@@ -274,6 +274,8 @@ RepoSentinel 是自托管的 GitHub 仓库值守平台。本技能说明如何�
 - GET /api/v1/notifications/outbox — 通知发件箱（投递状态）。
 - GET /api/v1/stats/star-trend?days=7|30|90|0 — Star 增长趋势（0 为全部）。
 - GET /api/v1/starred-releases/trackers?state=tracking|inactive|disabled|unavailable — Star Release 追踪列表。
+- GET /api/v1/webhook-deliveries — Webhook 投递历史列表与状态。
+- GET /api/v1/stats/actions-insights — Actions 效能与 CI 稳定性指标看板。
 - GET /api/v1/system/version — 版本与 GitHub 配置状态（需令牌）。
 - GET /api/v1/system/build-info — 极简构建信息（仅版本号，公开无需令牌）。
 

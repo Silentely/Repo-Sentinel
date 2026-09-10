@@ -69,7 +69,45 @@ export interface OutboxItem {
 }
 
 /** 通知渠道类型字面量（后端仅两种，收窄后无需再断言）。 */
-export type ChannelType = "telegram" | "http_webhook";
+export type ChannelType = "telegram" | "http_webhook" | "feishu" | "wecom" | "dingtalk" | "discord" | "bark";
+
+export interface WebhookDeliveryItem {
+  id: string;
+  delivery_id: string;
+  event_type: string;
+  action: string;
+  repository_full_name: string;
+  status: string;
+  error_code?: string;
+  received_at: string;
+  processed_at?: string;
+}
+
+export interface WebhookDeliveryDetail {
+  delivery: WebhookDeliveryItem;
+  payload_json: Record<string, unknown> | unknown[];
+  payload_raw: string;
+}
+
+export interface WorkflowStat {
+  name: string;
+  total_runs: number;
+  failed_runs: number;
+  failure_rate: number;
+  avg_duration_seconds: number;
+}
+
+export interface ActionsInsights {
+  total_runs: number;
+  success_runs: number;
+  failed_runs: number;
+  cancelled_runs: number;
+  success_rate: number;
+  avg_duration_seconds: number;
+  median_duration_seconds: number;
+  p95_duration_seconds: number;
+  top_failing_workflows: WorkflowStat[];
+}
 
 export interface NotificationChannelRow {
   id: string;
@@ -197,7 +235,7 @@ export async function retryAllDeadOutbox(channelType = ""): Promise<number> {
 }
 
 export async function upsertChannel(
-  type: "telegram" | "http_webhook",
+  type: ChannelType,
   body: {
     name?: string;
     enabled: boolean;
@@ -214,20 +252,20 @@ export async function upsertChannel(
   });
 }
 
-export async function testChannel(type: "telegram" | "http_webhook"): Promise<{ status: string }> {
+export async function testChannel(type: ChannelType): Promise<{ status: string }> {
   return apiRequest(`/api/v1/notifications/channels/${type}/test`, {
     method: "POST",
     body: JSON.stringify({}),
   });
 }
 
-export async function deleteChannel(type: "telegram" | "http_webhook"): Promise<void> {
+export async function deleteChannel(type: ChannelType): Promise<void> {
   await apiRequest(`/api/v1/notifications/channels/${type}`, {
     method: "DELETE",
   });
 }
 
-export async function toggleChannel(type: "telegram" | "http_webhook", enabled: boolean): Promise<void> {
+export async function toggleChannel(type: ChannelType, enabled: boolean): Promise<void> {
   await apiRequest(`/api/v1/notifications/channels/${type}/toggle`, {
     method: "PATCH",
     body: JSON.stringify({ enabled }),
@@ -651,6 +689,52 @@ export function starTrendQueryOptions(days: number) {
       const data = await apiRequest<{ items: StarTrendPoint[] }>(`/api/v1/stats/star-trend?days=${days}`);
       return data.items ?? [];
     },
+    staleTime: 30_000,
+  });
+}
+
+
+export function webhookDeliveriesQueryOptions(params: {
+  page?: number;
+  per_page?: number;
+  status?: string;
+  event_type?: string;
+  repository?: string;
+}) {
+  const search = new URLSearchParams();
+  if (params.page) search.set("page", String(params.page));
+  if (params.per_page) search.set("per_page", String(params.per_page));
+  if (params.status) search.set("status", params.status);
+  if (params.event_type) search.set("event_type", params.event_type);
+  if (params.repository) search.set("repository", params.repository);
+  const q = search.toString() ? `?${search.toString()}` : "";
+  return queryOptions({
+    queryKey: ["webhook-deliveries", params] as const,
+    queryFn: () => apiRequest<Page<WebhookDeliveryItem>>(`/api/v1/webhook-deliveries${q}`),
+    staleTime: 10_000,
+  });
+}
+
+export function webhookDeliveryDetailQueryOptions(id: string) {
+  return queryOptions({
+    queryKey: ["webhook-delivery", id] as const,
+    queryFn: () => apiRequest<WebhookDeliveryDetail>(`/api/v1/webhook-deliveries/${id}`),
+    enabled: !!id,
+  });
+}
+
+export async function replayWebhookDelivery(id: string): Promise<{ status: string; id: string; delivery_id: string }> {
+  return apiRequest(`/api/v1/webhook-deliveries/${id}/replay`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export function actionsInsightsQueryOptions(repositoryID = "") {
+  const q = repositoryID ? `?repository_id=${encodeURIComponent(repositoryID)}` : "";
+  return queryOptions({
+    queryKey: ["actions-insights", repositoryID] as const,
+    queryFn: () => apiRequest<ActionsInsights>(`/api/v1/stats/actions-insights${q}`),
     staleTime: 30_000,
   });
 }

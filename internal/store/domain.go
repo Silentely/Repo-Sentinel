@@ -43,6 +43,11 @@ const (
 
 	ChannelTelegram    = "telegram"
 	ChannelHTTPWebhook = "http_webhook"
+	ChannelFeishu      = "feishu"
+	ChannelWeCom       = "wecom"
+	ChannelDingTalk    = "dingtalk"
+	ChannelDiscord     = "discord"
+	ChannelBark        = "bark"
 
 	OutboxPending = "pending"
 	OutboxSending = "sending"
@@ -54,6 +59,16 @@ const (
 	DeliveryFailed    = "failed"
 	DeliveryDuplicate = "duplicate"
 )
+
+// IsValidChannelType 校验渠道类型白名单。
+func IsValidChannelType(channelType string) bool {
+	switch channelType {
+	case ChannelTelegram, ChannelHTTPWebhook, ChannelFeishu, ChannelWeCom, ChannelDingTalk, ChannelDiscord, ChannelBark:
+		return true
+	default:
+		return false
+	}
+}
 
 // GitHubInstallation 领域模型。
 type GitHubInstallation struct {
@@ -423,7 +438,7 @@ func (c NotificationChannel) AcceptsKind(kind string) bool {
 	return false
 }
 
-// NotificationOutbox 待投递通知。
+// NotificationOutbox 待传递通知。
 type NotificationOutbox struct {
 	ID             string         `json:"id"`
 	ChannelID      string         `json:"channel_id"`
@@ -554,10 +569,12 @@ type InstallationStore interface {
 	List(context.Context) ([]GitHubInstallation, error)
 }
 
-// WebhookDeliveryStore delivery 去重。
+// WebhookDeliveryStore delivery 去重与查询。
 type WebhookDeliveryStore interface {
 	Create(context.Context, WebhookDelivery) (WebhookDelivery, error)
+	Get(context.Context, string) (WebhookDelivery, error)
 	GetByDeliveryID(context.Context, string) (WebhookDelivery, error)
+	List(context.Context, ListFilter) ([]WebhookDelivery, PageResult, error)
 	MarkProcessed(context.Context, string, string, string) error
 	// DeleteOlderThan 删除 received_at 早于 cutoff 的 delivery 记录，返回删除行数。
 	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error)
@@ -645,6 +662,7 @@ type ChannelStore interface {
 	Upsert(context.Context, NotificationChannel) (NotificationChannel, error)
 	Get(context.Context, string) (NotificationChannel, error)
 	GetEnabledByType(context.Context, string) (NotificationChannel, error)
+	GetByType(context.Context, string) (NotificationChannel, error)
 	List(context.Context) ([]NotificationChannel, error)
 	DisableOthersOfType(context.Context, string, string) error
 	Delete(context.Context, string) error
@@ -661,10 +679,10 @@ type OutboxStore interface {
 	List(context.Context, ListFilter) ([]NotificationOutbox, PageResult, error)
 	CountByStatus(context.Context, string) (int, error)
 	RetryDead(context.Context, string, time.Time) error
-	// RetryAllDead 将全部（或 channelIDs 限定渠道）dead 投递重新排队，返回重新排队条数；
+	// RetryAllDead 将全部（或 channelIDs 限定渠道）dead 传递重新排队，返回重新排队条数；
 	// channelIDs 为空切片表示不过滤渠道。单次 UPDATE 完成，与逐条 RetryDead 语义一致。
 	RetryAllDead(context.Context, []string, time.Time) (int, error)
-	// DeleteTerminalOlderThan 删除已终态（sent/dead）且 created_at 早于 cutoff 的投递记录。
+	// DeleteTerminalOlderThan 删除已终态（sent/dead）且 created_at 早于 cutoff 的传递记录。
 	DeleteTerminalOlderThan(ctx context.Context, cutoff time.Time) (int, error)
 }
 

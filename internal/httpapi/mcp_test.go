@@ -339,3 +339,64 @@ func TestMCPToolsListAndCallExtendedTools(t *testing.T) {
 		t.Fatalf("list_outbox 结果异常: %s", text)
 	}
 }
+
+// TestMCPWriteTools 验证新加入的自动化运维写工具：trigger_reconciliation, retry_failed_outbox, replay_webhook_delivery。
+func TestMCPWriteTools(t *testing.T) {
+	fixture := oauthFixture(t)
+	token := mcpAccessToken(t, fixture)
+	ctx := t.Context()
+
+	// 1. 验证 tools/list 包含这三个写工具
+	_, payload := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}`)
+	result := payload["result"].(map[string]any)
+	tools := result["tools"].([]any)
+	names := map[string]bool{}
+	for _, raw := range tools {
+		tool := raw.(map[string]any)
+		name, _ := tool["name"].(string)
+		names[name] = true
+	}
+	for _, want := range []string{"trigger_reconciliation", "retry_failed_outbox", "replay_webhook_delivery"} {
+		if !names[want] {
+			t.Fatalf("tools/list missing write tool %q: %+v", want, names)
+		}
+	}
+
+	// 2. 插入一条 dead outbox 记录并测试 retry_failed_outbox
+	_, _ = fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
+			ID:        "01JMCPDEAD0000000000000001",
+			ChannelID: "ch-1",
+			Status:    store.OutboxDead,
+			Title:     "Dead message",
+	})
+	status, callResp := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"retry_failed_outbox","arguments":{}}}`)
+	if status != http.StatusOK {
+		t.Fatalf("call retry_failed_outbox status=%d", status)
+	}
+	callRes := callResp["result"].(map[string]any)
+	content := callRes["content"].([]any)
+	text, _ := content[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "\"status\":\"queued\"") {
+		t.Fatalf("unexpected call result: %s", text)
+	}
+
+	// 3. 准备一条 webhook delivery 并调用 replay_webhook_delivery
+	d, _ := fixture.store.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
+		ID:                 "01JMCPWH000000000000000001",
+		DeliveryID:         "del-mcp-01",
+		EventType:          "push",
+		RepositoryFullName: "test/mcp",
+		Status:             store.DeliveryProcessed,
+		Payload:            []byte(`{"ref":"refs/heads/main"}`),
+	})
+	status, replayResp := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"replay_webhook_delivery","arguments":{"id":"`+d.ID+`"}}}`)
+	if status != http.StatusOK {
+		t.Fatalf("call replay_webhook_delivery status=%d", status)
+	}
+	replayRes := replayResp["result"].(map[string]any)
+	replayContent := replayRes["content"].([]any)
+	replayText, _ := replayContent[0].(map[string]any)["text"].(string)
+	if !strings.Contains(replayText, "\"status\":\"replayed\"") {
+		t.Fatalf("unexpected replay result: %s", replayText)
+	}
+}

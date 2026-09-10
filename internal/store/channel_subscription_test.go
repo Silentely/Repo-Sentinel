@@ -104,3 +104,52 @@ func TestAcceptsKind三态(t *testing.T) {
 		t.Fatal("IsSubscribableKind 白名单判定错误")
 	}
 }
+
+func TestNotificationChannelGetByType(t *testing.T) {
+	ctx := t.Context()
+	data := openTestStore(t)
+
+	// 1. 无渠道时返回 ErrNotFound
+	_, err := data.Channels().GetByType(ctx, store.ChannelFeishu)
+	if err != store.ErrNotFound {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+
+	// 2. 插入一个禁用的渠道
+	disabledCh, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:          ulid.Make().String(),
+		ChannelType: store.ChannelFeishu,
+		Name:        "feishu-disabled",
+		Enabled:     false,
+		Target:      "https://open.feishu.cn/hook/1",
+	})
+	if err != nil {
+		t.Fatalf("upsert disabled: %v", err)
+	}
+
+	// 此时 GetEnabledByType 应返回 ErrNotFound，但 GetByType 应能找到
+	if _, err := data.Channels().GetEnabledByType(ctx, store.ChannelFeishu); err != store.ErrNotFound {
+		t.Fatalf("GetEnabledByType expected ErrNotFound, got %v", err)
+	}
+	gotDisabled, err := data.Channels().GetByType(ctx, store.ChannelFeishu)
+	if err != nil || gotDisabled.ID != disabledCh.ID {
+		t.Fatalf("GetByType failed: %v", err)
+	}
+
+	// 3. 插入一个启用的渠道，GetByType 应优先返回启用的
+	enabledCh, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:          ulid.Make().String(),
+		ChannelType: store.ChannelFeishu,
+		Name:        "feishu-enabled",
+		Enabled:     true,
+		Target:      "https://open.feishu.cn/hook/2",
+	})
+	if err != nil {
+		t.Fatalf("upsert enabled: %v", err)
+	}
+
+	gotEnabled, err := data.Channels().GetByType(ctx, store.ChannelFeishu)
+	if err != nil || gotEnabled.ID != enabledCh.ID {
+		t.Fatalf("GetByType expected enabled channel ID %s, got %s (err: %v)", enabledCh.ID, gotEnabled.ID, err)
+	}
+}

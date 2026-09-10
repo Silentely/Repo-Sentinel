@@ -289,6 +289,11 @@ export function NotifyPage() {
 
   const telegramCh = channels.data?.items.find((ch) => ch.channel_type === "telegram");
   const httpCh = channels.data?.items.find((ch) => ch.channel_type === "http_webhook");
+  const feishuCh = channels.data?.items.find((ch) => ch.channel_type === "feishu");
+  const wecomCh = channels.data?.items.find((ch) => ch.channel_type === "wecom");
+  const dingtalkCh = channels.data?.items.find((ch) => ch.channel_type === "dingtalk");
+  const discordCh = channels.data?.items.find((ch) => ch.channel_type === "discord");
+  const barkCh = channels.data?.items.find((ch) => ch.channel_type === "bark");
   const digestTime = String(settings.data?.["digest.local_time"] ?? "09:00");
   const digestTz = String(settings.data?.["admin.timezone"] ?? "UTC");
 
@@ -381,7 +386,7 @@ export function NotifyPage() {
             {(channels.data?.items ?? []).map((ch) => (
               <li key={ch.id} className="channel-row">
                 <span className={`event-kind ${ch.enabled ? "status-sent" : "status-dead"}`}>
-                  {ch.channel_type === "telegram" ? "📱 Telegram" : "🌐 HTTP Webhook"}
+                  {ch.channel_type === "telegram" ? "📱 " : ch.channel_type === "feishu" ? "🕊️ " : ch.channel_type === "wecom" ? "💬 " : ch.channel_type === "dingtalk" ? "🔔 " : ch.channel_type === "discord" ? "🎮 " : ch.channel_type === "bark" ? "📲 " : "🌐 "}{channelLabel(ch.channel_type)}
                 </span>
                 <strong>{ch.enabled ? "已启用" : "已禁用"}</strong>
                 <span className="channel-target">{ch.target || "（无目标）"}</span>
@@ -484,6 +489,134 @@ export function NotifyPage() {
         successMessage="HTTP Webhook 渠道已保存。"
         testPending={testingType === "http_webhook"}
         onTest={() => testMut.mutate("http_webhook")}
+        onNotice={(msg) => { setMessage(msg); setError(""); }}
+        onFail={setError}
+        onSaved={invalidateAll}
+      />
+
+
+      {/* 飞书 / Lark 配置 */}
+      <ChannelForm
+        type="feishu"
+        title="飞书 / Lark"
+        hint={
+          <p className="field-hint">
+            在飞书群中添加「自定义机器人」，复制 Webhook 地址填入。若开启了「安全设置 - 签名校验」，请在此填写加签密钥。
+          </p>
+        }
+        channel={feishuCh}
+        settings={settings.data}
+        targetLabel="Webhook 地址"
+        targetPlaceholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."
+        secretLabel="加签密钥（可选，留空保留原密钥）"
+        secretPlaceholder="签名校验 Secret"
+        statusTargetLabel="Webhook URL"
+        emptyTargetError="请填写飞书机器人 Webhook 地址。"
+        successMessage="飞书 / Lark 渠道已保存。"
+        testPending={testingType === "feishu"}
+        onTest={() => testMut.mutate("feishu")}
+        onNotice={(msg) => { setMessage(msg); setError(""); }}
+        onFail={setError}
+        onSaved={invalidateAll}
+      />
+
+      {/* 企业微信配置 */}
+      <ChannelForm
+        type="wecom"
+        title="企业微信"
+        hint={
+          <p className="field-hint">
+            在企业微信群添加群机器人，将提供的 Webhook 地址填入。支持 Markdown 告警卡片。
+          </p>
+        }
+        channel={wecomCh}
+        settings={settings.data}
+        targetLabel="Webhook 地址"
+        targetPlaceholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+        showSecret={false}
+        secretLabel=""
+        secretPlaceholder=""
+        statusTargetLabel="Webhook URL"
+        emptyTargetError="请填写企业微信 Webhook 地址。"
+        successMessage="企业微信渠道已保存。"
+        testPending={testingType === "wecom"}
+        onTest={() => testMut.mutate("wecom")}
+        onNotice={(msg) => { setMessage(msg); setError(""); }}
+        onFail={setError}
+        onSaved={invalidateAll}
+      />
+
+      {/* 钉钉配置 */}
+      <ChannelForm
+        type="dingtalk"
+        title="钉钉"
+        hint={
+          <p className="field-hint">
+            在钉钉群添加自定义机器人，填入 Webhook 地址。如开启了安全设置中的「加签」，请填写密钥。
+          </p>
+        }
+        channel={dingtalkCh}
+        settings={settings.data}
+        targetLabel="Webhook 地址"
+        targetPlaceholder="https://oapi.dingtalk.com/robot/send?access_token=..."
+        secretLabel="加签密钥（可选，留空保留原密钥）"
+        secretPlaceholder="SEC..."
+        statusTargetLabel="Webhook URL"
+        emptyTargetError="请填写钉钉 Webhook 地址。"
+        successMessage="钉钉渠道已保存。"
+        testPending={testingType === "dingtalk"}
+        onTest={() => testMut.mutate("dingtalk")}
+        onNotice={(msg) => { setMessage(msg); setError(""); }}
+        onFail={setError}
+        onSaved={invalidateAll}
+      />
+
+      {/* Discord 配置 */}
+      <ChannelForm
+        type="discord"
+        title="Discord"
+        hint={
+          <p className="field-hint">
+            在 Discord 服务器频道的「整合 → Webhook」中创建 Webhook，复制 URL 填入。
+          </p>
+        }
+        channel={discordCh}
+        settings={settings.data}
+        targetLabel="Webhook 地址"
+        targetPlaceholder="https://discord.com/api/webhooks/..."
+        showSecret={false}
+        secretLabel=""
+        secretPlaceholder=""
+        statusTargetLabel="Webhook URL"
+        emptyTargetError="请填写 Discord Webhook 地址。"
+        successMessage="Discord 渠道已保存。"
+        testPending={testingType === "discord"}
+        onTest={() => testMut.mutate("discord")}
+        onNotice={(msg) => { setMessage(msg); setError(""); }}
+        onFail={setError}
+        onSaved={invalidateAll}
+      />
+
+      {/* Bark 配置 */}
+      <ChannelForm
+        type="bark"
+        title="Bark (iOS)"
+        hint={
+          <p className="field-hint">
+            输入 Bark 设备 Key 或自建 Bark 服务器完整 URL。支持通知分组与点击跳转 GitHub 事件。
+          </p>
+        }
+        channel={barkCh}
+        settings={settings.data}
+        targetLabel="设备 Key 或服务器 URL"
+        targetPlaceholder="https://api.day.app/your_key 或直接输入 key"
+        secretLabel="备用密钥 / 设备 Key（可选）"
+        secretPlaceholder="your_device_key"
+        statusTargetLabel="Target / Key"
+        emptyTargetError="请填写 Bark 设备 Key 或 URL。"
+        successMessage="Bark 渠道已保存。"
+        testPending={testingType === "bark"}
+        onTest={() => testMut.mutate("bark")}
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
         onSaved={invalidateAll}

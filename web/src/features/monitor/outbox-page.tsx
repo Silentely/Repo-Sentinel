@@ -28,6 +28,11 @@ const channelFilters = [
   { label: "全部渠道", value: "" },
   { label: "Telegram", value: "telegram" },
   { label: "HTTP Webhook", value: "http_webhook" },
+  { label: "飞书 / Lark", value: "feishu" },
+  { label: "企业微信", value: "wecom" },
+  { label: "钉钉", value: "dingtalk" },
+  { label: "Discord", value: "discord" },
+  { label: "Bark (iOS)", value: "bark" },
 ];
 
 interface BatchRetryResult {

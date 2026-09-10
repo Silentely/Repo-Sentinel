@@ -34,6 +34,7 @@ const GitHubPage = lazyRouteComponent(() => import("../features/monitor/github-p
 const AboutPage = lazyRouteComponent(() => import("../features/monitor/about-page"), "AboutPage");
 const SettingsPage = lazyRouteComponent(() => import("../features/monitor/settings-page"), "SettingsPage");
 const StarredReleasesPage = lazyRouteComponent(() => import("../features/monitor/starred-releases-page"), "StarredReleasesPage");
+const WebhookDeliveriesPage = lazyRouteComponent(() => import("../features/monitor/webhook-deliveries-page"), "WebhookDeliveriesPage");
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -133,6 +134,12 @@ const starredReleasesRoute = createRoute({
   component: StarredReleasesPage,
 });
 
+const webhookDeliveriesRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/webhooks",
+  component: WebhookDeliveriesPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
@@ -149,6 +156,7 @@ const routeTree = rootRoute.addChildren([
     aboutRoute,
     settingsRoute,
     starredReleasesRoute,
+    webhookDeliveriesRoute,
   ]),
 ]);
 

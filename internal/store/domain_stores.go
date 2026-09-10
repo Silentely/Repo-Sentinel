@@ -442,6 +442,45 @@ func (s *webhookDeliveryStore) Create(ctx context.Context, in WebhookDelivery) (
 	return webhookDeliveryFromEntity(entity), nil
 }
 
+func (s *webhookDeliveryStore) Get(ctx context.Context, id string) (WebhookDelivery, error) {
+	entity, err := s.client.WebhookDelivery.Query().Where(webhookdelivery.IDEQ(id)).Only(ctx)
+	if err != nil {
+		return WebhookDelivery{}, mapStoreError(err)
+	}
+	return webhookDeliveryFromEntity(entity), nil
+}
+
+func (s *webhookDeliveryStore) List(ctx context.Context, f ListFilter) ([]WebhookDelivery, PageResult, error) {
+	f = NormalizeListFilter(f)
+	q := s.client.WebhookDelivery.Query()
+	if f.Status != "" {
+		q = q.Where(webhookdelivery.StatusEQ(f.Status))
+	}
+	if f.Kind != "" {
+		q = q.Where(webhookdelivery.EventTypeEQ(f.Kind))
+	}
+	if f.RepositoryID != "" {
+		q = q.Where(webhookdelivery.RepositoryFullNameContainsFold(f.RepositoryID))
+	}
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	if total == 0 || (f.Page-1)*f.PerPage >= total {
+		return []WebhookDelivery{}, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+	}
+	rows, err := q.Order(entclient.Desc(webhookdelivery.FieldReceivedAt), entclient.Desc(webhookdelivery.FieldID)).
+		Offset((f.Page - 1) * f.PerPage).Limit(f.PerPage).All(ctx)
+	if err != nil {
+		return nil, PageResult{}, mapStoreError(err)
+	}
+	out := make([]WebhookDelivery, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, webhookDeliveryFromEntity(row))
+	}
+	return out, PageResult{Page: f.Page, PerPage: f.PerPage, Total: total}, nil
+}
+
 func (s *webhookDeliveryStore) GetByDeliveryID(ctx context.Context, deliveryID string) (WebhookDelivery, error) {
 	entity, err := s.client.WebhookDelivery.Query().Where(webhookdelivery.DeliveryIDEQ(deliveryID)).Only(ctx)
 	if err != nil {
@@ -1447,6 +1486,17 @@ func (s *channelStore) GetEnabledByType(ctx context.Context, channelType string)
 	entity, err := s.client.NotificationChannel.Query().
 		Where(notificationchannel.ChannelTypeEQ(channelType), notificationchannel.EnabledEQ(true)).
 		Only(ctx)
+	if err != nil {
+		return NotificationChannel{}, mapStoreError(err)
+	}
+	return channelFromEntity(entity), nil
+}
+
+func (s *channelStore) GetByType(ctx context.Context, channelType string) (NotificationChannel, error) {
+	entity, err := s.client.NotificationChannel.Query().
+		Where(notificationchannel.ChannelTypeEQ(channelType)).
+		Order(entclient.Desc(notificationchannel.FieldEnabled), entclient.Desc(notificationchannel.FieldUpdatedAt)).
+		First(ctx)
 	if err != nil {
 		return NotificationChannel{}, mapStoreError(err)
 	}

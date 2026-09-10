@@ -26,6 +26,7 @@ import {
   setSecurityAlertIgnored,
   setWorkItemIgnored,
   setWorkflowRunIgnored,
+  actionsInsightsQueryOptions,
   settingsQueryOptions,
   updateRepositorySettings,
   type Repository,
@@ -776,6 +777,8 @@ function ActionsList() {
   const [conclusion, setConclusion] = useUrlState("conclusion", "");
   const [ignoredMode, setIgnoredMode] = useUrlState<IgnoredMode>("ignored", "active", parseIgnoredMode);
   const { mutation: ignoreMutation, busyId, errorMessage } = useIgnoreMutation(setWorkflowRunIgnored, ["workflow-runs"]);
+  const insightsQuery = useQuery(actionsInsightsQueryOptions(repoId));
+  const insights = insightsQuery.data;
 
   const { q, items, total } = useInfiniteList<WorkflowRun>({
     queryKey: ["workflow-runs", repoId, conclusion, ignoredMode],
@@ -798,6 +801,54 @@ function ActionsList() {
       title="Actions"
       description="Workflow Run 结论与恢复状态。依赖 GitHub App 的 Actions 只读权限与 workflow_run 事件；也可在仪表盘触发对账补拉。"
     >
+      {insights && insights.total_runs > 0 ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "12px",
+            marginBottom: "16px",
+          }}
+        >
+          <div className="onboarding-card" style={{ padding: "14px 18px", margin: 0 }}>
+            <span className="muted" style={{ fontSize: "12px" }}>CI 成功率</span>
+            <div style={{ fontSize: "1.5rem", fontWeight: 700, color: insights.success_rate >= 80 ? "#2da44e" : "#cf222e", marginTop: "4px" }}>
+              {insights.success_rate.toFixed(1)}%
+            </div>
+            <span className="muted" style={{ fontSize: "11px" }}>
+              {insights.success_runs} 成功 / {insights.failed_runs} 失败
+            </span>
+          </div>
+
+          <div className="onboarding-card" style={{ padding: "14px 18px", margin: 0 }}>
+            <span className="muted" style={{ fontSize: "12px" }}>平均执行耗时</span>
+            <div style={{ fontSize: "1.5rem", fontWeight: 700, marginTop: "4px" }}>
+              {Math.round(insights.avg_duration_seconds)}s
+            </div>
+            <span className="muted" style={{ fontSize: "11px" }}>中位数: {Math.round(insights.median_duration_seconds)}s</span>
+          </div>
+
+          <div className="onboarding-card" style={{ padding: "14px 18px", margin: 0 }}>
+            <span className="muted" style={{ fontSize: "12px" }}>P95 延迟耗时</span>
+            <div style={{ fontSize: "1.5rem", fontWeight: 700, marginTop: "4px" }}>
+              {Math.round(insights.p95_duration_seconds)}s
+            </div>
+            <span className="muted" style={{ fontSize: "11px" }}>样本容量: {insights.total_runs} 次</span>
+          </div>
+
+          {insights.top_failing_workflows?.[0] ? (
+            <div className="onboarding-card" style={{ padding: "14px 18px", margin: 0 }}>
+              <span className="muted" style={{ fontSize: "12px" }}>Top 需关注工作流</span>
+              <div style={{ marginTop: "4px", fontSize: "13px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                ⚠️ {insights.top_failing_workflows[0]?.name}
+              </div>
+              <span className="muted" style={{ fontSize: "11px" }}>
+                失败率 {insights.top_failing_workflows[0]?.failure_rate.toFixed(0)}% ({insights.top_failing_workflows[0]?.failed_runs} 次)
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="filter-bar filter-bar--wrap">
         <StateFilterButtons
           options={[

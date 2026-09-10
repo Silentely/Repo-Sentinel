@@ -8,6 +8,7 @@ import {
   ListTodo,
   LogOut,
   Menu,
+  Radio,
   Rocket,
   Send,
   Settings,
@@ -38,6 +39,7 @@ export interface RootLayoutProps {
  * 与路由树（router.tsx）一一对应，导出供单测锁定，防止路由调整后标题失配。 */
 export function mobileTitleFor(pathname: string): string {
   if (pathname.startsWith("/notifications/outbox")) return "投递记录";
+  if (pathname.startsWith("/webhooks")) return "Webhook 检查";
   if (pathname.startsWith("/notifications")) return "渠道配置";
   if (pathname.startsWith("/repos")) return "仓库管理";
   if (pathname.startsWith("/issues")) return "Issues";
@@ -219,6 +221,10 @@ export function RootLayout({ session }: RootLayoutProps) {
             <Send aria-hidden="true" size={17} />
             <span>投递记录</span>
             {outboxDead > 0 && <span className="nav-badge nav-badge--warning">{outboxDead}</span>}
+          </Link>
+          <Link to="/webhooks" activeProps={{ "aria-current": "page" }}>
+            <Radio aria-hidden="true" size={17} />
+            <span>Webhook 检查</span>
           </Link>
           {featureStarredReleases ? (
             <>

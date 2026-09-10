@@ -34,7 +34,7 @@
 
 ## 项目简介
 
-RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。它通过 GitHub App Webhook 实时接收 Issue、Pull Request、Actions 与安全告警，用 API 对账补漏，并把重要变化推送到 Telegram 或通用 HTTP Webhook。默认使用 SQLite，可选 PostgreSQL；单进程部署，管理后台嵌入同一二进制。
+RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。它通过 GitHub App Webhook 实时接收 Issue、Pull Request、Actions 与安全告警，用 API 对账补漏，并把重要变化推送到 Telegram、企业微信、飞书、钉钉、Discord、Bark 或通用 HTTP Webhook。默认使用 SQLite，可选 PostgreSQL；单进程部署，管理后台嵌入同一二进制。
 
 > 适合公网 VPS / 自建机房：一个容器（或一个二进制）即可完成值守，不依赖多用户 SaaS。
 
@@ -47,10 +47,10 @@ RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。�
 | **实时采集** | GitHub App Webhook：Issue / PR / star / watch / workflow_run / Dependabot / Code Scanning / Secret Scanning |
 | **安装与仓库** | installation / installation_repositories / repository 生命周期；自有仓与外部公开仓登记 |
 | **可靠入库** | Delivery 幂等、事件指纹、乱序陈旧写入丢弃、首次基线抑制通知洪流 |
-| **通知** | Outbox 持久化投递；Telegram 富文本；HTTPS Webhook（HMAC 签名）；失败重试与死信重试 |
+| **通知** | Outbox 持久化投递；多渠道矩阵（Telegram、飞书、企业微信、钉钉、Discord、Bark、自定义 Webhook）；失败重试与死信重试 |
 | **定期报告（可选）** | 每日摘要 + 每周/每月报告；正文可由 LLM 生成自然语言总结，失败自动回退模板 |
 | **AI 告警分诊（可选）** | 新安全告警通知附带 AI 影响分析与处理建议；默认关闭，支持 OpenAI 兼容端点（可接本地模型） |
-| **管理后台** | 仪表盘 KPI（含 Star 增长曲线，7/30/90/全部）、仓库与基线、最近事件、投递记录、渠道配置、亮/暗主题 |
+| **管理后台** | 仪表盘 KPI（含 Star 增长曲线，7/30/90/全部）、仓库与基线、最近事件、投递记录、渠道配置、Webhook 检查面板与回放、Actions CI 效能洞察、亮/暗主题 |
 | **安全基线** | 单管理员、Argon2id、Session + CSRF、主密钥 AES-GCM、敏感配置掩码 |
 | **运维** | 健康检查、`/metrics`、结构化日志、Docker/GHCR、Compose |
 

@@ -86,8 +86,35 @@ export function channelLabel(channelType?: string): string {
       return "Telegram";
     case "http_webhook":
       return "HTTP Webhook";
+    case "feishu":
+      return "飞书 / Lark";
+    case "wecom":
+      return "企业微信";
+    case "dingtalk":
+      return "钉钉";
+    case "discord":
+      return "Discord";
+    case "bark":
+      return "Bark (iOS)";
     default:
       return channelType || "";
+  }
+}
+
+/** Webhook 投递状态文案 */
+export function webhookStatusLabel(status?: string | null): string {
+  if (!status) return "";
+  switch (status) {
+    case "accepted":
+      return "已接收";
+    case "processed":
+      return "已处理";
+    case "failed":
+      return "处理失败";
+    case "duplicate":
+      return "重复忽略";
+    default:
+      return status;
   }
 }
 

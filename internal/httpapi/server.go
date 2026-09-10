@@ -272,6 +272,9 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/starred-releases/trackers", s.handleListStarredTrackers)
 			protected.Get("/system/settings", s.handleGetSettings)
 			protected.Get("/admin/2fa", s.handleGet2FA)
+			protected.Get("/webhook-deliveries", s.handleListWebhookDeliveries)
+			protected.Get("/webhook-deliveries/{id}", s.handleGetWebhookDelivery)
+			protected.Get("/stats/actions-insights", s.handleActionsInsights)
 			protected.Group(func(mutating chi.Router) {
 				mutating.Use(s.csrfMiddleware)
 				mutating.Post("/auth/logout", s.handleLogout)
@@ -303,6 +306,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/starred-releases/trackers/{id}/state", s.handleSetStarredTrackerState)
 				mutating.Post("/github/sync-repositories", s.handleSyncInstallationRepositories)
 				mutating.Post("/system/version/check", s.handleVersionCheck)
+				mutating.Post("/webhook-deliveries/{id}/replay", s.handleReplayWebhookDelivery)
 			})
 		})
 	})
