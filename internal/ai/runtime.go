@@ -35,6 +35,8 @@ type StoredConfig struct {
 	DigestEnabled         *bool  `json:"digest_enabled,omitempty"`
 	TriageEnabled         *bool  `json:"triage_enabled,omitempty"`
 	ReleaseSummaryEnabled *bool  `json:"release_summary_enabled,omitempty"`
+	CodeReviewEnabled     *bool  `json:"code_review_enabled,omitempty"`
+	CodeReviewCommentOnPR *bool  `json:"code_review_comment_on_pr,omitempty"`
 }
 
 // RuntimeConfig 持有进程内可热更新的 AI 配置。
@@ -52,18 +54,22 @@ type RuntimeConfig struct {
 	DigestEnabled         bool
 	TriageEnabled         bool
 	ReleaseSummaryEnabled bool
+	CodeReviewEnabled     bool
+	CodeReviewCommentOnPR bool
 
 	// 字段来源：env | database | unset（仅状态展示，不回显密钥）。
-	EnabledSource               string
-	BaseURLSource               string
-	ModelSource                 string
-	TimeoutSource               string
-	MaxTokensSource             string
-	RetriesSource               string
-	APIKeySource                string
-	DigestEnabledSource         string
-	TriageEnabledSource         string
-	ReleaseSummaryEnabledSource string
+	EnabledSource                 string
+	BaseURLSource                 string
+	ModelSource                   string
+	TimeoutSource                 string
+	MaxTokensSource               string
+	RetriesSource                 string
+	APIKeySource                  string
+	DigestEnabledSource           string
+	TriageEnabledSource           string
+	ReleaseSummaryEnabledSource   string
+	CodeReviewEnabledSource       string
+	CodeReviewCommentOnPRSource   string
 }
 
 // RuntimeFromEnv 从环境变量配置构建运行时基线并标记来源。
@@ -81,6 +87,8 @@ func RuntimeFromEnv(cfg config.AIConfig) *RuntimeConfig {
 		DigestEnabled:               cfg.DigestEnabled,
 		TriageEnabled:               cfg.TriageEnabled,
 		ReleaseSummaryEnabled:       cfg.ReleaseSummaryEnabled,
+		CodeReviewEnabled:           cfg.CodeReviewEnabled,
+		CodeReviewCommentOnPR:       cfg.CodeReviewCommentOnPR,
 		EnabledSource:               sourceLabel(cfg.Enabled, "env"),
 		BaseURLSource:               sourceLabel(strings.TrimSpace(cfg.BaseURL) != "", "env"),
 		ModelSource:                 sourceLabel(strings.TrimSpace(cfg.Model) != "", "env"),
@@ -91,6 +99,8 @@ func RuntimeFromEnv(cfg config.AIConfig) *RuntimeConfig {
 		DigestEnabledSource:         sourceLabel(!cfg.DigestEnabled, "env"),
 		TriageEnabledSource:         sourceLabel(!cfg.TriageEnabled, "env"),
 		ReleaseSummaryEnabledSource: sourceLabel(!cfg.ReleaseSummaryEnabled, "env"),
+		CodeReviewEnabledSource:     sourceLabel(!cfg.CodeReviewEnabled, "env"),
+		CodeReviewCommentOnPRSource: sourceLabel(cfg.CodeReviewCommentOnPR, "env"),
 	}
 }
 
@@ -112,6 +122,8 @@ func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 		DigestEnabled:               r.DigestEnabled,
 		TriageEnabled:               r.TriageEnabled,
 		ReleaseSummaryEnabled:       r.ReleaseSummaryEnabled,
+		CodeReviewEnabled:           r.CodeReviewEnabled,
+		CodeReviewCommentOnPR:       r.CodeReviewCommentOnPR,
 		EnabledSource:               r.EnabledSource,
 		BaseURLSource:               r.BaseURLSource,
 		ModelSource:                 r.ModelSource,
@@ -122,6 +134,8 @@ func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 		DigestEnabledSource:         r.DigestEnabledSource,
 		TriageEnabledSource:         r.TriageEnabledSource,
 		ReleaseSummaryEnabledSource: r.ReleaseSummaryEnabledSource,
+		CodeReviewEnabledSource:     r.CodeReviewEnabledSource,
+		CodeReviewCommentOnPRSource: r.CodeReviewCommentOnPRSource,
 	}
 }
 
@@ -142,6 +156,8 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.DigestEnabled = next.DigestEnabled
 	r.TriageEnabled = next.TriageEnabled
 	r.ReleaseSummaryEnabled = next.ReleaseSummaryEnabled
+	r.CodeReviewEnabled = next.CodeReviewEnabled
+	r.CodeReviewCommentOnPR = next.CodeReviewCommentOnPR
 	r.EnabledSource = next.EnabledSource
 	r.BaseURLSource = next.BaseURLSource
 	r.ModelSource = next.ModelSource
@@ -152,6 +168,8 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.DigestEnabledSource = next.DigestEnabledSource
 	r.TriageEnabledSource = next.TriageEnabledSource
 	r.ReleaseSummaryEnabledSource = next.ReleaseSummaryEnabledSource
+	r.CodeReviewEnabledSource = next.CodeReviewEnabledSource
+	r.CodeReviewCommentOnPRSource = next.CodeReviewCommentOnPRSource
 }
 
 // Client 将当前运行时配置物化为可用的 AI 客户端。
@@ -168,6 +186,8 @@ func (r *RuntimeConfig) Client() *Client {
 		DigestEnabled:         snap.DigestEnabled,
 		TriageEnabled:         snap.TriageEnabled,
 		ReleaseSummaryEnabled: snap.ReleaseSummaryEnabled,
+		CodeReviewEnabled:     snap.CodeReviewEnabled,
+		CodeReviewCommentOnPR: snap.CodeReviewCommentOnPR,
 	}
 }
 
@@ -291,6 +311,14 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 	if snap.ReleaseSummaryEnabledSource != "env" && stored.ReleaseSummaryEnabled != nil {
 		snap.ReleaseSummaryEnabled = *stored.ReleaseSummaryEnabled
 		snap.ReleaseSummaryEnabledSource = "database"
+	}
+	if snap.CodeReviewEnabledSource != "env" && stored.CodeReviewEnabled != nil {
+		snap.CodeReviewEnabled = *stored.CodeReviewEnabled
+		snap.CodeReviewEnabledSource = "database"
+	}
+	if snap.CodeReviewCommentOnPRSource != "env" && stored.CodeReviewCommentOnPR != nil {
+		snap.CodeReviewCommentOnPR = *stored.CodeReviewCommentOnPR
+		snap.CodeReviewCommentOnPRSource = "database"
 	}
 
 	rt.Replace(&snap)

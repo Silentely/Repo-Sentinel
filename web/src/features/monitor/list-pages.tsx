@@ -31,6 +31,8 @@ import {
   updateRepositorySettings,
   type Repository,
   type RepositorySettings,
+  fetchWorkItemAIReview,
+  type CodeReviewResult,
 } from "./api";
 import {
   ClearFiltersButton,
@@ -183,6 +185,105 @@ function EventListBody({
         />
       </>
     </QueryGate>
+  );
+}
+
+
+function AIReviewCard({ workItemId }: { workItemId: string }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [review, setReview] = useState<CodeReviewResult | null | undefined>(undefined);
+
+  const toggle = async () => {
+    if (!open && review === undefined) {
+      setLoading(true);
+      const res = await fetchWorkItemAIReview(workItemId);
+      setReview(res);
+      setLoading(false);
+    }
+    setOpen((prev) => !prev);
+  };
+
+  return (
+    <div className="ai-review-wrapper" style={{ marginTop: "0.5rem" }}>
+      <button
+        type="button"
+        className="quiet-button quiet-button--compact"
+        onClick={toggle}
+        style={{ fontSize: "0.8rem", padding: "0.15rem 0.5rem", borderRadius: "4px" }}
+      >
+        🤖 AI 代码审查报告 {open ? "▲" : "▼"}
+      </button>
+      {open && (
+        <div
+          className="ai-review-panel"
+          style={{
+            marginTop: "0.5rem",
+            padding: "0.75rem 1rem",
+            background: "var(--bg-card-subtle, rgba(0,0,0,0.03))",
+            borderRadius: "6px",
+            border: "1px solid var(--border-default, #e5e7eb)",
+            fontSize: "0.85rem",
+          }}
+        >
+          {loading ? (
+            <span className="muted">正在加载 AI 审查结果…</span>
+          ) : !review ? (
+            <span className="muted">暂无 AI 审查报告（可能未开启 PR 审查或 Diff 过大）。</span>
+          ) : (
+            <div className="ai-review-content">
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                <strong>健康评分:</strong>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    color: review.score >= 80 ? "var(--color-success, #10b981)" : review.score >= 60 ? "var(--color-warning, #f59e0b)" : "var(--color-danger, #ef4444)",
+                  }}
+                >
+                  {review.score} / 100
+                </span>
+                {review.commented_on_pr && (
+                  <span className="label" style={{ fontSize: "0.75rem", background: "rgba(16, 185, 129, 0.1)", color: "#10b981" }}>
+                    已回写 GitHub PR
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: "0.25rem 0 0.5rem" }}>{review.summary}</p>
+              {review.security_risks && review.security_risks.length > 0 && (
+                <div style={{ marginTop: "0.5rem" }}>
+                  <strong style={{ color: "var(--color-danger, #ef4444)" }}>🛡️ 安全风险:</strong>
+                  <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0 }}>
+                    {review.security_risks.map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {review.breaking_risks && review.breaking_risks.length > 0 && (
+                <div style={{ marginTop: "0.5rem" }}>
+                  <strong style={{ color: "var(--color-warning, #f59e0b)" }}>⚠️ 破坏性兼容风险:</strong>
+                  <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0 }}>
+                    {review.breaking_risks.map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {review.code_smells && review.code_smells.length > 0 && (
+                <div style={{ marginTop: "0.5rem" }}>
+                  <strong className="muted">💡 优化建议:</strong>
+                  <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0 }}>
+                    {review.code_smells.map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -353,6 +454,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                       </span>
                     )}
                   </div>
+                  {kind === "pull_request" && <AIReviewCard workItemId={it.id} />}
                   <ItemActions
                     htmlUrl={it.html_url}
                     ignored={it.ignored || ignoredMode === "ignored"}

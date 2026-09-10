@@ -507,6 +507,8 @@ export interface AIConfig {
   digest_enabled: boolean;
   triage_enabled: boolean;
   release_summary_enabled: boolean;
+  code_review_enabled: boolean;
+  code_review_comment_on_pr: boolean;
   api_key_configured: boolean;
   enabled_source: string;
   base_url_source: string;
@@ -518,6 +520,8 @@ export interface AIConfig {
   digest_enabled_source: string;
   triage_enabled_source: string;
   release_summary_enabled_source: string;
+  code_review_enabled_source: string;
+  code_review_comment_on_pr_source: string;
   enabled_locked: boolean;
   base_url_locked: boolean;
   model_locked: boolean;
@@ -528,6 +532,8 @@ export interface AIConfig {
   digest_enabled_locked: boolean;
   triage_enabled_locked: boolean;
   release_summary_enabled_locked: boolean;
+  code_review_enabled_locked: boolean;
+  code_review_comment_on_pr_locked: boolean;
   can_edit_in_ui: boolean;
   note: string;
 }
@@ -542,6 +548,8 @@ export interface AIConfigInput {
   digest_enabled?: boolean;
   triage_enabled?: boolean;
   release_summary_enabled?: boolean;
+  code_review_enabled?: boolean;
+  code_review_comment_on_pr?: boolean;
   api_key?: string;
   clear_api_key?: boolean;
 }
@@ -737,4 +745,22 @@ export function actionsInsightsQueryOptions(repositoryID = "") {
     queryFn: () => apiRequest<ActionsInsights>(`/api/v1/stats/actions-insights${q}`),
     staleTime: 30_000,
   });
+}
+
+export interface CodeReviewResult {
+  summary: string;
+  score: number;
+  security_risks: string[];
+  breaking_risks: string[];
+  code_smells: string[];
+  reviewed_at: string;
+  commented_on_pr: boolean;
+}
+
+export async function fetchWorkItemAIReview(workItemId: string): Promise<CodeReviewResult | null> {
+  try {
+    return await apiRequest<CodeReviewResult>(`/api/v1/work-items/${encodeURIComponent(workItemId)}/ai-review`);
+  } catch {
+    return null;
+  }
 }

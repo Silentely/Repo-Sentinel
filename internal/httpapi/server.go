@@ -200,6 +200,7 @@ func New(dependencies Dependencies) http.Handler {
 			Store:      dependencies.Store,
 			Logger:     dependencies.Logger,
 			Evaluator:  dependencies.Aggregator,
+			GitHub:     func() *githubx.AppClient { if dependencies.GitHubRuntime != nil { return dependencies.GitHubRuntime.Client }; return nil }(),
 			AI:         dependencies.AI,
 			Background: dependencies.Background,
 			OnFailed:   MetricsIncWebhookFailed,
@@ -260,6 +261,7 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/repositories", s.handleListRepositories)
 			protected.Post("/repositories/external", s.handleAddExternalRepository)
 			protected.Get("/work-items", s.handleListWorkItems)
+			protected.Get("/work-items/{id}/ai-review", s.handleGetWorkItemAIReview)
 			protected.Get("/workflow-runs", s.handleListWorkflowRuns)
 			protected.Get("/security-alerts", s.handleListSecurityAlerts)
 			protected.Get("/events", s.handleListEvents)

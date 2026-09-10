@@ -268,6 +268,7 @@ RepoSentinel 是自托管的 GitHub 仓库值守平台。本技能说明如何�
 - GET /api/v1/dashboard — 概览统计（开放 Issue/PR、失败 Actions、开放安全告警等）。
 - GET /api/v1/repositories?type=github_installation|external_public — 仓库列表（github_installation=自有安装仓，external_public=外部公开仓）。
 - GET /api/v1/work-items?kind=issue|pull_request&state=open|closed&repository_id=... — Issue/PR 列表。
+- GET /api/v1/work-items/{id}/ai-review — 查看指定 PR 的 AI 代码审查与安全审计结果。
 - GET /api/v1/workflow-runs?conclusion=failure&repository_id=... — Actions 运行列表。
 - GET /api/v1/security-alerts?state=open&severity=... — 安全告警列表（state 可取 open/fixed/dismissed/auto_dismissed/withdrawn 等）。
 - GET /api/v1/events — 最近事件流。
@@ -687,6 +688,17 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				"responses": map[string]any{"200": listResponse(ref("WorkItem"))},
 			},
 		},
+		"/api/v1/work-items/{id}/ai-review": map[string]any{
+			"get": map[string]any{
+				"summary":     "获取指定 PR 的 AI 审查报告",
+				"operationId": "getWorkItemAIReview",
+				"security":    []any{authed},
+				"parameters": []any{
+					map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
+				},
+				"responses": map[string]any{"200": jsonResponse("AI 审查结果", ref("CodeReviewResult")), "404": errorResponse()},
+			},
+		},
 		"/api/v1/workflow-runs": map[string]any{
 			"get": map[string]any{
 				"summary":     "Actions 运行列表",
@@ -928,6 +940,15 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 			"merged":               map[string]any{"type": "boolean"},
 			"html_url":             map[string]any{"type": "string"},
 			"ignored":              map[string]any{"type": "boolean"},
+		}),
+		"CodeReviewResult": stringProps(map[string]any{
+			"summary":          map[string]any{"type": "string"},
+			"score":            map[string]any{"type": "integer"},
+			"security_risks":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"breaking_risks":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"code_smells":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"reviewed_at":      map[string]any{"type": "string", "format": "date-time"},
+			"commented_on_pr":  map[string]any{"type": "boolean"},
 		}),
 		"WorkflowRun": stringProps(map[string]any{
 			"id":                   map[string]any{"type": "string"},

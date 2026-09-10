@@ -55,6 +55,8 @@ func defaultConfig() Config {
 			DigestEnabled:         true,
 			TriageEnabled:         true,
 			ReleaseSummaryEnabled: true,
+			CodeReviewEnabled:     true,
+			CodeReviewCommentOnPR: false,
 		},
 		// OAuth Agent 凭据无默认值：未配置时元数据照常发布，token 端点拒绝签发。
 		OAuth: OAuthConfig{

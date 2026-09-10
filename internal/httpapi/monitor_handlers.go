@@ -475,3 +475,26 @@ func (s *server) handleReconcileAll(w http.ResponseWriter, r *http.Request) {
 	})
 	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued"})
 }
+
+func (s *server) handleGetWorkItemAIReview(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+		return
+	}
+
+	settingKey := "ai.pr_review." + id
+	setting, err := s.dependencies.Store.Settings().Get(r.Context(), settingKey)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, map[string]any{"message": "review not found for this work item"})
+			return
+		}
+		s.writeMappedError(w, r, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(setting.ValueJSON)
+}

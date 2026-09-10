@@ -23,6 +23,8 @@ type aiConfigResponse struct {
 	DigestEnabled         bool   `json:"digest_enabled"`
 	TriageEnabled         bool   `json:"triage_enabled"`
 	ReleaseSummaryEnabled bool   `json:"release_summary_enabled"`
+	CodeReviewEnabled     bool   `json:"code_review_enabled"`
+	CodeReviewCommentOnPR bool   `json:"code_review_comment_on_pr"`
 	APIKeyConfigured      bool   `json:"api_key_configured"`
 
 	EnabledSource               string `json:"enabled_source"`
@@ -35,6 +37,8 @@ type aiConfigResponse struct {
 	DigestEnabledSource         string `json:"digest_enabled_source"`
 	TriageEnabledSource         string `json:"triage_enabled_source"`
 	ReleaseSummaryEnabledSource string `json:"release_summary_enabled_source"`
+	CodeReviewEnabledSource     string `json:"code_review_enabled_source"`
+	CodeReviewCommentOnPRSource string `json:"code_review_comment_on_pr_source"`
 
 	EnabledLocked               bool `json:"enabled_locked"`
 	BaseURLLocked               bool `json:"base_url_locked"`
@@ -46,6 +50,8 @@ type aiConfigResponse struct {
 	DigestEnabledLocked         bool `json:"digest_enabled_locked"`
 	TriageEnabledLocked         bool `json:"triage_enabled_locked"`
 	ReleaseSummaryEnabledLocked bool `json:"release_summary_enabled_locked"`
+	CodeReviewEnabledLocked     bool `json:"code_review_enabled_locked"`
+	CodeReviewCommentOnPRLocked bool `json:"code_review_comment_on_pr_locked"`
 
 	CanEditInUI bool   `json:"can_edit_in_ui"`
 	Note        string `json:"note"`
@@ -61,6 +67,8 @@ type aiConfigPutRequest struct {
 	DigestEnabled         *bool   `json:"digest_enabled"`
 	TriageEnabled         *bool   `json:"triage_enabled"`
 	ReleaseSummaryEnabled *bool   `json:"release_summary_enabled"`
+	CodeReviewEnabled     *bool   `json:"code_review_enabled"`
+	CodeReviewCommentOnPR *bool   `json:"code_review_comment_on_pr"`
 	APIKey                *string `json:"api_key"`
 	ClearAPIKey           bool    `json:"clear_api_key"`
 }
@@ -124,6 +132,8 @@ func (s *server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 		DigestEnabled:               snap.DigestEnabled,
 		TriageEnabled:               snap.TriageEnabled,
 		ReleaseSummaryEnabled:       snap.ReleaseSummaryEnabled,
+		CodeReviewEnabled:           snap.CodeReviewEnabled,
+		CodeReviewCommentOnPR:       snap.CodeReviewCommentOnPR,
 		APIKeyConfigured:            snap.APIKey != "",
 		EnabledSource:               snap.EnabledSource,
 		BaseURLSource:               snap.BaseURLSource,
@@ -135,6 +145,8 @@ func (s *server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 		DigestEnabledSource:         snap.DigestEnabledSource,
 		TriageEnabledSource:         snap.TriageEnabledSource,
 		ReleaseSummaryEnabledSource: snap.ReleaseSummaryEnabledSource,
+		CodeReviewEnabledSource:     snap.CodeReviewEnabledSource,
+		CodeReviewCommentOnPRSource: snap.CodeReviewCommentOnPRSource,
 		EnabledLocked:               snap.EnabledSource == "env",
 		BaseURLLocked:               snap.BaseURLSource == "env",
 		ModelLocked:                 snap.ModelSource == "env",
@@ -145,6 +157,8 @@ func (s *server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 		DigestEnabledLocked:         snap.DigestEnabledSource == "env",
 		TriageEnabledLocked:         snap.TriageEnabledSource == "env",
 		ReleaseSummaryEnabledLocked: snap.ReleaseSummaryEnabledSource == "env",
+		CodeReviewEnabledLocked:     snap.CodeReviewEnabledSource == "env",
+		CodeReviewCommentOnPRLocked: snap.CodeReviewCommentOnPRSource == "env",
 		CanEditInUI:                 true,
 		Note:                        "环境变量设置的字段在管理台锁定；API Key 加密存储，不回显明文。",
 	})
@@ -239,6 +253,18 @@ func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		stored.ReleaseSummaryEnabled = body.ReleaseSummaryEnabled
+	}
+	if body.CodeReviewEnabled != nil {
+		if s.rejectAILockedField(w, r, snap.CodeReviewEnabledSource, "code_review_enabled") {
+			return
+		}
+		stored.CodeReviewEnabled = body.CodeReviewEnabled
+	}
+	if body.CodeReviewCommentOnPR != nil {
+		if s.rejectAILockedField(w, r, snap.CodeReviewCommentOnPRSource, "code_review_comment_on_pr") {
+			return
+		}
+		stored.CodeReviewCommentOnPR = body.CodeReviewCommentOnPR
 	}
 	if body.APIKey != nil {
 		if s.rejectAILockedField(w, r, snap.APIKeySource, "api_key") {

@@ -1,9 +1,12 @@
 package githubx
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -398,4 +401,80 @@ func (c *PublicClient) ListPublicIssues(ctx context.Context, owner, repo string,
 // GetRepository 拉取公开仓元数据（可选 PAT）。
 func (c *PublicClient) GetRepository(ctx context.Context, owner, repo string) (RepositoryMeta, int, error) {
 	return c.appClient().GetRepository(ctx, c.PAT, owner, repo)
+}
+
+// MaxPRDiffBytes PR Diff 读取上限（50KB），防止大 PR 耗尽内存或超出 LLM 上下文。
+const MaxPRDiffBytes = 50 * 1024
+
+// GetPRDiff 拉取 PR 的 diff 文本。
+func (c *AppClient) GetPRDiff(ctx context.Context, token, owner, repo string, prNumber int) (string, error) {
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, prNumber)
+	full := path
+	if strings.HasPrefix(path, "/") {
+		full = c.baseURL() + path
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", githubClientUA)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3.diff")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", statusError(resp.StatusCode, b)
+	}
+
+	diffBytes, err := io.ReadAll(io.LimitReader(resp.Body, MaxPRDiffBytes))
+	if err != nil {
+		return "", err
+	}
+	return string(diffBytes), nil
+}
+
+// CreateIssueComment 为指定 Issue 或 PR 创建评论。
+func (c *AppClient) CreateIssueComment(ctx context.Context, token, owner, repo string, number int, body string) error {
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, number)
+	full := path
+	if strings.HasPrefix(path, "/") {
+		full = c.baseURL() + path
+	}
+	payload := map[string]string{"body": body}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, full, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", githubClientUA)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return statusError(resp.StatusCode, b)
+	}
+	return nil
 }

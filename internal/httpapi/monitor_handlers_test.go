@@ -893,3 +893,37 @@ func TestUpsertChannelInputTrimmingAndRetryOutboxBlankID(t *testing.T) {
 		t.Fatalf("保存 Telegram 渠道失败: code=%d body=%s", resp.Code, resp.Body.String())
 	}
 }
+
+func TestGetWorkItemAIReview(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	ctx := t.Context()
+
+	// 1. 未生成审查报告时返回 404
+	resp404 := fixture.request(t, http.MethodGet, "/api/v1/work-items/pr-not-found/ai-review", "", "127.0.0.1:45001", cookies, nil)
+	if resp404.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp404.Code)
+	}
+
+	// 2. 存入审查结果后返回 200 及详细数据
+	reviewPayload := `{"summary":"代码质量优秀","score":95,"security_risks":[],"breaking_risks":[],"code_smells":[],"reviewed_at":"2026-09-10T12:00:00Z","commented_on_pr":true}`
+	_, err := fixture.store.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        "s-review-1",
+		Key:       "ai.pr_review.pr-101",
+		ValueJSON: []byte(reviewPayload),
+		UpdatedAt: time.Now().UTC(),
+		UpdatedBy: "test",
+	})
+	if err != nil {
+		t.Fatalf("upsert setting: %v", err)
+	}
+
+	resp200 := fixture.request(t, http.MethodGet, "/api/v1/work-items/pr-101/ai-review", "", "127.0.0.1:45002", cookies, nil)
+	if resp200.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp200.Code, resp200.Body.String())
+	}
+	if !strings.Contains(resp200.Body.String(), "代码质量优秀") || !strings.Contains(resp200.Body.String(), "95") {
+		t.Fatalf("unexpected body: %s", resp200.Body.String())
+	}
+}

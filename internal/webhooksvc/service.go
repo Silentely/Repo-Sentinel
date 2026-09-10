@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -25,6 +26,8 @@ type Service struct {
 	Logger *slog.Logger
 	// Evaluator 实时通知决策器；nil 时回退内置 rules.Engine。
 	Evaluator Evaluator
+	// GitHub 可选；用于拉取 PR Diff 与发表 Review 评论。
+	GitHub *githubx.AppClient
 	// AI 可选；默认 rules.Engine 的安全告警分诊客户端。
 	AI *ai.Client
 	// Background 后台任务生命周期；关闭时由 App 取消。
@@ -150,6 +153,8 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	if res.Repository != nil {
 		repoName = res.Repository.FullName
 	}
+	s.maybeTriggerAICodeReview(res, body)
+
 	if res.Event != nil && !res.SuppressNotify {
 		var err error
 		if s.Evaluator != nil {

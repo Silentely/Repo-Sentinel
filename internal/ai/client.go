@@ -58,10 +58,12 @@ type Client struct {
 	// Retries 瞬时失败（超时/网络/5xx/空响应）自动重试次数；0 表示不重试。
 	// 运行时归一为配置值，直接构造（测试/连通性探测）时 0 即不重试。
 	Retries int
-	// DigestEnabled / TriageEnabled / ReleaseSummaryEnabled 分别控制摘要、分诊与 release 总结功能开关。
+	// DigestEnabled / TriageEnabled / ReleaseSummaryEnabled / CodeReviewEnabled 分别控制摘要、分诊、release 总结与 PR 代码审查功能开关。
 	DigestEnabled         bool
 	TriageEnabled         bool
 	ReleaseSummaryEnabled bool
+	CodeReviewEnabled     bool
+	CodeReviewCommentOnPR bool
 
 	// HTTP 可注入自定义客户端（测试/代理场景）。
 	HTTP *http.Client
@@ -120,6 +122,8 @@ func (c *Client) Snapshot() Client {
 		DigestEnabled:         c.DigestEnabled,
 		TriageEnabled:         c.TriageEnabled,
 		ReleaseSummaryEnabled: c.ReleaseSummaryEnabled,
+		CodeReviewEnabled:     c.CodeReviewEnabled,
+		CodeReviewCommentOnPR: c.CodeReviewCommentOnPR,
 		HTTP:                  c.HTTP,
 		Logger:                c.Logger,
 	}
@@ -143,6 +147,8 @@ func (c *Client) Replace(next *Client) {
 	c.DigestEnabled = next.DigestEnabled
 	c.TriageEnabled = next.TriageEnabled
 	c.ReleaseSummaryEnabled = next.ReleaseSummaryEnabled
+	c.CodeReviewEnabled = next.CodeReviewEnabled
+	c.CodeReviewCommentOnPR = next.CodeReviewCommentOnPR
 	if next.HTTP != nil {
 		c.HTTP = next.HTTP
 	}
@@ -173,6 +179,18 @@ func (c *Client) IsTriageEnabled() bool {
 func (c *Client) IsReleaseSummaryEnabled() bool {
 	s := c.Snapshot()
 	return s.Enabled && s.APIKey != "" && s.ReleaseSummaryEnabled
+}
+
+// IsCodeReviewEnabled 判定 PR 智能代码审查与安全审计是否可用。
+func (c *Client) IsCodeReviewEnabled() bool {
+	s := c.Snapshot()
+	return s.Enabled && s.APIKey != "" && s.CodeReviewEnabled
+}
+
+// ShouldCommentOnPR 判定是否需要在 GitHub PR 下发表评论。
+func (c *Client) ShouldCommentOnPR() bool {
+	s := c.Snapshot()
+	return s.Enabled && s.APIKey != "" && s.CodeReviewEnabled && s.CodeReviewCommentOnPR
 }
 
 // defaultAITransport 针对出站 AI/LLM 网关长连接优化的 Transport：

@@ -410,6 +410,20 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 		}
 		cfg.AI.ReleaseSummaryEnabled = parsed
 	}
+	if value, ok := lookup("REPOSENTINEL_AI_CODE_REVIEW_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_AI_CODE_REVIEW_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.AI.CodeReviewEnabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_AI_CODE_REVIEW_COMMENT_ON_PR"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_AI_CODE_REVIEW_COMMENT_ON_PR", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.AI.CodeReviewCommentOnPR = parsed
+	}
 	if value, ok := lookup("REPOSENTINEL_OAUTH_CLIENT_ID"); ok {
 		cfg.OAuth.ClientID = value
 	}

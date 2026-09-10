@@ -54,6 +54,10 @@ type AIConfig struct {
 	TriageEnabled bool `yaml:"triage_enabled"`
 	// ReleaseSummaryEnabled 是否启用 star 仓库新 release 的更新速览，默认 true。
 	ReleaseSummaryEnabled bool `yaml:"release_summary_enabled"`
+	// CodeReviewEnabled 是否启用 PR 智能代码审查与安全审计，默认 true。
+	CodeReviewEnabled bool `yaml:"code_review_enabled"`
+	// CodeReviewCommentOnPR 是否在 GitHub PR 下发表评论，默认 false。
+	CodeReviewCommentOnPR bool `yaml:"code_review_comment_on_pr"`
 }
 
 // MetricsConfig 描述 Prometheus /metrics 暴露策略。
