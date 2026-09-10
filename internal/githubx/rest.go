@@ -430,16 +430,20 @@ func (c *AppClient) GetPRDiff(ctx context.Context, token, owner, repo string, pr
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if resp.StatusCode == http.StatusTooManyRequests ||
+		(resp.StatusCode == http.StatusForbidden &&
+			(resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")))) {
+		return "", &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
+	}
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return "", statusError(resp.StatusCode, b)
+		return "", statusError(resp.StatusCode, body)
 	}
 
-	diffBytes, err := io.ReadAll(io.LimitReader(resp.Body, MaxPRDiffBytes))
-	if err != nil {
-		return "", err
+	if len(body) > MaxPRDiffBytes {
+		body = body[:MaxPRDiffBytes]
 	}
-	return string(diffBytes), nil
+	return string(body), nil
 }
 
 // CreateIssueComment 为指定 Issue 或 PR 创建评论。

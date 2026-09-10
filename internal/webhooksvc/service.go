@@ -6,6 +6,7 @@ package webhooksvc
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
@@ -36,7 +37,9 @@ type Service struct {
 	// 避免 webhooksvc 反向依赖 httpapi）。
 	OnFailed func()
 	// SlowThreshold 慢处理判定阈值；<=0 时用默认 slowWebhookThreshold。
-	SlowThreshold time.Duration
+	SlowThreshold  time.Duration
+	reviewMu       sync.Mutex
+	reviewInFlight map[string]struct{}
 }
 
 // slowWebhookThreshold 单条 webhook 处理的慢阈值：超过说明规范化/评估路径存在

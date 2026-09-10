@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -19,7 +20,11 @@ type CodeReviewResult struct {
 	CodeSmells    []string  `json:"code_smells"`
 	ReviewedAt    time.Time `json:"reviewed_at"`
 	CommentedOnPR bool      `json:"commented_on_pr"`
+	DiffTruncated bool      `json:"diff_truncated"`
+	HeadSHA       string    `json:"head_sha,omitempty"`
 }
+
+var ErrInvalidCodeReview = errors.New("ai: invalid code review response")
 
 const codeReviewSystemPrompt = `你是资深 GitHub 代码审查与安全审计专家。
 你的任务是审查用户提供的 Pull Request 变更（Diff）并输出严格的 JSON 报告。
@@ -29,6 +34,7 @@ const codeReviewSystemPrompt = `你是资深 GitHub 代码审查与安全审计�
 3. code_smells: 代码质量与性能缺陷（未关闭资源如 Body/文件、无界循环/内存泄漏、明显的 N+1 查询、死锁隐患）。如无则为空数组。
 4. score: 综合健康评分（0-100 整数，基准 100 分，发现严重安全扣 30-50，破坏性扣 20，轻微气味扣 5-10）。
 5. summary: 2-3 句话紧凑总结本次 PR 的主要改动与总体质量评估。
+如果输入末尾说明 Diff 已截断，必须在 summary 中明确提醒用户仅审查了部分变更。
 
 必须直接输出严格 JSON，禁止包含任何 Markdown 代码块（如 ` + "```json" + `）或任何客套话，结构如下：
 {"summary": "...", "score": 90, "security_risks": ["..."], "breaking_risks": [], "code_smells": ["..."]}
@@ -40,7 +46,8 @@ const maxPRDiffChars = 12000
 
 // ReviewPR 对指定 PR Diff 进行安全审计与代码审查。
 func (c *Client) ReviewPR(ctx context.Context, repo, title, author, diff string) (*CodeReviewResult, error) {
-	if len(diff) > maxPRDiffChars {
+	diffTruncated := len(diff) > maxPRDiffChars
+	if diffTruncated {
 		diff = textutil.TruncateUTF8Bytes(diff, maxPRDiffChars) + "\n…（Diff 超长，已截断审查关键前部）"
 	}
 	user := fmt.Sprintf("仓库：%s\nPR 标题：%s\n作者：%s\n\n代码变动 (Diff)：\n%s", repo, title, author, diff)
@@ -63,15 +70,7 @@ func (c *Client) ReviewPR(ctx context.Context, repo, title, author, diff string)
 
 	var res CodeReviewResult
 	if err := json.Unmarshal([]byte(cleaned), &res); err != nil {
-		// 无法解析 JSON 时，回退为非结构化 summary
-		return &CodeReviewResult{
-			Summary:       cleaned,
-			Score:         80,
-			SecurityRisks: []string{},
-			BreakingRisks: []string{},
-			CodeSmells:    []string{},
-			ReviewedAt:    time.Now().UTC(),
-		}, nil
+		return nil, fmt.Errorf("%w: %v", ErrInvalidCodeReview, err)
 	}
 
 	if res.SecurityRisks == nil {
@@ -87,6 +86,7 @@ func (c *Client) ReviewPR(ctx context.Context, repo, title, author, diff string)
 		res.Score = 80
 	}
 	res.ReviewedAt = time.Now().UTC()
+	res.DiffTruncated = diffTruncated
 	return &res, nil
 }
 
@@ -95,6 +95,9 @@ func FormatPRComment(res *CodeReviewResult) string {
 	var sb strings.Builder
 	sb.WriteString("## 🤖 RepoSentinel AI Code Review\n\n")
 	sb.WriteString(fmt.Sprintf("**代码健康评分**: `%d / 100`\n\n", res.Score))
+	if res.DiffTruncated {
+		sb.WriteString("> ⚠️ 本次 Diff 超过输入上限，报告仅覆盖前部变更。\n\n")
+	}
 	if res.Summary != "" {
 		sb.WriteString(fmt.Sprintf("> **概要评估**: %s\n\n", res.Summary))
 	}

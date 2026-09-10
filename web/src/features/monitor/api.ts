@@ -755,6 +755,7 @@ export interface CodeReviewResult {
   code_smells: string[];
   reviewed_at: string;
   commented_on_pr: boolean;
+  diff_truncated: boolean;
 }
 
 export async function fetchWorkItemAIReview(workItemId: string): Promise<CodeReviewResult | null> {

@@ -59,3 +59,34 @@ func TestReviewPRAndFormatComment(t *testing.T) {
 		t.Errorf("comment missing security risk: %s", comment)
 	}
 }
+
+func TestReviewPRRejectsMalformedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"not json"}}]}`))
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, APIKey: "test-key", Enabled: true}
+	res, err := client.ReviewPR(context.Background(), "o/r", "title", "author", "diff")
+	if err == nil || res != nil {
+		t.Fatalf("格式错误的审查响应应返回错误，res=%+v err=%v", res, err)
+	}
+}
+
+func TestReviewPRMarksTruncatedDiff(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"summary\":\"ok\",\"score\":90}"}}]}`))
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, APIKey: "test-key", Enabled: true}
+	res, err := client.ReviewPR(context.Background(), "o/r", "title", "author", strings.Repeat("x", maxPRDiffChars+1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.DiffTruncated {
+		t.Fatal("超过输入上限的审查结果必须标记 DiffTruncated")
+	}
+}

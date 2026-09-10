@@ -193,13 +193,20 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [review, setReview] = useState<CodeReviewResult | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
 
   const toggle = async () => {
     if (!open && review === undefined) {
       setLoading(true);
-      const res = await fetchWorkItemAIReview(workItemId);
-      setReview(res);
-      setLoading(false);
+      setError(null);
+      try {
+        const res = await fetchWorkItemAIReview(workItemId);
+        setReview(res);
+      } catch {
+        setError("审查结果加载失败，请稍后重试。");
+      } finally {
+        setLoading(false);
+      }
     }
     setOpen((prev) => !prev);
   };
@@ -228,6 +235,8 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
         >
           {loading ? (
             <span className="muted">正在加载 AI 审查结果…</span>
+          ) : error ? (
+            <span className="error-text">{error}</span>
           ) : !review ? (
             <span className="muted">暂无 AI 审查报告（可能未开启 PR 审查或 Diff 过大）。</span>
           ) : (
@@ -249,6 +258,9 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
                 )}
               </div>
               <p style={{ margin: "0.25rem 0 0.5rem" }}>{review.summary}</p>
+              {review.diff_truncated && (
+                <p className="field-hint">Diff 超过审查输入上限，本报告仅覆盖前部变更。</p>
+              )}
               {review.security_risks && review.security_risks.length > 0 && (
                 <div style={{ marginTop: "0.5rem" }}>
                   <strong style={{ color: "var(--color-danger, #ef4444)" }}>🛡️ 安全风险:</strong>
@@ -1245,4 +1257,3 @@ function ListFooter({
     </div>
   );
 }
-

@@ -3,6 +3,7 @@ package webhooksvc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -24,6 +25,9 @@ type ghPRPayload struct {
 		} `json:"user"`
 		Draft  bool `json:"draft"`
 		Merged bool `json:"merged"`
+		Head   struct {
+			SHA string `json:"sha"`
+		} `json:"head"`
 	} `json:"pull_request"`
 	Repository struct {
 		Owner struct {
@@ -64,7 +68,7 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 	owner := payload.Repository.Owner.Login
 	repo := payload.Repository.Name
 	if owner == "" || repo == "" {
-		parts := strings.Split(payload.Repository.FullName, "/")
+		parts := strings.SplitN(payload.Repository.FullName, "/", 2)
 		if len(parts) == 2 {
 			owner, repo = parts[0], parts[1]
 		}
@@ -76,15 +80,43 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 	if owner == "" || repo == "" || prNum == 0 {
 		return
 	}
+	if payload.Repository.FullName == "" {
+		payload.Repository.FullName = owner + "/" + repo
+	}
 
 	bgCtx := s.Background
 	if bgCtx == nil {
 		bgCtx = context.Background()
 	}
 
+	// 同一 PR 同一提交只允许一个审查任务在途，避免 webhook 重试重复消耗 AI 配额。
+	key := fmt.Sprintf("%s#%d#%s", owner+"/"+repo, prNum, payload.PullRequest.Head.SHA)
+	s.reviewMu.Lock()
+	if s.reviewInFlight == nil {
+		s.reviewInFlight = make(map[string]struct{})
+	}
+	if _, exists := s.reviewInFlight[key]; exists {
+		s.reviewMu.Unlock()
+		return
+	}
+	s.reviewInFlight[key] = struct{}{}
+	s.reviewMu.Unlock()
+
 	// 启动独立 goroutine 执行 Diff 拉取与 LLM 审计，不阻塞 Webhook 投递确认
 	go func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(bgCtx), 2*time.Minute)
+		defer func() {
+			s.reviewMu.Lock()
+			delete(s.reviewInFlight, key)
+			s.reviewMu.Unlock()
+			if recovered := recover(); recovered != nil && s.Logger != nil {
+				s.Logger.Error("ai code review panic recovered", "repo", payload.Repository.FullName, "pr", prNum, "error", recovered)
+			}
+		}()
+		reviewBudget := 2 * time.Minute
+		if configured := s.AI.EffectiveTimeout() + webhookProcessMargin; configured > reviewBudget {
+			reviewBudget = configured
+		}
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(bgCtx), reviewBudget)
 		defer cancel()
 
 		s.runAICodeReview(ctx, owner, repo, prNum, payload)
@@ -92,6 +124,9 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 }
 
 func (s *Service) runAICodeReview(ctx context.Context, owner, repo string, prNum int, payload ghPRPayload) {
+	if s.reviewAlreadyStored(ctx, payload.Repository.FullName, prNum, payload.PullRequest.Head.SHA) {
+		return
+	}
 	var token string
 	if s.GitHub != nil && payload.Installation != nil && payload.Installation.ID != 0 {
 		tok, err := s.GitHub.InstallationToken(ctx, payload.Installation.ID)
@@ -125,44 +160,82 @@ func (s *Service) runAICodeReview(ctx context.Context, owner, repo string, prNum
 		}
 		return
 	}
+	reviewRes.HeadSHA = payload.PullRequest.Head.SHA
 
-	// 3. 可选模式 B：若配置了发表评论且拥有 GitHub 权限，发表评论至 PR
+	// 3. 先持久化审查结果，评论回写失败时管理台仍可查看报告。
+	if s.Store == nil {
+		return
+	}
+	repoRec, err := s.Store.Repositories().GetByFullName(ctx, payload.Repository.FullName)
+	if err != nil {
+		return
+	}
+	item, err := s.Store.WorkItems().GetByRepoNumber(ctx, repoRec.ID, prNum)
+	if err != nil {
+		return
+	}
+	settingKey := "ai.pr_review." + item.ID
+	persist := func() bool {
+		raw, marshalErr := json.Marshal(reviewRes)
+		if marshalErr != nil {
+			return false
+		}
+		if _, saveErr := s.Store.Settings().Upsert(ctx, store.SystemSetting{
+			ID:        ulid.Make().String(),
+			Key:       settingKey,
+			ValueJSON: raw,
+			UpdatedAt: time.Now().UTC(),
+			UpdatedBy: "ai_code_review",
+		}); saveErr != nil {
+			if s.Logger != nil {
+				s.Logger.Warn("ai code review: persist result failed", "repo", payload.Repository.FullName, "pr", prNum, "error", saveErr)
+			}
+			return false
+		}
+		return true
+	}
+	if !persist() {
+		return
+	}
+
+	// 4. 可选模式 B：持久化成功后再发表评论，避免外部评论先于内部状态存在。
 	if s.AI.ShouldCommentOnPR() && s.GitHub != nil && token != "" {
 		commentMD := ai.FormatPRComment(reviewRes)
-		err := s.GitHub.CreateIssueComment(ctx, token, owner, repo, prNum, commentMD)
-		if err == nil {
+		if err := s.GitHub.CreateIssueComment(ctx, token, owner, repo, prNum, commentMD); err != nil {
+			if s.Logger != nil {
+				s.Logger.Warn("ai code review: comment on pr failed", "repo", payload.Repository.FullName, "pr", prNum, "error", err)
+			}
+		} else {
 			reviewRes.CommentedOnPR = true
+			if !persist() && s.Logger != nil {
+				s.Logger.Warn("ai code review: persist comment status failed", "repo", payload.Repository.FullName, "pr", prNum)
+			}
 			if s.Logger != nil {
 				s.Logger.Info("ai code review: commented on pr", "repo", payload.Repository.FullName, "pr", prNum)
 			}
-		} else {
-			// 若由于无 write 权限（如 403）或网络问题失败，优雅降级，仅记录日志
-			if s.Logger != nil {
-				s.Logger.Warn("ai code review: comment on pr failed (graceful degradation)", "repo", payload.Repository.FullName, "pr", prNum, "error", err)
-			}
 		}
 	}
+}
 
-	// 4. 模式 A：持久化审查结果到系统设置表中（以仓库ID+PR编号为键，后台控制台可实时获取）
-	if s.Store != nil {
-		// 查找该 work_item 并存入系统设置表中
-		repoID := ""
-		if repoRec, err := s.Store.Repositories().GetByFullName(ctx, payload.Repository.FullName); err == nil {
-			repoID = repoRec.ID
-		}
-		if repoID != "" {
-			item, err := s.Store.WorkItems().GetByRepoNumber(ctx, repoID, prNum)
-			if err == nil {
-				raw, _ := json.Marshal(reviewRes)
-				settingKey := "ai.pr_review." + item.ID
-				_, _ = s.Store.Settings().Upsert(ctx, store.SystemSetting{
-					ID:        ulid.Make().String(),
-					Key:       settingKey,
-					ValueJSON: raw,
-					UpdatedAt: time.Now().UTC(),
-					UpdatedBy: "ai_code_review",
-				})
-			}
-		}
+func (s *Service) reviewAlreadyStored(ctx context.Context, fullName string, prNum int, headSHA string) bool {
+	if s.Store == nil || strings.TrimSpace(headSHA) == "" {
+		return false
 	}
+	repo, err := s.Store.Repositories().GetByFullName(ctx, fullName)
+	if err != nil {
+		return false
+	}
+	item, err := s.Store.WorkItems().GetByRepoNumber(ctx, repo.ID, prNum)
+	if err != nil {
+		return false
+	}
+	setting, err := s.Store.Settings().Get(ctx, "ai.pr_review."+item.ID)
+	if err != nil {
+		return false
+	}
+	var result ai.CodeReviewResult
+	if err := json.Unmarshal(setting.ValueJSON, &result); err != nil {
+		return false
+	}
+	return result.HeadSHA == headSHA
 }
