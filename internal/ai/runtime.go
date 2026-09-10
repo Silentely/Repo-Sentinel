@@ -58,18 +58,18 @@ type RuntimeConfig struct {
 	CodeReviewCommentOnPR bool
 
 	// 字段来源：env | database | unset（仅状态展示，不回显密钥）。
-	EnabledSource                 string
-	BaseURLSource                 string
-	ModelSource                   string
-	TimeoutSource                 string
-	MaxTokensSource               string
-	RetriesSource                 string
-	APIKeySource                  string
-	DigestEnabledSource           string
-	TriageEnabledSource           string
-	ReleaseSummaryEnabledSource   string
-	CodeReviewEnabledSource       string
-	CodeReviewCommentOnPRSource   string
+	EnabledSource               string
+	BaseURLSource               string
+	ModelSource                 string
+	TimeoutSource               string
+	MaxTokensSource             string
+	RetriesSource               string
+	APIKeySource                string
+	DigestEnabledSource         string
+	TriageEnabledSource         string
+	ReleaseSummaryEnabledSource string
+	CodeReviewEnabledSource     string
+	CodeReviewCommentOnPRSource string
 }
 
 // RuntimeFromEnv 从环境变量配置构建运行时基线并标记来源。

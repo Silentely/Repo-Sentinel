@@ -217,9 +217,10 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
         type="button"
         className="quiet-button quiet-button--compact"
         onClick={toggle}
+        aria-expanded={open}
         style={{ fontSize: "0.8rem", padding: "0.15rem 0.5rem", borderRadius: "4px" }}
       >
-        🤖 AI 代码审查报告 {open ? "▲" : "▼"}
+        🤖 AI 代码审查报告 {loading ? "…" : open ? "▲" : "▼"}
       </button>
       {open && (
         <div

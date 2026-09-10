@@ -82,7 +82,12 @@ func (c *Client) ReviewPR(ctx context.Context, repo, title, author, diff string)
 	if res.CodeSmells == nil {
 		res.CodeSmells = []string{}
 	}
-	if res.Score <= 0 || res.Score > 100 {
+	// 空响应（无 summary 且无任何风险/建议）按无效处理：避免把「无输出」渲染成健康报告并回写 PR。
+	if strings.TrimSpace(res.Summary) == "" &&
+		len(res.SecurityRisks) == 0 && len(res.BreakingRisks) == 0 && len(res.CodeSmells) == 0 {
+		return nil, fmt.Errorf("%w: empty review content", ErrInvalidCodeReview)
+	}
+	if res.Score < 0 || res.Score > 100 {
 		res.Score = 80
 	}
 	res.ReviewedAt = time.Now().UTC()

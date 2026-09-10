@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -88,5 +89,22 @@ func TestReviewPRMarksTruncatedDiff(t *testing.T) {
 	}
 	if !res.DiffTruncated {
 		t.Fatal("超过输入上限的审查结果必须标记 DiffTruncated")
+	}
+}
+
+func TestReviewPRRejectsEmptyResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{}"}}]}`))
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, APIKey: "test-key", Enabled: true}
+	res, err := client.ReviewPR(context.Background(), "o/r", "title", "author", "diff")
+	if err == nil || res != nil {
+		t.Fatalf("空审查响应应返回错误，res=%+v err=%v", res, err)
+	}
+	if !errors.Is(err, ErrInvalidCodeReview) {
+		t.Fatalf("expected ErrInvalidCodeReview, got %v", err)
 	}
 }

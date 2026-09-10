@@ -110,6 +110,10 @@ ai:
   triage_enabled: true
   # 是否启用 star 仓库新 Release 的更新速览（英文 notes 自动翻译要点）。
   release_summary_enabled: true
+  # 是否启用 PR 智能代码审查与安全审计（拉取 Diff 自动审计安全漏洞、破坏性变更与代码气味）。
+  code_review_enabled: true
+  # 是否以 Bot 身份在 GitHub PR 下发表审查评论（需 App 具备 PR 写权限），默认 false。
+  code_review_comment_on_pr: false
   # API Key 通过 REPOSENTINEL_AI_API_KEY 注入；enabled=true 时必须提供。
 
 oauth:

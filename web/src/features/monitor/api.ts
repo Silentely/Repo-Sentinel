@@ -761,7 +761,11 @@ export interface CodeReviewResult {
 export async function fetchWorkItemAIReview(workItemId: string): Promise<CodeReviewResult | null> {
   try {
     return await apiRequest<CodeReviewResult>(`/api/v1/work-items/${encodeURIComponent(workItemId)}/ai-review`);
-  } catch {
-    return null;
+  } catch (err) {
+    // 404 = 该 PR 尚无审查报告（正常空态）；其余错误向上抛，由调用方展示失败提示。
+    if ((err as { status?: number } | null)?.status === 404) {
+      return null;
+    }
+    throw err;
   }
 }

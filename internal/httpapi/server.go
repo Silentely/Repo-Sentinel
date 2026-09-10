@@ -197,10 +197,15 @@ func New(dependencies Dependencies) http.Handler {
 		loginSem:       make(chan struct{}, 3),
 		totpTickets:    auth.NewTOTPTicketManager(3 * time.Minute),
 		webhookSvc: &webhooksvc.Service{
-			Store:      dependencies.Store,
-			Logger:     dependencies.Logger,
-			Evaluator:  dependencies.Aggregator,
-			GitHub:     func() *githubx.AppClient { if dependencies.GitHubRuntime != nil { return dependencies.GitHubRuntime.Client }; return nil }(),
+			Store:     dependencies.Store,
+			Logger:    dependencies.Logger,
+			Evaluator: dependencies.Aggregator,
+			GitHub: func() *githubx.AppClient {
+				if dependencies.GitHubRuntime != nil {
+					return dependencies.GitHubRuntime.Client
+				}
+				return nil
+			}(),
 			AI:         dependencies.AI,
 			Background: dependencies.Background,
 			OnFailed:   MetricsIncWebhookFailed,

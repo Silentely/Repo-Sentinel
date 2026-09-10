@@ -430,7 +430,12 @@ func (c *AppClient) GetPRDiff(ctx context.Context, token, owner, repo string, pr
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	// 统一按 MaxPRDiffBytes+1 读取：正常 diff 足够；错误响应体（含速率限制说明）也远小于此，
+	// 避免为判断错误类型而读满大响应。
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, MaxPRDiffBytes+1))
+	if readErr != nil {
+		return "", readErr
+	}
 	if resp.StatusCode == http.StatusTooManyRequests ||
 		(resp.StatusCode == http.StatusForbidden &&
 			(resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")))) {

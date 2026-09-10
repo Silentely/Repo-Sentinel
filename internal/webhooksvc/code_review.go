@@ -23,9 +23,8 @@ type ghPRPayload struct {
 		User   struct {
 			Login string `json:"login"`
 		} `json:"user"`
-		Draft  bool `json:"draft"`
-		Merged bool `json:"merged"`
-		Head   struct {
+		Draft bool `json:"draft"`
+		Head  struct {
 			SHA string `json:"sha"`
 		} `json:"head"`
 	} `json:"pull_request"`
