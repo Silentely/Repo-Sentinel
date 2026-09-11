@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
-	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -322,7 +322,9 @@ func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, r
 					token = tok
 				}
 			}
-			jobs, err := e.GitHub.ListWorkflowJobs(ctx, token, parts[0], parts[1], *ev.WorkflowRunID)
+			jobsCtx, cancelJobs := context.WithTimeout(ctx, 5*time.Second)
+			jobs, err := e.GitHub.ListWorkflowJobs(jobsCtx, token, parts[0], parts[1], *ev.WorkflowRunID)
+			cancelJobs()
 			if err == nil {
 				for _, j := range jobs {
 					if store.IsFailureConclusion(j.Conclusion) {

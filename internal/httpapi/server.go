@@ -81,6 +81,8 @@ type Dependencies struct {
 	AIRuntime *ai.RuntimeConfig
 	// StarredPoller 可选；star 仓库 release 追踪轮询（配置保存/立即同步触发）。
 	StarredPoller *syncx.StarredReleasePoller
+	// WebhookService 可选；由 App 持有时可在关闭前等待异步 PR 审查任务排空。
+	WebhookService *webhooksvc.Service
 }
 
 type server struct {
@@ -189,14 +191,9 @@ func New(dependencies Dependencies) http.Handler {
 		dependencies.SchemaVersion = "unknown"
 	}
 
-	s := &server{
-		dependencies:   dependencies,
-		secureCookies:  usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
-		trustedProxies: parseTrustedSubnets(dependencies.Config.HTTP.TrustedProxies),
-		webhookSem:     make(chan struct{}, webhookProcessConcurrency),
-		loginSem:       make(chan struct{}, 3),
-		totpTickets:    auth.NewTOTPTicketManager(3 * time.Minute),
-		webhookSvc: &webhooksvc.Service{
+	webhookService := dependencies.WebhookService
+	if webhookService == nil {
+		webhookService = &webhooksvc.Service{
 			Store:     dependencies.Store,
 			Logger:    dependencies.Logger,
 			Evaluator: dependencies.Aggregator,
@@ -209,7 +206,16 @@ func New(dependencies Dependencies) http.Handler {
 			AI:         dependencies.AI,
 			Background: dependencies.Background,
 			OnFailed:   MetricsIncWebhookFailed,
-		},
+		}
+	}
+	s := &server{
+		dependencies:   dependencies,
+		secureCookies:  usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
+		trustedProxies: parseTrustedSubnets(dependencies.Config.HTTP.TrustedProxies),
+		webhookSem:     make(chan struct{}, webhookProcessConcurrency),
+		loginSem:       make(chan struct{}, 3),
+		totpTickets:    auth.NewTOTPTicketManager(3 * time.Minute),
+		webhookSvc:     webhookService,
 	}
 	// 若运行时 Public Base URL 来自管理台，启动后仍以当前快照为准（见 cookiesSecure）。
 	router := chi.NewRouter()

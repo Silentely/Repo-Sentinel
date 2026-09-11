@@ -14,6 +14,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
+	"github.com/Silentely/Repo-Sentinel/internal/webhooksvc"
 )
 
 const (
@@ -57,6 +58,7 @@ type App struct {
 	workerCtx       context.Context
 	workerCancel    context.CancelFunc
 	scheduler       *syncx.Scheduler
+	webhookService  *webhooksvc.Service
 	// 就绪日志与监听地址/驱动：Build 记录，Run 在监听成功后才输出 ready。
 	httpAddr       string
 	databaseDriver string
@@ -75,6 +77,13 @@ func (a *App) Close() error {
 		}
 		if a.workerCancel != nil {
 			a.workerCancel()
+		}
+		if a.webhookService != nil {
+			waitCtx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
+			if err := a.webhookService.WaitReviews(waitCtx); err != nil && a.logger != nil {
+				a.logger.Warn("ai code review drain incomplete", "error_code", "ai_review_shutdown_timeout", "error", err.Error())
+			}
+			cancel()
 		}
 		if a.data != nil {
 			a.closeErr = a.data.Close()

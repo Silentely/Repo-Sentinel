@@ -24,6 +24,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
+	"github.com/Silentely/Repo-Sentinel/internal/webhooksvc"
 	webassets "github.com/Silentely/Repo-Sentinel/web"
 	"github.com/oklog/ulid/v2"
 )
@@ -187,6 +188,10 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		Logger:   logger,
 	}
 
+	webhookService := &webhooksvc.Service{
+		Store: data, Logger: logger, Evaluator: aggregator, GitHub: ghClient,
+		AI: aiClient, Background: workerCtx, OnFailed: httpapi.MetricsIncWebhookFailed,
+	}
 	handler := httpapi.New(httpapi.Dependencies{
 		Config:         cfg,
 		Store:          data,
@@ -209,6 +214,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		AI:             aiClient,
 		AIRuntime:      aiRuntime,
 		StarredPoller:  starred,
+		WebhookService: webhookService,
 	})
 	if err := bootstrapNotifyChannels(ctx, logger, data, keyRing, cfg); err != nil {
 		return nil, err
@@ -225,6 +231,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		logger:          logger,
 		cleanupInterval: defaultCleanupInterval,
 		scheduler:       scheduler,
+		webhookService:  webhookService,
 		httpAddr:        cfg.HTTP.Addr,
 		databaseDriver:  cfg.Database.Driver,
 	}

@@ -309,6 +309,15 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 			headSHA = detail.Head.SHA
 		}
 	}
+	alreadyCommentedForHead := false
+	if headSHA != "" {
+		if setting, err := s.Store.Settings().Get(ctx, "ai.pr_review."+item.ID); err == nil {
+			var previous ai.CodeReviewResult
+			if json.Unmarshal(setting.ValueJSON, &previous) == nil {
+				alreadyCommentedForHead = previous.HeadSHA == headSHA && previous.CommentedOnPR
+			}
+		}
+	}
 
 	key := fmt.Sprintf("%s#%d#%s", repoRec.FullName, item.Number, headSHA)
 	s.reviewMu.Lock()
@@ -363,7 +372,7 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 		return nil, fmt.Errorf("persist review result: %w", saveErr)
 	}
 
-	if s.AI.ShouldCommentOnPR() && s.GitHub != nil && token != "" {
+	if s.AI.ShouldCommentOnPR() && s.GitHub != nil && token != "" && !alreadyCommentedForHead {
 		commentMD := ai.FormatPRComment(reviewRes)
 		if err := s.GitHub.CreateIssueComment(ctx, token, owner, repo, item.Number, commentMD); err == nil {
 			reviewRes.CommentedOnPR = true

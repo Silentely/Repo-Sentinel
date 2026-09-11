@@ -164,7 +164,7 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 		if s.Evaluator != nil {
 			err = s.Evaluator.Evaluate(processCtx, res, repoName)
 		} else {
-			err = (&rules.Engine{Store: s.Store, AI: s.AI, Logger: s.Logger}).Evaluate(processCtx, res, repoName)
+			err = (&rules.Engine{Store: s.Store, AI: s.AI, Logger: s.Logger, GitHub: s.GitHub}).Evaluate(processCtx, res, repoName)
 		}
 		if err != nil {
 			// 通知已丢：状态必须可查，标记为失败而不是 processed。

@@ -287,12 +287,24 @@ type WorkflowJobItem struct {
 
 // ListWorkflowJobs 拉取指定 workflow run 的 jobs 列表。
 func (c *AppClient) ListWorkflowJobs(ctx context.Context, token, owner, repo string, runID int64) ([]WorkflowJobItem, error) {
-	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/jobs", owner, repo, runID)
-	var payload struct {
-		Jobs []WorkflowJobItem `json:"jobs"`
+	const perPage = 100
+	const maxPages = 20
+	var all []WorkflowJobItem
+	for page := 1; page <= maxPages; page++ {
+		path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/jobs?per_page=%d&page=%d", owner, repo, runID, perPage, page)
+		var payload struct {
+			Jobs []WorkflowJobItem `json:"jobs"`
+		}
+		_, link, err := c.DoJSONPage(ctx, http.MethodGet, path, token, &payload)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, payload.Jobs...)
+		if !strings.Contains(link, `rel="next"`) || len(payload.Jobs) == 0 {
+			return all, nil
+		}
 	}
-	_, err := c.DoJSON(ctx, "GET", path, token, &payload)
-	return payload.Jobs, err
+	return all, nil
 }
 
 // ListCheckRuns 拉取 commit 的检查运行列表。

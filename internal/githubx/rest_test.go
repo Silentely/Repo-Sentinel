@@ -212,13 +212,24 @@ func TestListWorkflowJobs(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
+		page := r.URL.Query().Get("page")
+		if page == "" {
+			page = "1"
+		}
 		if got := r.Header.Get("Authorization"); got != "Bearer test-tok" {
 			t.Errorf("expected bearer token, got %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
+		if page == "1" {
+			w.Header().Set("Link", `<https://api.github.com/repos/acme/demo/actions/runs/12345/jobs?page=2>; rel="next"`)
+		}
 		w.WriteHeader(http.StatusOK)
+		if page == "2" {
+			w.Write([]byte(`{"total_count":2,"jobs":[{"id":2,"name":"lint","conclusion":"success"}]}`))
+			return
+		}
 		w.Write([]byte(`{
-			"total_count": 1,
+			"total_count": 2,
 			"jobs": [
 				{
 					"id": 1,
@@ -241,8 +252,8 @@ func TestListWorkflowJobs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListWorkflowJobs failed: %v", err)
 	}
-	if len(jobs) != 1 {
-		t.Fatalf("expected 1 job, got %d", len(jobs))
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs across pages, got %d", len(jobs))
 	}
 	if jobs[0].Name != "build-and-test" || jobs[0].Conclusion != "failure" {
 		t.Fatalf("unexpected job: %+v", jobs[0])
