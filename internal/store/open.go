@@ -206,7 +206,7 @@ func (s *storeImpl) Settings() SettingsStore {
 func (s *storeImpl) Audits() AuditStore               { return &auditStore{client: s.client} }
 func (s *storeImpl) Installations() InstallationStore { return &installationStore{client: s.client} }
 func (s *storeImpl) Repositories() RepositoryStore {
-	return &repositoryStore{client: s.client, idsCache: s.repoIDsCache}
+	return &repositoryStore{client: s.client, idsCache: s.repoIDsCache, settingsCache: s.settingsCache}
 }
 func (s *storeImpl) WebhookDeliveries() WebhookDeliveryStore {
 	return &webhookDeliveryStore{client: s.client}

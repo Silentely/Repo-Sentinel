@@ -25,18 +25,19 @@ const (
 // StoredConfig 是数据库中的可编辑 AI 配置（API Key 为密钥信封）。
 // bool/int 字段用指针区分「未设置」与「显式值」，支持 env 优先、DB 补缺语义。
 type StoredConfig struct {
-	Enabled               *bool  `json:"enabled,omitempty"`
-	BaseURL               string `json:"base_url,omitempty"`
-	Model                 string `json:"model,omitempty"`
-	TimeoutSec            *int64 `json:"timeout_sec,omitempty"`
-	MaxTokens             *int   `json:"max_tokens,omitempty"`
-	Retries               *int   `json:"retries,omitempty"`
-	APIKeyEnvelope        string `json:"api_key_envelope,omitempty"`
-	DigestEnabled         *bool  `json:"digest_enabled,omitempty"`
-	TriageEnabled         *bool  `json:"triage_enabled,omitempty"`
-	ReleaseSummaryEnabled *bool  `json:"release_summary_enabled,omitempty"`
-	CodeReviewEnabled     *bool  `json:"code_review_enabled,omitempty"`
-	CodeReviewCommentOnPR *bool  `json:"code_review_comment_on_pr,omitempty"`
+	Enabled                *bool  `json:"enabled,omitempty"`
+	BaseURL                string `json:"base_url,omitempty"`
+	Model                  string `json:"model,omitempty"`
+	TimeoutSec             *int64 `json:"timeout_sec,omitempty"`
+	MaxTokens              *int   `json:"max_tokens,omitempty"`
+	Retries                *int   `json:"retries,omitempty"`
+	APIKeyEnvelope         string `json:"api_key_envelope,omitempty"`
+	DigestEnabled          *bool  `json:"digest_enabled,omitempty"`
+	TriageEnabled          *bool  `json:"triage_enabled,omitempty"`
+	ReleaseSummaryEnabled  *bool  `json:"release_summary_enabled,omitempty"`
+	CodeReviewEnabled      *bool  `json:"code_review_enabled,omitempty"`
+	CodeReviewCommentOnPR  *bool  `json:"code_review_comment_on_pr,omitempty"`
+	FailureAnalysisEnabled *bool  `json:"failure_analysis_enabled,omitempty"`
 }
 
 // RuntimeConfig 持有进程内可热更新的 AI 配置。
@@ -44,32 +45,34 @@ type StoredConfig struct {
 type RuntimeConfig struct {
 	mu sync.RWMutex
 
-	Enabled               bool
-	BaseURL               string
-	Model                 string
-	Timeout               time.Duration
-	MaxTokens             int
-	Retries               int
-	APIKey                string
-	DigestEnabled         bool
-	TriageEnabled         bool
-	ReleaseSummaryEnabled bool
-	CodeReviewEnabled     bool
-	CodeReviewCommentOnPR bool
+	Enabled                bool
+	BaseURL                string
+	Model                  string
+	Timeout                time.Duration
+	MaxTokens              int
+	Retries                int
+	APIKey                 string
+	DigestEnabled          bool
+	TriageEnabled          bool
+	ReleaseSummaryEnabled  bool
+	CodeReviewEnabled      bool
+	CodeReviewCommentOnPR  bool
+	FailureAnalysisEnabled bool
 
 	// 字段来源：env | database | unset（仅状态展示，不回显密钥）。
-	EnabledSource               string
-	BaseURLSource               string
-	ModelSource                 string
-	TimeoutSource               string
-	MaxTokensSource             string
-	RetriesSource               string
-	APIKeySource                string
-	DigestEnabledSource         string
-	TriageEnabledSource         string
-	ReleaseSummaryEnabledSource string
-	CodeReviewEnabledSource     string
-	CodeReviewCommentOnPRSource string
+	EnabledSource                string
+	BaseURLSource                string
+	ModelSource                  string
+	TimeoutSource                string
+	MaxTokensSource              string
+	RetriesSource                string
+	APIKeySource                 string
+	DigestEnabledSource          string
+	TriageEnabledSource          string
+	ReleaseSummaryEnabledSource  string
+	CodeReviewEnabledSource      string
+	CodeReviewCommentOnPRSource  string
+	FailureAnalysisEnabledSource string
 }
 
 // RuntimeFromEnv 从环境变量配置构建运行时基线并标记来源。
@@ -77,30 +80,32 @@ type RuntimeConfig struct {
 // 避免把默认值误判为 env 锁定导致管理台无法覆盖；Retries 同为「偏离默认（1）」判定。
 func RuntimeFromEnv(cfg config.AIConfig) *RuntimeConfig {
 	return &RuntimeConfig{
-		Enabled:                     cfg.Enabled,
-		BaseURL:                     strings.TrimSpace(cfg.BaseURL),
-		Model:                       strings.TrimSpace(cfg.Model),
-		Timeout:                     cfg.Timeout,
-		MaxTokens:                   cfg.MaxTokens,
-		Retries:                     cfg.Retries,
-		APIKey:                      cfg.APIKey.Reveal(),
-		DigestEnabled:               cfg.DigestEnabled,
-		TriageEnabled:               cfg.TriageEnabled,
-		ReleaseSummaryEnabled:       cfg.ReleaseSummaryEnabled,
-		CodeReviewEnabled:           cfg.CodeReviewEnabled,
-		CodeReviewCommentOnPR:       cfg.CodeReviewCommentOnPR,
-		EnabledSource:               sourceLabel(cfg.Enabled, "env"),
-		BaseURLSource:               sourceLabel(strings.TrimSpace(cfg.BaseURL) != "", "env"),
-		ModelSource:                 sourceLabel(strings.TrimSpace(cfg.Model) != "", "env"),
-		TimeoutSource:               sourceLabel(cfg.Timeout > 0, "env"),
-		MaxTokensSource:             sourceLabel(cfg.MaxTokens > 0, "env"),
-		RetriesSource:               sourceLabel(cfg.Retries != DefaultRetries, "env"),
-		APIKeySource:                sourceLabel(cfg.APIKey.Reveal() != "", "env"),
-		DigestEnabledSource:         sourceLabel(!cfg.DigestEnabled, "env"),
-		TriageEnabledSource:         sourceLabel(!cfg.TriageEnabled, "env"),
-		ReleaseSummaryEnabledSource: sourceLabel(!cfg.ReleaseSummaryEnabled, "env"),
-		CodeReviewEnabledSource:     sourceLabel(!cfg.CodeReviewEnabled, "env"),
-		CodeReviewCommentOnPRSource: sourceLabel(cfg.CodeReviewCommentOnPR, "env"),
+		Enabled:                      cfg.Enabled,
+		BaseURL:                      strings.TrimSpace(cfg.BaseURL),
+		Model:                        strings.TrimSpace(cfg.Model),
+		Timeout:                      cfg.Timeout,
+		MaxTokens:                    cfg.MaxTokens,
+		Retries:                      cfg.Retries,
+		APIKey:                       cfg.APIKey.Reveal(),
+		DigestEnabled:                cfg.DigestEnabled,
+		TriageEnabled:                cfg.TriageEnabled,
+		ReleaseSummaryEnabled:        cfg.ReleaseSummaryEnabled,
+		CodeReviewEnabled:            cfg.CodeReviewEnabled,
+		CodeReviewCommentOnPR:        cfg.CodeReviewCommentOnPR,
+		FailureAnalysisEnabled:       cfg.FailureAnalysisEnabled,
+		EnabledSource:                sourceLabel(cfg.Enabled, "env"),
+		BaseURLSource:                sourceLabel(strings.TrimSpace(cfg.BaseURL) != "", "env"),
+		ModelSource:                  sourceLabel(strings.TrimSpace(cfg.Model) != "", "env"),
+		TimeoutSource:                sourceLabel(cfg.Timeout > 0, "env"),
+		MaxTokensSource:              sourceLabel(cfg.MaxTokens > 0, "env"),
+		RetriesSource:                sourceLabel(cfg.Retries != DefaultRetries, "env"),
+		APIKeySource:                 sourceLabel(cfg.APIKey.Reveal() != "", "env"),
+		DigestEnabledSource:          sourceLabel(!cfg.DigestEnabled, "env"),
+		TriageEnabledSource:          sourceLabel(!cfg.TriageEnabled, "env"),
+		ReleaseSummaryEnabledSource:  sourceLabel(!cfg.ReleaseSummaryEnabled, "env"),
+		CodeReviewEnabledSource:      sourceLabel(!cfg.CodeReviewEnabled, "env"),
+		CodeReviewCommentOnPRSource:  sourceLabel(cfg.CodeReviewCommentOnPR, "env"),
+		FailureAnalysisEnabledSource: sourceLabel(!cfg.FailureAnalysisEnabled, "env"),
 	}
 }
 
@@ -112,30 +117,32 @@ func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return RuntimeConfig{
-		Enabled:                     r.Enabled,
-		BaseURL:                     r.BaseURL,
-		Model:                       r.Model,
-		Timeout:                     r.Timeout,
-		MaxTokens:                   r.MaxTokens,
-		Retries:                     r.Retries,
-		APIKey:                      r.APIKey,
-		DigestEnabled:               r.DigestEnabled,
-		TriageEnabled:               r.TriageEnabled,
-		ReleaseSummaryEnabled:       r.ReleaseSummaryEnabled,
-		CodeReviewEnabled:           r.CodeReviewEnabled,
-		CodeReviewCommentOnPR:       r.CodeReviewCommentOnPR,
-		EnabledSource:               r.EnabledSource,
-		BaseURLSource:               r.BaseURLSource,
-		ModelSource:                 r.ModelSource,
-		TimeoutSource:               r.TimeoutSource,
-		MaxTokensSource:             r.MaxTokensSource,
-		RetriesSource:               r.RetriesSource,
-		APIKeySource:                r.APIKeySource,
-		DigestEnabledSource:         r.DigestEnabledSource,
-		TriageEnabledSource:         r.TriageEnabledSource,
-		ReleaseSummaryEnabledSource: r.ReleaseSummaryEnabledSource,
-		CodeReviewEnabledSource:     r.CodeReviewEnabledSource,
-		CodeReviewCommentOnPRSource: r.CodeReviewCommentOnPRSource,
+		Enabled:                      r.Enabled,
+		BaseURL:                      r.BaseURL,
+		Model:                        r.Model,
+		Timeout:                      r.Timeout,
+		MaxTokens:                    r.MaxTokens,
+		Retries:                      r.Retries,
+		APIKey:                       r.APIKey,
+		DigestEnabled:                r.DigestEnabled,
+		TriageEnabled:                r.TriageEnabled,
+		ReleaseSummaryEnabled:        r.ReleaseSummaryEnabled,
+		CodeReviewEnabled:            r.CodeReviewEnabled,
+		CodeReviewCommentOnPR:        r.CodeReviewCommentOnPR,
+		FailureAnalysisEnabled:       r.FailureAnalysisEnabled,
+		EnabledSource:                r.EnabledSource,
+		BaseURLSource:                r.BaseURLSource,
+		ModelSource:                  r.ModelSource,
+		TimeoutSource:                r.TimeoutSource,
+		MaxTokensSource:              r.MaxTokensSource,
+		RetriesSource:                r.RetriesSource,
+		APIKeySource:                 r.APIKeySource,
+		DigestEnabledSource:          r.DigestEnabledSource,
+		TriageEnabledSource:          r.TriageEnabledSource,
+		ReleaseSummaryEnabledSource:  r.ReleaseSummaryEnabledSource,
+		CodeReviewEnabledSource:      r.CodeReviewEnabledSource,
+		CodeReviewCommentOnPRSource:  r.CodeReviewCommentOnPRSource,
+		FailureAnalysisEnabledSource: r.FailureAnalysisEnabledSource,
 	}
 }
 
@@ -158,6 +165,7 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.ReleaseSummaryEnabled = next.ReleaseSummaryEnabled
 	r.CodeReviewEnabled = next.CodeReviewEnabled
 	r.CodeReviewCommentOnPR = next.CodeReviewCommentOnPR
+	r.FailureAnalysisEnabled = next.FailureAnalysisEnabled
 	r.EnabledSource = next.EnabledSource
 	r.BaseURLSource = next.BaseURLSource
 	r.ModelSource = next.ModelSource
@@ -170,24 +178,26 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.ReleaseSummaryEnabledSource = next.ReleaseSummaryEnabledSource
 	r.CodeReviewEnabledSource = next.CodeReviewEnabledSource
 	r.CodeReviewCommentOnPRSource = next.CodeReviewCommentOnPRSource
+	r.FailureAnalysisEnabledSource = next.FailureAnalysisEnabledSource
 }
 
 // Client 将当前运行时配置物化为可用的 AI 客户端。
 func (r *RuntimeConfig) Client() *Client {
 	snap := r.Snapshot()
 	return &Client{
-		Enabled:               snap.Enabled,
-		BaseURL:               snap.BaseURL,
-		APIKey:                snap.APIKey,
-		Model:                 snap.Model,
-		Timeout:               snap.Timeout,
-		MaxTokens:             snap.MaxTokens,
-		Retries:               snap.Retries,
-		DigestEnabled:         snap.DigestEnabled,
-		TriageEnabled:         snap.TriageEnabled,
-		ReleaseSummaryEnabled: snap.ReleaseSummaryEnabled,
-		CodeReviewEnabled:     snap.CodeReviewEnabled,
-		CodeReviewCommentOnPR: snap.CodeReviewCommentOnPR,
+		Enabled:                snap.Enabled,
+		BaseURL:                snap.BaseURL,
+		APIKey:                 snap.APIKey,
+		Model:                  snap.Model,
+		Timeout:                snap.Timeout,
+		MaxTokens:              snap.MaxTokens,
+		Retries:                snap.Retries,
+		DigestEnabled:          snap.DigestEnabled,
+		TriageEnabled:          snap.TriageEnabled,
+		ReleaseSummaryEnabled:  snap.ReleaseSummaryEnabled,
+		CodeReviewEnabled:      snap.CodeReviewEnabled,
+		CodeReviewCommentOnPR:  snap.CodeReviewCommentOnPR,
+		FailureAnalysisEnabled: snap.FailureAnalysisEnabled,
 	}
 }
 
@@ -319,6 +329,10 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 	if snap.CodeReviewCommentOnPRSource != "env" && stored.CodeReviewCommentOnPR != nil {
 		snap.CodeReviewCommentOnPR = *stored.CodeReviewCommentOnPR
 		snap.CodeReviewCommentOnPRSource = "database"
+	}
+	if snap.FailureAnalysisEnabledSource != "env" && stored.FailureAnalysisEnabled != nil {
+		snap.FailureAnalysisEnabled = *stored.FailureAnalysisEnabled
+		snap.FailureAnalysisEnabledSource = "database"
 	}
 
 	rt.Replace(&snap)

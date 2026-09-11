@@ -58,6 +58,9 @@ type AIConfig struct {
 	CodeReviewEnabled bool `yaml:"code_review_enabled"`
 	// CodeReviewCommentOnPR 是否在 GitHub PR 下发表评论，默认 false。
 	CodeReviewCommentOnPR bool `yaml:"code_review_comment_on_pr"`
+	// FailureAnalysisEnabled 是否启用 Actions 失败运行的 AI 归因诊断，默认 true；
+	// 与安全告警分诊（triage_enabled）相互独立。
+	FailureAnalysisEnabled bool `yaml:"failure_analysis_enabled"`
 }
 
 // MetricsConfig 描述 Prometheus /metrics 暴露策略。

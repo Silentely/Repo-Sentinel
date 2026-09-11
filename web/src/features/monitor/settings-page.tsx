@@ -136,6 +136,7 @@ interface AIFormState {
   releaseSummary: boolean;
   codeReview: boolean;
   codeReviewCommentOnPR: boolean;
+  failureAnalysis: boolean;
   apiKey: string;
 }
 
@@ -155,6 +156,7 @@ function aiFormFromConfig(data: AIConfig | undefined): AIFormState {
     releaseSummary: data?.release_summary_enabled !== false,
     codeReview: data?.code_review_enabled !== false,
     codeReviewCommentOnPR: Boolean(data?.code_review_comment_on_pr),
+    failureAnalysis: data?.failure_analysis_enabled !== false,
     apiKey: "",
   };
 }
@@ -173,6 +175,7 @@ function aiBody(form: AIFormState, cfg: AIConfig | undefined): AIConfigInput {
   if (!cfg?.release_summary_enabled_locked) body.release_summary_enabled = form.releaseSummary;
   if (!cfg?.code_review_enabled_locked) body.code_review_enabled = form.codeReview;
   if (!cfg?.code_review_comment_on_pr_locked) body.code_review_comment_on_pr = form.codeReviewCommentOnPR;
+  if (!cfg?.failure_analysis_enabled_locked) body.failure_analysis_enabled = form.failureAnalysis;
   if (!cfg?.api_key_locked && form.apiKey.trim()) body.api_key = form.apiKey.trim();
   return body;
 }
@@ -617,6 +620,10 @@ export function SettingsPage() {
         <label className="check-row" style={{ paddingLeft: "1.5rem" }}>
           <input type="checkbox" checked={aiForm.codeReviewCommentOnPR} disabled={aiConfig.data?.code_review_comment_on_pr_locked || !aiForm.codeReview} onChange={(e) => setAI("codeReviewCommentOnPR", e.target.checked)} />
           <span>以 Bot 身份直接在 GitHub PR 下发表审查评论（模式 B，需 App 具备 PR 写权限）</span>
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={aiForm.failureAnalysis} disabled={aiConfig.data?.failure_analysis_enabled_locked} onChange={(e) => setAI("failureAnalysis", e.target.checked)} />
+          <span>Actions 失败智能诊断（构建失败通知附 AI 归因与排查建议，独立于安全告警分诊开关）</span>
         </label>
         <div className="channel-form__buttons">
           <button className="primary-button primary-button--inline" type="button" disabled={saveAIConfigMut.isPending || aiConfig.isLoading || aiConfig.isError} onClick={submitAIConfig}>

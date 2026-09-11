@@ -67,6 +67,21 @@ func TestDigestAndTriageEnabled(t *testing.T) {
 	}
 }
 
+// TestFailureAnalysisEnabled 验证 CI 失败诊断独立开关：与分诊开关互不影响。
+func TestFailureAnalysisEnabled(t *testing.T) {
+	on := &Client{APIKey: "k", Enabled: true, FailureAnalysisEnabled: true, TriageEnabled: false}
+	if !on.IsFailureAnalysisEnabled() {
+		t.Fatal("failure_analysis_enabled=true 时诊断应可用")
+	}
+	if on.IsTriageEnabled() {
+		t.Fatal("triage_enabled=false 时分诊不应可用")
+	}
+	off := &Client{APIKey: "k", Enabled: true, TriageEnabled: true}
+	if off.IsFailureAnalysisEnabled() {
+		t.Fatal("failure_analysis_enabled 未开启时诊断不可用")
+	}
+}
+
 // TestClientReplace 验证热更新覆盖全部配置字段（含 release 更新速览开关），
 // 避免管理台保存后旧值残留到进程重启。
 func TestClientReplace(t *testing.T) {
@@ -75,15 +90,16 @@ func TestClientReplace(t *testing.T) {
 		t.Fatal("初始 release 更新速览应可用")
 	}
 	c.Replace(&Client{
-		Enabled:               true,
-		APIKey:                "k2",
-		Model:                 "m2",
-		Timeout:               5 * time.Second,
-		MaxTokens:             100,
-		Retries:               2,
-		DigestEnabled:         true,
-		TriageEnabled:         true,
-		ReleaseSummaryEnabled: false,
+		Enabled:                true,
+		APIKey:                 "k2",
+		Model:                  "m2",
+		Timeout:                5 * time.Second,
+		MaxTokens:              100,
+		Retries:                2,
+		DigestEnabled:          true,
+		TriageEnabled:          true,
+		ReleaseSummaryEnabled:  false,
+		FailureAnalysisEnabled: true,
 	})
 	s := c.Snapshot()
 	if s.ReleaseSummaryEnabled {
@@ -97,6 +113,9 @@ func TestClientReplace(t *testing.T) {
 	}
 	if !s.DigestEnabled || !s.TriageEnabled {
 		t.Fatal("替换后摘要/分诊开关应更新")
+	}
+	if !s.FailureAnalysisEnabled {
+		t.Fatal("替换后 CI 诊断开关应更新")
 	}
 	// 未注入 HTTP/Logger 时保留现状，不被清空。
 	httpClient := &http.Client{}

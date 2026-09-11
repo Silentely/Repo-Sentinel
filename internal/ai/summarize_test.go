@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -230,5 +231,29 @@ func TestDiagnoseWorkflowFailure(t *testing.T) {
 	}
 	if !strings.Contains(req.Messages[1].Content, "ci.yml") || !strings.Contains(req.Messages[1].Content, "Run tests") {
 		t.Fatalf("user prompt 应包含工作流与步骤信息: %s", req.Messages[1].Content)
+	}
+}
+
+func TestRenderFailedSteps(t *testing.T) {
+	if got := renderFailedSteps(nil); got != "未知步骤" {
+		t.Fatalf("空步骤应回退未知步骤，实际: %q", got)
+	}
+	if got := renderFailedSteps([]string{"build / test"}); got != "build / test" {
+		t.Fatalf("单条步骤应原样输出，实际: %q", got)
+	}
+	steps := make([]string, maxFailedSteps+5)
+	for i := range steps {
+		steps[i] = fmt.Sprintf("job-%d / step-%d", i, i)
+	}
+	got := renderFailedSteps(steps)
+	if !strings.Contains(got, "job-0 / step-0") || strings.Contains(got, "job-30 / step-30") {
+		t.Fatal("超出上限的步骤应被截断")
+	}
+	if !strings.Contains(got, "另有 5 条未列出") {
+		t.Fatalf("截断时应标注剩余条数，实际: %q", got)
+	}
+	// 截断后总长度必须有界：失败条目数百条时不再无限拼接。
+	if len([]rune(got)) > maxFailedSteps*40+100 {
+		t.Fatalf("截断后长度应有界，实际: %d", len([]rune(got)))
 	}
 }

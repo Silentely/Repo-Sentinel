@@ -141,13 +141,13 @@ func TestMergeFromStore(t *testing.T) {
 	if err := SaveStoredConfig(t.Context(), data, StoredConfig{
 		Enabled: &on, BaseURL: "http://db.example/v1", Model: "db-model",
 		TimeoutSec: &timeout, MaxTokens: &maxTokens, Retries: &retries, APIKeyEnvelope: env,
-		DigestEnabled: &off, TriageEnabled: &on,
+		DigestEnabled: &off, TriageEnabled: &on, FailureAnalysisEnabled: &off,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	// env 只设置了 BaseURL 与 Model，其余由 DB 补缺（bool/Retries 保持默认值以免被判定为显式设置）。
-	rt := RuntimeFromEnv(config.AIConfig{BaseURL: "http://env.example/v1", Model: "env-model", Retries: 1, DigestEnabled: true, TriageEnabled: true})
+	rt := RuntimeFromEnv(config.AIConfig{BaseURL: "http://env.example/v1", Model: "env-model", Retries: 1, DigestEnabled: true, TriageEnabled: true, FailureAnalysisEnabled: true})
 	if err := MergeFromStore(t.Context(), data, ring, rt); err != nil {
 		t.Fatal(err)
 	}
@@ -175,6 +175,12 @@ func TestMergeFromStore(t *testing.T) {
 	}
 	if snap.DigestEnabledSource != "database" || snap.TriageEnabledSource != "database" {
 		t.Fatalf("digest/triage 来源应为 database：%+v", &snap)
+	}
+	if snap.FailureAnalysisEnabled {
+		t.Fatalf("CI 诊断开关应由 DB 补缺为关闭：%+v", &snap)
+	}
+	if snap.FailureAnalysisEnabledSource != "database" {
+		t.Fatalf("CI 诊断开关来源应为 database：%+v", &snap)
 	}
 }
 

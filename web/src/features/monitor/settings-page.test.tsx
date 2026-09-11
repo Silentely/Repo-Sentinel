@@ -92,6 +92,7 @@ let aiConfigFixture = {
   retries: 1,
   digest_enabled: true,
   triage_enabled: true,
+  failure_analysis_enabled: true,
   api_key_configured: false,
   enabled_source: "unset",
   base_url_source: "unset",
@@ -102,6 +103,7 @@ let aiConfigFixture = {
   api_key_source: "unset",
   digest_enabled_source: "unset",
   triage_enabled_source: "unset",
+  failure_analysis_enabled_source: "unset",
   enabled_locked: false,
   base_url_locked: false,
   model_locked: false,
@@ -111,6 +113,7 @@ let aiConfigFixture = {
   api_key_locked: false,
   digest_enabled_locked: false,
   triage_enabled_locked: false,
+  failure_analysis_enabled_locked: false,
   can_edit_in_ui: true,
   note: "",
 };

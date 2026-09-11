@@ -58,12 +58,14 @@ type Client struct {
 	// Retries 瞬时失败（超时/网络/5xx/空响应）自动重试次数；0 表示不重试。
 	// 运行时归一为配置值，直接构造（测试/连通性探测）时 0 即不重试。
 	Retries int
-	// DigestEnabled / TriageEnabled / ReleaseSummaryEnabled / CodeReviewEnabled 分别控制摘要、分诊、release 总结与 PR 代码审查功能开关。
-	DigestEnabled         bool
-	TriageEnabled         bool
-	ReleaseSummaryEnabled bool
-	CodeReviewEnabled     bool
-	CodeReviewCommentOnPR bool
+	// DigestEnabled / TriageEnabled / ReleaseSummaryEnabled / CodeReviewEnabled /
+	// FailureAnalysisEnabled 分别控制摘要、分诊、release 总结、PR 代码审查与 CI 失败诊断功能开关。
+	DigestEnabled          bool
+	TriageEnabled          bool
+	ReleaseSummaryEnabled  bool
+	CodeReviewEnabled      bool
+	CodeReviewCommentOnPR  bool
+	FailureAnalysisEnabled bool
 
 	// HTTP 可注入自定义客户端（测试/代理场景）。
 	HTTP *http.Client
@@ -112,20 +114,21 @@ func (c *Client) Snapshot() Client {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return Client{
-		Enabled:               c.Enabled,
-		BaseURL:               c.BaseURL,
-		APIKey:                c.APIKey,
-		Model:                 c.Model,
-		Timeout:               c.Timeout,
-		MaxTokens:             c.MaxTokens,
-		Retries:               c.Retries,
-		DigestEnabled:         c.DigestEnabled,
-		TriageEnabled:         c.TriageEnabled,
-		ReleaseSummaryEnabled: c.ReleaseSummaryEnabled,
-		CodeReviewEnabled:     c.CodeReviewEnabled,
-		CodeReviewCommentOnPR: c.CodeReviewCommentOnPR,
-		HTTP:                  c.HTTP,
-		Logger:                c.Logger,
+		Enabled:                c.Enabled,
+		BaseURL:                c.BaseURL,
+		APIKey:                 c.APIKey,
+		Model:                  c.Model,
+		Timeout:                c.Timeout,
+		MaxTokens:              c.MaxTokens,
+		Retries:                c.Retries,
+		DigestEnabled:          c.DigestEnabled,
+		TriageEnabled:          c.TriageEnabled,
+		ReleaseSummaryEnabled:  c.ReleaseSummaryEnabled,
+		CodeReviewEnabled:      c.CodeReviewEnabled,
+		CodeReviewCommentOnPR:  c.CodeReviewCommentOnPR,
+		FailureAnalysisEnabled: c.FailureAnalysisEnabled,
+		HTTP:                   c.HTTP,
+		Logger:                 c.Logger,
 	}
 }
 
@@ -149,6 +152,7 @@ func (c *Client) Replace(next *Client) {
 	c.ReleaseSummaryEnabled = next.ReleaseSummaryEnabled
 	c.CodeReviewEnabled = next.CodeReviewEnabled
 	c.CodeReviewCommentOnPR = next.CodeReviewCommentOnPR
+	c.FailureAnalysisEnabled = next.FailureAnalysisEnabled
 	if next.HTTP != nil {
 		c.HTTP = next.HTTP
 	}
@@ -191,6 +195,13 @@ func (c *Client) IsCodeReviewEnabled() bool {
 func (c *Client) ShouldCommentOnPR() bool {
 	s := c.Snapshot()
 	return s.Enabled && s.APIKey != "" && s.CodeReviewEnabled && s.CodeReviewCommentOnPR
+}
+
+// IsFailureAnalysisEnabled 判定 Actions 失败运行的 AI 归因诊断是否可用。
+// 与安全告警分诊（TriageEnabled）相互独立：关闭分诊不应隐性关闭 CI 诊断。
+func (c *Client) IsFailureAnalysisEnabled() bool {
+	s := c.Snapshot()
+	return s.Enabled && s.APIKey != "" && s.FailureAnalysisEnabled
 }
 
 // defaultAITransport 针对出站 AI/LLM 网关长连接优化的 Transport：

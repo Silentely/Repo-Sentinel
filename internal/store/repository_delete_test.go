@@ -100,6 +100,11 @@ func TestDeleteRepositoryCascade(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert other review setting: %v", err)
 	}
+	// 预热缓存：先读取将要级联删除的设置键，使其进入进程内 settings 缓存，
+	// 回归守护「删除后缓存必须同步失效，而非等待 TTL 过期」。
+	if _, err := data.Settings().Get(ctx, "ai.pr_review.wi-1"); err != nil {
+		t.Fatalf("warm up review setting cache: %v", err)
+	}
 
 	// 执行级联删除。
 	if err := data.Repositories().DeleteRepository(ctx, repo.ID); err != nil {

@@ -66,13 +66,26 @@ func (c *Client) TriageAlert(ctx context.Context, ev store.Event, repo string) (
 
 // DiagnoseWorkflowFailure 分析 GitHub Actions 工作流失败原因并给出诊断建议。
 func (c *Client) DiagnoseWorkflowFailure(ctx context.Context, repo, workflowName, branch, conclusion string, failedSteps []string) (string, error) {
-	stepsText := "未知步骤"
-	if len(failedSteps) > 0 {
-		stepsText = strings.Join(failedSteps, "、")
-	}
 	user := fmt.Sprintf("仓库：%s\n工作流：%s\n分支：%s\n失败结论：%s\n失败 Job/步骤：%s",
-		repo, workflowName, branch, conclusion, stepsText)
+		repo, workflowName, branch, conclusion, renderFailedSteps(failedSteps))
 	return c.Complete(ctx, workflowFailureSystemPrompt, user)
+}
+
+// maxFailedSteps 单次送入 LLM 的失败 Job/步骤条数上限：矩阵构建或整批取消时
+// 失败条目可达数百条，与 maxEventLines 同思路控制成本与延迟。
+const maxFailedSteps = 30
+
+// renderFailedSteps 将失败步骤渲染为送入 LLM 的紧凑文本；无条目时回退「未知步骤」，
+// 超出上限截断并标注剩余条数（与 renderEventLines 的做法一致）。
+func renderFailedSteps(steps []string) string {
+	if len(steps) == 0 {
+		return "未知步骤"
+	}
+	if len(steps) <= maxFailedSteps {
+		return strings.Join(steps, "、")
+	}
+	return strings.Join(steps[:maxFailedSteps], "、") +
+		fmt.Sprintf("、…（另有 %d 条未列出）", len(steps)-maxFailedSteps)
 }
 
 // ReleaseSummary 生成新 release 的中文总结；失败返回错误，调用方降级为原文链接。

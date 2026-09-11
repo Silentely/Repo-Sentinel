@@ -371,7 +371,7 @@ func aiStub(t *testing.T, reply string) *ai.Client {
 		_, _ = w.Write([]byte(reply))
 	}))
 	t.Cleanup(srv.Close)
-	return &ai.Client{BaseURL: srv.URL, APIKey: "sk-test", Enabled: true, DigestEnabled: true, TriageEnabled: true}
+	return &ai.Client{BaseURL: srv.URL, APIKey: "sk-test", Enabled: true, DigestEnabled: true, TriageEnabled: true, FailureAnalysisEnabled: true}
 }
 
 func openEngineStore(t *testing.T) store.Store {
@@ -956,14 +956,14 @@ func TestPayloadStringSlice(t *testing.T) {
 
 func TestWorkflowFailureAnalysis(t *testing.T) {
 	ev := &store.Event{
-		ID: "ev-wf-1",
-		Kind: store.WorkflowRunKind,
-		Action: "completed",
+		ID:                 "ev-wf-1",
+		Kind:               store.WorkflowRunKind,
+		Action:             "completed",
 		WorkflowConclusion: "failure",
-		Title: "CI Build",
+		Title:              "CI Build",
 		PayloadSummary: map[string]any{
 			"workflow_name": "CI",
-			"head_branch": "main",
+			"head_branch":   "main",
 		},
 	}
 	subscribed := []store.NotificationChannel{{ID: "ch-1", Enabled: true, EventKinds: []string{store.WorkflowRunKind}}}
@@ -990,4 +990,45 @@ func TestWorkflowFailureAnalysis(t *testing.T) {
 			t.Fatalf("无「诊断：」前缀应返回空串，实际: %q", got)
 		}
 	})
+
+	t.Run("诊断开关关闭返回空", func(t *testing.T) {
+		e := &Engine{AI: &ai.Client{APIKey: "k", Enabled: true, FailureAnalysisEnabled: false}}
+		if got := e.workflowFailureAnalysis(t.Context(), ev, "acme/web", subscribed); got != "" {
+			t.Fatal("诊断关闭应返回空串")
+		}
+	})
+
+	t.Run("关闭分诊开关不影响 CI 诊断", func(t *testing.T) {
+		// 诊断与分诊是两个独立开关：关闭分诊不得隐性关闭 CI 诊断。
+		stub := aiStub(t, `{"choices":[{"message":{"content":"诊断：依赖下载超时。\n建议：检查网络。"}}]}`)
+		e := &Engine{AI: &ai.Client{BaseURL: stub.BaseURL, APIKey: "k", Enabled: true, TriageEnabled: false, FailureAnalysisEnabled: true}}
+		if got := e.workflowFailureAnalysis(t.Context(), ev, "acme/web", subscribed); !strings.HasPrefix(got, "诊断：") {
+			t.Fatalf("分诊关闭时诊断仍应可用，实际: %q", got)
+		}
+	})
+}
+
+// TestWorkflowFailureAnalysisGateOrder 守护门控顺序：事件类型检查必须先于 AI 开关检查，
+// 非 Actions 事件在 AI 未配置或开关关闭时不得产生 skipped 日志噪声。
+func TestWorkflowFailureAnalysisGateOrder(t *testing.T) {
+	cases := []struct {
+		name string
+		ev   *store.Event
+	}{
+		{"非 Actions 事件", &store.Event{ID: "ev-i-1", Kind: store.WorkItemKindIssue, Action: "opened", Title: "普通问题"}},
+		{"成功构建", &store.Event{ID: "ev-w-2", Kind: store.WorkflowRunKind, Action: "completed", WorkflowConclusion: "success"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf, logger := newRulesLogger(t)
+			// AI 未配置（最易触发旧实现日志噪声的场景）。
+			e := &Engine{Logger: logger}
+			if got := e.workflowFailureAnalysis(t.Context(), tc.ev, "acme/web", nil); got != "" {
+				t.Fatalf("应返回空串，实际: %q", got)
+			}
+			if strings.Contains(buf.String(), "workflow failure ai skipped") {
+				t.Fatalf("不应产生 skipped 日志，实际: %s", buf.String())
+			}
+		})
+	}
 }

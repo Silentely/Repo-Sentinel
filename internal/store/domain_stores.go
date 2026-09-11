@@ -116,6 +116,9 @@ type repositoryStore struct {
 	client *entclient.Client
 	// idsCache 与 storeImpl 共享：写路径成功后失效，保证活跃/归档集合立即可见。
 	idsCache *ttlValueCache[cachedRepoIDs]
+	// settingsCache 与 storeImpl 共享：级联删除直删 ai.pr_review.* 等设置键后
+	// 须逐键失效，否则 5s TTL 内 Settings().Get 仍可能返回已删除的数据。nil 安全。
+	settingsCache *settingsCache
 }
 
 func (s *repositoryStore) Upsert(ctx context.Context, in Repository) (Repository, error) {
@@ -318,8 +321,9 @@ func (s *repositoryStore) DeleteRepository(ctx context.Context, id string) error
 	if err != nil {
 		return mapStoreError(err)
 	}
+	var reviewKeys []string
 	if len(workItemIDs) > 0 {
-		reviewKeys := make([]string, 0, len(workItemIDs))
+		reviewKeys = make([]string, 0, len(workItemIDs))
 		for _, wid := range workItemIDs {
 			reviewKeys = append(reviewKeys, "ai.pr_review."+wid)
 		}
@@ -349,6 +353,11 @@ func (s *repositoryStore) DeleteRepository(ctx context.Context, id string) error
 		return mapStoreError(err)
 	}
 	s.idsCache.Invalidate()
+	// 事务内直删的设置键绕过了 settingsStore.Upsert 的缓存失效路径，这里逐键失效，
+	// 保证删除后立即不可见（而非等待 5s TTL 过期）。
+	for _, key := range reviewKeys {
+		s.settingsCache.Invalidate(key)
+	}
 	return nil
 }
 

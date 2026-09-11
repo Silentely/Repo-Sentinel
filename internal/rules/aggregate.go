@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
-	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/oklog/ulid/v2"
 )
 

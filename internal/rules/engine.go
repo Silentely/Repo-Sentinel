@@ -282,18 +282,27 @@ func (e *Engine) releaseAnalysis(ctx context.Context, ev *store.Event, repo stri
 	return summary
 }
 
+// workflowFailureAnalysis 生成 Actions 失败运行的 AI 归因诊断；未启用、非失败运行、
+// 无订阅渠道或调用失败时返回空串。返回空串时调用方保持原通知正文，AI 慢或不可用
+// 绝不影响通知入库。由独立的「CI 诊断」开关（IsFailureAnalysisEnabled）控制，与
+// 安全告警分诊开关互不影响。
+// 参与度留痕与 triageAnalysis 同款：skipped（failure_analysis_not_enabled /
+// no_subscribed_channel）、used、fallback（reason=ai_error / empty_analysis / format_invalid）。
+// 仅失败的 Actions 运行参与诊断；其余事件类型静默返回，不产生 skipped 日志噪声
+// （类型检查必须先于 AI 开关检查，与 triageAnalysis/releaseAnalysis 的约定一致，
+// 否则每条实时事件都会刷一条 skipped Info 日志）。
 func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, repo string, channels []store.NotificationChannel) string {
+	if ev.Kind != store.WorkflowRunKind || !store.IsFailureConclusion(ev.WorkflowConclusion) {
+		return ""
+	}
 	skip := func(reason string) string {
 		if e.Logger != nil {
 			e.Logger.Info("workflow failure ai skipped", "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "reason", reason)
 		}
 		return ""
 	}
-	if e.AI == nil || !e.AI.IsTriageEnabled() {
-		return skip("triage_not_enabled")
-	}
-	if ev.Kind != store.WorkflowRunKind || !store.IsFailureConclusion(ev.WorkflowConclusion) {
-		return ""
+	if e.AI == nil || !e.AI.IsFailureAnalysisEnabled() {
+		return skip("failure_analysis_not_enabled")
 	}
 	if !hasSubscribedChannel(channels, ev.Kind) {
 		return skip("no_subscribed_channel")
@@ -310,22 +319,41 @@ func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, r
 	}
 	branch := store.PayloadString(ev.PayloadSummary, "head_branch")
 
-	// 尝试通过 GitHub API 提取失败的 Job / Step 信息作为诊断依据
+	// 尝试通过 GitHub API 提取失败的 Job / Step 信息作为诊断依据。
+	// 提取失败仅留 Warn 并降级为「未知步骤」：诊断仍会发起，但可观测——
+	// 运维能区分「本来就没有失败步骤」与「上下文提取失败」。
 	var failedSteps []string
 	if e.GitHub != nil && ev.WorkflowRunID != nil && *ev.WorkflowRunID != 0 && e.Store != nil {
-		parts := strings.SplitN(repo, "/", 2)
-		if len(parts) == 2 {
+		owner, repoName := store.SplitFullName(repo)
+		if owner != "" && repoName != "" {
 			var token string
-			if repoRec, err := e.Store.Repositories().GetByFullName(ctx, repo); err == nil && repoRec.InstallationID != nil {
-				if instID, err := strconv.ParseInt(*repoRec.InstallationID, 10, 64); err == nil && instID > 0 {
-					tok, _ := e.GitHub.InstallationToken(ctx, instID)
+			repoRec, err := e.Store.Repositories().GetByFullName(ctx, repo)
+			switch {
+			case err != nil:
+				if e.Logger != nil {
+					e.Logger.Warn("workflow failure context: get repository failed", "req_id", reqID, "repo", repo, "run_id", *ev.WorkflowRunID, "error", err.Error())
+				}
+			case repoRec.InstallationID == nil:
+				// 无安装上下文：匿名拉取公开仓即可，不视为故障。
+			default:
+				if instID, perr := strconv.ParseInt(*repoRec.InstallationID, 10, 64); perr != nil || instID <= 0 {
+					// 安装 ID 非法：同上按无安装上下文降级。
+				} else if tok, tokErr := e.GitHub.InstallationToken(ctx, instID); tokErr != nil {
+					if e.Logger != nil {
+						e.Logger.Warn("workflow failure context: resolve installation token failed", "req_id", reqID, "repo", repo, "run_id", *ev.WorkflowRunID, "error", tokErr.Error())
+					}
+				} else {
 					token = tok
 				}
 			}
 			jobsCtx, cancelJobs := context.WithTimeout(ctx, 5*time.Second)
-			jobs, err := e.GitHub.ListWorkflowJobs(jobsCtx, token, parts[0], parts[1], *ev.WorkflowRunID)
+			jobs, err := e.GitHub.ListWorkflowJobs(jobsCtx, token, owner, repoName, *ev.WorkflowRunID)
 			cancelJobs()
-			if err == nil {
+			if err != nil {
+				if e.Logger != nil {
+					e.Logger.Warn("workflow failure context: list workflow jobs failed", "req_id", reqID, "repo", repo, "run_id", *ev.WorkflowRunID, "error", err.Error())
+				}
+			} else {
 				for _, j := range jobs {
 					if store.IsFailureConclusion(j.Conclusion) {
 						jobHasFailedStep := false

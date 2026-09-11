@@ -613,6 +613,9 @@ func TestAI环境变量解析与默认值(t *testing.T) {
 	if !cfg.AI.ReleaseSummaryEnabled {
 		t.Fatal("期望 release_summary_enabled 默认 true")
 	}
+	if !cfg.AI.FailureAnalysisEnabled {
+		t.Fatal("期望 failure_analysis_enabled 默认 true")
+	}
 }
 
 // TestAIReleaseSummaryEnv 验证 release_summary_enabled 环境变量覆盖。

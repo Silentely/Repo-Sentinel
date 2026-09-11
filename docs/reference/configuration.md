@@ -176,7 +176,7 @@ openssl rand -hex 32
 
 ### 智能值守（可选）
 
-智能值守用于三处：每日简报 / 周报 / 月报正文生成（`digest_enabled`），以及实时安全告警的影响分析与处理建议（`triage_enabled`）。默认关闭；开启时须提供 API Key，支持任意 OpenAI 兼容端点（可接 Ollama 等本地模型）。
+智能值守用于：每日简报 / 周报 / 月报正文生成（`digest_enabled`）、实时安全告警的影响分析与处理建议（`triage_enabled`）、star 仓库新 Release 更新速览（`release_summary_enabled`）、PR 智能代码审查与安全审计（`code_review_enabled`），以及 Actions 失败运行的 AI 归因诊断（`failure_analysis_enabled`，与分诊开关相互独立）。默认关闭；开启时须提供 API Key，支持任意 OpenAI 兼容端点（可接 Ollama 等本地模型）。
 
 | 变量 | 说明 |
 |------|------|
@@ -190,6 +190,8 @@ openssl rand -hex 32
 | `REPOSENTINEL_AI_DIGEST_ENABLED` | 是否启用智能简报，默认 `true` |
 | `REPOSENTINEL_AI_TRIAGE_ENABLED` | 是否启用安全告警分诊，默认 `true` |
 | `REPOSENTINEL_AI_RELEASE_SUMMARY_ENABLED` | 是否启用 star 仓库新 Release 的更新速览，默认 `true` |
+| `REPOSENTINEL_AI_CODE_REVIEW_ENABLED` | 是否启用 PR 智能代码审查与安全审计，默认 `true` |
+| `REPOSENTINEL_AI_FAILURE_ANALYSIS_ENABLED` | 是否启用 Actions 失败 AI 诊断，默认 `true` |
 
 智能值守不可用（未配置、超时、服务端错误）时自动降级：简报回退模板正文、告警保持原文，不影响通知投递。实时链路的等待时长严格遵循 `timeout` 配置（分诊与 Release 更新速览按配置超时建预算，无更短的硬编码上限），超时后该条通知以原文链接兜底发出。接入本地模型的 YAML 示例见下节。
 

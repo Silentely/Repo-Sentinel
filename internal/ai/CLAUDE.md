@@ -19,7 +19,7 @@
 - HTTP：`GET/PUT /api/v1/ai/config`（掩码）
 - 库接口：Client 完成 chat completion；上层设置 Timeout/MaxTokens/Retries
 
-配置字段（`config.AIConfig`）：Enabled、BaseURL、APIKey、Model、Timeout、MaxTokens、Retries、DigestEnabled、TriageEnabled。
+配置字段（`config.AIConfig`）：Enabled、BaseURL、APIKey、Model、Timeout、MaxTokens、Retries、DigestEnabled、TriageEnabled、ReleaseSummaryEnabled、CodeReviewEnabled、CodeReviewCommentOnPR、FailureAnalysisEnabled。
 
 ## 重要依赖与配置
 

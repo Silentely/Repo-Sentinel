@@ -424,6 +424,13 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 		}
 		cfg.AI.CodeReviewCommentOnPR = parsed
 	}
+	if value, ok := lookup("REPOSENTINEL_AI_FAILURE_ANALYSIS_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_AI_FAILURE_ANALYSIS_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.AI.FailureAnalysisEnabled = parsed
+	}
 	if value, ok := lookup("REPOSENTINEL_OAUTH_CLIENT_ID"); ok {
 		cfg.OAuth.ClientID = value
 	}

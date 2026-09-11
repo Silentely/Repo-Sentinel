@@ -114,6 +114,8 @@ ai:
   code_review_enabled: true
   # 是否以 Bot 身份在 GitHub PR 下发表审查评论（需 App 具备 PR 写权限），默认 false。
   code_review_comment_on_pr: false
+  # 是否启用 Actions 失败运行的 AI 归因诊断（与安全告警分诊开关相互独立）。
+  failure_analysis_enabled: true
   # API Key 通过 REPOSENTINEL_AI_API_KEY 注入；enabled=true 时必须提供。
 
 oauth:
