@@ -16,6 +16,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repostatsnapshot"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workitem"
@@ -311,6 +312,20 @@ func (s *repositoryStore) DeleteRepository(ctx context.Context, id string) error
 	}
 	if _, err := tx.Event.Delete().Where(event.RepositoryIDEQ(id)).Exec(ctx); err != nil {
 		return mapStoreError(err)
+	}
+	// 清理该仓库所有 WorkItem 关联的 PR 审查等系统设置
+	workItemIDs, err := tx.WorkItem.Query().Where(workitem.RepositoryIDEQ(id)).IDs(ctx)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	if len(workItemIDs) > 0 {
+		reviewKeys := make([]string, 0, len(workItemIDs))
+		for _, wid := range workItemIDs {
+			reviewKeys = append(reviewKeys, "ai.pr_review."+wid)
+		}
+		if _, err := tx.SystemSetting.Delete().Where(systemsetting.KeyIn(reviewKeys...)).Exec(ctx); err != nil {
+			return mapStoreError(err)
+		}
 	}
 	if _, err := tx.WorkItem.Delete().Where(workitem.RepositoryIDEQ(id)).Exec(ctx); err != nil {
 		return mapStoreError(err)

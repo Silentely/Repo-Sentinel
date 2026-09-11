@@ -698,6 +698,15 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				},
 				"responses": map[string]any{"200": jsonResponse("AI 审查结果", ref("CodeReviewResult")), "404": errorResponse()},
 			},
+			"post": map[string]any{
+				"summary":     "手动触发指定 PR 的 AI 代码审查并更新报告",
+				"operationId": "triggerWorkItemAIReview",
+				"security":    []any{authed},
+				"parameters": []any{
+					map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
+				},
+				"responses": map[string]any{"200": jsonResponse("审查完成并返回结果", ref("CodeReviewResult")), "400": errorResponse(), "404": errorResponse()},
+			},
 		},
 		"/api/v1/workflow-runs": map[string]any{
 			"get": map[string]any{

@@ -214,3 +214,21 @@ func TestRenderEventLines_StarTitleDedup(t *testing.T) {
 func strPtr(s string) *string { return &s }
 
 func intPtr(v int64) *int64 { return &v }
+
+func TestDiagnoseWorkflowFailure(t *testing.T) {
+	client, capture := stubClient(t, `{"choices":[{"message":{"content":"诊断：测试步骤失败。\n建议：检查测试断言。"}}]}`)
+	out, err := client.DiagnoseWorkflowFailure(t.Context(), "acme/web", "ci.yml", "main", "failure", []string{"build / Run tests"})
+	if err != nil {
+		t.Fatalf("DiagnoseWorkflowFailure 应该成功: %v", err)
+	}
+	if !strings.Contains(out, "诊断：") {
+		t.Fatalf("期望包含诊断前缀，实际: %q", out)
+	}
+	req := capture()
+	if len(req.Messages) != 2 {
+		t.Fatalf("期望 2 条消息，实际: %d", len(req.Messages))
+	}
+	if !strings.Contains(req.Messages[1].Content, "ci.yml") || !strings.Contains(req.Messages[1].Content, "Run tests") {
+		t.Fatalf("user prompt 应包含工作流与步骤信息: %s", req.Messages[1].Content)
+	}
+}

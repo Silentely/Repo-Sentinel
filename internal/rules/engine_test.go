@@ -953,3 +953,41 @@ func TestPayloadStringSlice(t *testing.T) {
 		t.Errorf("nil map 应返回 nil，实际: %v", got)
 	}
 }
+
+func TestWorkflowFailureAnalysis(t *testing.T) {
+	ev := &store.Event{
+		ID: "ev-wf-1",
+		Kind: store.WorkflowRunKind,
+		Action: "completed",
+		WorkflowConclusion: "failure",
+		Title: "CI Build",
+		PayloadSummary: map[string]any{
+			"workflow_name": "CI",
+			"head_branch": "main",
+		},
+	}
+	subscribed := []store.NotificationChannel{{ID: "ch-1", Enabled: true, EventKinds: []string{store.WorkflowRunKind}}}
+
+	t.Run("失败构建返回诊断", func(t *testing.T) {
+		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"诊断：测试断言失败。\n建议：检查单元测试。"}}]}`)}
+		got := e.workflowFailureAnalysis(t.Context(), ev, "acme/web", subscribed)
+		if !strings.Contains(got, "诊断：") {
+			t.Fatalf("期望包含诊断前缀，实际: %q", got)
+		}
+	})
+
+	t.Run("成功构建返回空", func(t *testing.T) {
+		successEv := &store.Event{Kind: store.WorkflowRunKind, Action: "completed", WorkflowConclusion: "success"}
+		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"ignored"}}]}`)}
+		if got := e.workflowFailureAnalysis(t.Context(), successEv, "acme/web", subscribed); got != "" {
+			t.Fatalf("成功构建不应诊断，实际: %q", got)
+		}
+	})
+
+	t.Run("格式不达标返回空", func(t *testing.T) {
+		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"没有诊断前缀。"}}]}`)}
+		if got := e.workflowFailureAnalysis(t.Context(), ev, "acme/web", subscribed); got != "" {
+			t.Fatalf("无「诊断：」前缀应返回空串，实际: %q", got)
+		}
+	})
+}

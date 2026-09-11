@@ -15,6 +15,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -25,6 +26,8 @@ type Engine struct {
 	AI *ai.Client
 	// Logger 可选；分诊参与度与降级留痕。
 	Logger *slog.Logger
+	// GitHub 可选；用于拉取 CI Job 失败详情等上下文。
+	GitHub *githubx.AppClient
 }
 
 // logNotifySkipped 记录"事件已入库但未产生实时通知"的决策留痕（Debug）：
@@ -76,6 +79,10 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	// release 更新速览：新 release 附带智能翻译要点；失败降级原文链接，不阻塞入库。
 	if summary := e.releaseAnalysis(ctx, res.Event, repoFullName, channels); summary != "" {
 		body = body + "\n────────────────\n🤖 更新速览\n" + htmlpkg.EscapeString(summary)
+	}
+	// Actions 失败归因诊断：构建失败时附带 AI 智能归因与排查建议；失败保持原文，不阻塞入库。
+	if diagnosis := e.workflowFailureAnalysis(ctx, res.Event, repoFullName, channels); diagnosis != "" {
+		body = body + "\n────────────────\n🤖 故障诊断\n" + htmlpkg.EscapeString(diagnosis)
 	}
 	for _, ch := range channels {
 		// 渠道未订阅该事件类型时跳过。
@@ -273,6 +280,99 @@ func (e *Engine) releaseAnalysis(ctx context.Context, ev *store.Event, repo stri
 		e.Logger.Info("release ai used", "req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
 	}
 	return summary
+}
+
+func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, repo string, channels []store.NotificationChannel) string {
+	skip := func(reason string) string {
+		if e.Logger != nil {
+			e.Logger.Info("workflow failure ai skipped", "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "reason", reason)
+		}
+		return ""
+	}
+	if e.AI == nil || !e.AI.IsTriageEnabled() {
+		return skip("triage_not_enabled")
+	}
+	if ev.Kind != store.WorkflowRunKind || !store.IsFailureConclusion(ev.WorkflowConclusion) {
+		return ""
+	}
+	if !hasSubscribedChannel(channels, ev.Kind) {
+		return skip("no_subscribed_channel")
+	}
+
+	ctx, reqID := ai.EnsureRequestID(ctx)
+	ctx, cancel := context.WithTimeout(ctx, e.AI.EffectiveTimeout())
+	defer cancel()
+	start := time.Now()
+
+	workflowName := store.PayloadString(ev.PayloadSummary, "workflow_name")
+	if workflowName == "" {
+		workflowName = ev.Title
+	}
+	branch := store.PayloadString(ev.PayloadSummary, "head_branch")
+
+	// 尝试通过 GitHub API 提取失败的 Job / Step 信息作为诊断依据
+	var failedSteps []string
+	if e.GitHub != nil && ev.WorkflowRunID != nil && *ev.WorkflowRunID != 0 && e.Store != nil {
+		parts := strings.SplitN(repo, "/", 2)
+		if len(parts) == 2 {
+			var token string
+			if repoRec, err := e.Store.Repositories().GetByFullName(ctx, repo); err == nil && repoRec.InstallationID != nil {
+				if instID, err := strconv.ParseInt(*repoRec.InstallationID, 10, 64); err == nil && instID > 0 {
+					tok, _ := e.GitHub.InstallationToken(ctx, instID)
+					token = tok
+				}
+			}
+			jobs, err := e.GitHub.ListWorkflowJobs(ctx, token, parts[0], parts[1], *ev.WorkflowRunID)
+			if err == nil {
+				for _, j := range jobs {
+					if store.IsFailureConclusion(j.Conclusion) {
+						jobHasFailedStep := false
+						for _, s := range j.Steps {
+							if store.IsFailureConclusion(s.Conclusion) {
+								failedSteps = append(failedSteps, fmt.Sprintf("%s / %s", j.Name, s.Name))
+								jobHasFailedStep = true
+							}
+						}
+						if !jobHasFailedStep {
+							failedSteps = append(failedSteps, j.Name)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	diagnosis, err := e.AI.DiagnoseWorkflowFailure(ctx, repo, workflowName, branch, ev.WorkflowConclusion, failedSteps)
+	duration := time.Since(start)
+	if err != nil || strings.TrimSpace(diagnosis) == "" {
+		if e.Logger != nil {
+			reason := "empty_analysis"
+			if err != nil {
+				reason = "ai_error"
+			}
+			attrs := []any{"req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds(), "reason", reason}
+			if err != nil {
+				attrs = append(attrs, "error", err.Error())
+			}
+			e.Logger.Warn("workflow failure ai fallback", attrs...)
+		}
+		return ""
+	}
+
+	// 质量防护：输出必须以「诊断：」开头
+	if !strings.HasPrefix(strings.TrimSpace(diagnosis), "诊断：") {
+		if e.Logger != nil {
+			e.Logger.Warn("workflow failure ai fallback",
+				"req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action,
+				"duration_ms", duration.Milliseconds(), "reason", "format_invalid")
+		}
+		return ""
+	}
+
+	if e.Logger != nil {
+		e.Logger.Info("workflow failure ai used", "req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
+	}
+	return diagnosis
 }
 
 // isSecurityAlertKind 判定事件是否为安全告警类型（分诊仅针对告警）。

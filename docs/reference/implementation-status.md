@@ -35,6 +35,8 @@
 | GHCR 镜像 | 已交付 | `main`/`dev` 推送对应浮动标签；`v*` 推送 `vX.Y.Z` + `latest` |
 | Prometheus `/metrics` | 已交付 | 进程内计数 + 可选 Bearer；建议内网抓取 |
 | 历史数据保留清理 | 已交付 | settings 可配事件/Outbox/Delivery 保留天数；后台每日清理；0 表示禁用该类 |
+| PR AI 代码审查与预警 | 已交付 | Webhook 异步审计 PR Diff + 管理台手动触发/重新审查 + 复制报告；健康评分/安全风险/破坏性兼容/代码异味；高危风险联动 Outbox 多渠道预警；仓库删除级联清理审查数据；OpenAPI 与 MCP 工具支持 |
+| Actions CI 失败智能诊断 | 已交付 | 提取失败 Workflow Run 的具体 Job/Step 失败信息，AI 自动提炼故障根本原因与修复建议附加于通知正文；AI 异常或格式不符时平滑降级 |
 
 ## 验证命令
 

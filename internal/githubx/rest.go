@@ -268,6 +268,33 @@ type CheckRunItem struct {
 	} `json:"output"`
 }
 
+// WorkflowJobStep 工作流 Job 的单步执行记录。
+type WorkflowJobStep struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	Number     int    `json:"number"`
+}
+
+// WorkflowJobItem 工作流运行的单个 Job 条目。
+type WorkflowJobItem struct {
+	ID         int64             `json:"id"`
+	Name       string            `json:"name"`
+	Status     string            `json:"status"`
+	Conclusion string            `json:"conclusion"`
+	Steps      []WorkflowJobStep `json:"steps"`
+}
+
+// ListWorkflowJobs 拉取指定 workflow run 的 jobs 列表。
+func (c *AppClient) ListWorkflowJobs(ctx context.Context, token, owner, repo string, runID int64) ([]WorkflowJobItem, error) {
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/jobs", owner, repo, runID)
+	var payload struct {
+		Jobs []WorkflowJobItem `json:"jobs"`
+	}
+	_, err := c.DoJSON(ctx, "GET", path, token, &payload)
+	return payload.Jobs, err
+}
+
 // ListCheckRuns 拉取 commit 的检查运行列表。
 func (c *AppClient) ListCheckRuns(ctx context.Context, token, owner, repo, ref string) ([]CheckRunItem, error) {
 	path := fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", owner, repo, ref)

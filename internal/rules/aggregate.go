@@ -14,6 +14,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -27,6 +28,8 @@ type Aggregator struct {
 	AI *ai.Client
 	// Logger 可选；透传给 Engine 供分诊参与度留痕。
 	Logger *slog.Logger
+	// GitHub 可选；透传给 Engine 供拉取 CI 失败 Job/步骤。
+	GitHub *githubx.AppClient
 
 	mu sync.Mutex
 	// key: repoID|category
@@ -250,7 +253,7 @@ func (a *Aggregator) flush(key string) {
 	defer cancel()
 	if len(b.events) == 1 {
 		// 单事件回放：走实时通知评估。失败留痕，避免聚合窗口内的通知静默丢失。
-		if err := (&Engine{Store: a.Store, AI: a.AI, Logger: a.Logger}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName); err != nil && a.Logger != nil {
+		if err := (&Engine{Store: a.Store, AI: a.AI, Logger: a.Logger, GitHub: a.GitHub}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName); err != nil && a.Logger != nil {
 			a.Logger.Warn("aggregate flush evaluate failed",
 				"repo", b.repoName, "category", b.category, "events", len(b.events), "error_code", "aggregate_flush_failed", "error", err.Error())
 		}

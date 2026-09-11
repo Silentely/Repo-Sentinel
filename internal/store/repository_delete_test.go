@@ -90,6 +90,16 @@ func TestDeleteRepositoryCascade(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert snapshot: %v", err)
 	}
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: "set-rev-1", Key: "ai.pr_review.wi-1", ValueJSON: []byte(`{"score":90}`),
+	}); err != nil {
+		t.Fatalf("upsert review setting: %v", err)
+	}
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: "set-rev-2", Key: "ai.pr_review.other-pr", ValueJSON: []byte(`{"score":85}`),
+	}); err != nil {
+		t.Fatalf("upsert other review setting: %v", err)
+	}
 
 	// 执行级联删除。
 	if err := data.Repositories().DeleteRepository(ctx, repo.ID); err != nil {
@@ -118,6 +128,12 @@ func TestDeleteRepositoryCascade(t *testing.T) {
 	}
 	if items, err := data.RepoStatSnapshots().ListInRange(ctx, []string{repo.ID}, "stargazers", "2026-01-01", "2026-12-31"); err != nil || len(items) != 0 {
 		t.Fatalf("snapshot 应已删除，items=%v err=%v", items, err)
+	}
+	if _, err := data.Settings().Get(ctx, "ai.pr_review.wi-1"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("pr review setting 应已随仓库删除，got err=%v", err)
+	}
+	if _, err := data.Settings().Get(ctx, "ai.pr_review.other-pr"); err != nil {
+		t.Fatalf("other pr review setting 应保留，got err=%v", err)
 	}
 	// 引用已删事件的 Outbox 一并清空。
 	ob, page, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 50})

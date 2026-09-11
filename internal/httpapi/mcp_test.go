@@ -315,7 +315,7 @@ func TestMCPToolsListAndCallExtendedTools(t *testing.T) {
 			names[n] = true
 		}
 	}
-	for _, expected := range []string{"list_events", "get_star_trend", "list_starred_releases", "list_outbox"} {
+	for _, expected := range []string{"list_events", "get_star_trend", "list_starred_releases", "list_outbox", "get_work_item_ai_review", "trigger_work_item_ai_review"} {
 		if !names[expected] {
 			t.Fatalf("tools/list 缺少工具 %q", expected)
 		}
@@ -337,6 +337,24 @@ func TestMCPToolsListAndCallExtendedTools(t *testing.T) {
 	text = mcpResultText(t, outboxPayload)
 	if !strings.Contains(text, "items") {
 		t.Fatalf("list_outbox 结果异常: %s", text)
+	}
+
+	// 写入一条模拟 review 并通过 get_work_item_ai_review 工具读取
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "s-mcp-rev-1",
+		Key:       "ai.pr_review.wi-mcp-pr-1",
+		ValueJSON: []byte(`{"summary":"MCP测试报告","score":88}`),
+		UpdatedAt: time.Now().UTC(),
+		UpdatedBy: "test",
+	})
+
+	status, reviewPayload := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"get_work_item_ai_review","arguments":{"work_item_id":"wi-mcp-pr-1"}}}`)
+	if status != http.StatusOK {
+		t.Fatalf("get_work_item_ai_review 状态异常: %d, %+v", status, reviewPayload)
+	}
+	reviewText := mcpResultText(t, reviewPayload)
+	if !strings.Contains(reviewText, "MCP测试报告") || !strings.Contains(reviewText, "88") {
+		t.Fatalf("get_work_item_ai_review 结果异常: %s", reviewText)
 	}
 }
 

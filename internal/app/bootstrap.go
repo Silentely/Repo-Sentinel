@@ -153,6 +153,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	aiClient.Logger = logger
 	aggregator.AI = aiClient
 	aggregator.Logger = logger
+	aggregator.GitHub = ghClient
 	digestGen := &digest.Generator{Store: data, AI: aiClient, Logger: logger}
 
 	starred := &syncx.StarredReleasePoller{
@@ -161,7 +162,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		// star 枚举复用 external_pat：配置了 PAT 时按 5000 次/小时配额拉取，匿名仅 60 次/小时易限流。
 		Public: &githubx.PublicClient{PAT: cfg.GitHub.ExternalPAT.Reveal()},
 		// Engine 直连实时通知决策（不聚合：release 低频单条，立即投递）。
-		Engine: &rules.Engine{Store: data, AI: aiClient, Logger: logger},
+		Engine: &rules.Engine{Store: data, AI: aiClient, Logger: logger, GitHub: ghClient},
 		Logger: logger,
 	}
 	// 用户名初始值：settings 优先，配置（env/yaml）兜底并写入 settings 供设置页回显。

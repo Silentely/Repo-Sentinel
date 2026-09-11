@@ -927,3 +927,17 @@ func TestGetWorkItemAIReview(t *testing.T) {
 		t.Fatalf("unexpected body: %s", resp200.Body.String())
 	}
 }
+
+func TestTriggerWorkItemAIReview(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	extraHeaders := map[string]string{CSRFHeaderName: csrf.Value}
+
+	// 1. 工作项不存在时返回 404 / 400
+	resp404 := fixture.request(t, http.MethodPost, "/api/v1/work-items/pr-not-found/ai-review", "{}", "127.0.0.1:45003", cookies, extraHeaders)
+	if resp404.Code != http.StatusNotFound && resp404.Code != http.StatusBadRequest {
+		t.Fatalf("expected 404 or 400 for missing work item, got %d: %s", resp404.Code, resp404.Body.String())
+	}
+}

@@ -756,6 +756,7 @@ export interface CodeReviewResult {
   reviewed_at: string;
   commented_on_pr: boolean;
   diff_truncated: boolean;
+  head_sha?: string;
 }
 
 export async function fetchWorkItemAIReview(workItemId: string): Promise<CodeReviewResult | null> {
@@ -768,4 +769,11 @@ export async function fetchWorkItemAIReview(workItemId: string): Promise<CodeRev
     }
     throw err;
   }
+}
+
+export async function triggerWorkItemAIReview(workItemId: string): Promise<CodeReviewResult> {
+  return await apiRequest<CodeReviewResult>(`/api/v1/work-items/${encodeURIComponent(workItemId)}/ai-review`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
 }

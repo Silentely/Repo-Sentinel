@@ -40,6 +40,7 @@ type Service struct {
 	SlowThreshold  time.Duration
 	reviewMu       sync.Mutex
 	reviewInFlight map[string]struct{}
+	reviewWg       sync.WaitGroup
 }
 
 // slowWebhookThreshold 单条 webhook 处理的慢阈值：超过说明规范化/评估路径存在
@@ -232,4 +233,19 @@ func (s *Service) logError(msg, deliveryID, eventType, code, repoName, errMsg st
 		attrs = append(attrs, "repo", repoName)
 	}
 	s.Logger.Error(msg, attrs...)
+}
+
+// WaitReviews 等待进行中的异步 PR 审查任务结束或直到传入 context 超时/取消。
+func (s *Service) WaitReviews(ctx context.Context) error {
+	c := make(chan struct{})
+	go func() {
+		defer close(c)
+		s.reviewWg.Wait()
+	}()
+	select {
+	case <-c:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

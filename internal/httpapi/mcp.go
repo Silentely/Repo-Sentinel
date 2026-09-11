@@ -230,6 +230,53 @@ func (s *server) mcpTools() []mcpTool {
 			},
 		},
 		{
+			name:        "get_work_item_ai_review",
+			description: "获取指定 PR 工作项的最新 AI 审查报告（健康评分、破坏性变更、安全风险、改进建议与审查总结）。",
+			inputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"work_item_id": map[string]any{"type": "string", "description": "工作项 ID（仅支持 PR）"},
+				},
+				"required": []string{"work_item_id"},
+			},
+			execute: func(ctx context.Context, args map[string]any) (any, error) {
+				id := mcpStringArg(args, "work_item_id")
+				if id == "" {
+					return nil, fmt.Errorf("work_item_id is required")
+				}
+				setting, err := s.dependencies.Store.Settings().Get(ctx, "ai.pr_review."+id)
+				if err != nil {
+					return nil, err
+				}
+				var res any
+				if err := json.Unmarshal(setting.ValueJSON, &res); err != nil {
+					return nil, err
+				}
+				return res, nil
+			},
+		},
+		{
+			name:        "trigger_work_item_ai_review",
+			description: "手动触发对指定 PR 工作项的 AI 代码审查并更新报告。",
+			inputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"work_item_id": map[string]any{"type": "string", "description": "工作项 ID（仅支持 PR）"},
+				},
+				"required": []string{"work_item_id"},
+			},
+			execute: func(ctx context.Context, args map[string]any) (any, error) {
+				id := mcpStringArg(args, "work_item_id")
+				if id == "" {
+					return nil, fmt.Errorf("work_item_id is required")
+				}
+				if s.webhookSvc == nil {
+					return nil, fmt.Errorf("webhook service is unavailable")
+				}
+				return s.webhookSvc.TriggerWorkItemReview(ctx, id)
+			},
+		},
+		{
 			name:        "trigger_reconciliation",
 			description: "触发仓库数据对账。可指定 repository_id 针对单仓对账；不传则触发全量活跃仓库对账。",
 			inputSchema: map[string]any{

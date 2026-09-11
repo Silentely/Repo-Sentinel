@@ -205,3 +205,49 @@ func TestListUserStarredWithPAT(t *testing.T) {
 		t.Fatalf("remaining = %d, want 4999", remaining)
 	}
 }
+
+func TestListWorkflowJobs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/acme/demo/actions/runs/12345/jobs" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-tok" {
+			t.Errorf("expected bearer token, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{
+			"total_count": 1,
+			"jobs": [
+				{
+					"id": 1,
+					"name": "build-and-test",
+					"conclusion": "failure",
+					"steps": [
+						{"name": "checkout", "conclusion": "success", "number": 1},
+						{"name": "run test", "conclusion": "failure", "number": 2}
+					]
+				}
+			]
+		}`))
+	}))
+	defer srv.Close()
+
+	client := NewAppClient(100, "")
+	client.BaseURL = srv.URL
+
+	jobs, err := client.ListWorkflowJobs(context.Background(), "test-tok", "acme", "demo", 12345)
+	if err != nil {
+		t.Fatalf("ListWorkflowJobs failed: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+	if jobs[0].Name != "build-and-test" || jobs[0].Conclusion != "failure" {
+		t.Fatalf("unexpected job: %+v", jobs[0])
+	}
+	if len(jobs[0].Steps) != 2 || jobs[0].Steps[1].Name != "run test" || jobs[0].Steps[1].Conclusion != "failure" {
+		t.Fatalf("unexpected steps: %+v", jobs[0].Steps)
+	}
+}

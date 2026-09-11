@@ -32,6 +32,7 @@ import {
   type Repository,
   type RepositorySettings,
   fetchWorkItemAIReview,
+  triggerWorkItemAIReview,
   type CodeReviewResult,
 } from "./api";
 import {
@@ -189,9 +190,31 @@ function EventListBody({
 }
 
 
+function formatReviewMarkdown(review: CodeReviewResult): string {
+  const parts: string[] = [
+    `### 🤖 AI 代码审查报告 (健康评分: ${review.score}/100)`,
+    review.summary ? `**审查结论：** ${review.summary}` : "",
+  ];
+  if (review.security_risks && review.security_risks.length > 0) {
+    parts.push(`\n**🛡️ 安全风险：**\n` + review.security_risks.map((r) => `- ${r}`).join("\n"));
+  }
+  if (review.breaking_risks && review.breaking_risks.length > 0) {
+    parts.push(`\n**⚠️ 破坏性变更：**\n` + review.breaking_risks.map((b) => `- ${b}`).join("\n"));
+  }
+  if (review.code_smells && review.code_smells.length > 0) {
+    parts.push(`\n**💡 优化建议：**\n` + review.code_smells.map((s) => `- ${s}`).join("\n"));
+  }
+  if (review.head_sha) {
+    parts.push(`\n*Commit: ${review.head_sha}*`);
+  }
+  return parts.filter(Boolean).join("\n");
+}
+
 function AIReviewCard({ workItemId }: { workItemId: string }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [triggering, setTriggering] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [review, setReview] = useState<CodeReviewResult | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
@@ -211,17 +234,68 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
     setOpen((prev) => !prev);
   };
 
+  const handleTrigger = async () => {
+    setTriggering(true);
+    setError(null);
+    try {
+      const res = await triggerWorkItemAIReview(workItemId);
+      setReview(res);
+      if (!open) setOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "触发 AI 审查失败，请稍后重试。");
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!review) return;
+    try {
+      await navigator.clipboard.writeText(formatReviewMarkdown(review));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // 剪贴板异常降级
+    }
+  };
+
   return (
     <div className="ai-review-wrapper" style={{ marginTop: "0.5rem" }}>
-      <button
-        type="button"
-        className="quiet-button quiet-button--compact"
-        onClick={toggle}
-        aria-expanded={open}
-        style={{ fontSize: "0.8rem", padding: "0.15rem 0.5rem", borderRadius: "4px" }}
-      >
-        🤖 AI 代码审查报告 {loading ? "…" : open ? "▲" : "▼"}
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          className="quiet-button quiet-button--compact"
+          onClick={toggle}
+          aria-expanded={open}
+          style={{ fontSize: "0.8rem", padding: "0.15rem 0.5rem", borderRadius: "4px" }}
+        >
+          🤖 AI 代码审查报告 {loading ? "…" : open ? "▲" : "▼"}
+        </button>
+        {review && (
+          <span
+            style={{
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              padding: "0.1rem 0.4rem",
+              borderRadius: "4px",
+              background:
+                review.score >= 80
+                  ? "rgba(16, 185, 129, 0.12)"
+                  : review.score >= 60
+                  ? "rgba(245, 158, 11, 0.12)"
+                  : "rgba(239, 68, 68, 0.12)",
+              color:
+                review.score >= 80
+                  ? "var(--color-success, #10b981)"
+                  : review.score >= 60
+                  ? "var(--color-warning, #f59e0b)"
+                  : "var(--color-danger, #ef4444)",
+            }}
+          >
+            {review.score} 分
+          </span>
+        )}
+      </div>
       {open && (
         <div
           className="ai-review-panel"
@@ -237,26 +311,93 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
           {loading ? (
             <span className="muted">正在加载 AI 审查结果…</span>
           ) : error ? (
-            <span className="error-text">{error}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <span className="error-text">{error}</span>
+              <button
+                type="button"
+                className="quiet-button quiet-button--compact"
+                onClick={handleTrigger}
+                disabled={triggering}
+                style={{ alignSelf: "flex-start" }}
+              >
+                {triggering ? "正在发起审查…" : "🔄 重新审查"}
+              </button>
+            </div>
           ) : !review ? (
-            <span className="muted">暂无 AI 审查报告（可能未开启 PR 审查或 Diff 过大）。</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <span className="muted">暂无 AI 审查报告（可能未开启自动审查或正等待触发）。</span>
+              <button
+                type="button"
+                className="quiet-button quiet-button--compact"
+                onClick={handleTrigger}
+                disabled={triggering}
+                style={{ alignSelf: "flex-start", background: "rgba(59, 130, 246, 0.1)", color: "#3b82f6" }}
+              >
+                {triggering ? "正在审查…" : "🚀 立即发起 AI 审查"}
+              </button>
+            </div>
           ) : (
             <div className="ai-review-content">
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
-                <strong>健康评分:</strong>
-                <span
-                  style={{
-                    fontWeight: 600,
-                    color: review.score >= 80 ? "var(--color-success, #10b981)" : review.score >= 60 ? "var(--color-warning, #f59e0b)" : "var(--color-danger, #ef4444)",
-                  }}
-                >
-                  {review.score} / 100
-                </span>
-                {review.commented_on_pr && (
-                  <span className="label" style={{ fontSize: "0.75rem", background: "rgba(16, 185, 129, 0.1)", color: "#10b981" }}>
-                    已回写 GitHub PR
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: "0.5rem",
+                  marginBottom: "0.5rem",
+                  borderBottom: "1px dashed var(--border-default, #e5e7eb)",
+                  paddingBottom: "0.5rem",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                  <strong>健康评分:</strong>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color:
+                        review.score >= 80
+                          ? "var(--color-success, #10b981)"
+                          : review.score >= 60
+                          ? "var(--color-warning, #f59e0b)"
+                          : "var(--color-danger, #ef4444)",
+                    }}
+                  >
+                    {review.score} / 100
                   </span>
-                )}
+                  {review.commented_on_pr && (
+                    <span
+                      className="label"
+                      style={{ fontSize: "0.75rem", background: "rgba(16, 185, 129, 0.1)", color: "#10b981" }}
+                    >
+                      已回写 GitHub PR
+                    </span>
+                  )}
+                  {review.head_sha && (
+                    <span className="muted" style={{ fontSize: "0.75rem", fontFamily: "monospace" }}>
+                      Commit: {review.head_sha.slice(0, 7)}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <button
+                    type="button"
+                    className="quiet-button quiet-button--compact"
+                    onClick={handleCopy}
+                    style={{ fontSize: "0.75rem" }}
+                  >
+                    {copied ? "✓ 已复制" : "📋 复制报告"}
+                  </button>
+                  <button
+                    type="button"
+                    className="quiet-button quiet-button--compact"
+                    onClick={handleTrigger}
+                    disabled={triggering}
+                    style={{ fontSize: "0.75rem" }}
+                  >
+                    {triggering ? "正在审查…" : "🔄 重新审查"}
+                  </button>
+                </div>
               </div>
               <p style={{ margin: "0.25rem 0 0.5rem" }}>{review.summary}</p>
               {review.diff_truncated && (

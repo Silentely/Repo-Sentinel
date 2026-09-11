@@ -498,3 +498,25 @@ func (s *server) handleGetWorkItemAIReview(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(setting.ValueJSON)
 }
+
+func (s *server) handleTriggerWorkItemAIReview(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+		return
+	}
+	if s.webhookSvc == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, map[string]any{"message": "webhook service unavailable"})
+		return
+	}
+	res, err := s.webhookSvc.TriggerWorkItemReview(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, map[string]any{"message": "work item not found"})
+			return
+		}
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
