@@ -509,6 +509,7 @@ export interface AIConfig {
   release_summary_enabled: boolean;
   code_review_enabled: boolean;
   code_review_comment_on_pr: boolean;
+  failure_analysis_enabled: boolean;
   api_key_configured: boolean;
   enabled_source: string;
   base_url_source: string;
@@ -522,6 +523,7 @@ export interface AIConfig {
   release_summary_enabled_source: string;
   code_review_enabled_source: string;
   code_review_comment_on_pr_source: string;
+  failure_analysis_enabled_source: string;
   enabled_locked: boolean;
   base_url_locked: boolean;
   model_locked: boolean;
@@ -534,6 +536,7 @@ export interface AIConfig {
   release_summary_enabled_locked: boolean;
   code_review_enabled_locked: boolean;
   code_review_comment_on_pr_locked: boolean;
+  failure_analysis_enabled_locked: boolean;
   can_edit_in_ui: boolean;
   note: string;
 }
@@ -550,6 +553,7 @@ export interface AIConfigInput {
   release_summary_enabled?: boolean;
   code_review_enabled?: boolean;
   code_review_comment_on_pr?: boolean;
+  failure_analysis_enabled?: boolean;
   api_key?: string;
   clear_api_key?: boolean;
 }
@@ -771,8 +775,15 @@ export async function fetchWorkItemAIReview(workItemId: string): Promise<CodeRev
   }
 }
 
-export async function triggerWorkItemAIReview(workItemId: string): Promise<CodeReviewResult> {
-  return await apiRequest<CodeReviewResult>(`/api/v1/work-items/${encodeURIComponent(workItemId)}/ai-review`, {
+// 手动触发 AI 审查的排队回执：审查管线异步执行，head_sha 供前端轮询比对结果。
+export interface TriggerAIReviewReceipt {
+  status: string;
+  work_item_id: string;
+  head_sha: string;
+}
+
+export async function triggerWorkItemAIReview(workItemId: string): Promise<TriggerAIReviewReceipt> {
+  return await apiRequest<TriggerAIReviewReceipt>(`/api/v1/work-items/${encodeURIComponent(workItemId)}/ai-review`, {
     method: "POST",
     body: JSON.stringify({}),
   });

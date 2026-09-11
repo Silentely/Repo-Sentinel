@@ -36,6 +36,8 @@ const (
 	errorCodeReconcileInProgress    = "reconcile_in_progress"
 	errorCodeAIFieldLocked          = "ai_field_locked"
 	errorCodeAIReloadFailed         = "ai_runtime_reload_failed"
+	errorCodeAIReviewNotEnabled     = "ai_review_not_enabled"
+	errorCodeAIReviewInProgress     = "ai_review_in_progress"
 	errorCodeMethodNotAllowed       = "method_not_allowed"
 
 	// loginRetryAfterSeconds 登录限流响应的 Retry-After 秒数。
@@ -139,6 +141,10 @@ func apiErrorMessage(errorCode string) string {
 		return "该字段已由环境变量设置，管理台不能覆盖；请修改部署配置后重启。"
 	case errorCodeAIReloadFailed:
 		return "AI 配置已写入，但热加载失败：库内配置无法解析或密钥信封无法解密，运行时保持上一份有效配置。"
+	case errorCodeAIReviewNotEnabled:
+		return "AI 代码审查未启用，请先在设置中开启智能值守的代码审查能力并配置 API Key。"
+	case errorCodeAIReviewInProgress:
+		return "该 PR 已有审查任务在进行中，请稍后展开 AI 审查报告查看结果。"
 	case errorCodeMethodNotAllowed:
 		return "当前请求方法不受支持。"
 	default:

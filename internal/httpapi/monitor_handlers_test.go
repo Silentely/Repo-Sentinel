@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
@@ -934,10 +936,134 @@ func TestTriggerWorkItemAIReview(t *testing.T) {
 	cookies := fixture.login(t, httpTestPassword)
 	csrf := cookieByName(t, cookies, CSRFCookieName)
 	extraHeaders := map[string]string{CSRFHeaderName: csrf.Value}
+	ctx := t.Context()
+	now := time.Now().UTC()
 
-	// 1. 工作项不存在时返回 404 / 400
+	// 1. 工作项不存在时返回 404
 	resp404 := fixture.request(t, http.MethodPost, "/api/v1/work-items/pr-not-found/ai-review", "{}", "127.0.0.1:45003", cookies, extraHeaders)
-	if resp404.Code != http.StatusNotFound && resp404.Code != http.StatusBadRequest {
-		t.Fatalf("expected 404 or 400 for missing work item, got %d: %s", resp404.Code, resp404.Body.String())
+	if resp404.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing work item, got %d: %s", resp404.Code, resp404.Body.String())
+	}
+
+	// 2. 非 PR 工作项（Issue）返回 400
+	issue, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-issue-http", RepositoryID: "repo-none", Number: 7, Kind: store.WorkItemKindIssue,
+		State: "open", Title: "issue", Author: "alice", SourceUpdatedAt: now, StateHash: "h1",
+	}, nil)
+	if err != nil {
+		t.Fatalf("upsert issue: %v", err)
+	}
+	resp400 := fixture.request(t, http.MethodPost, "/api/v1/work-items/"+issue.ID+"/ai-review", "{}", "127.0.0.1:45004", cookies, extraHeaders)
+	if resp400.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for issue work item, got %d: %s", resp400.Code, resp400.Body.String())
+	}
+
+	// 3. AI 能力未启用返回 503（语义化错误码，便于前端区分提示）
+	repo, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-review-http", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "acme", Name: "demo", FullName: "acme/demo",
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+	pr, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-pr-http", RepositoryID: repo.ID, Number: 42, Kind: store.WorkItemKindPR,
+		State: "open", Title: "feat: http trigger", Author: "bob", SourceUpdatedAt: now, StateHash: "h2",
+	}, nil)
+	if err != nil {
+		t.Fatalf("upsert pr: %v", err)
+	}
+	resp503 := fixture.request(t, http.MethodPost, "/api/v1/work-items/"+pr.ID+"/ai-review", "{}", "127.0.0.1:45005", cookies, extraHeaders)
+	if resp503.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when ai review disabled, got %d: %s", resp503.Code, resp503.Body.String())
+	}
+	if !strings.Contains(resp503.Body.String(), "ai_review_not_enabled") {
+		t.Fatalf("expected ai_review_not_enabled error code, got: %s", resp503.Body.String())
+	}
+}
+
+// TestTriggerWorkItemAIReviewQueued 覆盖成功路径：AI 与 GitHub 均指向桩服务器时，
+// 触发返回 202 排队回执（含 head SHA），后台审查完成后报告落库且 head_sha 一致。
+func TestTriggerWorkItemAIReviewQueued(t *testing.T) {
+	var reviewCalls atomic.Int64
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/42") && strings.HasPrefix(r.Header.Get("Accept"), "application/vnd.github.v3.diff"):
+			w.Header().Set("Content-Type", "application/vnd.github.v3.diff")
+			_, _ = w.Write([]byte("diff --git a/main.go b/main.go\n+func ok() {}\n"))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/42"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"head":{"sha":"sha-http-queued"}}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/chat/completions"):
+			reviewCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"summary\":\"质量良好\",\"score\":90,\"security_risks\":[],\"breaking_risks\":[],\"code_smells\":[]}"}}]}`))
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	t.Cleanup(stub.Close)
+
+	ghClient := githubx.NewAppClient(1234, "")
+	ghClient.BaseURL = stub.URL
+	aiClient := &ai.Client{
+		Enabled: true, BaseURL: stub.URL, Model: "mock-model", APIKey: "mock-key",
+		CodeReviewEnabled: true,
+	}
+	fixture := newHTTPTestFixture(t, httpTestOptions{aiClient: aiClient, githubClient: ghClient})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	ctx := t.Context()
+	now := time.Now().UTC()
+
+	repo, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-review-queued", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "acme", Name: "demo", FullName: "acme/demo",
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+	pr, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-pr-queued", RepositoryID: repo.ID, Number: 42, Kind: store.WorkItemKindPR,
+		State: "open", Title: "feat: queued review", Author: "bob", SourceUpdatedAt: now, StateHash: "h3",
+	}, nil)
+	if err != nil {
+		t.Fatalf("upsert pr: %v", err)
+	}
+
+	resp := fixture.request(t, http.MethodPost, "/api/v1/work-items/"+pr.ID+"/ai-review", "{}", "127.0.0.1:45006",
+		cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 queued, got %d: %s", resp.Code, resp.Body.String())
+	}
+	var receipt struct {
+		Status     string `json:"status"`
+		WorkItemID string `json:"work_item_id"`
+		HeadSHA    string `json:"head_sha"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &receipt); err != nil {
+		t.Fatalf("decode receipt: %v body=%s", err, resp.Body.String())
+	}
+	if receipt.Status != "queued" || receipt.WorkItemID != pr.ID || receipt.HeadSHA != "sha-http-queued" {
+		t.Fatalf("unexpected receipt: %+v", receipt)
+	}
+
+	// 轮询等待后台审查落库并经 GET 端点可读取（head_sha 一致）。
+	deadline := time.Now().Add(4 * time.Second)
+	var fetched bool
+	for time.Now().Before(deadline) {
+		getResp := fixture.request(t, http.MethodGet, "/api/v1/work-items/"+pr.ID+"/ai-review", "", "127.0.0.1:45007", cookies, nil)
+		if getResp.Code == http.StatusOK && strings.Contains(getResp.Body.String(), receipt.HeadSHA) {
+			fetched = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !fetched {
+		t.Fatalf("queued review did not complete in time")
+	}
+	if reviewCalls.Load() == 0 {
+		t.Fatal("expected LLM review to be invoked")
 	}
 }

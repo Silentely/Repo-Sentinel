@@ -195,6 +195,17 @@ func EventRepoName(ev Event, repoNames map[string]string) string {
 	return PayloadString(ev.PayloadSummary, "repository")
 }
 
+// SplitFullName 将 GitHub 仓库全名拆分为 owner 与 repo 名。
+// 「owner/name 缺失时回退 FullName 解析」的回退逻辑在 webhook 审查、CI 诊断等多处出现，
+// 统一收口避免各处解析行为漂移；FullName 缺少「/」分隔时返回空串。
+func SplitFullName(fullName string) (owner, repo string) {
+	parts := strings.SplitN(fullName, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", ""
+	}
+	return parts[0], parts[1]
+}
+
 // CoerceInt 将 JSON 数值（float64/int/int64/json.Number）收敛为整数；
 // 非数值或小数（如 3.5）返回 false。保留天数、聚合窗口等设置解析共用此实现，
 // 避免各包自行转换导致边界行为漂移。

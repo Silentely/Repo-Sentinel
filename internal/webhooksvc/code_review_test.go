@@ -2,6 +2,7 @@ package webhooksvc_test
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -141,10 +142,16 @@ func TestServiceTriggerWorkItemReviewAndHighRiskAlert(t *testing.T) {
 
 	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/42"):
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/42") && strings.HasPrefix(r.Header.Get("Accept"), "application/vnd.github.v3.diff"):
+			// Diff 接口（GetPRDiff 以 diff 专有 Accept 头区分详情接口）
 			w.Header().Set("Content-Type", "application/vnd.github.v3.diff")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("diff --git a/vuln.go b/vuln.go\n+eval(userInput)\n"))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/42"):
+			// 详情接口（GetPRDetail 获取 head SHA）
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"head":{"sha":"feedface1234"}}`))
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/chat/completions"):
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -196,13 +203,33 @@ func TestServiceTriggerWorkItemReviewAndHighRiskAlert(t *testing.T) {
 		t.Fatalf("upsert work item failed: %v", err)
 	}
 
-	// 手动触发代码审查
-	res, err := svc.TriggerWorkItemReview(ctx, wi.ID)
+	// 手动触发代码审查：异步入队并返回 head SHA 供轮询比对
+	headSHA, err := svc.TriggerWorkItemReview(ctx, wi.ID)
 	if err != nil {
 		t.Fatalf("TriggerWorkItemReview failed: %v", err)
 	}
-	if res.Score != 45 || len(res.SecurityRisks) != 1 {
-		t.Fatalf("unexpected review result: %+v", res)
+	if headSHA != "feedface1234" {
+		t.Fatalf("unexpected head sha: %q", headSHA)
+	}
+
+	// 轮询等待后台审查落库，且报告的 head SHA 与回执一致
+	deadline := time.Now().Add(4 * time.Second)
+	var reviewSetting store.SystemSetting
+	var found bool
+	for time.Now().Before(deadline) {
+		setting, err := data.Settings().Get(ctx, "ai.pr_review."+wi.ID)
+		if err == nil && strings.Contains(string(setting.ValueJSON), headSHA) {
+			reviewSetting = setting
+			found = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !found {
+		t.Fatalf("expected ai.pr_review setting stored for work item, but timed out")
+	}
+	if !strings.Contains(string(reviewSetting.ValueJSON), "45") || !strings.Contains(string(reviewSetting.ValueJSON), "代码注入危险") {
+		t.Fatalf("unexpected review content: %s", string(reviewSetting.ValueJSON))
 	}
 
 	// 验证优雅停机感知 WaitReviews 正常返回
@@ -239,6 +266,21 @@ func TestServiceTriggerWorkItemReviewEdgeCases(t *testing.T) {
 		Background: ctx,
 	}
 
+	// 先在库中放入 PR 工作项（能力/依赖开关的校验在其后，需要真实存在的 PR 目标）。
+	pr, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID:              "wi-pr-101",
+		RepositoryID:    "repo-demo",
+		Kind:            store.WorkItemKindPR,
+		Number:          101,
+		Title:           "clean change",
+		Author:          "dev",
+		State:           "open",
+		SourceUpdatedAt: time.Now().UTC(),
+	}, nil)
+	if err != nil {
+		t.Fatalf("upsert pr failed: %v", err)
+	}
+
 	// 1. 测试对非 PR（如 Issue）调用审查：应明确返回拒绝错误
 	issue, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
 		ID:              "wi-issue-100",
@@ -255,8 +297,8 @@ func TestServiceTriggerWorkItemReviewEdgeCases(t *testing.T) {
 	}
 
 	_, err = svc.TriggerWorkItemReview(ctx, issue.ID)
-	if err == nil || !strings.Contains(err.Error(), "not a pull request") {
-		t.Fatalf("expected not a pull request error, got %v", err)
+	if !errors.Is(err, webhooksvc.ErrInvalidReviewTarget) {
+		t.Fatalf("expected ErrInvalidReviewTarget, got %v", err)
 	}
 
 	// 2. AI 审查未开启时的快速拒绝
@@ -265,8 +307,19 @@ func TestServiceTriggerWorkItemReviewEdgeCases(t *testing.T) {
 		AI:         &ai.Client{Enabled: false},
 		Background: ctx,
 	}
-	_, err = svcDisabled.TriggerWorkItemReview(ctx, issue.ID)
-	if err == nil || !strings.Contains(err.Error(), "not enabled") {
-		t.Fatalf("expected not enabled error, got %v", err)
+	_, err = svcDisabled.TriggerWorkItemReview(ctx, pr.ID)
+	if !errors.Is(err, webhooksvc.ErrReviewNotEnabled) {
+		t.Fatalf("expected ErrReviewNotEnabled, got %v", err)
+	}
+
+	// 3. GitHub 客户端缺失（无法拉取详情/Diff）：依赖不可用
+	svcNoGitHub := &webhooksvc.Service{
+		Store:      data,
+		AI:         aiClient,
+		Background: ctx,
+	}
+	_, err = svcNoGitHub.TriggerWorkItemReview(ctx, pr.ID)
+	if !errors.Is(err, webhooksvc.ErrReviewUnavailable) {
+		t.Fatalf("expected ErrReviewUnavailable, got %v", err)
 	}
 }

@@ -178,6 +178,9 @@ type httpTestOptions struct {
 	// aiRuntime / aiClient 装配到 Dependencies，供 AI 配置 API 测试。
 	aiRuntime *ai.RuntimeConfig
 	aiClient  *ai.Client
+	// githubClient 装配到 GitHubRuntime.Client，经 New() 透传给内置 WebhookService，
+	// 供 AI 审查触发端点的成功路径测试（Diff/详情/LLM 均指向桩服务器）。
+	githubClient *githubx.AppClient
 	// aiConfig 装配到 Dependencies.Config.AI，供 PUT 热更新路径使用；
 	// 需与 aiRuntime 同源（默认值一致），避免 RuntimeFromEnv 把零值误判为 env 锁定。
 	aiConfig config.AIConfig
@@ -233,6 +236,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		ClientIDSource:      "unset",
 		PrivateKeySource:    "unset",
 		ExternalPATSource:   "unset",
+		Client:              options.githubClient,
 	}
 	cfg := config.Config{
 		HTTP:        config.HTTPConfig{PublicBaseURL: publicBaseURL},

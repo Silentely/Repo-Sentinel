@@ -699,13 +699,30 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				"responses": map[string]any{"200": jsonResponse("AI 审查结果", ref("CodeReviewResult")), "404": errorResponse()},
 			},
 			"post": map[string]any{
-				"summary":     "手动触发指定 PR 的 AI 代码审查并更新报告",
+				"summary":     "手动触发指定 PR 的 AI 代码审查（异步入队）",
 				"operationId": "triggerWorkItemAIReview",
 				"security":    []any{authed},
 				"parameters": []any{
 					map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
 				},
-				"responses": map[string]any{"200": jsonResponse("审查完成并返回结果", ref("CodeReviewResult")), "400": errorResponse(), "404": errorResponse()},
+				"responses": map[string]any{
+					// 审查管线异步执行（同步执行会超过 HTTP WriteTimeout）：
+					// 202 返回排队回执，凭 head_sha 轮询 GET 同端点比对 head_sha/reviewed_at。
+					"202": map[string]any{
+						"description": "审查任务已排队；轮询 GET 同端点直至报告的 head_sha 与 reviewed_at 更新",
+						"content": map[string]any{"application/json": map[string]any{"schema": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"status":       map[string]any{"type": "string", "enum": []string{"queued"}},
+								"work_item_id": map[string]any{"type": "string"},
+								"head_sha":     map[string]any{"type": "string"},
+							},
+							"required": []string{"status", "work_item_id", "head_sha"},
+						}}},
+					},
+					"400": errorResponse(), "404": errorResponse(),
+					"409": errorResponse(), "503": errorResponse(),
+				},
 			},
 		},
 		"/api/v1/workflow-runs": map[string]any{

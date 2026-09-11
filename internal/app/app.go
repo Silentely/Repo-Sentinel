@@ -79,6 +79,9 @@ func (a *App) Close() error {
 			a.workerCancel()
 		}
 		if a.webhookService != nil {
+			// 先拒绝登记新审查任务，再等待在途任务排空：排空期间启动的新任务
+			// 会在数据库关闭后写入（见 reviewTracker 的同锁互斥说明）。
+			a.webhookService.StopReviews()
 			waitCtx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
 			if err := a.webhookService.WaitReviews(waitCtx); err != nil && a.logger != nil {
 				a.logger.Warn("ai code review drain incomplete", "error_code", "ai_review_shutdown_timeout", "error", err.Error())

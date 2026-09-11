@@ -257,7 +257,7 @@ func (s *server) mcpTools() []mcpTool {
 		},
 		{
 			name:        "trigger_work_item_ai_review",
-			description: "手动触发对指定 PR 工作项的 AI 代码审查并更新报告。",
+			description: "手动触发对指定 PR 工作项的 AI 代码审查。任务异步入队，返回 head_sha；稍后用 get_work_item_ai_review 轮询，报告的 head_sha 与 reviewed_at 更新即本次审查完成。",
 			inputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -273,7 +273,11 @@ func (s *server) mcpTools() []mcpTool {
 				if s.webhookSvc == nil {
 					return nil, fmt.Errorf("webhook service is unavailable")
 				}
-				return s.webhookSvc.TriggerWorkItemReview(ctx, id)
+				headSHA, err := s.webhookSvc.TriggerWorkItemReview(ctx, id)
+				if err != nil {
+					return nil, err
+				}
+				return map[string]any{"status": "queued", "work_item_id": id, "head_sha": headSHA}, nil
 			},
 		},
 		{

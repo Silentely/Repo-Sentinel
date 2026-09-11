@@ -238,9 +238,24 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
     setTriggering(true);
     setError(null);
     try {
-      const res = await triggerWorkItemAIReview(workItemId);
-      setReview(res);
-      if (!open) setOpen(true);
+      // 触发前快照既有报告：审查管线异步入队（同步执行会超过服务端写超时），
+      // 轮询以「head_sha 一致且 reviewed_at 晚于快照」判定本次审查完成，
+      // 时间戳均来自服务端，不受客户端时钟偏差影响。
+      const prev = review !== undefined ? review : await fetchWorkItemAIReview(workItemId);
+      const receipt = await triggerWorkItemAIReview(workItemId);
+      const prevReviewedAt = prev?.reviewed_at ? Date.parse(prev.reviewed_at) : 0;
+      const pollIntervalMs = 2000;
+      const pollDeadlineMs = 90_000;
+      for (let waited = 0; waited <= pollDeadlineMs; waited += pollIntervalMs) {
+        await new Promise((resolve) => setTimeout(resolve, waited === 0 ? 1000 : pollIntervalMs));
+        const latest = await fetchWorkItemAIReview(workItemId);
+        if (latest && latest.head_sha === receipt.head_sha && Date.parse(latest.reviewed_at) > prevReviewedAt) {
+          setReview(latest);
+          if (!open) setOpen(true);
+          return;
+        }
+      }
+      setError("审查仍在进行中，未在等待窗口内完成；请稍后收起再展开查看结果。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "触发 AI 审查失败，请稍后重试。");
     } finally {

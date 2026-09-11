@@ -10,6 +10,7 @@ import (
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
+	"github.com/Silentely/Repo-Sentinel/internal/webhooksvc"
 	"github.com/go-chi/chi/v5"
 	"github.com/oklog/ulid/v2"
 )
@@ -499,6 +500,11 @@ func (s *server) handleGetWorkItemAIReview(w http.ResponseWriter, r *http.Reques
 	_, _ = w.Write(setting.ValueJSON)
 }
 
+// handleTriggerWorkItemAIReview 手动触发指定 PR 工作项的 AI 代码审查。
+// 审查管线在后台异步执行（同步执行会超过 HTTP WriteTimeout，导致前端误判失败），
+// 返回 202 与 head SHA，前端凭其轮询 GET 同端点比对 head_sha/reviewed_at 获取结果。
+// 错误按类别映射：不存在 → 404，能力未启用/依赖缺失 → 503，在途冲突 → 409，
+// 目标不可审查 → 400；其余内部错误经 writeMappedError 脱敏，不回传原始错误信息。
 func (s *server) handleTriggerWorkItemAIReview(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(chi.URLParam(r, "id"))
 	if id == "" {
@@ -509,14 +515,23 @@ func (s *server) handleTriggerWorkItemAIReview(w http.ResponseWriter, r *http.Re
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, map[string]any{"message": "webhook service unavailable"})
 		return
 	}
-	res, err := s.webhookSvc.TriggerWorkItemReview(r.Context(), id)
+	headSHA, err := s.webhookSvc.TriggerWorkItemReview(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
 			s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, map[string]any{"message": "work item not found"})
-			return
+		case errors.Is(err, webhooksvc.ErrReviewNotEnabled):
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeAIReviewNotEnabled, nil)
+		case errors.Is(err, webhooksvc.ErrReviewUnavailable):
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
+		case errors.Is(err, webhooksvc.ErrReviewInProgress):
+			s.writeAPIError(w, r, http.StatusConflict, errorCodeAIReviewInProgress, nil)
+		case errors.Is(err, webhooksvc.ErrInvalidReviewTarget):
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": err.Error()})
+		default:
+			s.writeMappedError(w, r, err)
 		}
-		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "work_item_id": id, "head_sha": headSHA})
 }

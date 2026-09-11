@@ -6,7 +6,6 @@ package webhooksvc
 import (
 	"context"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
@@ -37,10 +36,9 @@ type Service struct {
 	// 避免 webhooksvc 反向依赖 httpapi）。
 	OnFailed func()
 	// SlowThreshold 慢处理判定阈值；<=0 时用默认 slowWebhookThreshold。
-	SlowThreshold  time.Duration
-	reviewMu       sync.Mutex
-	reviewInFlight map[string]struct{}
-	reviewWg       sync.WaitGroup
+	SlowThreshold time.Duration
+	// reviews 跟踪在途审查任务：同头互斥与停机排空（见 reviewTracker）。
+	reviews *reviewTracker
 }
 
 // slowWebhookThreshold 单条 webhook 处理的慢阈值：超过说明规范化/评估路径存在
@@ -235,17 +233,12 @@ func (s *Service) logError(msg, deliveryID, eventType, code, repoName, errMsg st
 	s.Logger.Error(msg, attrs...)
 }
 
-// WaitReviews 等待进行中的异步 PR 审查任务结束或直到传入 context 超时/取消。
+// StopReviews 进入审查停机排空状态：拒绝登记新的审查任务。
+// App.Close 在 WaitReviews 之前调用：先拒绝新任务，再等待在途任务清空，
+// 保证排空等待期间不会再有新任务并发登记后写已关闭的数据库。
+func (s *Service) StopReviews() { s.reviews.stop() }
+
+// WaitReviews 等待在途的 PR 审查任务清空或直到传入 context 超时/取消。
 func (s *Service) WaitReviews(ctx context.Context) error {
-	c := make(chan struct{})
-	go func() {
-		defer close(c)
-		s.reviewWg.Wait()
-	}()
-	select {
-	case <-c:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return s.reviews.wait(ctx)
 }
