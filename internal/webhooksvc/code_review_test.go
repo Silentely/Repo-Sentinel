@@ -228,7 +228,7 @@ func TestServiceTriggerWorkItemReviewAndHighRiskAlert(t *testing.T) {
 	if !found {
 		t.Fatalf("expected ai.pr_review setting stored for work item, but timed out")
 	}
-	if !strings.Contains(string(reviewSetting.ValueJSON), "45") || !strings.Contains(string(reviewSetting.ValueJSON), "代码注入危险") {
+	if !strings.Contains(string(reviewSetting.ValueJSON), "35") || !strings.Contains(string(reviewSetting.ValueJSON), "代码注入危险") {
 		t.Fatalf("unexpected review content: %s", string(reviewSetting.ValueJSON))
 	}
 
@@ -321,5 +321,143 @@ func TestServiceTriggerWorkItemReviewEdgeCases(t *testing.T) {
 	_, err = svcNoGitHub.TriggerWorkItemReview(ctx, pr.ID)
 	if !errors.Is(err, webhooksvc.ErrReviewUnavailable) {
 		t.Fatalf("expected ErrReviewUnavailable, got %v", err)
+	}
+}
+
+func TestIsBotUser(t *testing.T) {
+	cases := []struct {
+		login    string
+		userType string
+		want     bool
+	}{
+		{"dependabot[bot]", "User", true},
+		{"renovate[bot]", "Bot", true},
+		{"github-actions[bot]", "", true},
+		{"some-service-app", "Bot", true},
+		{"dependabot", "", true},
+		{"renovate", "", true},
+		{"github-actions", "", true},
+		{"snyk-bot", "", true},
+		{"codecov", "", true},
+		{"alice", "User", false},
+		{"bob", "", false},
+		{"", "", false},
+	}
+
+	for _, tc := range cases {
+		got := webhooksvc.IsBotUser(tc.login, tc.userType)
+		if got != tc.want {
+			t.Errorf("IsBotUser(%q, %q) = %v, want %v", tc.login, tc.userType, got, tc.want)
+		}
+	}
+}
+
+func TestServiceAICodeReviewBotPR(t *testing.T) {
+	data := openServiceStore(t)
+	seedActiveDemoRepo(t, data)
+	ctx := t.Context()
+
+	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/43") && strings.HasPrefix(r.Header.Get("Accept"), "application/vnd.github.v3.diff"):
+			w.Header().Set("Content-Type", "application/vnd.github.v3.diff")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("diff --git a/go.mod b/go.mod\n+require example.com/pkg v1.2.3\n"))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/43"):
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"head": map[string]any{"sha": "botsha123"},
+			})
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/chat/completions"):
+			w.Header().Set("Content-Type", "application/json")
+			res := map[string]any{
+				"choices": []map[string]any{
+					{
+						"message": map[string]any{
+							"content": `{"summary":"机器人依赖升级","score":90,"security_risks":[],"breaking_risks":[],"code_smells":[]}`,
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(res)
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer fakeServer.Close()
+
+	aiClient := &ai.Client{
+		Enabled:           true,
+		BaseURL:           fakeServer.URL,
+		Model:             "mock-model",
+		APIKey:            "mock-key",
+		CodeReviewEnabled: true,
+	}
+	ghClient := githubx.NewAppClient(1234, "")
+	ghClient.BaseURL = fakeServer.URL
+
+	svc := &webhooksvc.Service{
+		Store:      data,
+		AI:         aiClient,
+		GitHub:     ghClient,
+		Background: ctx,
+	}
+
+	// 1. 模拟 dependabot 提交 PR Webhook：应默认跳过自动审查
+	payload := `{
+		"action": "opened",
+		"number": 43,
+		"pull_request": {
+			"number": 43,
+			"title": "chore(deps): bump pkg from 1.2.2 to 1.2.3",
+			"user": {"login": "dependabot[bot]", "type": "Bot"},
+			"draft": false,
+			"head": {"sha": "botsha123"}
+		},
+		"repository": {
+			"owner": {"login": "acme"},
+			"name": "demo",
+			"full_name": "acme/demo"
+		}
+	}`
+
+	rowID := seedDelivery(t, data, "gh-del-bot-pr", "pull_request", []byte(payload))
+	svc.Process(rowID, "pull_request", "gh-del-bot-pr", []byte(payload))
+
+	// 验证工作项被正常写入，但未自动生成审查设置
+	item, err := data.WorkItems().GetByRepoNumber(ctx, "repo-demo", 43)
+	if err != nil {
+		t.Fatalf("expected work item created for bot PR: %v", err)
+	}
+
+	// 稍微等待确认后台没有发起自动审查
+	time.Sleep(200 * time.Millisecond)
+	setting, err := data.Settings().Get(ctx, "ai.pr_review."+item.ID)
+	if err == nil && len(setting.ValueJSON) > 0 {
+		t.Fatalf("bot PR should not be reviewed automatically, but got: %s", string(setting.ValueJSON))
+	}
+
+	// 2. 用户手动触发审查该机器人 PR
+	headSHA, err := svc.TriggerWorkItemReview(ctx, item.ID)
+	if err != nil {
+		t.Fatalf("manual trigger review for bot PR failed: %v", err)
+	}
+	if headSHA != "botsha123" {
+		t.Fatalf("expected headSHA botsha123, got %s", headSHA)
+	}
+
+	// 等待手动审查完成落库
+	deadline := time.Now().Add(4 * time.Second)
+	var found bool
+	for time.Now().Before(deadline) {
+		setting, err := data.Settings().Get(ctx, "ai.pr_review."+item.ID)
+		if err == nil && strings.Contains(string(setting.ValueJSON), "botsha123") {
+			found = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !found {
+		t.Fatalf("expected manual review result stored for bot PR, but timed out")
 	}
 }

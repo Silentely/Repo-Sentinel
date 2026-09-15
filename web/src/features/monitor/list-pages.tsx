@@ -190,19 +190,56 @@ function EventListBody({
 }
 
 
-function formatReviewMarkdown(review: CodeReviewResult): string {
-  const parts: string[] = [
-    `### 🤖 AI 代码审查报告 (健康评分: ${review.score}/100)`,
-    review.summary ? `**审查结论：** ${review.summary}` : "",
-  ];
+export function isBotAuthor(author?: string): boolean {
+  if (!author) return false;
+  const lower = author.toLowerCase().trim();
+  if (lower.endsWith("[bot]")) return true;
+  switch (lower) {
+    case "dependabot":
+    case "renovate":
+    case "github-actions":
+    case "greenkeeper":
+    case "snyk-bot":
+    case "codecov":
+    case "copilot":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string {
+  const parts: string[] = ["## 🤖 RepoSentinel AI Code Review\n"];
   if (review.security_risks && review.security_risks.length > 0) {
-    parts.push(`\n**🛡️ 安全风险：**\n` + review.security_risks.map((r) => `- ${r}`).join("\n"));
+    parts.push("> 🚨 **安全风险警示**：检测到潜在安全风险或不可信外部引用，合并前请务必人工核验！\n");
+  } else if (review.score < 60) {
+    parts.push("> ⚠️ **质量风险警示**：代码健康评分较低，建议优化修复后再行合入。\n");
+  }
+  const scoreBadge =
+    review.score < 60 || (review.security_risks && review.security_risks.length > 0)
+      ? "🔴 高危风险"
+      : review.score < 80 || (review.breaking_risks && review.breaking_risks.length > 0)
+      ? "🟡 需关注"
+      : "🟢 健康";
+  parts.push(`**代码健康评分**: \`${review.score} / 100\` (${scoreBadge})\n`);
+  if (item?.author) {
+    const botTag = isBotAuthor(item.author) ? " [Bot]" : "";
+    parts.push(`**PR 作者**: @${item.author}${botTag}\n`);
+  }
+  if (review.diff_truncated) {
+    parts.push("> ⚠️ 本次 Diff 超过输入上限，报告仅覆盖前部变更。\n");
+  }
+  if (review.summary) {
+    parts.push(`> **概要评估**: ${review.summary}\n`);
+  }
+  if (review.security_risks && review.security_risks.length > 0) {
+    parts.push(`\n**🛡️ 安全与凭证审计：**\n` + review.security_risks.map((r) => `- ⚠️ ${r}`).join("\n"));
   }
   if (review.breaking_risks && review.breaking_risks.length > 0) {
-    parts.push(`\n**⚠️ 破坏性变更：**\n` + review.breaking_risks.map((b) => `- ${b}`).join("\n"));
+    parts.push(`\n**⚠️ 破坏性变更：**\n` + review.breaking_risks.map((b) => `- ⚠️ ${b}`).join("\n"));
   }
   if (review.code_smells && review.code_smells.length > 0) {
-    parts.push(`\n**💡 优化建议：**\n` + review.code_smells.map((s) => `- ${s}`).join("\n"));
+    parts.push(`\n**💡 优化建议：**\n` + review.code_smells.map((s) => `- 💡 ${s}`).join("\n"));
   }
   if (review.head_sha) {
     parts.push(`\n*Commit: ${review.head_sha}*`);
@@ -210,7 +247,7 @@ function formatReviewMarkdown(review: CodeReviewResult): string {
   return parts.filter(Boolean).join("\n");
 }
 
-function AIReviewCard({ workItemId }: { workItemId: string }) {
+function AIReviewCard({ workItemId, item }: { workItemId: string; item?: WorkItem }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [triggering, setTriggering] = useState(false);
@@ -266,13 +303,15 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
   const handleCopy = async () => {
     if (!review) return;
     try {
-      await navigator.clipboard.writeText(formatReviewMarkdown(review));
+      await navigator.clipboard.writeText(formatReviewMarkdown(review, item));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // 剪贴板异常降级
     }
   };
+
+  const hasSecurityRisks = Boolean(review?.security_risks && review.security_risks.length > 0);
 
   return (
     <div className="ai-review-wrapper" style={{ marginTop: "0.5rem" }}>
@@ -294,19 +333,20 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
               padding: "0.1rem 0.4rem",
               borderRadius: "4px",
               background:
-                review.score >= 80
+                hasSecurityRisks || review.score < 60
+                  ? "rgba(239, 68, 68, 0.12)"
+                  : review.score >= 80
                   ? "rgba(16, 185, 129, 0.12)"
-                  : review.score >= 60
-                  ? "rgba(245, 158, 11, 0.12)"
-                  : "rgba(239, 68, 68, 0.12)",
+                  : "rgba(245, 158, 11, 0.12)",
               color:
-                review.score >= 80
+                hasSecurityRisks || review.score < 60
+                  ? "var(--color-danger, #ef4444)"
+                  : review.score >= 80
                   ? "var(--color-success, #10b981)"
-                  : review.score >= 60
-                  ? "var(--color-warning, #f59e0b)"
-                  : "var(--color-danger, #ef4444)",
+                  : "var(--color-warning, #f59e0b)",
             }}
           >
+            {hasSecurityRisks ? "⚠️ " : ""}
             {review.score} 分
           </span>
         )}
@@ -340,7 +380,11 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
             </div>
           ) : !review ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              <span className="muted">暂无 AI 审查报告（可能未开启自动审查或正等待触发）。</span>
+              <span className="muted">
+                {isBotAuthor(item?.author)
+                  ? "🤖 机器人提交的 PR 默认跳过自动审查，可按需手动触发。"
+                  : "暂无 AI 审查报告（可能未开启自动审查或正等待触发）。"}
+              </span>
               <button
                 type="button"
                 className="quiet-button quiet-button--compact"
@@ -365,21 +409,29 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
                   paddingBottom: "0.5rem",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
                   <strong>健康评分:</strong>
                   <span
                     style={{
                       fontWeight: 600,
                       color:
-                        review.score >= 80
+                        hasSecurityRisks || review.score < 60
+                          ? "var(--color-danger, #ef4444)"
+                          : review.score >= 80
                           ? "var(--color-success, #10b981)"
-                          : review.score >= 60
-                          ? "var(--color-warning, #f59e0b)"
-                          : "var(--color-danger, #ef4444)",
+                          : "var(--color-warning, #f59e0b)",
                     }}
                   >
                     {review.score} / 100
                   </span>
+                  {hasSecurityRisks && (
+                    <span
+                      className="label"
+                      style={{ fontSize: "0.75rem", background: "rgba(239, 68, 68, 0.1)", color: "#ef4444" }}
+                    >
+                      存在安全风险
+                    </span>
+                  )}
                   {review.commented_on_pr && (
                     <span
                       className="label"
@@ -387,6 +439,37 @@ function AIReviewCard({ workItemId }: { workItemId: string }) {
                     >
                       已回写 GitHub PR
                     </span>
+                  )}
+                  {item?.author && (
+                    <span className="muted" style={{ fontSize: "0.75rem" }}>
+                      作者: @{item.author}
+                      {isBotAuthor(item.author) && (
+                        <span
+                          className="label"
+                          style={{
+                            marginLeft: "0.25rem",
+                            fontSize: "0.65rem",
+                            padding: "0.05rem 0.25rem",
+                            background: "rgba(107, 114, 128, 0.15)",
+                            color: "var(--color-text-secondary, #6b7280)",
+                            borderRadius: "3px",
+                          }}
+                        >
+                          Bot
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {item?.html_url && (
+                    <a
+                      href={item.html_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="quiet-button quiet-button--compact"
+                      style={{ fontSize: "0.75rem", textDecoration: "none" }}
+                    >
+                      ↗ 打开 PR
+                    </a>
                   )}
                   {review.head_sha && (
                     <span className="muted" style={{ fontSize: "0.75rem", fontFamily: "monospace" }}>
@@ -584,7 +667,26 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                     </strong>
                   </div>
                   <div className="pr-meta">
-                    <span className="muted">{it.author ? ` · ${it.author}` : ""}</span>
+                    <span className="muted">
+                      {it.author ? ` · ${it.author}` : ""}
+                      {isBotAuthor(it.author) && (
+                        <span
+                          className="label"
+                          style={{
+                            marginLeft: "0.35rem",
+                            fontSize: "0.7rem",
+                            padding: "0.05rem 0.35rem",
+                            background: "rgba(107, 114, 128, 0.15)",
+                            color: "var(--color-text-secondary, #6b7280)",
+                            borderRadius: "3px",
+                            verticalAlign: "middle",
+                          }}
+                          title="机器人用户提交"
+                        >
+                          🤖 Bot
+                        </span>
+                      )}
+                    </span>
                     {it.labels && it.labels.length > 0 && (
                       <div className="labels">
                         {it.labels.slice(0, 3).map((label) => (
@@ -623,7 +725,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                       </span>
                     )}
                   </div>
-                  {kind === "pull_request" && <AIReviewCard workItemId={it.id} />}
+                  {kind === "pull_request" && <AIReviewCard workItemId={it.id} item={it} />}
                   <ItemActions
                     htmlUrl={it.html_url}
                     ignored={it.ignored || ignoredMode === "ignored"}

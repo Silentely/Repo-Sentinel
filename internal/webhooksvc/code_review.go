@@ -41,6 +41,7 @@ type ghPRPayload struct {
 		Title  string `json:"title"`
 		User   struct {
 			Login string `json:"login"`
+			Type  string `json:"type"`
 		} `json:"user"`
 		Draft bool `json:"draft"`
 		Head  struct {
@@ -57,6 +58,30 @@ type ghPRPayload struct {
 	Installation *struct {
 		ID int64 `json:"id"`
 	} `json:"installation"`
+	Sender *struct {
+		Login string `json:"login"`
+		Type  string `json:"type"`
+	} `json:"sender"`
+}
+
+// IsBotUser 判断指定 GitHub 用户名或类型是否为机器人账户。
+// 规则：
+// 1. GitHub API 用户类型为 "Bot"；
+// 2. 登录名以 "[bot]" 结尾（如 dependabot[bot], renovate[bot], github-actions[bot] 等）；
+// 3. 常见自动化机器人名匹配（如 dependabot, renovate, github-actions, greenkeeper, snyk-bot, codecov, copilot）。
+func IsBotUser(login, userType string) bool {
+	if strings.EqualFold(userType, "Bot") {
+		return true
+	}
+	loginLower := strings.ToLower(strings.TrimSpace(login))
+	if strings.HasSuffix(loginLower, "[bot]") {
+		return true
+	}
+	switch loginLower {
+	case "dependabot", "renovate", "github-actions", "greenkeeper", "snyk-bot", "codecov", "copilot":
+		return true
+	}
+	return false
 }
 
 // maybeTriggerAICodeReview 检查是否满足 PR AI 审查触发条件（opened 或 synchronize），并异步执行审查与可选评论回写。
@@ -98,6 +123,20 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 	fullName := payload.Repository.FullName
 	if fullName == "" {
 		fullName = owner + "/" + repo
+	}
+
+	author := payload.PullRequest.User.Login
+	userType := payload.PullRequest.User.Type
+	if userType == "" && payload.Sender != nil && payload.Sender.Login == author {
+		userType = payload.Sender.Type
+	}
+
+	// 机器人 PR 默认跳过自动审查，避免消耗配额（用户可在监控台手动按需触发）
+	if IsBotUser(author, userType) {
+		if s.Logger != nil {
+			s.Logger.Info("ai code review skipped: bot author", "repo", fullName, "pr", prNum, "author", author)
+		}
+		return
 	}
 
 	// 审查报告挂在 ai.pr_review.<workItemID> 上；工作项缺失时直接跳过，
@@ -457,12 +496,42 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		return
 	}
 
-	title := fmt.Sprintf("🛡️ [代码审查告警] %s PR #%d 发现潜在风险 (评分: %d)", repoFullName, prNum, res.Score)
+	htmlURL := item.HTMLURL
+	if htmlURL == "" {
+		htmlURL = fmt.Sprintf("https://github.com/%s/pull/%d", repoFullName, prNum)
+	}
+	repoURL := fmt.Sprintf("https://github.com/%s", repoFullName)
+
+	// 根据评分与安全隐患自适应预警等级
+	levelEmoji := "⚠️"
+	levelText := "PR 代码审查风险提示"
+	titlePrefix := "代码审查告警"
+	scoreBadge := "需关注"
+	if len(res.SecurityRisks) > 0 {
+		levelEmoji = "🚨"
+		levelText = "PR 代码审查安全预警"
+		titlePrefix = "安全代码审查告警"
+		if res.Score < 40 {
+			scoreBadge = "高危安全风险"
+		} else {
+			scoreBadge = "存在安全风险"
+		}
+	} else if res.Score < 60 {
+		levelEmoji = "🚨"
+		levelText = "PR 代码审查高危告警"
+		titlePrefix = "高危代码审查告警"
+		scoreBadge = "高危风险"
+	}
+
+	title := fmt.Sprintf("%s [%s] %s PR #%d 发现潜在风险 (评分: %d)", levelEmoji, titlePrefix, repoFullName, prNum, res.Score)
 	var sb strings.Builder
-	sb.WriteString("⚠️ <b>PR 代码审查风险预警</b>\n")
-	sb.WriteString(fmt.Sprintf("仓库：%s\n", htmlpkg.EscapeString(repoFullName)))
-	sb.WriteString(fmt.Sprintf("PR：#%d %s\n", prNum, htmlpkg.EscapeString(item.Title)))
-	sb.WriteString(fmt.Sprintf("综合评分：<b>%d / 100</b>\n", res.Score))
+	sb.WriteString(fmt.Sprintf("%s <b>%s</b>\n", levelEmoji, levelText))
+	sb.WriteString(fmt.Sprintf("仓库：<a href=\"%s\">%s</a>\n", repoURL, htmlpkg.EscapeString(repoFullName)))
+	sb.WriteString(fmt.Sprintf("PR：<a href=\"%s\">#%d %s</a>\n", htmlURL, prNum, htmlpkg.EscapeString(item.Title)))
+	if item.Author != "" {
+		sb.WriteString(fmt.Sprintf("作者：<code>%s</code>\n", htmlpkg.EscapeString(item.Author)))
+	}
+	sb.WriteString(fmt.Sprintf("综合评分：<b>%d / 100</b> (%s)\n", res.Score, scoreBadge))
 
 	if len(res.SecurityRisks) > 0 {
 		sb.WriteString("\n🚨 <b>安全风险：</b>\n")
@@ -480,11 +549,17 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		sb.WriteString("\n📝 <b>审查结论：</b>\n" + htmlpkg.EscapeString(res.Summary) + "\n")
 	}
 
-	body := sb.String()
-	htmlURL := item.HTMLURL
-	if htmlURL == "" {
-		htmlURL = fmt.Sprintf("https://github.com/%s/pull/%d", repoFullName, prNum)
+	// 增加处置建议
+	sb.WriteString("\n💡 <b>处置建议：</b>\n")
+	if len(res.SecurityRisks) > 0 {
+		sb.WriteString("• 检测到潜在安全风险或不可信外链，请人工核验；若确认违规请直接关闭 PR 并屏蔽可疑提交者。\n")
+	} else {
+		sb.WriteString("• 评分较低或包含破坏性变更，建议要求作者补充向下兼容处理与单元测试。\n")
 	}
+
+	sb.WriteString(fmt.Sprintf("\n🔗 <a href=\"%s\">在 GitHub 查看完整 PR</a>\n", htmlURL))
+
+	body := sb.String()
 
 	shaKey := res.HeadSHA
 	if shaKey == "" {
