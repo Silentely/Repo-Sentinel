@@ -30,8 +30,8 @@ importers:
         specifier: ^3.10.1
         version: 3.10.1(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react-is@17.0.2)(react@19.2.8)(redux@5.0.1)
       zod:
-        specifier: 4.4.3
-        version: 4.4.3
+        specifier: 4.6.1
+        version: 4.6.1
     devDependencies:
       '@playwright/test':
         specifier: 1.62.1
@@ -1351,8 +1351,8 @@ packages:
   xmlchars@2.2.0:
     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
 
-  zod@4.4.3:
-    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+  zod@4.6.1:
+    resolution: {integrity: sha512-341aRWQsve0rvronKNTqZpjmzdbUDlFuzHaI/XLg/Ej82qffDJRRfBTCuv7+9q/rMjB6LSLyEBnW4InJeMtt/Q==}
 
 snapshots:
 
@@ -2360,4 +2360,4 @@ snapshots:
 
   xmlchars@2.2.0: {}
 
-  zod@4.4.3: {}
+  zod@4.6.1: {}
