@@ -74,6 +74,7 @@ A: 可以，将 BaseURL 指向 OpenAI 兼容网关即可。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-16T00:00:00Z | 新增 PR Diff AI 代码审查引擎：结构化审查报告与健康评分、严格 JSON 与空响应校验（空内容返回 ErrInvalidCodeReview、评分仅拒绝负数）、同一 PR 同一提交审查去重、结果先持久化再回写 PR 评论、Diff 启发式风险嗅探与评分安全截断、机器人 PR 自动跳过；新增 Actions 失败工作流 LLM 根因诊断（失败步骤上限 30 条）；手动触发审查管线异步入队（202 回执 + head SHA 幂等）并抽取自动/手动共用管线；release notes 截断改用 textutil.TruncateUTF8Bytes；AI 请求附 X-Request-ID |
 | 2026-08-10T13:00:00Z | 新增 `Client.ReleaseSummary`（star 仓库新 Release 中文总结，英文 notes 翻译摘要；notes 截断 8000 字符）与 `release_summary_enabled` 开关（默认 true，受 `enabled` 总开关约束），贯通 config/runtime/HTTP API/管理台表单 |
 | 2026-08-10T12:00:00Z | 瞬时失败自动重试：Complete 按 Retries 配置重试（默认 1，范围 0–5，超时/网络/5xx/空响应可重试），固定间隔 1s，受外层 ctx 预算约束；新增 `DEBUG ai request retry` 留痕；配置贯通 config → runtime → HTTP API → 管理台表单（重试次数字段） |
 | 2026-08-06T11:20:00Z | 打磨批次 1：AI 调用指标与 token 用量记账（/metrics 暴露）、请求关联 ID（req_id 端到端串联）、调用并发预算（默认 2，排队超预算降级）、摘要/分诊输出质量护栏（low_quality / format_invalid） |

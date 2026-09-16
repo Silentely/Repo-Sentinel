@@ -4,6 +4,43 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-16
+
+### Added
+
+- PR AI 智能代码审查引擎：通过 LLM 自动审计 PR Diff 的安全风险、破坏性变更与代码气味，生成结构化审查报告与健康评分；PR 打开或同步时异步触发，审查结果先持久化至系统设置表再回写 PR 评论，同一 PR 同一提交审查去重，避免 webhook 重试重复消耗 AI 配额
+- PR 审查手动触发：REST 端点 `/api/v1/work-items/{id}/ai-review` 与 MCP 工具支持获取/触发审查，异步入队返回 202 排队回执（含 head SHA），前端轮询报告比对 head_sha 与 reviewed_at 获取结果
+- Diff 启发式风险嗅探：自动识别高危 workflow、可疑外链与垃圾文档，并基于风险对评分进行安全截断；机器人 PR（dependabot、renovate 等）自动跳过审查节省 AI 配额，支持手动按需触发；前端审查报告卡片新增风险等级徽章、Bot 作者标记、打开 PR 链接与安全警示横幅
+- Actions CI 失败智能诊断：拉取失败 Workflow 的 Job 与 Step 详情（分页拉取每页 100、最多 20 页），AI 归因故障根因并输出排查建议附加到通知正文，异常时平滑降级；`failure_analysis_enabled` 独立开关，与安全告警分诊解耦
+- 五种新通知渠道：飞书、企业微信、钉钉、Discord、Bark，支持签名校验、消息卡片格式化与平台错误码死信判定
+- Webhook 投递历史管理页面：按状态/事件/仓库筛选、载荷 Inspector 检查与一键重放触发规则评估
+- Actions 效能洞察接口：CI 成功率、平均/中位数/P95 执行耗时与 Top 失败工作流统计
+- SPA 静态资源 ETag：基于文件内容 SHA-256 生成弱验证器，支持 If-None-Match 条件请求 304 与 `Vary: Accept-Encoding` 缓存协商
+- API 路由与发现端点启用 gzip 压缩；MCP 网关新增 trigger_reconciliation、retry_failed_outbox、replay_webhook_delivery 三个自动化运维写工具
+
+### Changed
+
+- 高危风险或低分审查自动联动 Outbox 发送多渠道安全预警，高风险通知自适应预警等级并附带仓库链接、作者信息与处置建议
+- 手动触发审查接口错误按类别映射（不存在 404、目标不可审查 400、能力未启用 503、在途冲突 409）；reviewTracker 以互斥锁管理在途任务登记与停机排空，Close 先拒绝新任务再等待排空，消除停机窗口竞态
+- AI 审查响应严格 JSON 校验与空响应校验：格式错误或空内容返回错误，不再静默降级渲染空报告；评分校验仅拒绝负数；送入 LLM 的失败步骤上限 30 条；GitHub Diff 读取统一按 MaxPRDiffBytes+1 上限并透传读取错误
+- AI 与 GitHub 客户端实现自定义 HTTP 传输层，优化连接池复用与请求超时；AI 请求附 X-Request-ID 增强链路追踪
+- rules.Engine 补充 GitHub 客户端依赖，默认引擎模式下 webhook 服务可拉取失败 workflow job 与步骤详情；ListWorkflowJobs 改分页拉取，避免任务超过 100 个时仅取首页
+- 新增 internal/textutil 包统一 UTF-8 安全截断（TruncateUTF8Bytes），release 说明截断与存储复用同一实现
+- 前端 RelativeTime 组件改用全局单一定时器与订阅分发机制，每 60 秒自动刷新；监控模块查询失效改 Promise.all 并行执行
+- 无启用订阅渠道时规则引擎跳过通知与分诊分析；渠道删除与切换改用 GetByType 查询，支持操作已禁用渠道；摘要生成器活动仓不超过 3 个时主键点查；超频滑动窗口超 100 键自动清理过期条目
+- 依赖更新：golang.org/x/crypto 0.56.0、modernc.org/sqlite 1.58.0、react-hook-form 7.87.0、@vitejs/plugin-react 6.1.1、@types/react-dom 19.2.7
+
+### Fixed
+
+- release 说明按字节截断导致 UTF-8 多字节字符损坏：统一改用 truncateUTF8Bytes 按字符边界截断，保障数据库存储与 AI 摘要输入文本完整
+- 静态资源 ETag 全局缓存跨文件复用旧值导致缓存脏读：改为每次基于文件内容动态计算，支持多候选弱比较与 gzip 变体协商
+- AI 审查空响应被渲染为健康报告并回写 PR：summary 为空且无任何风险/建议时返回 ErrInvalidCodeReview；前端 AI 审查接口仅 404 视为暂无报告，其余错误向上抛出不再静默吞掉
+- 手动触发 PR AI 审查同步执行超过 HTTP WriteTimeout 导致前端误判失败而审查已入库：改为异步入队并返回 202
+- RelativeTime 组件前置 return 导致 Hook 顺序不一致：空值与非法日期判断移入 useMemo 内部
+- webhook 异步处理并发槽位获取失败时行残留 accepted 状态：新增 Service.MarkFailed 显式标记投递失败
+- outbox 通道类型筛选无匹配结果时仍执行后续查询：提前返回与其他列表端点一致的响应格式
+- store 删除前查询 ID、worker 信号量控制等多处空指针与并发问题
+
 ## [0.5.0] - 2026-09-06
 
 ### Added

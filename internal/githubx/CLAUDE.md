@@ -50,4 +50,5 @@ A: 设计为 env 基线、DB 补缺；具体字段合并见 `MergeFromStore` / R
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-16T00:00:00Z | 新增 GetPRDiff（按 MaxPRDiffBytes+1 上限读取并透传读取错误）与 CreateIssueComment（App 身份 Bot 评论）；ListWorkflowJobs 改分页拉取（每页 100、最多 20 页，Link 头判断下一页）；自定义 HTTP 传输层优化连接池复用与请求超时 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
