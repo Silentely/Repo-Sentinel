@@ -40,6 +40,7 @@
 - webhook 异步处理并发槽位获取失败时行残留 accepted 状态：新增 Service.MarkFailed 显式标记投递失败
 - outbox 通道类型筛选无匹配结果时仍执行后续查询：提前返回与其他列表端点一致的响应格式
 - store 删除前查询 ID、worker 信号量控制等多处空指针与并发问题
+- 测试稳定性：`TestServiceTriggerWorkItemReviewAndHighRiskAlert` 对 Outbox 告警改为有界轮询等待（测试直构 Service 未装配 reviewTracker，WaitReviews 为空操作，告警入队在报告持久化之后异步完成），消除偶发失败
 
 ## [0.5.0] - 2026-09-06
 

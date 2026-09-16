@@ -237,13 +237,23 @@ func TestServiceTriggerWorkItemReviewAndHighRiskAlert(t *testing.T) {
 		t.Fatalf("WaitReviews failed: %v", err)
 	}
 
-	// 验证 Outbox 是否产生了高危警报通知
-	outboxItems, _, err := data.Outbox().List(ctx, store.ListFilter{})
-	if err != nil {
-		t.Fatalf("list outbox failed: %v", err)
-	}
-	if len(outboxItems) == 0 {
-		t.Fatalf("expected outbox alert created for high risk PR review")
+	// 验证 Outbox 是否产生了高危警报通知：告警入队在报告持久化之后异步完成，
+	// 且测试直构 Service 未装配 reviewTracker（WaitReviews 为空操作），需轮询等待
+	var outboxItems []store.NotificationOutbox
+	deadline = time.Now().Add(4 * time.Second)
+	for {
+		items, _, err := data.Outbox().List(ctx, store.ListFilter{})
+		if err != nil {
+			t.Fatalf("list outbox failed: %v", err)
+		}
+		if len(items) > 0 {
+			outboxItems = items
+			break
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("expected outbox alert created for high risk PR review")
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	if !strings.Contains(outboxItems[0].Title, "代码审查告警") || !strings.Contains(outboxItems[0].BodyText, "代码注入危险") {
 		t.Fatalf("unexpected outbox content: title=%s body=%s", outboxItems[0].Title, outboxItems[0].BodyText)
