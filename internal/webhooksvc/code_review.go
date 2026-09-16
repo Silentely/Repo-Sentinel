@@ -160,6 +160,13 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 	if payload.Installation != nil {
 		installationID = payload.Installation.ID
 	}
+	if installationID <= 0 && s.Store != nil {
+		lookupCtx, cancelLookup := context.WithTimeout(s.baseContext(), 5*time.Second)
+		if repoRec, err := s.Store.Repositories().GetByFullName(lookupCtx, fullName); err == nil {
+			installationID = s.resolveRepoInstallationID(lookupCtx, repoRec)
+		}
+		cancelLookup()
+	}
 	s.launchReview(key, prReviewRequest{
 		fullName:       fullName,
 		owner:          owner,
@@ -432,12 +439,18 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 
 	// head SHA 是在途互斥 key 与前端轮询比对基准：获取失败无法定义本次审查目标，
 	// 直接报错由用户重试。预算 10s，远低于 HTTP WriteTimeout。
-	installationID := parseInstallationID(repoRec.InstallationID)
+	installationID := s.resolveRepoInstallationID(ctx, repoRec)
 	token := s.resolveInstallationToken(ctx, installationID, fullName, item.Number)
+	if repoRec.IsPrivate && token == "" {
+		return "", fmt.Errorf("%w: private repository requires valid github installation token", ErrReviewUnavailable)
+	}
 	headCtx, cancelHead := context.WithTimeout(ctx, 10*time.Second)
 	detail, err := s.GitHub.GetPRDetail(headCtx, token, owner, repo, item.Number)
 	cancelHead()
 	if err != nil {
+		if repoRec.IsPrivate && strings.Contains(err.Error(), "404") {
+			return "", fmt.Errorf("%w: github pr not found or github app lacks access to private repository: %w", ErrReviewUnavailable, err)
+		}
 		return "", fmt.Errorf("get pr detail: %w", err)
 	}
 	headSHA := strings.TrimSpace(detail.Head.SHA)
@@ -464,12 +477,40 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 	return headSHA, nil
 }
 
+// resolveRepoInstallationID 解析仓库所属 GitHub installation ID (int64)。
+// 解析顺序：
+// 1. 若 repo.InstallationID 为内部存储主键（ULID），从本地 installations 表获取对应记录；
+// 2. 若 repo.InstallationID 为纯数字，直接按 GitHub installation ID 解析（兼顾测试与直接保存安装编号的场景）；
+// 3. 单 App 部署回退：系统内若仅有一条安装记录，直接复用该安装；
+// 4. 解析失败返回 0。
+func (s *Service) resolveRepoInstallationID(ctx context.Context, repo store.Repository) int64 {
+	if s.Store != nil && repo.InstallationID != nil && *repo.InstallationID != "" {
+		raw := strings.TrimSpace(*repo.InstallationID)
+		if inst, err := s.Store.Installations().Get(ctx, raw); err == nil && inst.InstallationID > 0 {
+			return inst.InstallationID
+		}
+		if id := parseInstallationID(&raw); id > 0 {
+			if inst, err := s.Store.Installations().GetByInstallationID(ctx, id); err == nil && inst.InstallationID > 0 {
+				return inst.InstallationID
+			}
+			return id
+		}
+	}
+	if s.Store != nil {
+		all, err := s.Store.Installations().List(ctx)
+		if err == nil && len(all) == 1 && all[0].InstallationID > 0 {
+			return all[0].InstallationID
+		}
+	}
+	return 0
+}
+
 // parseInstallationID 将仓库记录中的安装 ID 字符串解析为 int64；缺失或非法时返回 0。
 func parseInstallationID(raw *string) int64 {
 	if raw == nil {
 		return 0
 	}
-	id, err := strconv.ParseInt(*raw, 10, 64)
+	id, err := strconv.ParseInt(strings.TrimSpace(*raw), 10, 64)
 	if err != nil || id <= 0 {
 		return 0
 	}
