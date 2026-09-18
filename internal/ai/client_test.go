@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// captureServer 记录请求并返回可控响应的桩服务器。
+// captureServer 记录请求并返回受控响应的桩服务器。
 func captureServer(t *testing.T, status int, body string, capture func(*http.Request, []byte)) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -503,7 +503,7 @@ func TestClassifyCallError(t *testing.T) {
 	}
 }
 
-// TestCompleteLogsUsage 验证成功日志携带上游返回的 token 用量（成本可观测）。
+// TestCompleteLogsUsage 验证成功日志携带上游返回的 token 用量（成本可视）。
 func TestCompleteLogsUsage(t *testing.T) {
 	srv := captureServer(t, http.StatusOK, `{"choices":[{"message":{"content":"总结"}}],"usage":{"prompt_tokens":42,"completion_tokens":7,"total_tokens":49}}`, nil)
 	defer srv.Close()
@@ -724,7 +724,7 @@ func TestRetryableCallError(t *testing.T) {
 		&callError{code: "upstream", status: http.StatusTooManyRequests, err: errors.New("429")},
 		&callError{code: "concurrency_limit", err: errors.New("c")},
 		&callError{code: "internal", err: errors.New("i")},
-		errors.New("unknown"),
+		errors.New("whatever"),
 	}
 	for _, e := range noRetry {
 		if retryableCallError(e) {
@@ -855,5 +855,21 @@ func TestCompleteRetriesContextExpiry(t *testing.T) {
 	}
 	if calls > 3 {
 		t.Fatalf("预算到期应立即放弃，实际尝试 %d 次（应不超过 3）", calls)
+	}
+}
+
+// TestAISSRFBlocked 验证尝试向云元数据与链路本地地址发起的 AI 请求会被安全拦截。
+func TestAISSRFBlocked(t *testing.T) {
+	c := &Client{
+		BaseURL: "http://169.254.169.254/v1",
+		APIKey:  "test-key",
+		Enabled: true,
+	}
+	_, err := c.Ping(t.Context())
+	if err == nil {
+		t.Fatal("元数据地址请求应当被安全阻断")
+	}
+	if !strings.Contains(err.Error(), "ai_target_blocked") {
+		t.Fatalf("期望包含 ai_target_blocked，实际错误: %v", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -327,10 +328,26 @@ func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 	s.handleGetAIConfig(w, r)
 }
 
-// validAIBaseURL 校验 AI 端点：http(s) 且无 userinfo。
+// validAIBaseURL 校验 AI 端点：http(s) 且无 userinfo，且拦截云元数据与链路本地地址防范 SSRF。
 func validAIBaseURL(value string) bool {
 	parsed, err := url.Parse(value)
-	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" && parsed.User == nil
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	lowerHost := strings.ToLower(host)
+	if lowerHost == "metadata.google.internal" || lowerHost == "metadata" || strings.HasSuffix(lowerHost, ".internal") {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return false
+		}
+		if v4 := ip.To4(); v4 != nil && v4[0] == 169 && v4[1] == 254 {
+			return false
+		}
+	}
+	return true
 }
 
 // handleTestAIConfig 用当前生效配置执行一次最小对话，验证端点 / 模型 / API Key 连通性。
@@ -402,6 +419,7 @@ func (s *server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
 
 	// probe 使用按配置超时的专用 HTTP 客户端：包级默认客户端 30s 硬顶会截断
 	// 高于 30s 的超时配置，导致测试与真实运行时行为不一致。
+	// 禁止跟随重定向，防止 30x 跳转绕过安全拦截。
 	probeTimeout := timeout
 	if probeTimeout <= 0 || probeTimeout > aiTestProbeMax {
 		probeTimeout = aiTestProbeMax
@@ -409,7 +427,13 @@ func (s *server) handleTestAIConfig(w http.ResponseWriter, r *http.Request) {
 	probe := &ai.Client{
 		Enabled: true, BaseURL: baseURL, APIKey: apiKey, Model: model,
 		Timeout: timeout, MaxTokens: maxTokens,
-		HTTP: &http.Client{Timeout: probeTimeout, Transport: ai.DefaultTransport()},
+		HTTP: &http.Client{
+			Timeout:   probeTimeout,
+			Transport: ai.DefaultTransport(),
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 	latency, err := probe.Ping(r.Context())
 	effectiveModel, effectiveBase := effectiveAIModel(model), effectiveAIBaseURL(baseURL)

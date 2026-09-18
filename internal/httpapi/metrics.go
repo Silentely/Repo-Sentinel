@@ -45,12 +45,19 @@ func MetricsIncReconcileRuns() { metricReconcileRuns.Add(1) }
 
 func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	// 可选：配置了独立 Token 时要求 Bearer；未配置则仅建议内网访问（文档说明）。
-	if token := strings.TrimSpace(s.dependencies.Config.Metrics.Token.Reveal()); token != "" {
+	// 当未配置 Token 且访问来源不是回环地址（Loopback）时，记录 Debug 提示以辅助审计非回环访问。
+	token := strings.TrimSpace(s.dependencies.Config.Metrics.Token.Reveal())
+	if token != "" {
 		auth := r.Header.Get("Authorization")
 		if auth != "Bearer "+token {
 			s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
 			return
 		}
+	} else if !isLoopbackIP(remoteIPFromContext(r.Context())) && s.dependencies.Logger != nil {
+		s.dependencies.Logger.Debug("metrics endpoint accessed without auth token from non-loopback ip",
+			"remote_ip", remoteIPFromContext(r.Context()),
+			"request_id", requestIDFromContext(r.Context()),
+		)
 	}
 
 	var b strings.Builder
@@ -80,7 +87,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	writeMetric("reposentinel_outbox_dead_total", "Notifications moved to dead letter", "counter", metricOutboxDead.Load())
 	writeMetric("reposentinel_reconcile_runs_total", "Reconcile job executions", "counter", metricReconcileRuns.Load())
 
-	// AI 调用指标：成功率/延迟/成本可观测（与日志同源，出口统一计数）。
+	// AI 调用指标：成功率/延迟/成本可视（与日志同源，出口统一计数）。
 	// 平均耗时以「累计毫秒 sum + 请求数 count」表达：Prometheus 用 rate(sum)/rate(count)
 	// 求平均，series 恒存在（无请求时也输出 0 行），且无整型截断。
 	aiRequests, aiFailures, aiDurMS, aiPromptTok, aiCompTok, aiFailByCode := ai.MetricsSnapshot()

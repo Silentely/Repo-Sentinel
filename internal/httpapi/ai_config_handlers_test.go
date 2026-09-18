@@ -404,3 +404,43 @@ func TestAIConnectivityProbeTimeout(t *testing.T) {
 		t.Fatalf("探测应在上限内返回，实际耗时 %s", elapsed)
 	}
 }
+
+func TestValidAIBaseURL_SSRF(t *testing.T) {
+	blocked := []string{
+		"http://169.254.169.254/v1",
+		"https://169.254.1.1/v1",
+		"http://metadata.google.internal/computeMetadata/v1",
+		"http://metadata/v1",
+		"http://something.internal/v1",
+		"http://0.0.0.0:8080/v1",
+	}
+	for _, u := range blocked {
+		if validAIBaseURL(u) {
+			t.Fatalf("URL %q 应当被拦截", u)
+		}
+	}
+
+	allowed := []string{
+		"https://api.openai.com/v1",
+		"http://127.0.0.1:11434/v1",
+		"http://localhost:11434/v1",
+		"http://192.168.1.50:8000/v1",
+	}
+	for _, u := range allowed {
+		if !validAIBaseURL(u) {
+			t.Fatalf("URL %q 应当允许", u)
+		}
+	}
+}
+
+func TestAIConfigPut_BlocksSSRF(t *testing.T) {
+	fixture, _, _ := aiTestFixture(t)
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	resp := fixture.request(t, http.MethodPut, "/api/v1/ai/config",
+		`{"base_url":"http://169.254.169.254/v1"}`, "127.0.0.1:45307", cookies, headers)
+	assertAPIError(t, resp, http.StatusBadRequest, errorCodeValidationFailed)
+}

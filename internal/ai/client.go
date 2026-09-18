@@ -204,14 +204,62 @@ func (c *Client) IsFailureAnalysisEnabled() bool {
 	return s.Enabled && s.APIKey != "" && s.FailureAnalysisEnabled
 }
 
-// defaultAITransport 针对出站 AI/LLM 网关长连接优化的 Transport：
-// 调大 MaxIdleConnsPerHost，避免 Go 默认值为 2 导致的频繁断连重连与 TLS 握手开销。
-var defaultAITransport = &http.Transport{
-	Proxy: http.ProxyFromEnvironment,
-	DialContext: (&net.Dialer{
+// isBlockedAIIP 拦截常见的云元数据与链路本地地址（IPv4 169.254.0.0/16 及 IPv6 fe80::/10、未指定地址），防范 SSRF。
+// 允许常规公网 IP 及回环/私网 IP（以支持自建 Ollama/vLLM 等内网/本地模型场景）。
+func isBlockedAIIP(ip net.IP) bool {
+	if ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	if v4 := ip.To4(); v4 != nil && v4[0] == 169 && v4[1] == 254 {
+		return true
+	}
+	return false
+}
+
+// safeAIDialContext 在拨号阶段解析目标 IP 并拦截云元数据与链路本地地址，防止 DNS rebinding 攻击。
+func safeAIDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	dialer := &net.Dialer{
 		Timeout:   10 * time.Second,
 		KeepAlive: 30 * time.Second,
-	}).DialContext,
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if isBlockedAIIP(ip) {
+			return nil, fmt.Errorf("ai_target_blocked: link-local or metadata ip")
+		}
+		return dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("ai_dns_lookup_failed: %w", err)
+	}
+	var lastErr error
+	for _, a := range addrs {
+		if isBlockedAIIP(a.IP) {
+			lastErr = fmt.Errorf("ai_target_blocked: link-local or metadata ip")
+			continue
+		}
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(a.IP.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("ai_dns_lookup_failed")
+}
+
+// defaultAITransport 针对出站 AI/LLM 网关长连接优化的 Transport：
+// 调大 MaxIdleConnsPerHost，避免 Go 默认值为 2 导致的频繁断连重连与 TLS 握手开销；
+// 并在拨号层防御针对云元数据与链路本地地址的 SSRF 及 DNS rebinding。
+var defaultAITransport = &http.Transport{
+	Proxy:                 http.ProxyFromEnvironment,
+	DialContext:           safeAIDialContext,
 	ForceAttemptHTTP2:     true,
 	MaxIdleConns:          50,
 	MaxIdleConnsPerHost:   10,
@@ -223,13 +271,17 @@ var defaultAITransport = &http.Transport{
 // defaultHTTPClient 包级共享默认客户端：复用连接池，避免每次请求新建。
 // 不设 Timeout 字段：请求超时统一由请求上下文承载（doAttempt 每次以配置超时
 // 派生 attemptCtx），避免包级 30s 硬顶截断高于 30s 的超时配置。
+// 禁用跟随重定向，避免 30x 重定向绕过目标地址安全校验。
+var defaultHTTPClient = &http.Client{
+	Transport: defaultAITransport,
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
+
 // DefaultTransport 返回针对出站 AI/LLM 网关长连接优化的共享 Transport。
 func DefaultTransport() *http.Transport {
 	return defaultAITransport
-}
-
-var defaultHTTPClient = &http.Client{
-	Transport: defaultAITransport,
 }
 
 func (c *Client) httpClient() *http.Client {

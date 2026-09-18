@@ -1,12 +1,15 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
 
 type loginRequest struct {
@@ -128,7 +131,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"user_agent", r.UserAgent(),
 		"session_id", created.Session.ID,
 	)
-	s.setAuthCookies(w, created)
+	s.setAuthCookies(w, r, created)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, newAuthenticationResponse(admin, created.Session))
 }
@@ -171,7 +174,7 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		"admin_id", session.AdminID,
 		"session_id", session.ID,
 	)
-	s.clearAuthCookies(w)
+	s.clearAuthCookies(w, r)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]bool{"logged_out": true})
 }
@@ -227,9 +230,9 @@ func newAuthenticationResponse(admin auth.Admin, session auth.Session) authentic
 	}
 }
 
-func (s *server) setAuthCookies(w http.ResponseWriter, created auth.CreatedSession) {
+func (s *server) setAuthCookies(w http.ResponseWriter, r *http.Request, created auth.CreatedSession) {
 	maxAge := int(created.Session.ExpiresAt.Sub(created.Session.CreatedAt).Seconds())
-	secure := s.cookiesSecure()
+	secure := s.cookiesSecure(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    created.Token,
@@ -252,9 +255,9 @@ func (s *server) setAuthCookies(w http.ResponseWriter, created auth.CreatedSessi
 	})
 }
 
-func (s *server) clearAuthCookies(w http.ResponseWriter) {
+func (s *server) clearAuthCookies(w http.ResponseWriter, r *http.Request) {
 	expiredAt := time.Unix(1, 0).UTC()
-	secure := s.cookiesSecure()
+	secure := s.cookiesSecure(r)
 	for _, cookie := range []*http.Cookie{
 		{
 			Name:     SessionCookieName,
@@ -279,8 +282,14 @@ func (s *server) clearAuthCookies(w http.ResponseWriter) {
 	}
 }
 
-// cookiesSecure 优先使用运行时 Public Base URL（可被管理台热更新），否则回退启动时配置。
-func (s *server) cookiesSecure() bool {
+// cookiesSecure 优先检测当前请求是否为 TLS 或来自 HTTPS 反向代理（X-Forwarded-Proto），
+// 其次优先使用运行时 Public Base URL（可被管理台热更新），否则回退启动时配置。
+func (s *server) cookiesSecure(r *http.Request) bool {
+	if r != nil {
+		if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+			return true
+		}
+	}
 	if s.dependencies.GitHubRuntime != nil {
 		if base := strings.TrimSpace(s.dependencies.GitHubRuntime.Snapshot().PublicBaseURL); base != "" {
 			return usesSecureCookies(base)
@@ -360,7 +369,7 @@ func (s *server) handleLogin2FA(w http.ResponseWriter, r *http.Request) {
 		"user_agent", r.UserAgent(),
 		"session_id", created.Session.ID,
 	)
-	s.setAuthCookies(w, created)
+	s.setAuthCookies(w, r, created)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, newAuthenticationResponse(auth.Admin{ID: ticket.AdminID, Username: ticket.Username}, created.Session))
 }
@@ -428,6 +437,19 @@ func (s *server) handleEnable2FA(w http.ResponseWriter, r *http.Request) {
 		"request_id", requestIDFromContext(r.Context()),
 		"admin_id", session.AdminID,
 	)
+	if s.dependencies.Store != nil {
+		_, _ = s.dependencies.Store.Audits().Append(r.Context(), store.AuditLog{
+			ID:           ulid.Make().String(),
+			Action:       "admin.2fa_enabled",
+			ActorType:    "admin",
+			ActorID:      session.AdminID,
+			TargetType:   "admin",
+			TargetID:     session.AdminID,
+			MetadataJSON: json.RawMessage(`{}`),
+			IPAddress:    remoteIPFromContext(r.Context()),
+			CreatedAt:    time.Now().UTC(),
+		})
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{"enabled": true})
 }
@@ -464,6 +486,19 @@ func (s *server) handleDisable2FA(w http.ResponseWriter, r *http.Request) {
 		"request_id", requestIDFromContext(r.Context()),
 		"admin_id", session.AdminID,
 	)
+	if s.dependencies.Store != nil {
+		_, _ = s.dependencies.Store.Audits().Append(r.Context(), store.AuditLog{
+			ID:           ulid.Make().String(),
+			Action:       "admin.2fa_disabled",
+			ActorType:    "admin",
+			ActorID:      session.AdminID,
+			TargetType:   "admin",
+			TargetID:     session.AdminID,
+			MetadataJSON: json.RawMessage(`{}`),
+			IPAddress:    remoteIPFromContext(r.Context()),
+			CreatedAt:    time.Now().UTC(),
+		})
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
 }

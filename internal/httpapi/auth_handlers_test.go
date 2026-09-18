@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -428,5 +429,74 @@ func TestTwoFactorAuthenticationFlow(t *testing.T) {
 	)
 	if disableOK.Code != http.StatusOK || !strings.Contains(disableOK.Body.String(), `"enabled":false`) {
 		t.Fatalf("disable 2FA 失败: %s", disableOK.Body.String())
+	}
+}
+
+func TestForwardedProtoHTTPS_SetsSecureCookie(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+
+	// 模拟经由 HTTPS 反代发起的登录请求
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"Repo Admin","password":"`+httpTestPassword+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	w := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("login status=%d body=%s", w.Code, w.Body.String())
+	}
+	cookies := w.Result().Cookies()
+	for _, c := range cookies {
+		if (c.Name == SessionCookieName || c.Name == CSRFCookieName) && !c.Secure {
+			t.Fatalf("通过 X-Forwarded-Proto: https 登录应带有 Secure=true cookie: %+v", c)
+		}
+	}
+}
+
+func TestEnableAndDisable2FA_AuditLog(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{keyRing: testHTTPKeyRing(t)})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	setupResp := fixture.request(t, http.MethodPost, "/api/v1/admin/2fa/setup", `{}`, "127.0.0.1:40120", cookies, headers)
+	var setupBody struct {
+		Secret string `json:"secret"`
+	}
+	_ = json.Unmarshal(setupResp.Body.Bytes(), &setupBody)
+
+	now := time.Now().UTC()
+	passcode, _ := auth.GenerateTOTPCode(setupBody.Secret, now)
+	enableResp := fixture.request(t, http.MethodPost, "/api/v1/admin/2fa/enable",
+		fmt.Sprintf(`{"secret":%q,"passcode":%q}`, setupBody.Secret, passcode),
+		"127.0.0.1:40121", cookies, headers)
+	if enableResp.Code != http.StatusOK {
+		t.Fatalf("enable 2FA failed: %s", enableResp.Body.String())
+	}
+
+	disableResp := fixture.request(t, http.MethodPost, "/api/v1/admin/2fa/disable",
+		fmt.Sprintf(`{"current_password":%q}`, httpTestPassword),
+		"127.0.0.1:40122", cookies, headers)
+	if disableResp.Code != http.StatusOK {
+		t.Fatalf("disable 2FA failed: %s", disableResp.Body.String())
+	}
+
+	audits, err := fixture.store.Audits().List(t.Context(), 10, 0)
+	if err != nil {
+		t.Fatalf("list audits failed: %v", err)
+	}
+	var hasEnable, hasDisable bool
+	for _, a := range audits {
+		if a.Action == "admin.2fa_enabled" {
+			hasEnable = true
+		}
+		if a.Action == "admin.2fa_disabled" {
+			hasDisable = true
+		}
+	}
+	if !hasEnable || !hasDisable {
+		t.Fatalf("期望记录 2FA 审计日志，实际 audits: %+v", audits)
 	}
 }

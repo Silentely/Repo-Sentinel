@@ -70,7 +70,7 @@ func (s *server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
-	s.setAuthCookies(w, created)
+	s.setAuthCookies(w, r, created)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusCreated, newAuthenticationResponse(admin, created.Session))
 }

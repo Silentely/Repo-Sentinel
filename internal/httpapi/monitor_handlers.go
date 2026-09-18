@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -28,7 +29,7 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
-// handleStarTrend 返回 star 总数按日趋势；days 支持 7/30/90/0（0=全部），非法或缺省回退 30。
+// handleStarTrend 返回 star 总数按日趋势：days 支持 7/30/90/0（0=全部），非法或缺省回退 30。
 func (s *server) handleStarTrend(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.Store == nil {
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
@@ -135,6 +136,19 @@ func (s *server) handleDeleteRepository(w http.ResponseWriter, r *http.Request) 
 	if err := s.dependencies.Store.Repositories().DeleteRepository(r.Context(), id); err != nil {
 		s.writeMappedError(w, r, err)
 		return
+	}
+	if session, ok := sessionFromContext(r.Context()); ok && s.dependencies.Store != nil {
+		_, _ = s.dependencies.Store.Audits().Append(r.Context(), store.AuditLog{
+			ID:           ulid.Make().String(),
+			Action:       "repository.delete",
+			ActorType:    "admin",
+			ActorID:      session.AdminID,
+			TargetType:   "repository",
+			TargetID:     id,
+			MetadataJSON: json.RawMessage(`{}`),
+			IPAddress:    remoteIPFromContext(r.Context()),
+			CreatedAt:    time.Now().UTC(),
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "deleted", "repository_id": id})
 }
