@@ -1742,6 +1742,59 @@ func (s *outboxStore) MarkDead(ctx context.Context, id, errorCode string) error 
 		Exec(ctx))
 }
 
+// CancelPendingByRepository 只取消 pending 状态的 Release 通知。
+// 已进入 sending 的记录可能已经调用外部渠道，不能安全回滚；sent/dead 也保留历史状态。
+func (s *outboxStore) CancelPendingByRepository(ctx context.Context, fullName string) (int, error) {
+	rows, err := s.client.NotificationOutbox.Query().
+		Where(notificationoutbox.StatusEQ(OutboxPending)).
+		All(ctx)
+	if err != nil {
+		return 0, mapStoreError(err)
+	}
+
+	ids := make([]string, 0)
+	for _, row := range rows {
+		if notificationRepositoryFullName(ctx, s.client, row) == fullName {
+			ids = append(ids, row.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	n, err := s.client.NotificationOutbox.Update().
+		Where(notificationoutbox.IDIn(ids...), notificationoutbox.StatusEQ(OutboxPending)).
+		SetStatus(OutboxCancelled).
+		SetLastErrorCode("repository_unstarred").
+		ClearLockedUntil().
+		SetUpdatedAt(time.Now().UTC()).
+		Save(ctx)
+	return n, mapStoreError(err)
+}
+
+// notificationRepositoryFullName 读取新 outbox 直接保存的仓库名；对旧记录回退到关联事件。
+func notificationRepositoryFullName(ctx context.Context, client *entclient.Client, row *entclient.NotificationOutbox) string {
+	if row.BodyJSON != nil {
+		kind, _ := row.BodyJSON["kind"].(string)
+		if kind != ReleaseKind {
+			return ""
+		}
+		if repo, ok := row.BodyJSON["repository"].(string); ok {
+			return repo
+		}
+	}
+	if row.EventID == nil {
+		return ""
+	}
+	ev, err := client.Event.Get(ctx, *row.EventID)
+	if err != nil || ev.Kind != ReleaseKind || ev.PayloadSummary == nil {
+		return ""
+	}
+	if repo, ok := ev.PayloadSummary["repository"].(string); ok {
+		return repo
+	}
+	return ""
+}
+
 func (s *outboxStore) List(ctx context.Context, f ListFilter) ([]NotificationOutbox, PageResult, error) {
 	f = NormalizeListFilter(f)
 	q := s.client.NotificationOutbox.Query()
@@ -1820,7 +1873,7 @@ func (s *outboxStore) DeleteTerminalOlderThan(ctx context.Context, cutoff time.T
 	for {
 		ids, err := s.client.NotificationOutbox.Query().
 			Where(
-				notificationoutbox.StatusIn(OutboxSent, OutboxDead),
+				notificationoutbox.StatusIn(OutboxSent, OutboxDead, OutboxCancelled),
 				notificationoutbox.CreatedAtLT(cutoffUTC),
 			).
 			Limit(retentionBatchSize).

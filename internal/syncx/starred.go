@@ -361,6 +361,11 @@ func (p *StarredReleasePoller) removeUnstarred(ctx context.Context, seen map[str
 		if err := p.Store.StarredTrackers().UpdateState(ctx, tk.ID, store.TrackerStateDisabled); err != nil {
 			p.warn("unstar disable failed", "repo", tk.FullName, "error_code", "tracker_state_failed", "error", err.Error())
 		} else {
+			if n, err := p.Store.Outbox().CancelPendingByRepository(ctx, tk.FullName); err != nil {
+				p.warn("unstar outbox cancel failed", "repo", tk.FullName, "error_code", "outbox_cancel_failed", "error", err.Error())
+			} else if n > 0 {
+				p.debug("unstar pending outbox cancelled", "repo", tk.FullName, "count", n)
+			}
 			p.debug("tracker disabled on unstar", "repo", tk.FullName)
 		}
 	}

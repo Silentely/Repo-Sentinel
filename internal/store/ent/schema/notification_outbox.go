@@ -20,7 +20,7 @@ func (NotificationOutbox) Fields() []ent.Field {
 		field.String("event_id").Optional().Nillable(),
 		field.String("aggregate_key").Default(""),
 		field.String("idempotency_key"),
-		field.String("status").Default("pending"), // pending | sending | sent | dead
+		field.String("status").Default("pending"), // pending | sending | sent | dead | cancelled
 		field.Int("attempt_count").Default(0),
 		field.Time("next_attempt_at"),
 		field.Time("locked_until").Optional().Nillable(),

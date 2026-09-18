@@ -229,6 +229,19 @@ func TestStarredSyncStars_unstar停用(t *testing.T) {
 	if err := env.poller.SyncStars(ctx); err != nil {
 		t.Fatal(err)
 	}
+	now := time.Now().UTC()
+	for _, item := range []store.NotificationOutbox{
+		{ID: "ob-unstar-pending", ChannelID: "ch-1", IdempotencyKey: "idem|unstar-pending", Status: store.OutboxPending,
+			NextAttemptAt: now, Title: "release", BodyText: "release", BodyJSON: map[string]any{"kind": store.ReleaseKind, "repository": "octocat/Hello-World"}},
+		{ID: "ob-unstar-sent", ChannelID: "ch-1", IdempotencyKey: "idem|unstar-sent", Status: store.OutboxSent,
+			NextAttemptAt: now, Title: "release", BodyText: "release", BodyJSON: map[string]any{"kind": store.ReleaseKind, "repository": "octocat/Hello-World"}},
+		{ID: "ob-other-pending", ChannelID: "ch-1", IdempotencyKey: "idem|other-pending", Status: store.OutboxPending,
+			NextAttemptAt: now, Title: "release", BodyText: "release", BodyJSON: map[string]any{"kind": store.ReleaseKind, "repository": "acme/other"}},
+	} {
+		if _, err := env.data.Outbox().Create(ctx, item); err != nil {
+			t.Fatal(err)
+		}
+	}
 	env.mu.Lock()
 	env.starred[1] = []map[string]any{} // 用户 unstar
 	env.mu.Unlock()
@@ -239,6 +252,20 @@ func TestStarredSyncStars_unstar停用(t *testing.T) {
 	tk, err := env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
 	if err != nil || tk.State != store.TrackerStateDisabled {
 		t.Fatalf("unstar 后应停用: %+v %v", tk, err)
+	}
+	outbox, _, err := env.data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	statuses := make(map[string]string, len(outbox))
+	for _, item := range outbox {
+		statuses[item.ID] = item.Status
+	}
+	if statuses["ob-unstar-pending"] != store.OutboxCancelled {
+		t.Fatalf("unstar 后目标仓 pending outbox 应取消，got %q", statuses["ob-unstar-pending"])
+	}
+	if statuses["ob-unstar-sent"] != store.OutboxSent || statuses["ob-other-pending"] != store.OutboxPending {
+		t.Fatalf("已发送或其他仓库 outbox 不应改变: %+v", statuses)
 	}
 }
 

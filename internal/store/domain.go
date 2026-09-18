@@ -49,10 +49,11 @@ const (
 	ChannelDiscord     = "discord"
 	ChannelBark        = "bark"
 
-	OutboxPending = "pending"
-	OutboxSending = "sending"
-	OutboxSent    = "sent"
-	OutboxDead    = "dead"
+	OutboxPending   = "pending"
+	OutboxSending   = "sending"
+	OutboxSent      = "sent"
+	OutboxDead      = "dead"
+	OutboxCancelled = "cancelled"
 
 	DeliveryAccepted  = "accepted"
 	DeliveryProcessed = "processed"
@@ -687,6 +688,8 @@ type OutboxStore interface {
 	MarkSent(context.Context, string) error
 	MarkRetry(context.Context, string, time.Time, string) error
 	MarkDead(context.Context, string, string) error
+	// CancelPendingByRepository 取消指定仓库尚未投递的 Release 通知，返回取消条数。
+	CancelPendingByRepository(context.Context, string) (int, error)
 	List(context.Context, ListFilter) ([]NotificationOutbox, PageResult, error)
 	CountByStatus(context.Context, string) (int, error)
 	RetryDead(context.Context, string, time.Time) error

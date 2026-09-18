@@ -422,3 +422,48 @@ func TestOutboxRetryAllDead(t *testing.T) {
 		}
 	}
 }
+
+func TestOutboxCancelPendingByRepository(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	mk := func(id, repo, status string) {
+		if _, err := st.Outbox().Create(ctx, NotificationOutbox{
+			ID: id, ChannelID: "ch-1", EventID: nil, IdempotencyKey: "idem|" + id,
+			Status: status, NextAttemptAt: now, Title: "release", BodyText: "body",
+			BodyJSON: map[string]any{"kind": ReleaseKind, "repository": repo},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("ob-cancel", "octocat/Hello-World", OutboxPending)
+	mk("ob-keep-repo", "acme/other", OutboxPending)
+	mk("ob-keep-sent", "octocat/Hello-World", OutboxSent)
+	if _, err := st.Outbox().Create(ctx, NotificationOutbox{
+		ID: "ob-keep-non-release", ChannelID: "ch-1", IdempotencyKey: "idem|keep-non-release",
+		Status: OutboxPending, NextAttemptAt: now, Title: "issue", BodyText: "issue",
+		BodyJSON: map[string]any{"kind": WorkItemKindIssue, "repository": "octocat/Hello-World"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := st.Outbox().CancelPendingByRepository(ctx, "octocat/Hello-World")
+	if err != nil || n != 1 {
+		t.Fatalf("应取消目标仓库 1 条 pending outbox: n=%d err=%v", n, err)
+	}
+
+	items, _, err := st.Outbox().List(ctx, ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]string, len(items))
+	for _, item := range items {
+		got[item.ID] = item.Status
+	}
+	if got["ob-cancel"] != OutboxCancelled {
+		t.Fatalf("目标 pending outbox 应为 cancelled，got %q", got["ob-cancel"])
+	}
+	if got["ob-keep-repo"] != OutboxPending || got["ob-keep-sent"] != OutboxSent || got["ob-keep-non-release"] != OutboxPending {
+		t.Fatalf("其他仓库或已发送 outbox 不应改变: %+v", got)
+	}
+}

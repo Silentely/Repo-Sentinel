@@ -95,6 +95,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			IdempotencyKey: idem, Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: title, BodyText: body, HTMLURL: htmlURL, BodyJSON: map[string]any{
 				"event_id": res.Event.ID, "kind": res.Event.Kind, "action": res.Event.Action,
+				"repository": repoFullName,
 			},
 			ParseMode: "HTML",
 		}); err != nil && !errors.Is(err, store.ErrConflict) {
