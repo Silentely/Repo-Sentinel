@@ -434,8 +434,10 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 
 	// head SHA 是在途互斥 key 与前端轮询比对基准：获取失败无法定义本次审查目标，
 	// 直接报错由用户重试。预算 10s，远低于 HTTP WriteTimeout。
-	// 前置按 fullName#number# 前缀快速拒绝同 PR 在途审查：省掉重复点击注定被
-	// 互斥挡掉的一次 GitHub 调用；精确去重仍由下方 SHA 粒度 acquire 负责。
+	// 前置按 fullName#number# 前缀拒绝同 PR 的在途审查：这是有意比 SHA 粒度更宽——
+	// 同一 PR 换 commit 后并发审查会各自消耗 AI 配额，并争抢同一 ai.pr_review.<itemID>
+	// 挂载点（后写覆盖先写）。代价是该 PR 的新 head SHA 需等在途任务结束后重试；
+	// 精确的同 SHA 去重仍由下方 acquire 负责。
 	if s.reviews.inFlightPrefix(fmt.Sprintf("%s#%d#", fullName, item.Number)) {
 		return "", ErrReviewInProgress
 	}

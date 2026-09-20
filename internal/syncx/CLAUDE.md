@@ -61,7 +61,7 @@ A: `app.Build` 设 `MaxPages: 3`，限制单次对账 API 消耗。
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
 | 2026-09-20T00:00:00Z | 外部公开仓轮询 `PollAll` 改有界并发（5 个 worker，`externalPollConcurrency`）：候选仓收集后按 worker 池分派，逐仓失败仅留 `external_poll_failed` 不影响其余仓，命中限流即停整轮并补 `rate_limited_round_stopped` Warn（`sync.Once` 保证一次），上下文取消立即返回；写入侧共享 `p.Client` 预先初始化，消除仓内懒赋值的并发写 |
-| 2026-09-20T00:00:00Z | 对账 PR 补数据（标签/评审/检查）改有界并发拉取，替代逐项串行等待；GitHub 客户端请求路径只读回退改包级共享 `http.Client`，除并发裸写隐患并复用连接池 |
+| 2026-09-20T00:00:00Z | 对账 PR 补数据（评审/请求评审人/PR 详情）改固定 3 路并发扇出（非 worker 池，调用数固定），各 goroutine 只写局部变量、`wg.Wait` 后由主协程回填；单 PR 由 4 次串行 RTT 降为 2 轮（首轮并行 + 依赖 head SHA 的 Check Runs） |
 | 2026-09-20T00:00:00Z | 修复 star 同步分页误判导致 unstar 移除被跳过：GitHub 多页结果末页仍带 Link 头（`rel="prev"/"first"`，无 `rel="next"`），越界空页同样非空，旧 `link == ""` 判断使分页打到页码防御上限并令 `full=false`，`removeUnstarred` 被整体静默跳过（已取消星标的仓继续被轮询推送）；改以 `rel="next"` 作为唯一翻页依据，页码上限命中补 Warn 留痕；新增 `LastStarSyncAt` 暴露最近一次完整同步落定时刻 |
 | 2026-08-10T13:00:00Z | 新增 `StarredReleasePoller`：匿名枚举公开 star 仓库（fork/archived 预过滤、无 Release 7 天复查、unstar 自动停用、500 上限），复用 installation token + ETag 条件请求轮询最新 Release 并事件化（`kind=release`、`source=starred_releases`）；双周期从 system_settings 热读取（Star 同步默认 6h / Release 轮询默认 10m），由 Scheduler 1m 节拍驱动自判到期 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

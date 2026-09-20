@@ -467,6 +467,7 @@ type NotificationOutbox struct {
 	BodyJSON       map[string]any `json:"body_json,omitempty"`
 	// RepositoryFullName 为 Release 通知冗余的仓库名（其它类别为空），
 	// 是 unstar 取消未投递通知的唯一匹配依据，见 outboxStore.CancelPendingByRepository。
+	// 写入时由 Create 从 body_json 派生，调用方传值会被忽略（读取时由行回填）。
 	RepositoryFullName string    `json:"repository_full_name,omitempty"`
 	ParseMode          string    `json:"parse_mode,omitempty"`
 	HTMLURL            string    `json:"html_url,omitempty"` // Telegram inline keyboard 跳转链接

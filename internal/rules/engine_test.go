@@ -208,6 +208,11 @@ func TestEvaluateReleaseOutbox(t *testing.T) {
 	if !strings.Contains(outbox[0].Title, "🚀") {
 		t.Fatalf("outbox 标题应含 🚀: %s", outbox[0].Title)
 	}
+	// 冗余列必须由引擎写入的 body_json 派生（unstar 取消只认该列）：
+	// 键名与写入方漂移会让取消静默失效，故在此锁定端到端耦合。
+	if outbox[0].RepositoryFullName != "o/r" {
+		t.Fatalf("release 通知应派生冗余仓库名 o/r，got %q", outbox[0].RepositoryFullName)
+	}
 	// 关闭全局开关后不再投递
 	raw, _ := json.Marshal(false)
 	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{

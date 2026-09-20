@@ -480,8 +480,9 @@ func TestExternalPollAllStopsRoundOnRateLimit(t *testing.T) {
 	}
 }
 
-// 上下文取消后整轮不再发起外部请求（与串行实现一致：取消即止），
-// 由存储层在拉取候选阶段快速失败。
+// 派发前即取消：整轮不发起任何外部请求，由存储层在拉取候选阶段快速失败并向上传播。
+// 注意断言范围仅限「前置取消」——已在途的请求会跑完并落库（见
+// TestExternalPollAllPropagatesContextCancelDuringPolling），两者共同定义「取消即止」语义。
 func TestExternalPollAllRespectsContextCancel(t *testing.T) {
 	data, rec, client := pollAllFixture(t, externalPollConcurrency*2, 0, nil)
 	p := &ExternalPoller{Store: data, Client: client}
@@ -492,12 +493,12 @@ func TestExternalPollAllRespectsContextCancel(t *testing.T) {
 		t.Fatalf("取消上下文应快速失败，got %v", err)
 	}
 	if polled, _ := rec.snapshot(); polled != 0 {
-		t.Fatalf("取消后不应轮询任何仓，got %d", polled)
+		t.Fatalf("前置取消不应发起任何仓的请求，got %d", polled)
 	}
 }
 
 // 上下文在候选仓加载完成、worker 已开始请求后取消时，整轮应向上传播取消错误，
-// 不能把提前结束误报为成功。
+// 不能把提前结束误报为成功；此时已派发的请求会跑完（不做回滚）。
 func TestExternalPollAllPropagatesContextCancelDuringPolling(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

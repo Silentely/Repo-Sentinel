@@ -93,6 +93,9 @@ A: `Total` 是分页契约的必需字段，前端据此算页数。合并需 `C
 **Q: 活跃仓 `RepositoryIDIn` 的大 IN 列表会不会撞绑定参数上限？**  
 A: 会撞，但远超目标规模。modernc.org/sqlite 的 `SQLITE_MAX_VARIABLE_NUMBER` 实测为 32766（绑定 32767 个参数即报 `too many SQL variables`），需 3.2 万个活跃仓才会触发；外部仓另有 `MaxExternalRepositories = 20` 上限。取证：2000 个活跃仓时 WorkItems 列表平均 2.75ms，仍可接受。PostgreSQL 无此上限。因此不做 IN 分块或子查询改写，避免提前优化。
 
+**Q: `notification_outbox.repository_full_name` 覆盖哪些历史行？**  
+A: 只覆盖「写入时 `body_json` 已带 `kind=release` 与 `repository`」的行。该键自 2026-09-18 起由 `rules.Engine` 写入，迁移回填（`20260920001500_outbox_repository_full_name.sql`）也只从 `body_json` 取值；更早的旧形状行（`body_json` 无 `repository`）不再经关联事件回查，故不参与 unstar 取消。影响可忽略：投递失败最多重试 `maxAttempts = 8` 次（退避上限 1h）即转 dead，旧形状行在迁移执行时基本已终态，不存在长期滞留的 pending 行。若将来需要覆盖旧形状行，正确做法是新增迁移按 `event_id` 关联 `events.payload_summary->>'repository'` 回填（注意保持「非 release 类别不填充」的语义，且 `repository_full_name` 为 NOT NULL，子查询须有非空守卫）。
+
 ## 相关文件清单
 
 - `domain.go`、`store.go`、`domain_stores.go`、`open.go`、`migrate.go`
@@ -104,6 +107,6 @@ A: 会撞，但远超目标规模。modernc.org/sqlite 的 `SQLITE_MAX_VARIABLE_
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
-| 2026-09-20T00:00:00Z | 存储侧热点查询收敛：①`notification_outbox` 新增冗余列 `repository_full_name` 与 `(status, repository_full_name)` 索引，unstar 取消未投递 Release 通知改单条批量 UPDATE（不再逐户 SELECT→UPDATE）；②仪表盘统计同表维度改分组聚合（work_items 按 kind、repositories 按 sync_status 各一次扫描），整页刷新 SQL 往返减少；③活跃/归档仓 ID 集合缓存随附 `id→full_name` 映射，各资源列表页解析仓库名复用同一份扫描结果；④PR 审查在途判定改前缀快速拒绝，审查结果幂等查询由两次解析收敛为单条按 itemID 直查 |
+| 2026-09-20T00:00:00Z | 存储侧热点查询收敛：①`notification_outbox` 新增冗余列 `repository_full_name` 与 `(status, repository_full_name)` 索引，unstar 取消未投递 Release 通知改单条批量 UPDATE（不再逐户 SELECT→UPDATE）；②仪表盘统计同表维度改分组聚合（work_items 按 kind、repositories 按 sync_status 各一次扫描），整页刷新 SQL 往返减少；③活跃/归档仓 ID 集合缓存随附 `id→full_name` 映射，各资源列表页解析仓库名复用同一份扫描结果；④PR 审查在途判定改前缀快速拒绝，审查结果幂等查询由两次解析收敛为单条按 itemID 直查。补记：冗余列仅覆盖 `body_json` 带 `repository` 的行（该键自 2026-09-18 起写入），旧形状行不再回查关联事件，取证与补救方案见 FAQ |
 | 2026-08-06T15:48:41Z | 新增 star 快照表、仓库 star/watch 能力开关（stars_enabled、watches_enabled）、feature.stars / feature.watches 全局开关及 star 快照读取与存储（含 SQLite/PostgreSQL 双轨迁移） |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

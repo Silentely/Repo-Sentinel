@@ -49,7 +49,7 @@ A: 避免 HTTP 层编排领域流程；后台 panic/取消语义与请求生命�
 A: 规范化成功且通知被抑制时仍标记 processed（不 Evaluate）。
 
 **Q: 同一 PR 重放 webhook、重复点击手动触发会重复审查吗？**  
-A: 不会。在途判定以 `<full_name>#<pr>#<headSHA>` 为键抢占（`reviewTracker.acquire`），命中即拒绝登记；手动触发另以前缀快速拒绝重复点击，省掉一次注定被互斥挡掉的令牌解析与 `GetPRDetail`（精确去重仍由 acquire 负责）。此外自动路径同一 head SHA 已有审查结果时 `skipStored` 直接跳过；手动触发为强制刷新，恒为 false。
+A: 不会。在途判定以 `<full_name>#<pr>#<headSHA>` 为键抢占（`reviewTracker.acquire`），命中即拒绝登记；手动触发另以 `<full_name>#<pr>#` 前缀快速拒绝，只要该 PR 有审查在途（**不限 head SHA**）即返回 `ai_review_in_progress`，省掉一次注定无法并行的令牌解析与 `GetPRDetail`。该前缀比 SHA 粒度更宽是有意的：同 PR 换 commit 后并发审查会重复消耗 AI 配额，并争抢同一 `ai.pr_review.<itemID>` 挂载点（后写覆盖先写）；代价是新 head SHA 的手动触发需等在途任务结束后重试。此外自动路径同一 head SHA 已有审查结果时 `skipStored` 直接跳过；手动触发为强制刷新，恒为 false。
 
 ## 相关文件清单
 
@@ -61,6 +61,6 @@ A: 不会。在途判定以 `<full_name>#<pr>#<headSHA>` 为键抢占（`reviewT
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
-| 2026-09-20T00:00:00Z | PR 审查去重与查询收敛：在途 map 命中未完成键时以前缀快速拒绝（不再入队等待），webhook 重试不重复占用 AI 配额；审查结果幂等查询由「GetByFullName → GetByRepoNumber → 读设置」三级解析收敛为按 work item ID 单条直查；resolveRepoInstallationID 补单 App 部署回退与 Warn 留痕 |
+| 2026-09-20T00:00:00Z | PR 审查去重与查询收敛：手动触发前置按 `<full_name>#<pr>#` 前缀拒绝同 PR 在途审查（不限 head SHA，避免同 PR 多 commit 并发审查重复消耗配额并争抢同一挂载点），webhook 重试不重复占用 AI 配额；审查结果幂等查询由「GetByFullName → GetByRepoNumber → 读设置」三级解析收敛为按 work item ID 单条直查；resolveRepoInstallationID 补单 App 部署回退与 Warn 留痕 |
 | 2026-09-16T00:00:00Z | PR 打开/同步异步触发 AI 代码审查；规则引擎评估前新增订阅渠道检查，无启用渠道跳过通知与分诊；新增 Service.MarkFailed 显式标记并发槽位获取失败的投递，避免行残留 accepted；CI 失败诊断事件类型门控前置于 AI 开关检查；摘要生成器活动仓不超过 3 个时主键点查；超频滑动窗口超 100 键自动清理 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

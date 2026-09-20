@@ -43,8 +43,9 @@ func (t *reviewTracker) acquire(key string) bool {
 }
 
 // inFlightPrefix 是否存在以 keyPrefix 开头的在途任务。
-// 供手动触发前置快速拒绝：重复点击时省掉一次注定被 SHA 粒度互斥挡掉的
-// token 解析 + GetPRDetail 调用；精确去重仍由 acquire 负责。
+// 供手动触发前置快速拒绝：同一 PR 已有审查在途时（不限 head SHA）直接拒绝，
+// 省掉一次注定无法并行的 token 解析 + GetPRDetail 调用；精确的同 SHA 去重
+// 仍由 acquire 负责。
 func (t *reviewTracker) inFlightPrefix(keyPrefix string) bool {
 	if t == nil {
 		return false
