@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TrackerRow } from "./starred-releases-page";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StarredReleasesPage, TrackerRow } from "./starred-releases-page";
 import type { StarredTrackerItem } from "./api";
 
 const base: StarredTrackerItem = {
@@ -13,6 +15,82 @@ const base: StarredTrackerItem = {
   last_poll_at: "2026-08-15T00:00:00Z",
   first_seen_at: "2026-08-10T00:00:00Z",
 };
+
+// star 同步落定时刻的可编程 mock 状态：advanceAfterPolls 控制第几次配置拉取后
+// last_star_sync_at 推进（模拟后端异步同步完成）；neverAdvances 模拟超时未完成。
+const syncState = vi.hoisted(() => ({
+  lastStarSyncAt: "2026-09-20T01:00:00Z",
+  advancedAt: "2026-09-20T02:00:00Z",
+  advanceAfterPolls: 2,
+  neverAdvances: false,
+  polls: 0,
+}));
+
+const {
+  syncStarredReleasesMock,
+  listStarredTrackersMock,
+  saveStarredReleasesConfigMock,
+  setStarredTrackerStateMock,
+} = vi.hoisted(() => ({
+  syncStarredReleasesMock: vi.fn(async () => ({ started: true })),
+  listStarredTrackersMock: vi.fn(async () => ({
+    items: [
+      {
+        id: "tk-1",
+        full_name: "octocat/Hello-World",
+        state: "tracking" as const,
+        last_release_tag: "v1.0",
+        last_release_published_at: "2026-08-01T00:00:00Z",
+        last_poll_at: "2026-08-15T00:00:00Z",
+        first_seen_at: "2026-08-10T00:00:00Z",
+      },
+    ],
+    page: 1,
+    per_page: 20,
+    total: 1,
+  })),
+  saveStarredReleasesConfigMock: vi.fn(async (body: Record<string, unknown>) => body as never),
+  setStarredTrackerStateMock: vi.fn(async () => ({ ok: true })),
+}));
+
+vi.mock("./api", async () => {
+  const actual = await vi.importActual<typeof import("./api")>("./api");
+  return {
+    ...actual,
+    starredReleasesConfigQueryOptions: {
+      queryKey: ["starred-releases-config"] as const,
+      staleTime: 10_000,
+      queryFn: async () => {
+        syncState.polls += 1;
+        const advanced = !syncState.neverAdvances && syncState.polls >= syncState.advanceAfterPolls;
+        return {
+          username: "octocat",
+          star_sync_interval: "6h0m0s",
+          release_poll_interval: "10m0s",
+          max_trackers: 500,
+          notify_prerelease: false,
+          enabled: true,
+          ai_release_summary_enabled: false,
+          last_star_sync_at: advanced ? syncState.advancedAt : syncState.lastStarSyncAt,
+          counts: { tracking: 1, inactive: 0, disabled: 0, unavailable: 0 },
+        };
+      },
+    },
+    syncStarredReleases: syncStarredReleasesMock,
+    listStarredTrackers: listStarredTrackersMock,
+    saveStarredReleasesConfig: saveStarredReleasesConfigMock,
+    setStarredTrackerState: setStarredTrackerStateMock,
+  };
+});
+
+function renderPage() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <StarredReleasesPage />
+    </QueryClientProvider>,
+  );
+}
 
 function row(overrides: Partial<StarredTrackerItem>) {
   return { ...base, ...overrides };
@@ -67,5 +145,57 @@ describe("TrackerRow 操作按钮", () => {
     for (const link of links) {
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
     }
+  });
+});
+
+describe("StarredReleasesPage 立即同步", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    syncState.polls = 0;
+    syncState.advanceAfterPolls = 2;
+    syncState.neverAdvances = false;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("等待同步落定后才刷新追踪列表", async () => {
+    renderPage();
+    // 初始查询在微任务中落地：推进 0 并包裹 act 让 React 提交渲染。
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(listStarredTrackersMock).toHaveBeenCalledTimes(1);
+    // POST 返回仅代表同步启动：此刻追踪列表不得提前刷新（否则看到同步前数据）。
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "立即同步 Star 列表" }));
+    });
+    expect(syncStarredReleasesMock).toHaveBeenCalledTimes(1);
+    expect(listStarredTrackersMock).toHaveBeenCalledTimes(1);
+    // last_star_sync_at 推进后（异步同步完成）才刷新列表并提示成功。
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+    });
+    expect(screen.getByText("Star 列表已同步，追踪列表已更新。")).toBeInTheDocument();
+    expect(listStarredTrackersMock.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("超过等待窗口仍提示未完成", async () => {
+    syncState.neverAdvances = true;
+    renderPage();
+    // 初始查询在微任务中落地：推进 0 并包裹 act 让 React 提交渲染。
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "立即同步 Star 列表" }));
+    });
+    // 同步始终未落定：推进等待窗口（90s）后提示稍后查看。
+    // 推进量止于窗口结束附近：超过后 useAutoDismiss 的 3s 自动清除定时器会抹掉提示。
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(92_000);
+    });
+    expect(screen.getByText("同步尚未完成，追踪列表请稍后刷新查看。")).toBeInTheDocument();
   });
 });

@@ -60,5 +60,6 @@ A: `app.Build` 设 `MaxPages: 3`，限制单次对账 API 消耗。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-20T00:00:00Z | 修复 star 同步分页误判导致 unstar 移除被跳过：GitHub 多页结果末页仍带 Link 头（`rel="prev"/"first"`，无 `rel="next"`），越界空页同样非空，旧 `link == ""` 判断使分页打到页码防御上限并令 `full=false`，`removeUnstarred` 被整体静默跳过（已取消星标的仓继续被轮询推送）；改以 `rel="next"` 作为唯一翻页依据，页码上限命中补 Warn 留痕；新增 `LastStarSyncAt` 暴露最近一次完整同步落定时刻 |
 | 2026-08-10T13:00:00Z | 新增 `StarredReleasePoller`：匿名枚举公开 star 仓库（fork/archived 预过滤、无 Release 7 天复查、unstar 自动停用、500 上限），复用 installation token + ETag 条件请求轮询最新 Release 并事件化（`kind=release`、`source=starred_releases`）；双周期从 system_settings 热读取（Star 同步默认 6h / Release 轮询默认 10m），由 Scheduler 1m 节拍驱动自判到期 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

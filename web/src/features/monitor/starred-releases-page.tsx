@@ -60,6 +60,10 @@ function configBody(form: FormState, cfg: StarredReleasesConfig | undefined): St
 /** 追踪列表每页条数：查询参数、页数计算与分页条显隐共用单一来源。 */
 const TRACKERS_PER_PAGE = 20;
 
+/** 立即同步轮询：等待异步同步落定的节奏与上限（同步完成以 last_star_sync_at 推进为准）。 */
+const STAR_SYNC_POLL_MS = 2000;
+const STAR_SYNC_WAIT_MS = 90_000;
+
 export function StarredReleasesPage() {
   const queryClient = useQueryClient();
   const config = useQuery(starredReleasesConfigQueryOptions);
@@ -119,12 +123,31 @@ export function StarredReleasesPage() {
     saveMut.mutate(configBody(form, config.data));
   }
 
-  // 立即同步：触发一轮 star 枚举（新 star 仓即时注册）。
+  // 立即同步：触发一轮 star 枚举（新 star 仓即时注册、unstar 仓即时停用）。
+  // 后端异步执行：POST 返回只代表同步已启动，此时刷新列表看到的仍是同步前数据
+  //（unstar 移除看似没生效）。故轮询 last_star_sync_at 推进后再刷新。
   const syncMut = useMutation({
-    mutationFn: () => syncStarredReleases(),
+    mutationFn: async () => {
+      const before = queryClient.getQueryData<StarredReleasesConfig>(starredReleasesConfigQueryOptions.queryKey)?.last_star_sync_at ?? "";
+      const res = await syncStarredReleases();
+      if (!res.started) return { started: false as const };
+      const deadline = Date.now() + STAR_SYNC_WAIT_MS;
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, STAR_SYNC_POLL_MS));
+        const cfg = await queryClient.fetchQuery({ ...starredReleasesConfigQueryOptions, staleTime: 0 });
+        if ((cfg.last_star_sync_at ?? "") !== before) return { started: true as const };
+        if (Date.now() >= deadline) return { started: true as const, timeout: true };
+      }
+    },
     onSuccess: async (res) => {
       await invalidateAll();
-      setMsg(res.started ? "已触发一轮同步，追踪列表将自动更新。" : "未配置用户名，无法同步。");
+      if (!res.started) {
+        setMsg("未配置用户名，无法同步。");
+      } else if ("timeout" in res && res.timeout) {
+        setMsg("同步尚未完成，追踪列表请稍后刷新查看。");
+      } else {
+        setMsg("Star 列表已同步，追踪列表已更新。");
+      }
     },
     onError: (err) => setError(toApiError(err).message),
   });

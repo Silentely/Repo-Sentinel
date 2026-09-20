@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -63,6 +64,42 @@ func TestStarredReleasesConfigAPI(t *testing.T) {
 	putBad := fixture.request(t, http.MethodPut, "/api/v1/starred-releases/config",
 		`{"release_poll_interval":"25h"}`, "127.0.0.1:45005", cookies, map[string]string{CSRFHeaderName: csrf.Value})
 	assertAPIError(t, putBad, http.StatusBadRequest, "validation_failed")
+}
+
+// TestStarredReleasesConfigLastSyncAt缺省 覆盖配置视图的 last_star_sync_at：
+// 未装配轮询器（或尚未同步）时字段缺省，装配后由 HTTP 层向管理台暴露同步进度。
+func TestStarredReleasesConfigLastSyncAt缺省(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	getOK := fixture.request(t, http.MethodGet, "/api/v1/starred-releases/config", "", "127.0.0.1:45011", cookies, nil)
+	if getOK.Code != http.StatusOK {
+		t.Fatalf("GET status=%d body=%s", getOK.Code, getOK.Body.String())
+	}
+	var view starredReleasesConfigResponse
+	if err := json.Unmarshal(getOK.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.LastStarSyncAt != "" {
+		t.Fatalf("未同步时应缺省 last_star_sync_at: %q", view.LastStarSyncAt)
+	}
+
+	// 装配轮询器（尚未同步）同样缺省，且不得因 nil 装配（未注入）崩溃。
+	withPoller := newHTTPTestFixture(t, httpTestOptions{starPoller: &syncx.StarredReleasePoller{}})
+	withPoller.bootstrapAdmin(t)
+	pollerCookies := withPoller.login(t, httpTestPassword)
+	pollerGet := withPoller.request(t, http.MethodGet, "/api/v1/starred-releases/config", "", "127.0.0.1:45012", pollerCookies, nil)
+	if pollerGet.Code != http.StatusOK {
+		t.Fatalf("GET status=%d body=%s", pollerGet.Code, pollerGet.Body.String())
+	}
+	var pollerView starredReleasesConfigResponse
+	if err := json.Unmarshal(pollerGet.Body.Bytes(), &pollerView); err != nil {
+		t.Fatal(err)
+	}
+	if pollerView.LastStarSyncAt != "" {
+		t.Fatalf("已装配但未同步时应缺省 last_star_sync_at: %q", pollerView.LastStarSyncAt)
+	}
 }
 
 // TestStarredReleasesSync 覆盖立即同步端点。

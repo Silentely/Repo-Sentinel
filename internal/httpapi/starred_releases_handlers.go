@@ -15,14 +15,18 @@ import (
 
 // starredReleasesConfigResponse star release 追踪配置视图。
 type starredReleasesConfigResponse struct {
-	Username                string         `json:"username"`
-	StarSyncInterval        string         `json:"star_sync_interval"`
-	ReleasePollInterval     string         `json:"release_poll_interval"`
-	MaxTrackers             int            `json:"max_trackers"`
-	NotifyPrerelease        bool           `json:"notify_prerelease"`
-	Enabled                 bool           `json:"enabled"`
-	AIReleaseSummaryEnabled bool           `json:"ai_release_summary_enabled"`
-	Counts                  map[string]int `json:"counts"`
+	Username                string `json:"username"`
+	StarSyncInterval        string `json:"star_sync_interval"`
+	ReleasePollInterval     string `json:"release_poll_interval"`
+	MaxTrackers             int    `json:"max_trackers"`
+	NotifyPrerelease        bool   `json:"notify_prerelease"`
+	Enabled                 bool   `json:"enabled"`
+	AIReleaseSummaryEnabled bool   `json:"ai_release_summary_enabled"`
+	// LastStarSyncAt 最近一次完整 star 同步的落定时刻（RFC3339，未同步过为空）。
+	// 「立即同步」是异步执行的：前端需等该时刻推进后再刷新追踪列表，
+	// 否则刷新的仍是同步前数据，unstar 移除看似未生效。
+	LastStarSyncAt string         `json:"last_star_sync_at,omitempty"`
+	Counts         map[string]int `json:"counts"`
 }
 
 type starredReleasesConfigPutRequest struct {
@@ -68,6 +72,9 @@ func (s *server) handleGetStarredReleasesConfig(w http.ResponseWriter, r *http.R
 	}
 	if rt := s.aiRuntime(); rt != nil {
 		resp.AIReleaseSummaryEnabled = rt.Snapshot().ReleaseSummaryEnabled
+	}
+	if at := s.dependencies.StarredPoller.LastStarSyncAt(); !at.IsZero() {
+		resp.LastStarSyncAt = at.Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

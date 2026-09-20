@@ -187,6 +187,18 @@ func (p *StarredReleasePoller) SyncStarsNow(ctx context.Context) error {
 	return p.syncStarsLocked(ctx)
 }
 
+// LastStarSyncAt 返回最近一次完整 star 同步的落定时刻（零值表示尚未同步）。
+// HTTP 层据此向管理台暴露同步进度：异步同步期间列表刷新的是同步前数据，
+// 前端需等该时刻推进后再刷新，否则「立即同步」看似无效果。
+func (p *StarredReleasePoller) LastStarSyncAt() time.Time {
+	if p == nil {
+		return time.Time{}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastStarSync
+}
+
 // syncStarsLocked 执行 star 枚举与注册（须在持锁下调用）；末尾按结果推进 lastStarSync：
 // 成功/确定性跳过推进（避免空转与刷屏），临时失败不推进（下轮节拍快速重试）。
 func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
@@ -241,7 +253,10 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 		}
 		if page > max/100+2 {
 			// 防御：超出上限页码数后中止，避免异常分页死循环。
+			// 必须留痕：完整分页标记失效会跳过本轮 unstar 移除，静默跳过会让
+			// 「已 unstar 但追踪未停用」无从定位。
 			full = false
+			p.warn("star sync page cap hit, skip unstar removal", "page", page, "username", username, "error_code", "star_sync_page_cap_hit")
 			break
 		}
 		items, link, _, err := client.ListUserStarred(ctx, username, page)
@@ -265,8 +280,13 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 				p.warn("star sync register failed", "repo", it.FullName, "error_code", "star_register_failed", "error", err.Error())
 			}
 		}
-		if link == "" {
-			break // 末页（以 Link 头为准，中间页条数不应成为 break 依据）
+		// 翻页以 Link 头 rel="next" 为准（与 ListWorkflowJobs 一致）：
+		// GitHub 多页结果的最后一页仍带 Link 头（rel="first"/"prev"，无 next），
+		// 越界空页同样可能只带 prev/first；以「头非空」判断会把空页当成中间页一路打到
+		// 页码防御上限，导致完整分页标记失效、unstar 移除被整体跳过（已 unstar 的仓
+		// 继续被轮询推送）。
+		if !strings.Contains(link, `rel="next"`) {
+			break
 		}
 	}
 	if full {

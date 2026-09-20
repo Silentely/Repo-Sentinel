@@ -31,6 +31,13 @@ type starredTestEnv struct {
 	releases  map[string][]map[string]any
 	rateLimit bool // 触发匿名枚举限流
 
+	// starredPages 记录 star 列表分页请求的页码序列，供断言翻页终止行为。
+	starredPages []int
+
+	// starNextForever 模拟异常上游：越界空页也持续下发 rel="next"，
+	// 用于验证页码防御上限生效（不会无限翻页）。
+	starNextForever bool
+
 	// releaseUnchanged 标记 release 未变化：条件请求命中 If-None-Match 时返回 304（模拟 GitHub）。
 	releaseUnchanged map[string]bool
 }
@@ -84,8 +91,11 @@ func newStarredTestEnv(t *testing.T, setup func(env *starredTestEnv)) *starredTe
 			if items == nil {
 				items = []map[string]any{}
 			}
-			if page == 1 && len(env.starred[2]) > 0 {
-				w.Header().Set("Link", `<https://api.github.com/user/starred?page=2>; rel="next"`)
+			env.starredPages = append(env.starredPages, page)
+			// 模拟 GitHub Link 头语义（RFC 5988）：仍有数据页时下发 rel="next"；
+			// 末页与越界空页只带 rel="prev"/"first"（不再带 next）。
+			if link := starredLinkHeader(env.starred, page, env.starNextForever); link != "" {
+				w.Header().Set("Link", link)
 			}
 			_ = json.NewEncoder(w).Encode(items)
 		case strings.HasPrefix(r.URL.Path, "/repos/"):
@@ -137,6 +147,31 @@ func newStarredTestEnv(t *testing.T, setup func(env *starredTestEnv)) *starredTe
 		Public: &githubx.PublicClient{BaseURL: srv.URL, HTTP: srv.Client()},
 	}
 	return env
+}
+
+// starredLinkHeader 按 GitHub 真实分页语义生成 Link 头（RFC 5988）：
+// 仍有数据页时下发 rel="next"；末页与越界空页只带 rel="prev"/"first"（无 next）。
+// nextForever 为 true 时越界空页也持续下发 rel="next"，模拟不会自终止的异常上游，
+// 用于验证页码防御上限生效。
+func starredLinkHeader(starred map[int][]map[string]any, page int, nextForever bool) string {
+	lastPage := 1
+	for p := 1; p <= len(starred)+1; p++ {
+		if len(starred[p]) > 0 {
+			lastPage = p
+		}
+	}
+	var links []string
+	if page < lastPage || nextForever {
+		links = append(links, fmt.Sprintf(`<https://api.github.com/user/starred?page=%d>; rel="next"`, page+1))
+		links = append(links, fmt.Sprintf(`<https://api.github.com/user/starred?page=%d>; rel="last"`, lastPage+1))
+	}
+	if page > 1 {
+		links = append(links, fmt.Sprintf(`<https://api.github.com/user/starred?page=%d>; rel="prev"`, page-1))
+	}
+	if lastPage > 1 {
+		links = append(links, `<https://api.github.com/user/starred?page=1>; rel="first"`)
+	}
+	return strings.Join(links, ", ")
 }
 
 func releaseMap(id int64, tag string, prerelease bool) map[string]any {
@@ -266,6 +301,122 @@ func TestStarredSyncStars_unstar停用(t *testing.T) {
 	}
 	if statuses["ob-unstar-sent"] != store.OutboxSent || statuses["ob-other-pending"] != store.OutboxPending {
 		t.Fatalf("已发送或其他仓库 outbox 不应改变: %+v", statuses)
+	}
+}
+
+// TestStarredLastStarSyncAt 验证同步落定时刻可观测：同步前为零值、完成后推进。
+// HTTP 层据此向管理台暴露 last_star_sync_at——「立即同步」是异步执行的，
+// 前端必须等该时刻推进后再刷新追踪列表，否则看到的是同步前数据。
+func TestStarredLastStarSyncAt(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	if !env.poller.LastStarSyncAt().IsZero() {
+		t.Fatal("同步前 lastStarSyncAt 应为零值")
+	}
+	if err := env.poller.SyncStarsNow(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if env.poller.LastStarSyncAt().IsZero() {
+		t.Fatal("同步完成后 lastStarSyncAt 应推进")
+	}
+	// 未配置用户名的确定性跳过同样推进记账（避免每节拍空转）。
+	if _, err := env.data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: SettingStarredUsername, ValueJSON: json.RawMessage(`""`),
+		UpdatedAt: time.Now().UTC(), UpdatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.poller.SyncStarsNow(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if env.poller.LastStarSyncAt().IsZero() {
+		t.Fatal("确定性跳过后 lastStarSyncAt 不应归零")
+	}
+}
+
+// TestStarredSyncStars_多页末页Link头unstar停用 复现「已 unstar 的仓库仍被轮询推送」：
+// GitHub 多页结果的最后一页仍带 Link 头（rel="first"/"prev"，无 rel="next"）。
+// 分页必须以 rel="next" 终止；若以「头非空」判断则会把末页当成中间页继续请求越界空页，
+// 越界页同样带 prev/first，最终打到页码防御上限 → 完整分页标记失效 →
+// removeUnstarred 被整体跳过（且无任何告警），已 unstar 的仓保持 tracking 继续轮询。
+func TestStarredSyncStars_多页末页Link头unstar停用(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{
+			{"full_name": "octocat/Hello-World", "fork": false, "archived": false},
+		}
+		env.starred[2] = []map[string]any{
+			{"full_name": "octocat/gone", "fork": false, "archived": false},
+			{"full_name": "octocat/keep2", "fork": false, "archived": false},
+		}
+		env.starred[3] = []map[string]any{
+			{"full_name": "octocat/Spoon-Knife", "fork": false, "archived": false},
+		}
+		for _, repo := range []string{"octocat/Hello-World", "octocat/gone", "octocat/keep2", "octocat/Spoon-Knife"} {
+			env.releases[repo] = []map[string]any{releaseMap(42, "v1.0", false)}
+		}
+	})
+	ctx := t.Context()
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// 用户取消第 2 页 octocat/gone 的星标。
+	env.mu.Lock()
+	env.starred[2] = []map[string]any{{"full_name": "octocat/keep2", "fork": false, "archived": false}}
+	env.starredPages = nil
+	env.mu.Unlock()
+	env.poller.lastStarSync = time.Time{}
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	gone, err := env.data.StarredTrackers().GetByFullName(ctx, "octocat/gone")
+	if err != nil || gone.State != store.TrackerStateDisabled {
+		t.Fatalf("多页列表末页场景下 unstar 的仓应被停用: %+v %v", gone, err)
+	}
+	for _, repo := range []string{"octocat/Hello-World", "octocat/keep2", "octocat/Spoon-Knife"} {
+		tk, err := env.data.StarredTrackers().GetByFullName(ctx, repo)
+		if err != nil || tk.State != store.TrackerStateTracking {
+			t.Fatalf("仍在 star 列表的仓应保持追踪: %s %+v %v", repo, tk, err)
+		}
+	}
+	// 翻页必须在末页（第 3 页）终止：不应请求越界空页。
+	env.mu.Lock()
+	pages := append([]int(nil), env.starredPages...)
+	env.mu.Unlock()
+	if len(pages) != 3 || pages[0] != 1 || pages[2] != 3 {
+		t.Fatalf("3 页 star 列表应在末页终止（请求 1,2,3），got %v", pages)
+	}
+}
+
+// TestStarredSyncStars_异常分页上限保护 验证越界空页持续下发 rel="next" 的异常上游
+// 不会无限翻页：命中页码防御上限后中止并跳过本轮 unstar 移除（不误删仍在列表的仓）。
+func TestStarredSyncStars_异常分页上限保护(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starNextForever = true
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+		env.releases["octocat/Hello-World"] = []map[string]any{releaseMap(42, "v1.0", false)}
+	})
+	ctx := t.Context()
+	if err := env.poller.SyncStars(ctx); err != nil {
+		t.Fatal(err)
+	}
+	env.mu.Lock()
+	env.starredPages = nil
+	env.mu.Unlock()
+	if err := env.poller.SyncStarsNow(ctx); err != nil {
+		t.Fatal(err)
+	}
+	env.mu.Lock()
+	pages := append([]int(nil), env.starredPages...)
+	env.mu.Unlock()
+	// 防御上限：max/100+2（默认 500 → page > 7 中止），请求页码不得无界增长。
+	if len(pages) == 0 || len(pages) > 8 {
+		t.Fatalf("异常上游应在页码防御上限处中止，got %v", pages)
+	}
+	tk, err := env.data.StarredTrackers().GetByFullName(ctx, "octocat/Hello-World")
+	if err != nil || tk.State != store.TrackerStateTracking {
+		t.Fatalf("未完整拉全时不应停用追踪: %+v %v", tk, err)
 	}
 }
 

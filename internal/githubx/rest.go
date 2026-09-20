@@ -421,7 +421,8 @@ func (c *PublicClient) appClient() *AppClient {
 }
 
 // ListUserStarred 拉取用户公开 star 单页（per_page=100）。
-// 返回 link（Link 响应头）供翻页，空串表示末页；携带配置的 PAT（如有）。
+// 返回 link（Link 响应头）供翻页：是否还有下一页须以 rel="next" 是否存在为准
+// （末页仍可能带 rel="prev"/"first"），不能以头是否非空判断。
 func (c *PublicClient) ListUserStarred(ctx context.Context, username string, page int) ([]StarredRepoItem, string, int, error) {
 	if page <= 0 {
 		page = 1

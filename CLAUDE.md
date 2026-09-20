@@ -4,6 +4,7 @@
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-20T00:00:00Z | 修复已取消星标仓库仍被轮询并推送 Release 通知：GitHub 分页 Link 头在末页与越界页均非空（`rel="prev"/"first"`，无 `rel="next"`），旧代码以「头非空」判断是否还有下一页，导致分页一路打到页码防御上限、完整分页标记失效，unstar 移除被整体静默跳过（同步日志仍显示成功）；改为以 `rel="next"` 作为唯一翻页依据（与 `ListWorkflowJobs` 一致），页码上限命中补告警；「立即同步」为异步执行，配置 API 新增 `last_star_sync_at` 暴露同步落定时刻，前端轮询该时刻推进后再刷新追踪列表（未落定提示稍后查看）；双端补回归测试（多页末页 Link 头 unstar 停用、异常分页上限保护、同步时刻缺省与推进、前端等待与超时路径） |
 | 2026-09-16T00:00:00Z | 版本 v0.6.0：①PR AI 智能代码审查引擎与安全审计（Diff 风险嗅探、机器人 PR 跳过、同一提交审查去重、结果持久化、手动触发异步入队 202 回执）；②Actions CI 失败智能诊断（Job/Step 分页拉取、AI 根因归因、failure_analysis_enabled 独立开关）；③新增飞书/企业微信/钉钉/Discord/Bark 五种通知渠道、Webhook 投递历史管理与检查回放、Actions 效能洞察；④SPA 静态资源 ETag 协商缓存、API gzip 压缩、textutil UTF-8 安全截断统一、前端查询失效并行化与相对时间全局定时器；⑤MCP 运维写工具（trigger_reconciliation/retry_failed_outbox/replay_webhook_delivery）与 PR 审查端点 `/api/v1/work-items/{id}/ai-review` 补充 |
 | 2026-09-06T00:00:00Z | 版本 v0.5.0：①两阶段 2FA 登录流程与 TOTP 引擎实现（RFC 6238）、账号级渐进延迟与哈希运算并发保护、CLI 应急重置与会话撤销；②登录页适配 2FA 剩余重试次数提示与超限自动回退、受信任反向代理真实 IP 安全解析；③扩展 MCP 工具集（list_events/get_star_trend/list_starred_releases）与 WebMCP 前端网关对齐、OpenAPI 规范补齐运维端点；④请求体 JSON 解码细分错误语义透出、useUrlState SSR 保护、配置输入与过滤参数统一去空防守、上下文取消感知强化；⑤前端交互与可访问性优化、文档站迁移与示例配置同步 |
 | 2026-09-03T22:55:00Z | ①规则引擎 Evaluate 增加引擎与存储依赖空指针防护；②聚合器 FlushAll、ReloadFrom 与 Evaluate 增加空指针守卫；③单测 rules 全套通过 |

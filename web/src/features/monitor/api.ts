@@ -581,6 +581,8 @@ export interface StarredReleasesConfig {
   notify_prerelease: boolean;
   enabled: boolean;
   ai_release_summary_enabled: boolean;
+  /** 最近一次完整 star 同步的落定时刻（RFC3339，未同步过为空）。 */
+  last_star_sync_at?: string;
   counts: {
     tracking: number;
     inactive: number;
