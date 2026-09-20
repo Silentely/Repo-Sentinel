@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
@@ -13,6 +15,11 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
+
+// externalPollConcurrency 外部仓轮询并发上限。单仓一轮由拉取 issues（必要时再拉
+// 仓库元数据）这类外部请求主导，少量并发即可压缩整轮耗时；GitHub 公开 API 配额
+// 与默认 SQLite 单连接写入（写入天然串行）都不支持、也不需要更高并发。
+const externalPollConcurrency = 5
 
 // ExternalPoller 外部公开仓 Issues 轮询。
 type ExternalPoller struct {
@@ -148,16 +155,16 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 }
 
 // PollAll 轮询全部外部仓（最多 MaxExternalRepositories 个）。
+// 单仓轮询由外部 HTTP 请求主导，串行会随仓数线性拉长整轮耗时；这里用固定数量
+// worker 并发处理，仅 HTTP 等待重叠，写入仍按存储层序列化安全执行。
 func (p *ExternalPoller) PollAll(ctx context.Context) error {
 	// 按最后同步时间取候选，保证所有外部仓轮流被轮询。
 	repos, err := p.Store.Repositories().ListSyncCandidates(ctx, store.RepositoryTypeExternal, store.MaxExternalRepositories)
 	if err != nil {
 		return err
 	}
+	candidates := make([]store.Repository, 0, len(repos))
 	for _, repo := range repos {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
 		if repo.SyncStatus == store.SyncStatusUnavailable || repo.SyncStatus == store.SyncStatusArchived {
 			continue
 		}
@@ -170,18 +177,69 @@ func (p *ExternalPoller) PollAll(ctx context.Context) error {
 		if !repo.MonitorEnabled {
 			continue
 		}
-		if err := p.PollOne(ctx, repo); err != nil {
-			// 限流是令牌级信号（PAT 配额共享）：停止本轮，避免逐仓连环请求放大次限流。
-			if githubx.IsRateLimited(err) {
-				if p.Logger != nil {
-					p.Logger.Warn("external poll rate limited, stop round", "error_code", "rate_limited_round_stopped", "repo", repo.FullName, "retry_after", githubx.RetryAfterOf(err).String())
-				}
-				return nil
-			}
+		candidates = append(candidates, repo)
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	// 共享客户端在派发前一次性备好：PollOne 内的惰性初始化在并发下会写同一字段。
+	if p.Client == nil {
+		p.Client = &githubx.PublicClient{}
+	}
+
+	// 限流是令牌级信号（PAT 配额共享）：命中后不再为本轮启动新的仓，已在途的请求
+	// 跑完即止；日志只记首次，避免并发下多仓同时限流刷屏。
+	var rateLimited atomic.Bool
+	var rateWarnOnce sync.Once
+	pollRepo := func(repo store.Repository) {
+		pollErr := p.PollOne(ctx, repo)
+		if pollErr == nil {
+			return
+		}
+		if !githubx.IsRateLimited(pollErr) {
 			if p.Logger != nil {
-				p.Logger.Error("external poll failed", "repo", repo.FullName, "error_code", "external_poll_failed", "error", err.Error())
+				p.Logger.Error("external poll failed", "repo", repo.FullName, "error_code", "external_poll_failed", "error", pollErr.Error())
 			}
+			return
+		}
+		rateLimited.Store(true)
+		rateWarnOnce.Do(func() {
+			if p.Logger != nil {
+				p.Logger.Warn("external poll rate limited, stop round", "error_code", "rate_limited_round_stopped", "repo", repo.FullName, "retry_after", githubx.RetryAfterOf(pollErr).String())
+			}
+		})
+	}
+
+	workers := externalPollConcurrency
+	if workers > len(candidates) {
+		workers = len(candidates)
+	}
+	jobs := make(chan store.Repository)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// 收到取消或限流信号后排空队列而非退出：派发端因此永不会阻塞在发送上。
+			for repo := range jobs {
+				if ctx.Err() != nil || rateLimited.Load() {
+					continue
+				}
+				pollRepo(repo)
+			}
+		}()
+	}
+	for _, repo := range candidates {
+		if ctx.Err() != nil || rateLimited.Load() {
+			break
+		}
+		select {
+		case <-ctx.Done():
+		case jobs <- repo:
 		}
 	}
+	close(jobs)
+	wg.Wait()
 	return nil
 }

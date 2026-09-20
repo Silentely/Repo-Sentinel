@@ -2,11 +2,16 @@ package syncx
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -309,5 +314,184 @@ func TestExternalPollStarSnapshotSoftFail(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Fatalf("软失败不应落快照，got %d 行", len(rows))
+	}
+}
+
+// pollAllFixture 建 n 个外部仓（acme/r0…）与记录并发度的伪 GitHub 服务：
+// issues 路径可注入额外延迟以便 worker 重叠，仓库元数据返回 0 star（不落快照）。
+// 返回 store、记录器（线程安全）与统计已轮询仓数的探针。
+func pollAllFixture(t *testing.T, n int, issueDelay time.Duration, issuesFn func(w http.ResponseWriter, name string)) (store.Store, *pollRecorder, *githubx.PublicClient) {
+	t.Helper()
+	data := openSyncStore(t)
+	rec := &pollRecorder{mu: &sync.Mutex{}, polled: map[string]int{}}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.enter()
+		defer rec.leave()
+		name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/repos/acme/"), "/issues")
+		if !strings.HasSuffix(r.URL.Path, "/issues") {
+			name = ""
+		}
+		if strings.HasSuffix(r.URL.Path, "/issues") {
+			rec.markPolled(name)
+		}
+		if issueDelay > 0 && strings.HasSuffix(r.URL.Path, "/issues") {
+			time.Sleep(issueDelay)
+		}
+		if strings.HasSuffix(r.URL.Path, "/issues") {
+			if issuesFn != nil {
+				issuesFn(w, name)
+				return
+			}
+			_ = json.NewEncoder(w).Encode([]any{})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"stargazers_count": 0})
+	}))
+	t.Cleanup(srv.Close)
+	for i := 0; i < n; i++ {
+		if _, err := data.Repositories().Upsert(t.Context(), store.Repository{
+			ID: ulid.Make().String(), Type: store.RepositoryTypeExternal,
+			SyncStatus: store.SyncStatusActive, Owner: "acme", Name: fmt.Sprintf("r%d", i),
+			FullName: fmt.Sprintf("acme/r%d", i), HTMLURL: fmt.Sprintf("https://github.com/acme/r%d", i),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return data, rec, &githubx.PublicClient{BaseURL: srv.URL, HTTP: srv.Client()}
+}
+
+// pollRecorder 线程安全地记录请求在途数、在途峰值与被轮询过的仓库名。
+type pollRecorder struct {
+	mu       *sync.Mutex
+	inflight int
+	maxSeen  int
+	polled   map[string]int
+}
+
+func (r *pollRecorder) enter() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.inflight++
+	if r.inflight > r.maxSeen {
+		r.maxSeen = r.inflight
+	}
+}
+
+func (r *pollRecorder) leave() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.inflight--
+}
+
+func (r *pollRecorder) markPolled(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.polled[name]++
+}
+
+// polledCount 返回已轮询过的不同仓库数与峰值并发（读取后清零计数，便于分批断言）。
+func (r *pollRecorder) snapshot() (repos int, peak int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.polled), r.maxSeen
+}
+
+// PollAll 并发有界：仓数超过 worker 上限时在途请求不得超过 externalPollConcurrency，
+// 且每个候选仓都被轮询到（一轮完整跑完）。
+func TestExternalPollAllBoundsConcurrency(t *testing.T) {
+	const repoCount = externalPollConcurrency * 2
+	data, rec, client := pollAllFixture(t, repoCount, 40*time.Millisecond, nil)
+
+	p := &ExternalPoller{Store: data, Client: client}
+	if err := p.PollAll(t.Context()); err != nil {
+		t.Fatalf("PollAll failed: %v", err)
+	}
+	polled, peak := rec.snapshot()
+	if polled != repoCount {
+		t.Fatalf("应轮询全部 %d 个仓，got %d", repoCount, polled)
+	}
+	if peak <= 0 {
+		t.Fatal("未观察到任何请求")
+	}
+	if peak > externalPollConcurrency {
+		t.Fatalf("并发度应不超过 %d，got %d", externalPollConcurrency, peak)
+	}
+	if peak == 1 {
+		t.Fatal("并发未生效（峰值并发为 1）")
+	}
+	// 整轮跑完：每个仓的同步时间都被推进。
+	repos, err := data.Repositories().ListSyncCandidates(t.Context(), store.RepositoryTypeExternal, store.MaxExternalRepositories)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, repo := range repos {
+		if repo.LastSyncedAt == nil {
+			t.Fatalf("%s 的 last_synced_at 应被推进", repo.FullName)
+		}
+	}
+}
+
+// 非限流失败只记单仓错误，不该中止本轮：其余仓仍应被轮询到。
+func TestExternalPollAllContinuesAfterRepoFailure(t *testing.T) {
+	const repoCount = 6
+	data, rec, client := pollAllFixture(t, repoCount, 0, func(w http.ResponseWriter, name string) {
+		if name == "r0" {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]any{})
+	})
+	var buf bytes.Buffer
+	p := &ExternalPoller{Store: data, Client: client, Logger: slog.New(slog.NewTextHandler(&buf, nil))}
+	if err := p.PollAll(t.Context()); err != nil {
+		t.Fatalf("PollAll failed: %v", err)
+	}
+	polled, _ := rec.snapshot()
+	if polled != repoCount {
+		t.Fatalf("单仓失败不应中止本轮，应轮询 %d 个仓，got %d", repoCount, polled)
+	}
+	logs := buf.String()
+	if !strings.Contains(logs, "external_poll_failed") || !strings.Contains(logs, "acme/r0") {
+		t.Fatalf("应记录 r0 的失败日志，got %q", logs)
+	}
+	if strings.Contains(logs, "rate_limited_round_stopped") {
+		t.Fatalf("非限流失败不应记限流日志，got %q", logs)
+	}
+}
+
+// 限流是令牌级信号：命中后本轮不再启动新的仓，且多个仓同时限流也只记一次告警。
+func TestExternalPollAllStopsRoundOnRateLimit(t *testing.T) {
+	const repoCount = externalPollConcurrency * 2
+	data, rec, client := pollAllFixture(t, repoCount, 40*time.Millisecond, func(w http.ResponseWriter, name string) {
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	var buf bytes.Buffer
+	p := &ExternalPoller{Store: data, Client: client, Logger: slog.New(slog.NewTextHandler(&buf, nil))}
+	if err := p.PollAll(t.Context()); err != nil {
+		t.Fatalf("限流不应向上抛错，got %v", err)
+	}
+	if _, peak := rec.snapshot(); peak > externalPollConcurrency {
+		t.Fatalf("并发度应不超过 %d，got %d", externalPollConcurrency, peak)
+	}
+	logs := buf.String()
+	if got := strings.Count(logs, "rate_limited_round_stopped"); got != 1 {
+		t.Fatalf("限流告警应只记一次，got %d 次：%q", got, logs)
+	}
+}
+
+// 上下文取消后整轮不再发起外部请求（与串行实现一致：取消即止），
+// 由存储层在拉取候选阶段快速失败。
+func TestExternalPollAllRespectsContextCancel(t *testing.T) {
+	data, rec, client := pollAllFixture(t, externalPollConcurrency*2, 0, nil)
+	p := &ExternalPoller{Store: data, Client: client}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err := p.PollAll(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("取消上下文应快速失败，got %v", err)
+	}
+	if polled, _ := rec.snapshot(); polled != 0 {
+		t.Fatalf("取消后不应轮询任何仓，got %d", polled)
 	}
 }
