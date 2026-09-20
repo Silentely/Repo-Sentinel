@@ -427,11 +427,17 @@ func (s *server) handleEnable2FA(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// 会话校验前置于落库：审计记录需要 admin_id 作 actor，无法定位会话时拒绝开启，
+	// 避免 TOTP 已保存却写不出审计条目。与 handleDisable2FA 同一模式。
+	session, ok := sessionFromContext(r.Context())
+	if !ok {
+		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
+		return
+	}
 	if err := auth.SaveTOTPConfig(r.Context(), s.dependencies.Store, s.dependencies.KeyRing, true, req.Secret); err != nil {
 		s.writeMappedError(w, r, err)
 		return
 	}
-	session, _ := sessionFromContext(r.Context())
 	s.dependencies.Logger.Info(
 		"totp 2fa enabled",
 		"request_id", requestIDFromContext(r.Context()),

@@ -500,3 +500,25 @@ func TestEnableAndDisable2FA_AuditLog(t *testing.T) {
 		t.Fatalf("期望记录 2FA 审计日志，实际 audits: %+v", audits)
 	}
 }
+
+// TestHandleEnable2FARequiresSession 守护启用 2FA 的会话前置校验：
+// 未携带会话时必须在落库前直接 401。会话校验前置于落库是因为审计记录需要
+// admin_id 作 actor，无法定位会话时拒绝开启，避免 TOTP 已保存却写不出审计条目
+// （与 handleDisable2FA 同一模式）。
+func TestHandleEnable2FARequiresSession(t *testing.T) {
+	s := &server{}
+	secret := "JBSWY3DPEHPK3PXP"
+	passcode, err := auth.GenerateTOTPCode(secret, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("生成测试动态码失败: %v", err)
+	}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/2fa/enable",
+		strings.NewReader(fmt.Sprintf(`{"secret":%q,"passcode":%q}`, secret, passcode)),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.handleEnable2FA(rec, req)
+	assertAPIError(t, rec, http.StatusUnauthorized, errorCodeUnauthorized)
+}
