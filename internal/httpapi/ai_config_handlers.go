@@ -336,7 +336,10 @@ func validAIBaseURL(value string) bool {
 	}
 	host := parsed.Hostname()
 	lowerHost := strings.ToLower(host)
-	if lowerHost == "metadata.google.internal" || lowerHost == "metadata" || strings.HasSuffix(lowerHost, ".internal") {
+	// 仅拦截云元数据服务明确域名：通用 .internal 后缀一刀切会误伤自建内网网关
+	// （如 ollama.internal / vllm.internal）；IP 级防护（回环/链路本地）由下方
+	// 与 safeAIDialContext 双重兜底。
+	if lowerHost == "metadata.google.internal" || lowerHost == "metadata" {
 		return false
 	}
 	if ip := net.ParseIP(host); ip != nil {

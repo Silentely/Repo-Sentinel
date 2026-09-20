@@ -411,7 +411,6 @@ func TestValidAIBaseURL_SSRF(t *testing.T) {
 		"https://169.254.1.1/v1",
 		"http://metadata.google.internal/computeMetadata/v1",
 		"http://metadata/v1",
-		"http://something.internal/v1",
 		"http://0.0.0.0:8080/v1",
 	}
 	for _, u := range blocked {
@@ -425,6 +424,9 @@ func TestValidAIBaseURL_SSRF(t *testing.T) {
 		"http://127.0.0.1:11434/v1",
 		"http://localhost:11434/v1",
 		"http://192.168.1.50:8000/v1",
+		// 自建内网网关域名（.internal 通用后缀不再一刀切，元数据域名与 IP 级防护仍生效）。
+		"http://ollama.internal:11434/v1",
+		"http://vllm.internal/v1",
 	}
 	for _, u := range allowed {
 		if !validAIBaseURL(u) {
