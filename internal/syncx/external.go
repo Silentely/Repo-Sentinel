@@ -241,5 +241,10 @@ func (p *ExternalPoller) PollAll(ctx context.Context) error {
 	}
 	close(jobs)
 	wg.Wait()
+	// worker 可能在派发完成后才观察到取消；此时必须向调用方传播取消原因，
+	// 否则服务停机或请求超时会被误报为整轮成功。
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	return nil
 }

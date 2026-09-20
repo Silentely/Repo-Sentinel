@@ -495,3 +495,20 @@ func TestExternalPollAllRespectsContextCancel(t *testing.T) {
 		t.Fatalf("取消后不应轮询任何仓，got %d", polled)
 	}
 }
+
+// 上下文在候选仓加载完成、worker 已开始请求后取消时，整轮应向上传播取消错误，
+// 不能把提前结束误报为成功。
+func TestExternalPollAllPropagatesContextCancelDuringPolling(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var cancelOnce sync.Once
+	data, _, client := pollAllFixture(t, externalPollConcurrency*2, 0, func(w http.ResponseWriter, _ string) {
+		cancelOnce.Do(cancel)
+		_ = json.NewEncoder(w).Encode([]any{})
+	})
+
+	p := &ExternalPoller{Store: data, Client: client}
+	if err := p.PollAll(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("轮询期间取消上下文应向上传播，got %v", err)
+	}
+}
