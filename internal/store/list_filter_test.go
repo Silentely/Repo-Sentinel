@@ -747,3 +747,84 @@ func TestDashboardGroupedCounts(t *testing.T) {
 		t.Fatal("前置仓应创建成功")
 	}
 }
+
+// TestListResolvesRepositoryFullName 守护列表页仓库名解析：三类资源列表都应带回
+// repository_full_name（含归档仓行），且不依赖额外的 repositories 查询。
+func TestListResolvesRepositoryFullName(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC()
+
+	active, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "name-active", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "active", FullName: "o/active", MonitorEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("upsert active: %v", err)
+	}
+	archived, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "name-archived", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusArchived,
+		Owner: "o", Name: "archived", FullName: "o/archived", IsArchived: true, MonitorEnabled: false,
+	})
+	if err != nil {
+		t.Fatalf("upsert archived: %v", err)
+	}
+
+	if _, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "name-wi", RepositoryID: active.ID, Number: 1, Kind: store.WorkItemKindIssue,
+		State: "open", Title: "t", SourceUpdatedAt: now, StateHash: "n1",
+	}, nil); err != nil {
+		t.Fatalf("upsert work item: %v", err)
+	}
+	if _, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "name-wi-arch", RepositoryID: archived.ID, Number: 2, Kind: store.WorkItemKindIssue,
+		State: "open", Title: "t", SourceUpdatedAt: now, StateHash: "n2",
+	}, nil); err != nil {
+		t.Fatalf("upsert archived work item: %v", err)
+	}
+	failed := "failure"
+	if _, _, err := data.WorkflowRuns().UpsertIfNewer(ctx, store.WorkflowRun{
+		ID: "name-wr", RepositoryID: active.ID, GitHubRunID: 1, WorkflowName: "ci", RunNumber: 1,
+		Status: "completed", Conclusion: &failed, RunUpdatedAt: now, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("upsert workflow run: %v", err)
+	}
+	if _, _, err := data.SecurityAlerts().UpsertIfNewer(ctx, store.SecurityAlert{
+		ID: "name-sa", RepositoryID: active.ID, AlertKind: "code_scanning", AlertNumber: 1,
+		State: "open", Severity: "high", SourceUpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("upsert security alert: %v", err)
+	}
+
+	filter := store.ListFilter{Page: 1, PerPage: 50, IncludeArchivedRepos: true}
+	items, _, err := data.WorkItems().List(ctx, filter)
+	if err != nil {
+		t.Fatalf("work items list: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("work items want 2 got %d", len(items))
+	}
+	for _, it := range items {
+		want := "o/active"
+		if it.RepositoryID == archived.ID {
+			want = "o/archived"
+		}
+		if it.RepositoryFullName != want {
+			t.Fatalf("work item %s full name want %q got %q", it.ID, want, it.RepositoryFullName)
+		}
+	}
+	runs, _, err := data.WorkflowRuns().List(ctx, filter)
+	if err != nil {
+		t.Fatalf("workflow runs list: %v", err)
+	}
+	if len(runs) != 1 || runs[0].RepositoryFullName != "o/active" {
+		t.Fatalf("workflow run full name want o/active got %d rows %q", len(runs), runs[0].RepositoryFullName)
+	}
+	alerts, _, err := data.SecurityAlerts().List(ctx, filter)
+	if err != nil {
+		t.Fatalf("security alerts list: %v", err)
+	}
+	if len(alerts) != 1 || alerts[0].RepositoryFullName != "o/active" {
+		t.Fatalf("alert full name want o/active got %d rows %q", len(alerts), alerts[0].RepositoryFullName)
+	}
+}

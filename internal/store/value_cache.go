@@ -57,10 +57,12 @@ func (c *ttlValueCache[T]) Invalidate() {
 	c.fresh = false
 }
 
-// cachedRepoIDs 一次仓库表扫描分出的两个 ID 集合。
+// cachedRepoIDs 一次仓库表扫描分出的两个 ID 集合与 id→full_name 映射。
+// 全名随集合复用：列表页解析仓库名不再额外查询 repositories。
 type cachedRepoIDs struct {
 	active   []string
 	archived []string
+	names    map[string]string
 }
 
 // dashboardCacheTTL 仪表盘统计缓存时长：统计容忍秒级陈旧（前端 30s 轮询），

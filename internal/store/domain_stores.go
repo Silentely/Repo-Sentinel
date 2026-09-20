@@ -671,9 +671,23 @@ func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem, known *W
 }
 
 // repoFullNameByID 批量查询仓库全名，返回 id→full_name 映射。
-func repoFullNameByID(ctx context.Context, client *entclient.Client, ids []string) map[string]string {
+// 已改为从仓库 ID 集合缓存解析（见 repositoryNames）：列表页每页一次额外查询被
+// 一次全表扫描（id/is_archived/full_name）取代，且该扫描本来就已发生。
+func repositoryNames(ctx context.Context, client *entclient.Client, ids []string, cache *ttlValueCache[cachedRepoIDs]) map[string]string {
 	if len(ids) == 0 {
 		return nil
+	}
+	// 缓存内已带全名（TTL 与列表查询同源，写入路径即时失效）：直接过滤构建，
+	// 不产生额外查询；缓存未命中时回退按需直查。
+	sets, setsErr := repoIDSets(ctx, client, cache)
+	if setsErr == nil && sets.names != nil {
+		out := make(map[string]string, len(ids))
+		for _, id := range ids {
+			if n, ok := sets.names[id]; ok {
+				out[id] = n
+			}
+		}
+		return out
 	}
 	seen := make(map[string]struct{}, len(ids))
 	unique := ids[:0]
@@ -705,13 +719,14 @@ func repoIDSets(ctx context.Context, client *entclient.Client, cache *ttlValueCa
 		return sets, nil
 	}
 	rows, err := client.Repository.Query().
-		Select(repository.FieldID, repository.FieldIsArchived).
+		Select(repository.FieldID, repository.FieldIsArchived, repository.FieldFullName).
 		All(ctx)
 	if err != nil {
 		return cachedRepoIDs{}, mapStoreError(err)
 	}
-	sets := cachedRepoIDs{}
+	sets := cachedRepoIDs{names: make(map[string]string, len(rows))}
 	for _, r := range rows {
+		sets.names[r.ID] = r.FullName
 		if r.IsArchived {
 			sets.archived = append(sets.archived, r.ID)
 		} else {
@@ -821,7 +836,7 @@ func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, Pag
 		out = append(out, workItemFromEntity(row))
 		repoIDs = append(repoIDs, row.RepositoryID)
 	}
-	names := repoFullNameByID(ctx, s.client, repoIDs)
+	names := repositoryNames(ctx, s.client, repoIDs, s.idsCache)
 	for i := range out {
 		if n, ok := names[out[i].RepositoryID]; ok {
 			out[i].RepositoryFullName = n
@@ -1038,7 +1053,7 @@ func (s *workflowRunStore) List(ctx context.Context, f ListFilter) ([]WorkflowRu
 		out = append(out, workflowRunFromEntity(row))
 		repoIDs = append(repoIDs, row.RepositoryID)
 	}
-	names := repoFullNameByID(ctx, s.client, repoIDs)
+	names := repositoryNames(ctx, s.client, repoIDs, s.idsCache)
 	for i := range out {
 		if n, ok := names[out[i].RepositoryID]; ok {
 			out[i].RepositoryFullName = n
@@ -1207,7 +1222,7 @@ func (s *securityAlertStore) List(ctx context.Context, f ListFilter) ([]Security
 		out = append(out, securityAlertFromEntity(row))
 		repoIDs = append(repoIDs, row.RepositoryID)
 	}
-	names := repoFullNameByID(ctx, s.client, repoIDs)
+	names := repositoryNames(ctx, s.client, repoIDs, s.idsCache)
 	for i := range out {
 		if n, ok := names[out[i].RepositoryID]; ok {
 			out[i].RepositoryFullName = n
