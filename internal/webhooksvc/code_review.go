@@ -229,7 +229,7 @@ type prReviewRequest struct {
 // 由两条触发路径共用，避免双份实现随修 bug 漂移。返回 nil 结果表示幂等跳过；
 // 各步骤失败以包装错误返回，由调用方统一留痕。
 func (s *Service) runPRReview(ctx context.Context, req prReviewRequest) (*ai.CodeReviewResult, error) {
-	if req.skipStored && s.reviewAlreadyStored(ctx, req.fullName, req.prNum, req.headSHA) {
+	if req.skipStored && s.reviewAlreadyStored(ctx, req.itemID, req.headSHA) {
 		return nil, nil
 	}
 	token := s.resolveInstallationToken(ctx, req.installationID, req.fullName, req.prNum)
@@ -355,19 +355,14 @@ func (s *Service) commentOnPR(ctx context.Context, req prReviewRequest, token st
 	}
 }
 
-func (s *Service) reviewAlreadyStored(ctx context.Context, fullName string, prNum int, headSHA string) bool {
-	if s.Store == nil || strings.TrimSpace(headSHA) == "" {
+// reviewAlreadyStored 判断该 PR 是否已有同一 head SHA 的审查结果（跳过重试重复审查）。
+// 调用方 prReviewRequest 已持有 itemID（审查报告挂载点），直接按 ai.pr_review.<itemID>
+// 单查即可，无需再经 GetByFullName → GetByRepoNumber 两次解析。
+func (s *Service) reviewAlreadyStored(ctx context.Context, itemID, headSHA string) bool {
+	if s.Store == nil || strings.TrimSpace(headSHA) == "" || itemID == "" {
 		return false
 	}
-	repo, err := s.Store.Repositories().GetByFullName(ctx, fullName)
-	if err != nil {
-		return false
-	}
-	item, err := s.Store.WorkItems().GetByRepoNumber(ctx, repo.ID, prNum)
-	if err != nil {
-		return false
-	}
-	setting, err := s.Store.Settings().Get(ctx, "ai.pr_review."+item.ID)
+	setting, err := s.Store.Settings().Get(ctx, "ai.pr_review."+itemID)
 	if err != nil {
 		return false
 	}
@@ -439,6 +434,11 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 
 	// head SHA 是在途互斥 key 与前端轮询比对基准：获取失败无法定义本次审查目标，
 	// 直接报错由用户重试。预算 10s，远低于 HTTP WriteTimeout。
+	// 前置按 fullName#number# 前缀快速拒绝同 PR 在途审查：省掉重复点击注定被
+	// 互斥挡掉的一次 GitHub 调用；精确去重仍由下方 SHA 粒度 acquire 负责。
+	if s.reviews.inFlightPrefix(fmt.Sprintf("%s#%d#", fullName, item.Number)) {
+		return "", ErrReviewInProgress
+	}
 	installationID := s.resolveRepoInstallationID(ctx, repoRec)
 	token := s.resolveInstallationToken(ctx, installationID, fullName, item.Number)
 	if repoRec.IsPrivate && token == "" {
@@ -499,6 +499,15 @@ func (s *Service) resolveRepoInstallationID(ctx context.Context, repo store.Repo
 	if s.Store != nil {
 		all, err := s.Store.Installations().List(ctx)
 		if err == nil && len(all) == 1 && all[0].InstallationID > 0 {
+			// 单 App 回退不校验该安装是否拥有目标仓库访问权限：多组织部署而当前 App
+			// 仅装到其它组织时，下游 resolveInstallationToken 会拿不到 token，
+			// 私有仓审查路径以 ErrReviewUnavailable 安全拒绝。此处 Warn 留痕，
+			// 便于运维识别「回退命中但实际无权」的部署缺口。
+			if s.Logger != nil {
+				s.Logger.Warn("installation id resolved via single-app fallback",
+					"repo", repo.FullName, "installation_id", all[0].InstallationID,
+					"account_login", all[0].AccountLogin)
+			}
 			return all[0].InstallationID
 		}
 	}

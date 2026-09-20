@@ -119,3 +119,34 @@ func TestReviewTrackerNilSafe(t *testing.T) {
 		t.Fatalf("nil 跟踪器 wait 应返回 nil，got %v", err)
 	}
 }
+
+// TestReviewTrackerInFlightPrefix 守护前缀在途查询：同一 PR 任意 head SHA 在途时
+// 按 fullName#number# 前缀命中；精确去重仍由 acquire 的 SHA 粒度 key 负责。
+// nil 跟踪器（测试直构 Service 未装配）一律返回 false，即不拦截。
+func TestReviewTrackerInFlightPrefix(t *testing.T) {
+	tr := &reviewTracker{}
+	if tr.inFlightPrefix("repo#1#") {
+		t.Fatal("无在途任务时不应命中前缀")
+	}
+	if !tr.acquire("repo#1#sha-a") {
+		t.Fatal("首次登记应成功")
+	}
+	if !tr.inFlightPrefix("repo#1#") {
+		t.Fatal("在途任务应命中同 PR 前缀")
+	}
+	if tr.inFlightPrefix("repo#2#") {
+		t.Fatal("不同 PR 前缀不应命中")
+	}
+	if tr.inFlightPrefix("other-repo#1#") {
+		t.Fatal("前缀必须按完整 fullName 边界匹配")
+	}
+	tr.release("repo#1#sha-a")
+	if tr.inFlightPrefix("repo#1#") {
+		t.Fatal("释放后前缀不应再命中")
+	}
+
+	var nilTracker *reviewTracker
+	if nilTracker.inFlightPrefix("repo#1#") {
+		t.Fatal("nil 跟踪器应放行（不拦截）")
+	}
+}

@@ -2,6 +2,7 @@ package webhooksvc
 
 import (
 	"context"
+	"strings"
 	"sync"
 )
 
@@ -39,6 +40,23 @@ func (t *reviewTracker) acquire(key string) bool {
 	}
 	t.inFlight[key] = struct{}{}
 	return true
+}
+
+// inFlightPrefix 是否存在以 keyPrefix 开头的在途任务。
+// 供手动触发前置快速拒绝：重复点击时省掉一次注定被 SHA 粒度互斥挡掉的
+// token 解析 + GetPRDetail 调用；精确去重仍由 acquire 负责。
+func (t *reviewTracker) inFlightPrefix(keyPrefix string) bool {
+	if t == nil {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for k := range t.inFlight {
+		if strings.HasPrefix(k, keyPrefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // release 释放任务并唤醒排空等待者；在途任务清空时广播一次。
