@@ -723,7 +723,17 @@ export function webhookDeliveriesQueryOptions(params: {
   if (params.repository) search.set("repository", params.repository);
   const q = search.toString() ? `?${search.toString()}` : "";
   return queryOptions({
-    queryKey: ["webhook-deliveries", params] as const,
+    // queryKey 必须用标量而非 params 对象：调用方每次传入内联对象字面量，
+    // TanStack Query v5 按 Object.is 比较数组元素，对象引用不同即视为不同 key，
+    // 父组件重渲染会产生缓存碎片与重复请求。
+    queryKey: [
+      "webhook-deliveries",
+      params.page,
+      params.per_page,
+      params.status,
+      params.event_type,
+      params.repository,
+    ] as const,
     queryFn: () => apiRequest<Page<WebhookDeliveryItem>>(`/api/v1/webhook-deliveries${q}`),
     staleTime: 10_000,
   });
