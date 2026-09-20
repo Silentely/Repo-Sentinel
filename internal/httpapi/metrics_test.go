@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 )
@@ -73,5 +75,40 @@ func TestMetricsEndpointExposesOutboxQueueDepth(t *testing.T) {
 	if !strings.Contains(body, "reposentinel_outbox_pending_gauge") ||
 		!strings.Contains(body, "reposentinel_outbox_sending_gauge") {
 		t.Fatalf("期望包含 outbox 队列深度指标行，body=%s", body)
+	}
+}
+
+// TestShouldLogMetricsAccess 守护 /metrics 访问日志的按 IP 采样：
+// 同一 IP 在采样窗口内只记一条、窗口外放行、达到跟踪上限后整体重置。
+func TestShouldLogMetricsAccess(t *testing.T) {
+	// 包级采样表跨用例共享，先清空保证时序断言不受其他用例影响。
+	metricsLogMu.Lock()
+	metricsLogLastSeen = make(map[string]time.Time)
+	metricsLogMu.Unlock()
+
+	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+
+	if !shouldLogMetricsAccess("203.0.113.7", now) {
+		t.Fatal("首次访问应记录")
+	}
+	if shouldLogMetricsAccess("203.0.113.7", now.Add(5*time.Second)) {
+		t.Fatal("同一 IP 采样窗口内不应重复记录")
+	}
+	if !shouldLogMetricsAccess("203.0.113.7", now.Add(11*time.Second)) {
+		t.Fatal("超出采样窗口后应放行记录")
+	}
+	if !shouldLogMetricsAccess("203.0.113.8", now) {
+		t.Fatal("不同 IP 不受其他 IP 的采样状态影响")
+	}
+
+	// 达到跟踪上限后表整体清空：新 IP 放行，且旧 IP 的窗口记录一并作废（重新计时）。
+	for i := 0; i < metricsLogMaxTrackedIPs; i++ {
+		shouldLogMetricsAccess(fmt.Sprintf("198.51.100.%d", i), now.Add(30*time.Second))
+	}
+	if !shouldLogMetricsAccess("198.51.100.254", now.Add(30*time.Second)) {
+		t.Fatal("超出跟踪上限后新 IP 应放行")
+	}
+	if !shouldLogMetricsAccess("203.0.113.7", now.Add(31*time.Second)) {
+		t.Fatal("表重置后旧 IP 应重新开始计时")
 	}
 }

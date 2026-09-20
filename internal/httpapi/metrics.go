@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -43,6 +45,32 @@ func MetricsIncOutboxDead() { metricOutboxDead.Add(1) }
 // MetricsIncReconcileRuns 记录对账执行次数。
 func MetricsIncReconcileRuns() { metricReconcileRuns.Add(1) }
 
+// 非回环未授权 /metrics 访问日志按 IP 采样：爬虫或代理高频 scrape 时同一 IP
+// 每 metricsLogSamplingInterval 最多记一条，防止访问日志被海量 remote_ip 打爆。
+// 采样表无持久化需求，超过上限整体清空重置。
+const (
+	metricsLogSamplingInterval = 10 * time.Second
+	metricsLogMaxTrackedIPs    = 512
+)
+
+var (
+	metricsLogMu       sync.Mutex
+	metricsLogLastSeen = make(map[string]time.Time)
+)
+
+func shouldLogMetricsAccess(ip string, now time.Time) bool {
+	metricsLogMu.Lock()
+	defer metricsLogMu.Unlock()
+	if last, ok := metricsLogLastSeen[ip]; ok && now.Sub(last) < metricsLogSamplingInterval {
+		return false
+	}
+	if len(metricsLogLastSeen) >= metricsLogMaxTrackedIPs {
+		metricsLogLastSeen = make(map[string]time.Time)
+	}
+	metricsLogLastSeen[ip] = now
+	return true
+}
+
 func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	// 可选：配置了独立 Token 时要求 Bearer；未配置则仅建议内网访问（文档说明）。
 	// 当未配置 Token 且访问来源不是回环地址（Loopback）时，记录 Debug 提示以辅助审计非回环访问。
@@ -53,7 +81,8 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
 			return
 		}
-	} else if !isLoopbackIP(remoteIPFromContext(r.Context())) && s.dependencies.Logger != nil {
+	} else if !isLoopbackIP(remoteIPFromContext(r.Context())) && s.dependencies.Logger != nil &&
+		shouldLogMetricsAccess(remoteIPFromContext(r.Context()), time.Now().UTC()) {
 		s.dependencies.Logger.Debug("metrics endpoint accessed without auth token from non-loopback ip",
 			"remote_ip", remoteIPFromContext(r.Context()),
 			"request_id", requestIDFromContext(r.Context()),
