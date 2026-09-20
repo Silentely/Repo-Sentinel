@@ -465,10 +465,13 @@ type NotificationOutbox struct {
 	Title          string         `json:"title"`
 	BodyText       string         `json:"body_text,omitempty"`
 	BodyJSON       map[string]any `json:"body_json,omitempty"`
-	ParseMode      string         `json:"parse_mode,omitempty"`
-	HTMLURL        string         `json:"html_url,omitempty"` // Telegram inline keyboard 跳转链接
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
+	// RepositoryFullName 为 Release 通知冗余的仓库名（其它类别为空），
+	// 是 unstar 取消未投递通知的唯一匹配依据，见 outboxStore.CancelPendingByRepository。
+	RepositoryFullName string    `json:"repository_full_name,omitempty"`
+	ParseMode          string    `json:"parse_mode,omitempty"`
+	HTMLURL            string    `json:"html_url,omitempty"` // Telegram inline keyboard 跳转链接
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // MaxExternalRepositories 外部公开仓库上限（同一产品规则，写入与文案共用）。

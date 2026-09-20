@@ -35,6 +35,8 @@ const (
 	FieldBodyText = "body_text"
 	// FieldBodyJSON holds the string denoting the body_json field in the database.
 	FieldBodyJSON = "body_json"
+	// FieldRepositoryFullName holds the string denoting the repository_full_name field in the database.
+	FieldRepositoryFullName = "repository_full_name"
 	// FieldParseMode holds the string denoting the parse_mode field in the database.
 	FieldParseMode = "parse_mode"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -60,6 +62,7 @@ var Columns = []string{
 	FieldTitle,
 	FieldBodyText,
 	FieldBodyJSON,
+	FieldRepositoryFullName,
 	FieldParseMode,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -86,6 +89,8 @@ var (
 	DefaultLastErrorCode string
 	// DefaultTitle holds the default value on creation for the "title" field.
 	DefaultTitle string
+	// DefaultRepositoryFullName holds the default value on creation for the "repository_full_name" field.
+	DefaultRepositoryFullName string
 	// DefaultParseMode holds the default value on creation for the "parse_mode" field.
 	DefaultParseMode string
 )
@@ -151,6 +156,11 @@ func ByTitle(opts ...sql.OrderTermOption) OrderOption {
 // ByBodyText orders the results by the body_text field.
 func ByBodyText(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBodyText, opts...).ToFunc()
+}
+
+// ByRepositoryFullName orders the results by the repository_full_name field.
+func ByRepositoryFullName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRepositoryFullName, opts...).ToFunc()
 }
 
 // ByParseMode orders the results by the parse_mode field.

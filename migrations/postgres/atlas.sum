@@ -1,4 +1,4 @@
-h1:hRRrohoJwl5fC/Z86Ws6e8zGZ1O8TlN90PquiVBkiJM=
+h1:OMKMLr6uP+ZDKKAYaB9DeVOs3WmsVBfRfyG3hi/UtGQ=
 20260727000100_initial.sql h1:flTt/4EIbVVbivWtwkV6G8WDC6zLDOE9jCd2zvrlRBo=
 20260728000100_domain_core.sql h1:MHOJX9iFWZGdoa92CJbhfOydpQcb/HW9BSXS+oPnpKU=
 20260729000100_repo_capability_toggles.sql h1:F00DXUB6k5F9Pi7eQ9wELVPUwCDIEkmw0gUpJp4RmeI=
@@ -14,3 +14,4 @@ h1:hRRrohoJwl5fC/Z86Ws6e8zGZ1O8TlN90PquiVBkiJM=
 20260806000100_star_watch.sql h1:0FBsyJLolDgaUPSeAjyqEaoazCMOqF7MRfffRgjX/nI=
 20260810195127_starred_repo_tracker.sql h1:MNoGd0iL9uAjSFLX2n9f1UfkrNw8I1PymOARQ+xMsxc=
 20260813000100_event_subject_number_bigint.sql h1:qXRQ4VIBV8a40n0mjHuf5ulkUmyXtReqnVFHTTVfOWo=
+20260920001500_outbox_repository_full_name.sql h1:MTq/3I9Ckyy8SHBhrjgLv/6HOANSy8oRipeT5V1AmoM=

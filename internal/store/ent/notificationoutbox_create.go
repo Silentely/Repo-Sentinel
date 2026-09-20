@@ -148,6 +148,20 @@ func (_c *NotificationOutboxCreate) SetBodyJSON(v map[string]interface{}) *Notif
 	return _c
 }
 
+// SetRepositoryFullName sets the "repository_full_name" field.
+func (_c *NotificationOutboxCreate) SetRepositoryFullName(v string) *NotificationOutboxCreate {
+	_c.mutation.SetRepositoryFullName(v)
+	return _c
+}
+
+// SetNillableRepositoryFullName sets the "repository_full_name" field if the given value is not nil.
+func (_c *NotificationOutboxCreate) SetNillableRepositoryFullName(v *string) *NotificationOutboxCreate {
+	if v != nil {
+		_c.SetRepositoryFullName(*v)
+	}
+	return _c
+}
+
 // SetParseMode sets the "parse_mode" field.
 func (_c *NotificationOutboxCreate) SetParseMode(v string) *NotificationOutboxCreate {
 	_c.mutation.SetParseMode(v)
@@ -235,6 +249,10 @@ func (_c *NotificationOutboxCreate) defaults() {
 		v := notificationoutbox.DefaultTitle
 		_c.mutation.SetTitle(v)
 	}
+	if _, ok := _c.mutation.RepositoryFullName(); !ok {
+		v := notificationoutbox.DefaultRepositoryFullName
+		_c.mutation.SetRepositoryFullName(v)
+	}
 	if _, ok := _c.mutation.ParseMode(); !ok {
 		v := notificationoutbox.DefaultParseMode
 		_c.mutation.SetParseMode(v)
@@ -269,6 +287,9 @@ func (_c *NotificationOutboxCreate) check() error {
 	}
 	if _, ok := _c.mutation.BodyText(); !ok {
 		return &ValidationError{Name: "body_text", err: errors.New(`ent: missing required field "NotificationOutbox.body_text"`)}
+	}
+	if _, ok := _c.mutation.RepositoryFullName(); !ok {
+		return &ValidationError{Name: "repository_full_name", err: errors.New(`ent: missing required field "NotificationOutbox.repository_full_name"`)}
 	}
 	if _, ok := _c.mutation.ParseMode(); !ok {
 		return &ValidationError{Name: "parse_mode", err: errors.New(`ent: missing required field "NotificationOutbox.parse_mode"`)}
@@ -361,6 +382,10 @@ func (_c *NotificationOutboxCreate) createSpec() (*NotificationOutbox, *sqlgraph
 	if value, ok := _c.mutation.BodyJSON(); ok {
 		_spec.SetField(notificationoutbox.FieldBodyJSON, field.TypeJSON, value)
 		_node.BodyJSON = value
+	}
+	if value, ok := _c.mutation.RepositoryFullName(); ok {
+		_spec.SetField(notificationoutbox.FieldRepositoryFullName, field.TypeString, value)
+		_node.RepositoryFullName = value
 	}
 	if value, ok := _c.mutation.ParseMode(); ok {
 		_spec.SetField(notificationoutbox.FieldParseMode, field.TypeString, value)

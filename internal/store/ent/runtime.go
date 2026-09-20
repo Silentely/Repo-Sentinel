@@ -116,8 +116,12 @@ func init() {
 	notificationoutboxDescTitle := notificationoutboxFields[10].Descriptor()
 	// notificationoutbox.DefaultTitle holds the default value on creation for the title field.
 	notificationoutbox.DefaultTitle = notificationoutboxDescTitle.Default.(string)
+	// notificationoutboxDescRepositoryFullName is the schema descriptor for repository_full_name field.
+	notificationoutboxDescRepositoryFullName := notificationoutboxFields[13].Descriptor()
+	// notificationoutbox.DefaultRepositoryFullName holds the default value on creation for the repository_full_name field.
+	notificationoutbox.DefaultRepositoryFullName = notificationoutboxDescRepositoryFullName.Default.(string)
 	// notificationoutboxDescParseMode is the schema descriptor for parse_mode field.
-	notificationoutboxDescParseMode := notificationoutboxFields[13].Descriptor()
+	notificationoutboxDescParseMode := notificationoutboxFields[14].Descriptor()
 	// notificationoutbox.DefaultParseMode holds the default value on creation for the parse_mode field.
 	notificationoutbox.DefaultParseMode = notificationoutboxDescParseMode.Default.(string)
 	repositoryFields := schema.Repository{}.Fields()

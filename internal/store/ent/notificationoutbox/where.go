@@ -119,6 +119,11 @@ func BodyText(v string) predicate.NotificationOutbox {
 	return predicate.NotificationOutbox(sql.FieldEQ(FieldBodyText, v))
 }
 
+// RepositoryFullName applies equality check predicate on the "repository_full_name" field. It's identical to RepositoryFullNameEQ.
+func RepositoryFullName(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldEQ(FieldRepositoryFullName, v))
+}
+
 // ParseMode applies equality check predicate on the "parse_mode" field. It's identical to ParseModeEQ.
 func ParseMode(v string) predicate.NotificationOutbox {
 	return predicate.NotificationOutbox(sql.FieldEQ(FieldParseMode, v))
@@ -802,6 +807,71 @@ func BodyJSONIsNil() predicate.NotificationOutbox {
 // BodyJSONNotNil applies the NotNil predicate on the "body_json" field.
 func BodyJSONNotNil() predicate.NotificationOutbox {
 	return predicate.NotificationOutbox(sql.FieldNotNull(FieldBodyJSON))
+}
+
+// RepositoryFullNameEQ applies the EQ predicate on the "repository_full_name" field.
+func RepositoryFullNameEQ(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldEQ(FieldRepositoryFullName, v))
+}
+
+// RepositoryFullNameNEQ applies the NEQ predicate on the "repository_full_name" field.
+func RepositoryFullNameNEQ(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldNEQ(FieldRepositoryFullName, v))
+}
+
+// RepositoryFullNameIn applies the In predicate on the "repository_full_name" field.
+func RepositoryFullNameIn(vs ...string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldIn(FieldRepositoryFullName, vs...))
+}
+
+// RepositoryFullNameNotIn applies the NotIn predicate on the "repository_full_name" field.
+func RepositoryFullNameNotIn(vs ...string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldNotIn(FieldRepositoryFullName, vs...))
+}
+
+// RepositoryFullNameGT applies the GT predicate on the "repository_full_name" field.
+func RepositoryFullNameGT(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldGT(FieldRepositoryFullName, v))
+}
+
+// RepositoryFullNameGTE applies the GTE predicate on the "repository_full_name" field.
+func RepositoryFullNameGTE(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldGTE(FieldRepositoryFullName, v))
+}
+
+// RepositoryFullNameLT applies the LT predicate on the "repository_full_name" field.
+func RepositoryFullNameLT(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldLT(FieldRepositoryFullName, v))
+}
+
+// RepositoryFullNameLTE applies the LTE predicate on the "repository_full_name" field.
+func RepositoryFullNameLTE(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldLTE(FieldRepositoryFullName, v))
+}
+
+// RepositoryFullNameContains applies the Contains predicate on the "repository_full_name" field.
+func RepositoryFullNameContains(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldContains(FieldRepositoryFullName, v))
+}
+
+// RepositoryFullNameHasPrefix applies the HasPrefix predicate on the "repository_full_name" field.
+func RepositoryFullNameHasPrefix(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldHasPrefix(FieldRepositoryFullName, v))
+}
+
+// RepositoryFullNameHasSuffix applies the HasSuffix predicate on the "repository_full_name" field.
+func RepositoryFullNameHasSuffix(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldHasSuffix(FieldRepositoryFullName, v))
+}
+
+// RepositoryFullNameEqualFold applies the EqualFold predicate on the "repository_full_name" field.
+func RepositoryFullNameEqualFold(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldEqualFold(FieldRepositoryFullName, v))
+}
+
+// RepositoryFullNameContainsFold applies the ContainsFold predicate on the "repository_full_name" field.
+func RepositoryFullNameContainsFold(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldContainsFold(FieldRepositoryFullName, v))
 }
 
 // ParseModeEQ applies the EQ predicate on the "parse_mode" field.

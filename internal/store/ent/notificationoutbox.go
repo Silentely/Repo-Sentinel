@@ -42,6 +42,8 @@ type NotificationOutbox struct {
 	BodyText string `json:"body_text,omitempty"`
 	// BodyJSON holds the value of the "body_json" field.
 	BodyJSON map[string]interface{} `json:"body_json,omitempty"`
+	// RepositoryFullName holds the value of the "repository_full_name" field.
+	RepositoryFullName string `json:"repository_full_name,omitempty"`
 	// ParseMode holds the value of the "parse_mode" field.
 	ParseMode string `json:"parse_mode,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -60,7 +62,7 @@ func (*NotificationOutbox) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case notificationoutbox.FieldAttemptCount:
 			values[i] = new(sql.NullInt64)
-		case notificationoutbox.FieldID, notificationoutbox.FieldChannelID, notificationoutbox.FieldEventID, notificationoutbox.FieldAggregateKey, notificationoutbox.FieldIdempotencyKey, notificationoutbox.FieldStatus, notificationoutbox.FieldLastErrorCode, notificationoutbox.FieldTitle, notificationoutbox.FieldBodyText, notificationoutbox.FieldParseMode:
+		case notificationoutbox.FieldID, notificationoutbox.FieldChannelID, notificationoutbox.FieldEventID, notificationoutbox.FieldAggregateKey, notificationoutbox.FieldIdempotencyKey, notificationoutbox.FieldStatus, notificationoutbox.FieldLastErrorCode, notificationoutbox.FieldTitle, notificationoutbox.FieldBodyText, notificationoutbox.FieldRepositoryFullName, notificationoutbox.FieldParseMode:
 			values[i] = new(sql.NullString)
 		case notificationoutbox.FieldNextAttemptAt, notificationoutbox.FieldLockedUntil, notificationoutbox.FieldCreatedAt, notificationoutbox.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -161,6 +163,12 @@ func (_m *NotificationOutbox) assignValues(columns []string, values []any) error
 					return fmt.Errorf("unmarshal field body_json: %w", err)
 				}
 			}
+		case notificationoutbox.FieldRepositoryFullName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field repository_full_name", values[i])
+			} else if value.Valid {
+				_m.RepositoryFullName = value.String
+			}
 		case notificationoutbox.FieldParseMode:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field parse_mode", values[i])
@@ -254,6 +262,9 @@ func (_m *NotificationOutbox) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("body_json=")
 	builder.WriteString(fmt.Sprintf("%v", _m.BodyJSON))
+	builder.WriteString(", ")
+	builder.WriteString("repository_full_name=")
+	builder.WriteString(_m.RepositoryFullName)
 	builder.WriteString(", ")
 	builder.WriteString("parse_mode=")
 	builder.WriteString(_m.ParseMode)

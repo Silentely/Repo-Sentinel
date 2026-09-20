@@ -213,6 +213,20 @@ func (_u *NotificationOutboxUpdate) ClearBodyJSON() *NotificationOutboxUpdate {
 	return _u
 }
 
+// SetRepositoryFullName sets the "repository_full_name" field.
+func (_u *NotificationOutboxUpdate) SetRepositoryFullName(v string) *NotificationOutboxUpdate {
+	_u.mutation.SetRepositoryFullName(v)
+	return _u
+}
+
+// SetNillableRepositoryFullName sets the "repository_full_name" field if the given value is not nil.
+func (_u *NotificationOutboxUpdate) SetNillableRepositoryFullName(v *string) *NotificationOutboxUpdate {
+	if v != nil {
+		_u.SetRepositoryFullName(*v)
+	}
+	return _u
+}
+
 // SetParseMode sets the "parse_mode" field.
 func (_u *NotificationOutboxUpdate) SetParseMode(v string) *NotificationOutboxUpdate {
 	_u.mutation.SetParseMode(v)
@@ -329,6 +343,9 @@ func (_u *NotificationOutboxUpdate) sqlSave(ctx context.Context) (_node int, err
 	}
 	if _u.mutation.BodyJSONCleared() {
 		_spec.ClearField(notificationoutbox.FieldBodyJSON, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.RepositoryFullName(); ok {
+		_spec.SetField(notificationoutbox.FieldRepositoryFullName, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ParseMode(); ok {
 		_spec.SetField(notificationoutbox.FieldParseMode, field.TypeString, value)
@@ -541,6 +558,20 @@ func (_u *NotificationOutboxUpdateOne) ClearBodyJSON() *NotificationOutboxUpdate
 	return _u
 }
 
+// SetRepositoryFullName sets the "repository_full_name" field.
+func (_u *NotificationOutboxUpdateOne) SetRepositoryFullName(v string) *NotificationOutboxUpdateOne {
+	_u.mutation.SetRepositoryFullName(v)
+	return _u
+}
+
+// SetNillableRepositoryFullName sets the "repository_full_name" field if the given value is not nil.
+func (_u *NotificationOutboxUpdateOne) SetNillableRepositoryFullName(v *string) *NotificationOutboxUpdateOne {
+	if v != nil {
+		_u.SetRepositoryFullName(*v)
+	}
+	return _u
+}
+
 // SetParseMode sets the "parse_mode" field.
 func (_u *NotificationOutboxUpdateOne) SetParseMode(v string) *NotificationOutboxUpdateOne {
 	_u.mutation.SetParseMode(v)
@@ -687,6 +718,9 @@ func (_u *NotificationOutboxUpdateOne) sqlSave(ctx context.Context) (_node *Noti
 	}
 	if _u.mutation.BodyJSONCleared() {
 		_spec.ClearField(notificationoutbox.FieldBodyJSON, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.RepositoryFullName(); ok {
+		_spec.SetField(notificationoutbox.FieldRepositoryFullName, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ParseMode(); ok {
 		_spec.SetField(notificationoutbox.FieldParseMode, field.TypeString, value)

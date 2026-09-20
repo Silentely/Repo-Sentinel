@@ -223,6 +223,7 @@ var (
 		{Name: "title", Type: field.TypeString, Default: ""},
 		{Name: "body_text", Type: field.TypeString},
 		{Name: "body_json", Type: field.TypeJSON, Nullable: true},
+		{Name: "repository_full_name", Type: field.TypeString, Default: ""},
 		{Name: "parse_mode", Type: field.TypeString, Default: "HTML"},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -244,6 +245,11 @@ var (
 				Columns: []*schema.Column{NotificationOutboxColumns[5], NotificationOutboxColumns[7]},
 			},
 			{
+				Name:    "notificationoutbox_status_repository_full_name",
+				Unique:  false,
+				Columns: []*schema.Column{NotificationOutboxColumns[5], NotificationOutboxColumns[13]},
+			},
+			{
 				Name:    "notificationoutbox_channel_id_status",
 				Unique:  false,
 				Columns: []*schema.Column{NotificationOutboxColumns[1], NotificationOutboxColumns[5]},
@@ -251,7 +257,7 @@ var (
 			{
 				Name:    "notificationoutbox_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationOutboxColumns[14]},
+				Columns: []*schema.Column{NotificationOutboxColumns[15]},
 			},
 		},
 	}

@@ -5380,29 +5380,30 @@ func (m *NotificationChannelMutation) ResetEdge(name string) error {
 // NotificationOutboxMutation represents an operation that mutates the NotificationOutbox nodes in the graph.
 type NotificationOutboxMutation struct {
 	config
-	op               Op
-	typ              string
-	id               *string
-	channel_id       *string
-	event_id         *string
-	aggregate_key    *string
-	idempotency_key  *string
-	status           *string
-	attempt_count    *int
-	addattempt_count *int
-	next_attempt_at  *time.Time
-	locked_until     *time.Time
-	last_error_code  *string
-	title            *string
-	body_text        *string
-	body_json        *map[string]interface{}
-	parse_mode       *string
-	created_at       *time.Time
-	updated_at       *time.Time
-	clearedFields    map[string]struct{}
-	done             bool
-	oldValue         func(context.Context) (*NotificationOutbox, error)
-	predicates       []predicate.NotificationOutbox
+	op                   Op
+	typ                  string
+	id                   *string
+	channel_id           *string
+	event_id             *string
+	aggregate_key        *string
+	idempotency_key      *string
+	status               *string
+	attempt_count        *int
+	addattempt_count     *int
+	next_attempt_at      *time.Time
+	locked_until         *time.Time
+	last_error_code      *string
+	title                *string
+	body_text            *string
+	body_json            *map[string]interface{}
+	repository_full_name *string
+	parse_mode           *string
+	created_at           *time.Time
+	updated_at           *time.Time
+	clearedFields        map[string]struct{}
+	done                 bool
+	oldValue             func(context.Context) (*NotificationOutbox, error)
+	predicates           []predicate.NotificationOutbox
 }
 
 var _ ent.Mutation = (*NotificationOutboxMutation)(nil)
@@ -6000,6 +6001,42 @@ func (m *NotificationOutboxMutation) ResetBodyJSON() {
 	delete(m.clearedFields, notificationoutbox.FieldBodyJSON)
 }
 
+// SetRepositoryFullName sets the "repository_full_name" field.
+func (m *NotificationOutboxMutation) SetRepositoryFullName(s string) {
+	m.repository_full_name = &s
+}
+
+// RepositoryFullName returns the value of the "repository_full_name" field in the mutation.
+func (m *NotificationOutboxMutation) RepositoryFullName() (r string, exists bool) {
+	v := m.repository_full_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRepositoryFullName returns the old "repository_full_name" field's value of the NotificationOutbox entity.
+// If the NotificationOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationOutboxMutation) OldRepositoryFullName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRepositoryFullName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRepositoryFullName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepositoryFullName: %w", err)
+	}
+	return oldValue.RepositoryFullName, nil
+}
+
+// ResetRepositoryFullName resets all changes to the "repository_full_name" field.
+func (m *NotificationOutboxMutation) ResetRepositoryFullName() {
+	m.repository_full_name = nil
+}
+
 // SetParseMode sets the "parse_mode" field.
 func (m *NotificationOutboxMutation) SetParseMode(s string) {
 	m.parse_mode = &s
@@ -6142,7 +6179,7 @@ func (m *NotificationOutboxMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationOutboxMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.channel_id != nil {
 		fields = append(fields, notificationoutbox.FieldChannelID)
 	}
@@ -6178,6 +6215,9 @@ func (m *NotificationOutboxMutation) Fields() []string {
 	}
 	if m.body_json != nil {
 		fields = append(fields, notificationoutbox.FieldBodyJSON)
+	}
+	if m.repository_full_name != nil {
+		fields = append(fields, notificationoutbox.FieldRepositoryFullName)
 	}
 	if m.parse_mode != nil {
 		fields = append(fields, notificationoutbox.FieldParseMode)
@@ -6220,6 +6260,8 @@ func (m *NotificationOutboxMutation) Field(name string) (ent.Value, bool) {
 		return m.BodyText()
 	case notificationoutbox.FieldBodyJSON:
 		return m.BodyJSON()
+	case notificationoutbox.FieldRepositoryFullName:
+		return m.RepositoryFullName()
 	case notificationoutbox.FieldParseMode:
 		return m.ParseMode()
 	case notificationoutbox.FieldCreatedAt:
@@ -6259,6 +6301,8 @@ func (m *NotificationOutboxMutation) OldField(ctx context.Context, name string) 
 		return m.OldBodyText(ctx)
 	case notificationoutbox.FieldBodyJSON:
 		return m.OldBodyJSON(ctx)
+	case notificationoutbox.FieldRepositoryFullName:
+		return m.OldRepositoryFullName(ctx)
 	case notificationoutbox.FieldParseMode:
 		return m.OldParseMode(ctx)
 	case notificationoutbox.FieldCreatedAt:
@@ -6357,6 +6401,13 @@ func (m *NotificationOutboxMutation) SetField(name string, value ent.Value) erro
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetBodyJSON(v)
+		return nil
+	case notificationoutbox.FieldRepositoryFullName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRepositoryFullName(v)
 		return nil
 	case notificationoutbox.FieldParseMode:
 		v, ok := value.(string)
@@ -6499,6 +6550,9 @@ func (m *NotificationOutboxMutation) ResetField(name string) error {
 		return nil
 	case notificationoutbox.FieldBodyJSON:
 		m.ResetBodyJSON()
+		return nil
+	case notificationoutbox.FieldRepositoryFullName:
+		m.ResetRepositoryFullName()
 		return nil
 	case notificationoutbox.FieldParseMode:
 		m.ResetParseMode()

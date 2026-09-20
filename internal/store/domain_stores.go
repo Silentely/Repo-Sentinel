@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -1611,6 +1612,19 @@ func outboxHTMLURLOf(bodyJSON map[string]any) string {
 	return ""
 }
 
+// releaseRepositoryOf 从通知载荷派生 Release 类仓库名，供冗余列写入；
+// 非 Release 类别或缺失仓库名时返回空串（该类通知不参与按仓库取消）。
+func releaseRepositoryOf(bodyJSON map[string]any) string {
+	if bodyJSON == nil {
+		return ""
+	}
+	if kind, _ := bodyJSON["kind"].(string); kind != ReleaseKind {
+		return ""
+	}
+	repo, _ := bodyJSON["repository"].(string)
+	return strings.TrimSpace(repo)
+}
+
 type outboxStore struct{ client *entclient.Client }
 
 func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (NotificationOutbox, error) {
@@ -1640,6 +1654,7 @@ func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (Notifi
 		SetTitle(in.Title).
 		SetBodyText(in.BodyText).
 		SetBodyJSON(bodyJSON).
+		SetRepositoryFullName(releaseRepositoryOf(bodyJSON)).
 		SetParseMode(in.ParseMode).
 		SetCreatedAt(now).
 		SetUpdatedAt(now)
@@ -1744,55 +1759,20 @@ func (s *outboxStore) MarkDead(ctx context.Context, id, errorCode string) error 
 
 // CancelPendingByRepository 只取消 pending 状态的 Release 通知。
 // 已进入 sending 的记录可能已经调用外部渠道，不能安全回滚；sent/dead 也保留历史状态。
+// 匹配依据是写入时冗余的 repository_full_name 列（非 Release 类别留空），
+// 单条批量 UPDATE 完成，成本与积压量无关，也不依赖关联事件是否已被级联删除。
 func (s *outboxStore) CancelPendingByRepository(ctx context.Context, fullName string) (int, error) {
-	rows, err := s.client.NotificationOutbox.Query().
-		Where(notificationoutbox.StatusEQ(OutboxPending)).
-		All(ctx)
-	if err != nil {
-		return 0, mapStoreError(err)
-	}
-
-	ids := make([]string, 0)
-	for _, row := range rows {
-		if notificationRepositoryFullName(ctx, s.client, row) == fullName {
-			ids = append(ids, row.ID)
-		}
-	}
-	if len(ids) == 0 {
-		return 0, nil
-	}
 	n, err := s.client.NotificationOutbox.Update().
-		Where(notificationoutbox.IDIn(ids...), notificationoutbox.StatusEQ(OutboxPending)).
+		Where(
+			notificationoutbox.StatusEQ(OutboxPending),
+			notificationoutbox.RepositoryFullNameEQ(fullName),
+		).
 		SetStatus(OutboxCancelled).
 		SetLastErrorCode("repository_unstarred").
 		ClearLockedUntil().
 		SetUpdatedAt(time.Now().UTC()).
 		Save(ctx)
 	return n, mapStoreError(err)
-}
-
-// notificationRepositoryFullName 读取新 outbox 直接保存的仓库名；对旧记录回退到关联事件。
-func notificationRepositoryFullName(ctx context.Context, client *entclient.Client, row *entclient.NotificationOutbox) string {
-	if row.BodyJSON != nil {
-		kind, _ := row.BodyJSON["kind"].(string)
-		if kind != ReleaseKind {
-			return ""
-		}
-		if repo, ok := row.BodyJSON["repository"].(string); ok {
-			return repo
-		}
-	}
-	if row.EventID == nil {
-		return ""
-	}
-	ev, err := client.Event.Get(ctx, *row.EventID)
-	if err != nil || ev.Kind != ReleaseKind || ev.PayloadSummary == nil {
-		return ""
-	}
-	if repo, ok := ev.PayloadSummary["repository"].(string); ok {
-		return repo
-	}
-	return ""
 }
 
 func (s *outboxStore) List(ctx context.Context, f ListFilter) ([]NotificationOutbox, PageResult, error) {
@@ -1905,7 +1885,8 @@ func outboxFromEntity(e *entclient.NotificationOutbox) NotificationOutbox {
 		IdempotencyKey: e.IdempotencyKey, Status: e.Status, AttemptCount: e.AttemptCount,
 		NextAttemptAt: e.NextAttemptAt, LockedUntil: e.LockedUntil, LastErrorCode: e.LastErrorCode,
 		Title: e.Title, BodyText: e.BodyText, BodyJSON: e.BodyJSON, ParseMode: e.ParseMode,
-		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+		RepositoryFullName: e.RepositoryFullName,
+		CreatedAt:          e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 	out.HTMLURL = outboxHTMLURLOf(e.BodyJSON)
 	return out
