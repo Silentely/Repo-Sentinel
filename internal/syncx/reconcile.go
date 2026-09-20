@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -329,9 +330,38 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 
 // enrichPullRequest 拉取 PR 的审核结论、评审人与检查状态并回填到 item。
 // 尽力而为：单个 API 失败只记日志，不清空已从现有记录沿用的字段。
+//
+// 性能：reviews / requested reviewers / PR 详情三个调用互不依赖，并发发出后单 PR
+// 由 4 次串行网络 RTT 降为 2 轮（首轮并行 + 依赖详情 head SHA 的 Check Runs）。
+// 各 goroutine 只写自己的局部变量，wg.Wait 后由主协程统一回填 item，
+// 避免多 goroutine 并发写同一结构体字段。
 func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo store.Repository, number int, item *store.WorkItem) {
+	owner, name := repo.Owner, repo.Name
+	var (
+		reviews      []githubx.PRReviewItem
+		reviewErr    error
+		reviewers    []string
+		reviewersErr error
+		prDetail     githubx.PRDetailItem
+		prErr        error
+	)
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		reviews, reviewErr = r.GitHub.ListPRReviews(ctx, token, owner, name, number)
+	}()
+	go func() {
+		defer wg.Done()
+		reviewers, reviewersErr = r.GitHub.ListRequestedReviewers(ctx, token, owner, name, number)
+	}()
+	go func() {
+		defer wg.Done()
+		prDetail, prErr = r.GitHub.GetPRDetail(ctx, token, owner, name, number)
+	}()
+	wg.Wait()
+
 	// 获取 Review 状态
-	reviews, reviewErr := r.GitHub.ListPRReviews(ctx, token, repo.Owner, repo.Name, number)
 	if reviewErr == nil && len(reviews) > 0 {
 		// 找到最新的 Review（按 SubmittedAt 时间排序）
 		latestReview := reviews[0]
@@ -353,16 +383,13 @@ func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo s
 	}
 
 	// 获取 Requested Reviewers
-	requestedReviewers, reviewersErr := r.GitHub.ListRequestedReviewers(ctx, token, repo.Owner, repo.Name, number)
 	if reviewersErr == nil {
-		item.Reviewers = requestedReviewers
+		item.Reviewers = reviewers
 	}
 
-	// 获取 PR 详情以获取 head SHA（Issues API 不返回此字段）
-	prDetail, prErr := r.GitHub.GetPRDetail(ctx, token, repo.Owner, repo.Name, number)
+	// 获取 Check Runs（依赖 PR 详情的 head SHA，Issues API 不返回此字段）
 	if prErr == nil && prDetail.Head.SHA != "" {
-		// 获取 Check Runs
-		checkRuns, checkErr := r.GitHub.ListCheckRuns(ctx, token, repo.Owner, repo.Name, prDetail.Head.SHA)
+		checkRuns, checkErr := r.GitHub.ListCheckRuns(ctx, token, owner, name, prDetail.Head.SHA)
 		if checkErr == nil {
 			item.ChecksTotal = len(checkRuns)
 			passed := 0
