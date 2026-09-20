@@ -328,20 +328,23 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 	f := listFilterFromRequest(r)
 	f.Status = queryTrimmed(r, "status")
 	channelTypeFilter := queryTrimmed(r, "channel_type")
-	// 渠道查询一次即可：既用于把 channel_type 过滤下沉到 SQL（分页/total 才正确），
-	// 也用于响应中的渠道类型回填。
-	channels, chErr := s.dependencies.Store.Channels().List(r.Context())
-	if chErr != nil {
-		s.writeMappedError(w, r, chErr)
-		return
+	// 渠道懒加载：仅 channel_type 过滤（需 ID 集合下沉 SQL 保证分页/total 正确）
+	// 与响应类型回填两种场景才需要；无筛选且结果为空时完全跳过查询
+	// （渠道 List 本身有短 TTL 缓存，这里省掉缓存未命中时的无谓访问）。
+	var channels []store.NotificationChannel
+	if channelTypeFilter != "" {
+		var chErr error
+		channels, chErr = s.dependencies.Store.Channels().List(r.Context())
+		if chErr != nil {
+			s.writeMappedError(w, r, chErr)
+			return
+		}
 	}
-	chMap := make(map[string]string, len(channels))
 	var ids []string
 	if channelTypeFilter != "" {
 		ids = make([]string, 0, len(channels))
 	}
 	for _, ch := range channels {
-		chMap[ch.ID] = ch.ChannelType
 		if channelTypeFilter != "" && ch.ChannelType == channelTypeFilter {
 			ids = append(ids, ch.ID)
 		}
@@ -359,6 +362,19 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeMappedError(w, r, err)
 		return
+	}
+	if channelTypeFilter == "" && len(items) > 0 {
+		// 类型回填所需映射在结果非空时才加载。
+		var chErr error
+		channels, chErr = s.dependencies.Store.Channels().List(r.Context())
+		if chErr != nil {
+			s.writeMappedError(w, r, chErr)
+			return
+		}
+	}
+	chMap := make(map[string]string, len(channels))
+	for _, ch := range channels {
+		chMap[ch.ID] = ch.ChannelType
 	}
 	enriched := make([]map[string]any, 0, len(items))
 	for _, item := range items {
