@@ -625,3 +625,125 @@ func TestEventCountSinceExcludesArchived(t *testing.T) {
 		t.Fatalf("CountSince 应排除归档仓库事件（1 条），got %d", got)
 	}
 }
+
+// TestDashboardGroupedCounts 守护仪表盘按 kind / sync_status 分组的聚合口径：
+// 两个分组查询合并后，各维度计数必须与逐条 COUNT 的语义完全一致
+// （开放 issue/PR、失败 Actions、未闭合告警、活跃/基线仓、启用渠道、死信）。
+func TestDashboardGroupedCounts(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC()
+
+	active, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "dash-active", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "active", FullName: "o/active", MonitorEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("upsert active: %v", err)
+	}
+	baseline, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "dash-baseline", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusBaseline,
+		Owner: "o", Name: "baseline", FullName: "o/baseline", MonitorEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("upsert baseline: %v", err)
+	}
+	archived, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "dash-archived", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusArchived,
+		Owner: "o", Name: "archived", FullName: "o/archived", IsArchived: true, MonitorEnabled: false,
+	})
+	if err != nil {
+		t.Fatalf("upsert archived: %v", err)
+	}
+
+	workItems := []store.WorkItem{
+		{ID: "d-wi-1", RepositoryID: active.ID, Number: 1, Kind: store.WorkItemKindIssue, State: "open", Title: "open issue", SourceUpdatedAt: now, StateHash: "d1"},
+		{ID: "d-wi-2", RepositoryID: active.ID, Number: 2, Kind: store.WorkItemKindIssue, State: "open", Title: "ignored issue", SourceUpdatedAt: now, StateHash: "d2"},
+		{ID: "d-wi-3", RepositoryID: active.ID, Number: 3, Kind: store.WorkItemKindPR, State: "open", Title: "open pr", SourceUpdatedAt: now, StateHash: "d3"},
+		{ID: "d-wi-4", RepositoryID: active.ID, Number: 4, Kind: store.WorkItemKindIssue, State: "closed", Title: "closed issue", SourceUpdatedAt: now, StateHash: "d4"},
+		{ID: "d-wi-5", RepositoryID: archived.ID, Number: 5, Kind: store.WorkItemKindIssue, State: "open", Title: "archived open issue", SourceUpdatedAt: now, StateHash: "d5"},
+	}
+	for _, item := range workItems {
+		if _, _, err := data.WorkItems().UpsertIfNewer(ctx, item, nil); err != nil {
+			t.Fatalf("upsert work item %s: %v", item.ID, err)
+		}
+	}
+	if err := data.WorkItems().SetIgnored(ctx, "d-wi-2", true); err != nil {
+		t.Fatalf("ignore d-wi-2: %v", err)
+	}
+
+	failed := "failure"
+	success := "success"
+	runs := []store.WorkflowRun{
+		{ID: "d-wr-1", RepositoryID: active.ID, GitHubRunID: 1, WorkflowName: "ci", RunNumber: 1, Status: "completed", Conclusion: &failed, RunUpdatedAt: now, CreatedAt: now, UpdatedAt: now},
+		{ID: "d-wr-2", RepositoryID: active.ID, GitHubRunID: 2, WorkflowName: "ci", RunNumber: 2, Status: "completed", Conclusion: &success, RunUpdatedAt: now, CreatedAt: now, UpdatedAt: now},
+		{ID: "d-wr-3", RepositoryID: archived.ID, GitHubRunID: 3, WorkflowName: "ci", RunNumber: 3, Status: "completed", Conclusion: &failed, RunUpdatedAt: now, CreatedAt: now, UpdatedAt: now},
+	}
+	for _, run := range runs {
+		if _, _, err := data.WorkflowRuns().UpsertIfNewer(ctx, run); err != nil {
+			t.Fatalf("upsert workflow run %s: %v", run.ID, err)
+		}
+	}
+
+	alerts := []store.SecurityAlert{
+		{ID: "d-sa-1", RepositoryID: active.ID, AlertKind: "code_scanning", AlertNumber: 1, State: "open", Severity: "high", SourceUpdatedAt: now},
+		{ID: "d-sa-2", RepositoryID: active.ID, AlertKind: "code_scanning", AlertNumber: 2, State: "fixed", Severity: "low", SourceUpdatedAt: now},
+		{ID: "d-sa-3", RepositoryID: archived.ID, AlertKind: "code_scanning", AlertNumber: 3, State: "open", Severity: "high", SourceUpdatedAt: now},
+	}
+	for _, alert := range alerts {
+		if _, _, err := data.SecurityAlerts().UpsertIfNewer(ctx, alert); err != nil {
+			t.Fatalf("upsert security alert %s: %v", alert.ID, err)
+		}
+	}
+
+	for _, ch := range []store.NotificationChannel{
+		{ID: "d-ch-on", ChannelType: store.ChannelTelegram, Name: "on", Target: "1", Enabled: true},
+		{ID: "d-ch-off", ChannelType: store.ChannelTelegram, Name: "off", Target: "2", Enabled: false},
+	} {
+		if _, err := data.Channels().Upsert(ctx, ch); err != nil {
+			t.Fatalf("upsert channel %s: %v", ch.ID, err)
+		}
+	}
+	if _, err := data.Outbox().Create(ctx, store.NotificationOutbox{
+		ID: "d-ob-dead", ChannelID: "d-ch-on", IdempotencyKey: "d-idem-dead",
+		Status: store.OutboxDead, NextAttemptAt: now, Title: "dead", BodyText: "dead",
+	}); err != nil {
+		t.Fatalf("create dead outbox: %v", err)
+	}
+
+	stats, err := data.Dashboard(ctx)
+	if err != nil {
+		t.Fatalf("Dashboard: %v", err)
+	}
+	if stats.OpenIssues != 1 {
+		t.Fatalf("open_issues want 1 got %d", stats.OpenIssues)
+	}
+	if stats.OpenPulls != 1 {
+		t.Fatalf("open_pulls want 1 got %d", stats.OpenPulls)
+	}
+	if stats.FailedActions != 1 {
+		t.Fatalf("failed_actions want 1 got %d", stats.FailedActions)
+	}
+	if stats.OpenSecurity != 1 {
+		t.Fatalf("open_security want 1 got %d", stats.OpenSecurity)
+	}
+	if stats.ReposActive != 1 {
+		t.Fatalf("repos_active want 1 got %d", stats.ReposActive)
+	}
+	if stats.ReposBaseline != 1 {
+		t.Fatalf("repos_baseline want 1 got %d", stats.ReposBaseline)
+	}
+	if stats.ChannelsEnabled != 1 {
+		t.Fatalf("channels_enabled want 1 got %d", stats.ChannelsEnabled)
+	}
+	if stats.OutboxDead != 1 {
+		t.Fatalf("outbox_dead want 1 got %d", stats.OutboxDead)
+	}
+	if stats.Events24h != 0 {
+		t.Fatalf("events_24h want 0 got %d", stats.Events24h)
+	}
+	// 基线与归档仓都不应计入“开放 issue/PR”等聚合口径。
+	if baseline.ID == "" || archived.ID == "" {
+		t.Fatal("前置仓应创建成功")
+	}
+}

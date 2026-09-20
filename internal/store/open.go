@@ -30,7 +30,8 @@ type storeImpl struct {
 	// repoIDsCache 活跃/归档仓 ID 集合短 TTL 缓存：各资源列表/计数每请求一次仓库扫描，
 	// 仓集合变化频率远低于列表查询频率；repositoryStore 写路径即时失效。
 	repoIDsCache *ttlValueCache[cachedRepoIDs]
-	// dashboardCache 仪表盘统计短 TTL 缓存：聚合约 10 条 SQL，前端 30s 轮询，
+	// dashboardCache 仪表盘统计短 TTL 缓存：聚合约 7 条 SQL（跨表计数无法合并，
+	// 同表维度已按分组聚合合一），前端 30s 轮询，
 	// 秒级旧数据对统计语义无感；仅按 TTL 过期（变更不逐个失效，见 Dashboard 注释）。
 	dashboardCache *ttlValueCache[DashboardStats]
 }

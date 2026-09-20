@@ -2006,21 +2006,28 @@ func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
 		stats.FailedActions = 0
 		stats.OpenSecurity = 0
 	} else {
-		if stats.OpenIssues, err = s.client.WorkItem.Query().Where(
-			workitem.KindEQ(WorkItemKindIssue),
+		// Issues 与 PR 同在 work_items 表：一次按 kind 分组的聚合取回两个计数，
+		// 消掉原先两次全表计数各自的往返。
+		var workRows []struct {
+			Kind  string
+			Count int
+		}
+		if err := s.client.WorkItem.Query().Where(
 			workitem.StateEQ("open"),
 			workitem.IgnoredEQ(false),
 			workitem.RepositoryIDIn(activeIDs...),
-		).Count(ctx); err != nil {
+		).GroupBy(workitem.FieldKind).
+			Aggregate(func(sel *entsql.Selector) string { return entsql.Count("*") }).
+			Scan(ctx, &workRows); err != nil {
 			return stats, mapStoreError(err)
 		}
-		if stats.OpenPulls, err = s.client.WorkItem.Query().Where(
-			workitem.KindEQ(WorkItemKindPR),
-			workitem.StateEQ("open"),
-			workitem.IgnoredEQ(false),
-			workitem.RepositoryIDIn(activeIDs...),
-		).Count(ctx); err != nil {
-			return stats, mapStoreError(err)
+		for _, row := range workRows {
+			switch row.Kind {
+			case WorkItemKindIssue:
+				stats.OpenIssues = row.Count
+			case WorkItemKindPR:
+				stats.OpenPulls = row.Count
+			}
 		}
 		if stats.FailedActions, err = s.client.WorkflowRun.Query().Where(
 			workflowrun.ConclusionIn(FailedConclusions()...),
@@ -2043,20 +2050,29 @@ func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
 	if stats.OutboxDead, err = s.Outbox().CountByStatus(ctx, OutboxDead); err != nil {
 		return stats, err
 	}
-	active, err := s.client.Repository.Query().Where(repository.SyncStatusEQ(SyncStatusActive)).Count(ctx)
-	if err != nil {
+	// 活跃/基线同时只需 repositories 表一次按 sync_status 分组的聚合。
+	var repoRows []struct {
+		SyncStatus string `sql:"sync_status"`
+		Count      int
+	}
+	if err := s.client.Repository.Query().
+		GroupBy(repository.FieldSyncStatus).
+		Aggregate(func(sel *entsql.Selector) string { return entsql.Count("*") }).
+		Scan(ctx, &repoRows); err != nil {
 		return stats, mapStoreError(err)
 	}
-	baseline, err := s.client.Repository.Query().Where(repository.SyncStatusEQ(SyncStatusBaseline)).Count(ctx)
-	if err != nil {
-		return stats, mapStoreError(err)
+	for _, row := range repoRows {
+		switch row.SyncStatus {
+		case SyncStatusActive:
+			stats.ReposActive = row.Count
+		case SyncStatusBaseline:
+			stats.ReposBaseline = row.Count
+		}
 	}
 	channels, err := s.client.NotificationChannel.Query().Where(notificationchannel.EnabledEQ(true)).Count(ctx)
 	if err != nil {
 		return stats, mapStoreError(err)
 	}
-	stats.ReposActive = active
-	stats.ReposBaseline = baseline
 	stats.ChannelsEnabled = channels
 	s.dashboardCache.Set(stats)
 	return stats, nil
