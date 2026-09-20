@@ -108,3 +108,64 @@ func TestDefaultRetentionPolicy(t *testing.T) {
 		t.Fatalf("unexpected defaults: %+v", p)
 	}
 }
+
+// TestDeleteTerminalOlderThanOnlyTerminalStatuses 锁定清理口径：无论 created_at 多旧，
+// 只有终态（sent / dead / cancelled）会被删除；在途的 pending / sending 必须保留，
+// 否则清理任务会把尚未投递的通知删掉造成静默丢消息。cutoff 取未来时刻以覆盖全部行。
+func TestDeleteTerminalOlderThanOnlyTerminalStatuses(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC()
+
+	if _, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-retention", ChannelType: store.ChannelTelegram, Name: "tg", Enabled: true, Target: "1",
+	}); err != nil {
+		t.Fatalf("upsert channel: %v", err)
+	}
+
+	rows := []struct {
+		id     string
+		status string
+		keep   bool
+	}{
+		{"ob-pending", store.OutboxPending, true},
+		{"ob-sending", store.OutboxSending, true},
+		{"ob-sent", store.OutboxSent, false},
+		{"ob-dead", store.OutboxDead, false},
+		{"ob-cancelled", store.OutboxCancelled, false},
+	}
+	for _, row := range rows {
+		if _, err := data.Outbox().Create(ctx, store.NotificationOutbox{
+			ID:             row.id,
+			ChannelID:      "ch-retention",
+			IdempotencyKey: "idem-" + row.id,
+			Status:         row.status,
+			Title:          "row " + row.id,
+			BodyText:       "body",
+			NextAttemptAt:  now,
+		}); err != nil {
+			t.Fatalf("create outbox %s: %v", row.id, err)
+		}
+	}
+
+	deleted, err := data.Outbox().DeleteTerminalOlderThan(ctx, now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("delete terminal outbox: %v", err)
+	}
+	if deleted != 3 {
+		t.Fatalf("应只删除 3 条终态行，got %d", deleted)
+	}
+
+	items, page, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 100})
+	if err != nil {
+		t.Fatalf("list outbox: %v", err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("应保留 2 条在途行，got total=%d items=%v", page.Total, items)
+	}
+	for _, item := range items {
+		if item.Status != store.OutboxPending && item.Status != store.OutboxSending {
+			t.Fatalf("在途行被误删或状态漂移: %+v", item)
+		}
+	}
+}
