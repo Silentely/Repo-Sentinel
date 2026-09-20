@@ -102,6 +102,7 @@ A: `reconcileAllRunning` atomic 防重入。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-20T00:00:00Z | 管理面健壮性：①`/metrics` 未授权访问日志按来源 IP 采样输出（扫描类流量不再逐条打爆访问日志，正常访问仍逐条留痕）；②发件箱列表的渠道类型→名称映射改懒加载，渠道查询失败或空渠道不再无谓阻塞列表响应；③启用 2FA 的登录流程把会话校验前置于落库，2FA 会话缺失/过期不再写入无效会话记录；④AI 配置的 Base URL 校验仅拦截云元数据域名（169.254.169.254 等），内网自建网关不再被误拦 |
 | 2026-09-20T00:00:00Z | starred-releases 配置 API 响应新增 `last_star_sync_at`（最近一次完整 star 同步落定时刻，未同步为空）：「立即同步」异步执行，前端据此等待同步落定后再刷新追踪列表；`POST /api/v1/starred-releases/sync` 行为不变 |
 | 2026-09-16T00:00:00Z | 新增 PR 审查获取/触发端点 /api/v1/work-items/{id}/ai-review（异步入队 202 回执，错误按类别映射 404/400/503/409）与对应 MCP 审查工具；MCP 新增 trigger_reconciliation、retry_failed_outbox、replay_webhook_delivery 运维写工具；httpapi.New 支持外部注入 WebhookService 统一生命周期管理 |
 | 2026-08-10T13:00:00Z | 新增 starred-releases 端点：GET/PUT `/api/v1/starred-releases/config`（用户名归一化、周期/上限/预发布开关）、POST `/api/v1/starred-releases/sync`（立即同步）、GET `/api/v1/starred-releases/trackers`（分页 + state 筛选）、POST `/api/v1/starred-releases/trackers/{id}/state`（停用/恢复）；AI 配置 API 增 `release_summary_enabled` |

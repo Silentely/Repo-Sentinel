@@ -87,6 +87,12 @@ A: 已超过 PostgreSQL int4 上限；见根 CLAUDE 迁移注意事项。
 **Q: UpsertIfNewer 是什么语义？**  
 A: 仅当来源更新时间/状态更新时写入，配合乱序 Webhook 丢弃陈旧数据。
 
+**Q: 列表为什么要先 COUNT 再取页，不合并成一条查询？**  
+A: `Total` 是分页契约的必需字段，前端据此算页数。合并需 `COUNT(*) OVER ()` 窗口查询，而本仓库 Ent 生成代码未提供 `Modify`，只能裸 SQL 重写 7 处列表方法（过滤条件、排序、归档排除都要复制一份，schema 漂移即错）。取证：SQLite 下 `events` 表 2 万行时「COUNT + 取页」平均 1.45ms（含 COUNT 与取页两次往返）；而事件表受 `retention.events_days`（默认 90 天）清理约束，规模有界。收益不抵风险，故维持两次查询。
+
+**Q: 活跃仓 `RepositoryIDIn` 的大 IN 列表会不会撞绑定参数上限？**  
+A: 会撞，但远超目标规模。modernc.org/sqlite 的 `SQLITE_MAX_VARIABLE_NUMBER` 实测为 32766（绑定 32767 个参数即报 `too many SQL variables`），需 3.2 万个活跃仓才会触发；外部仓另有 `MaxExternalRepositories = 20` 上限。取证：2000 个活跃仓时 WorkItems 列表平均 2.75ms，仍可接受。PostgreSQL 无此上限。因此不做 IN 分块或子查询改写，避免提前优化。
+
 ## 相关文件清单
 
 - `domain.go`、`store.go`、`domain_stores.go`、`open.go`、`migrate.go`
@@ -98,5 +104,6 @@ A: 仅当来源更新时间/状态更新时写入，配合乱序 Webhook 丢弃�
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-20T00:00:00Z | 存储侧热点查询收敛：①`notification_outbox` 新增冗余列 `repository_full_name` 与 `(status, repository_full_name)` 索引，unstar 取消未投递 Release 通知改单条批量 UPDATE（不再逐户 SELECT→UPDATE）；②仪表盘统计同表维度改分组聚合（work_items 按 kind、repositories 按 sync_status 各一次扫描），整页刷新 SQL 往返减少；③活跃/归档仓 ID 集合缓存随附 `id→full_name` 映射，各资源列表页解析仓库名复用同一份扫描结果；④PR 审查在途判定改前缀快速拒绝，审查结果幂等查询由两次解析收敛为单条按 itemID 直查 |
 | 2026-08-06T15:48:41Z | 新增 star 快照表、仓库 star/watch 能力开关（stars_enabled、watches_enabled）、feature.stars / feature.watches 全局开关及 star 快照读取与存储（含 SQLite/PostgreSQL 双轨迁移） |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
