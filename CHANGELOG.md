@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 审计写入可见性收口：`admin.2fa_enabled` / `admin.2fa_disabled` / `repository.delete` / CLI 应急重置 2FA 四处此前以 `_, _ =` 丢弃审计落库错误，改为统一经 `server.appendAudit` 在失败时 Warn 留痕 `audit_append_failed`（带 action/target_type/target_id/error），主流程结论不变，但「谁在何时做了什么」在审计表缺失时仍可从日志定位
+- `/api/v1/stats/actions-insights` 分析窗口按 300 条样本取（`actionsInsightsSampleSize`，逐页拉取、末页不足一页提前收尾、超上限截断）：此前注释写 300 条而实际只取第一页 100 条，成功率与耗时分位数依赖样本量，窗口过小让高频仓库的统计只剩几个小时
+- AI 重试耗尽的错误文案追加尝试次数（`attempts=N`，保留原错误码与 Unwrap 链，`classifyCallError` 分类不变）：单次失败与连续 N 次失败此前返回同一句文案，告警与降级提示无法区分上游是偶发抖动还是持续不可用；`Retries=0` 的单次失败不附加次数
+- 接入 oxlint 静态检查（`pnpm --dir web lint`，correctness 类别为 error）：项目使用 typescript 7.0.2，超出 typescript-eslint 的 peer 支持范围（`<6.1.0`，parser 直接抛 `typescript-eslint does not support TS 7.0`），故选用不依赖 TypeScript 版本的 oxlint，类型正确性仍由 `tsc --noEmit` 保证
+
+### Fixed
+
+- 对账工作项读写失败不再静默吞掉：`syncIssues` 原把「UpsertIfNewer 返回存储错误」与「无变化/基线期」合并为同一个 continue，DB 写入失败时无日志、无错误返回，last_sync 记账照常推进，工作项静默停留在旧状态且每轮重复发生；现写入失败留痕 `reconcile_upsert_failed` 并计入软失败，读取失败显式区分 `store.ErrNotFound`（真实错误跳过该条并留痕 `work_item_read_failed`，不再触发 enrich），存在读写失败时不推进游标，下轮从 since 重拉补齐（事件指纹幂等，不会重复通知）
+- GitHub 运行时配置解析与解密失败不再静默降级：`LoadStoredRuntime` 原丢弃 JSON 解析错误，库内 `github.runtime_config` 损坏时静默返回零值并退化为「仅 env 配置」；`MergeFromStore` 中 `DecryptSecret` 失败被 `err == nil` 条件吞掉，主密钥轮换后旧信封解不开时 webhook 密钥变为未配置、所有入站 webhook 被 503 拒绝，而管理台仍显示「已配置」；现均返回指明字段的包装错误
+- 外部轮询归档收口失败留痕（`error_code=repo_state_update_failed`）：`UpdateSettings` 失败被 `_` 丢弃时本地仓仍处于监控开启 + 能力开启，平台继续轮询并通知一个已归档的仓；`PollOne` 的客户端惰性初始化改只读回退到局部变量，导出的 `PollOne` 被并发直呼时不再构成 `p.Client` 同一字段的并发写
+- star 同步用户名收敛写入与消费两侧边界：管理台 `PUT /api/v1/starred-releases/config` 对归一化后的用户名按 GitHub 字符集校验（1-39 位字母/数字/连字符且不以连字符起止），非法值返回 400 `validation_failed` 并指明 `field=username`（此前含 `/`、空格的值会拼出错误 API 路径，star 同步每轮失败而用户侧无反馈）；`ListUserStarred` 路径构造改 `url.PathEscape` 兜底转义；`syncStarsLocked` 对非法用户名跳过本轮并 Warn 留痕 `star_sync_invalid_username`
+- 2FA 状态查询失败不再回落到「未开启」徽章与配置引导：改渲染「状态未知」+ 错误条，此前网络失败会被误读为账号未受保护而重复配置；`enable2FA` 的 `setupData!.secret` 非空断言改显式守卫并抛出带 `two_factor_setup_missing` 错误码的 `ApiError`
+- Webhook 投递历史页载荷查询失败不再落到「未找到记录详情」：那会把服务端或网络错误误报为记录不存在，改渲染 `ApiErrorAlert`；Inspector 模态接入 `useModalLayer`（补背景滚动锁、焦点循环与焦点归还）
+- 前端配置表单回填补「仅首次」守卫（设置页、GitHub 页、Star Release 页同一模式）：保存、同步仓库等 mutation 触发 invalidate 后配置 refetch 得到新对象引用，旧实现会再次整体回填，把用户在输入框中的未保存编辑静默覆盖为服务端值
+- 前端异步轮询生命周期收口：AIReviewCard 审查轮询与 Star Release「立即同步」轮询在组件卸载后立即停止并跳过回调（mutation 生命周期不随组件卸载取消，此前卸载后仍按 2s 节奏拉取到 90s 上限）；「已复制」提示的复位定时器改为引用持有，卸载或再次复制即清除
+- 前端派生缓存与渲染：仪表盘与设置页 `repoItems` 源数组入 memo（`repos.data?.items ?? []` 每次渲染产出新引用，下游 useMemo 依赖永不相等、派生缓存实际无效）；审查结论三类清单（安全风险/破坏性兼容风险/优化建议）抽取为 `ReviewRiskList` 组件并以 `${idx}-${item}` 作 key（条目文本可能重复，纯文本 key 会撞键）；Webhook 投递历史页码同步 URL（`?page=`，含 0/非数字回退第 1 页）
+- 前端类型安全：主题选择与登录页剩余重试次数改用收敛函数取代 `as ThemeMode`、`as Record<string, unknown>` 强转；据 oxlint 结果清理 7 处未使用导入
+- PR 合并置位（`MarkMerged`）改用本次解析出的 `repo.ID`，不再解引用 `*res.Event.RepositoryID`：事件行的仓库关联并非置位标记的前提，指针解引用只带来空指针风险，事件行缺 `repository_id` 时一条正常的 PR 合并 webhook 会 panic 致整个处理失败
+
 ## [0.6.1] - 2026-09-23
 
 ### Changed
