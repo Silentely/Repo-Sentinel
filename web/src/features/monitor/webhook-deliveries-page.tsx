@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RefreshCw, Eye } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
-import { ErrorAlert } from "../../components/error-alert";
+import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
 import { toApiError } from "../../lib/api/errors";
@@ -31,7 +31,12 @@ export function WebhookDeliveriesPage() {
   const [statusFilter, setStatusFilter] = useUrlState("status", "");
   const [eventTypeFilter, setEventTypeFilter] = useUrlState("event_type", "");
   const [repoFilter, setRepoFilter] = useUrlState("repo", "");
-  const [page, setPage] = useState(1);
+  // 页码同步到 URL：刷新或复制链接后停留在原页（此前仅筛选同步，页码刷新即回到第 1 页）。
+  const [pageParam, setPageParam] = useUrlState("page", "1");
+  const page = useMemo(() => {
+    const parsed = Number.parseInt(pageParam, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  }, [pageParam]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useAutoDismiss();
@@ -98,7 +103,7 @@ export function WebhookDeliveriesPage() {
               value={statusFilter}
               onChange={(v) => {
                 setStatusFilter(v);
-                setPage(1);
+                setPageParam("1");
               }}
             />
           </div>
@@ -109,7 +114,7 @@ export function WebhookDeliveriesPage() {
               value={eventTypeFilter}
               onChange={(e) => {
                 setEventTypeFilter(e.target.value);
-                setPage(1);
+                setPageParam("1");
               }}
               style={{ width: "200px" }}
             />
@@ -117,7 +122,7 @@ export function WebhookDeliveriesPage() {
               value={repoFilter}
               onChange={(v) => {
                 setRepoFilter(v);
-                setPage(1);
+                setPageParam("1");
               }}
               repos={activeRepos}
             />
@@ -127,7 +132,7 @@ export function WebhookDeliveriesPage() {
                   setStatusFilter("");
                   setEventTypeFilter("");
                   setRepoFilter("");
-                  setPage(1);
+                  setPageParam("1");
                 }}
               />
             ) : null}
@@ -215,7 +220,7 @@ export function WebhookDeliveriesPage() {
                   type="button"
                   className="quiet-button"
                   disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() => setPageParam(String(page - 1))}
                 >
                   上一页
                 </button>
@@ -223,7 +228,7 @@ export function WebhookDeliveriesPage() {
                   type="button"
                   className="quiet-button"
                   disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => setPageParam(String(page + 1))}
                 >
                   下一页
                 </button>
@@ -285,6 +290,9 @@ export function WebhookDeliveriesPage() {
 
             {detailQuery.isLoading ? (
               <p className="muted">正在拉取载荷…</p>
+            ) : detailQuery.isError ? (
+              // 拉取失败时不得落到「未找到记录详情」：那会把服务端或网络错误误报为记录不存在。
+              <ApiErrorAlert error={detailQuery.error} title="无法拉取投递载荷" />
             ) : detailQuery.data ? (
               <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "13px" }}>

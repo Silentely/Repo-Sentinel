@@ -47,6 +47,7 @@ vi.mock("../../lib/api/client", () => ({
   apiRequest: fixtures.apiRequest,
 }));
 
+import { ApiError } from "../../lib/api/errors";
 import { WebhookDeliveriesPage } from "./webhook-deliveries-page";
 
 describe("WebhookDeliveriesPage", () => {
@@ -89,5 +90,66 @@ describe("WebhookDeliveriesPage", () => {
         expect.objectContaining({ method: "POST" })
       );
     });
+  });
+
+  it("载荷拉取失败时提示错误而非「未找到记录详情」", async () => {
+    // 旧实现把查询失败落到 else 分支：网络/服务端错误被误报为记录不存在。
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    fixtures.apiRequest.mockImplementation(async (path: string): Promise<unknown> => {
+      if (path.endsWith("/del-1")) {
+        throw new ApiError({ status: 500, errorCode: "internal", message: "投递记录读取失败" });
+      }
+      return fixtures.deliveries;
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WebhookDeliveriesPage />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /检查/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法拉取投递载荷");
+    expect(screen.queryByText("未找到记录详情")).not.toBeInTheDocument();
+  });
+
+  it("翻页把页码写入 URL，刷新后停留在原页", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    fixtures.apiRequest.mockImplementation(async (path: string): Promise<unknown> => {
+      if (path.endsWith("/del-1")) return fixtures.detail;
+      return { ...fixtures.deliveries, total: 45 };
+    });
+    window.history.replaceState(null, "", "/webhook-deliveries");
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WebhookDeliveriesPage />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("gh-del-12345");
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+    expect(new URLSearchParams(window.location.search).get("page")).toBe("2");
+    expect(await screen.findByText(/第 2 \/ 3 页/)).toBeInTheDocument();
+  });
+
+  it("URL 中非法页码安全回退到第 1 页", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    window.history.replaceState(null, "", "/webhook-deliveries?page=0");
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WebhookDeliveriesPage />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("gh-del-12345");
+    expect(screen.getByText(/第 1 \//)).toBeInTheDocument();
   });
 });

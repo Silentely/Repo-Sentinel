@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Circle, Copy, ExternalLink } from "lucide-react";
 
@@ -50,8 +50,13 @@ export function GitHubPage() {
     return buildWebhookURL(version.data);
   }, [cfg?.webhook_url, version.data]);
 
+  // 配置表单仅首次回填：保存、同步仓库等 mutation 触发 invalidate 后 refetch 得到新对象引用，
+  // 旧实现会再次整体回填，把用户在 App ID / Client ID / Public Base URL 输入框中的未保存编辑
+  // 静默覆盖为服务端值（与设置页、Star Release 页同一守卫模式）。
+  const hydratedRef = useRef(false);
   useEffect(() => {
-    if (!cfg) return;
+    if (!cfg || hydratedRef.current) return;
+    hydratedRef.current = true;
     setAppID(cfg.app_id > 0 ? String(cfg.app_id) : "");
     setClientID(cfg.client_id || "");
     setPublicBaseURL(cfg.public_base_url || "");
