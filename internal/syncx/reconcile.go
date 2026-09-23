@@ -81,8 +81,10 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 
 	// Issues 与 PR 共用 GitHub Issues API：任一仍开启才需要拉取。
 	issuesSynced := false
+	softFailed := false
 	if wantIssues || wantPRs {
-		if err := r.syncIssues(ctx, token, repo, since, isBaseline, wantIssues, wantPRs); err != nil {
+		soft, err := r.syncIssues(ctx, token, repo, since, isBaseline, wantIssues, wantPRs)
+		if err != nil {
 			// 上游 404/410（仓库已删除或不可见）：兜底标记 unavailable 并终止本轮，
 			// 与外部仓轮询的降级语义一致；webhook repository.deleted 漏投递时靠此路径收口。
 			if r.markUnavailableIfGone(ctx, repo, err) {
@@ -90,9 +92,11 @@ func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Reposit
 			}
 			return err
 		}
-		issuesSynced = true
+		softFailed = soft
+		// 存在工作项读取/持久化失败时不推进 issues 游标：下轮仍从 since 重拉，
+		// 事件指纹幂等保证不会重复通知，失败的条目得以补齐。
+		issuesSynced = !soft
 	}
-	softFailed := false
 	if wantActions {
 		if err := r.syncWorkflows(ctx, token, repo); err != nil {
 			// 限流是全安装级信号：不能当作单仓软失败吞掉，必须终止本轮。
@@ -225,12 +229,14 @@ func (r *Reconciler) finalizeSyncState(ctx context.Context, repo store.Repositor
 // PR 密集的仓库若无预算约束，一轮对账即可耗尽 installation token 的 5000 次/时配额。
 const prEnrichBudgetPerRound = 25
 
-func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Repository, since *time.Time, baseline, wantIssues, wantPRs bool) error {
+// syncIssues 同步单仓 Issues 与 PR。返回 softFailed=true 表示存在读取或持久化失败：
+// 调用方据此标记仓库部分失败且不推进 issues 游标（下轮重拉补齐）。
+func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Repository, since *time.Time, baseline, wantIssues, wantPRs bool) (softFailed bool, err error) {
 	enrichBudget := prEnrichBudgetPerRound
 	for page := 1; page <= r.maxPages(); page++ {
 		items, remaining, err := r.GitHub.ListIssues(ctx, token, repo.Owner, repo.Name, since, page)
 		if err != nil {
-			return err
+			return softFailed, err
 		}
 		if remaining > 0 && remaining < 50 {
 			if r.Logger != nil {
@@ -277,7 +283,19 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			// 已查旧行透传给 UpsertIfNewer 复用（避免同行二次 SELECT）。
 			var knownExisting *store.WorkItem
 			if kind == store.WorkItemKindPR && !baseline {
-				existing, _ := r.Store.WorkItems().GetByRepoNumber(ctx, repo.ID, it.Number)
+				existing, err := r.Store.WorkItems().GetByRepoNumber(ctx, repo.ID, it.Number)
+				if err != nil && !errors.Is(err, store.ErrNotFound) {
+					// 读失败不能把零值当作"不存在"：否则既白烧一轮 enrich，
+					// UpsertIfNewer 内查再次失败还会撞唯一索引，错误又被下面的分支吞掉。
+					// 跳过本条，靠不推进游标的下轮重拉补齐。
+					if r.Logger != nil {
+						r.Logger.Warn("reconcile work item read failed",
+							"repo", repo.FullName, "kind", kind, "number", it.Number,
+							"error_code", "work_item_read_failed", "error", err.Error())
+					}
+					softFailed = true
+					continue
+				}
 				knownExisting = &existing
 				if existing.ID != "" {
 					// 先沿用已存储的审核/检查字段：UpsertIfNewer 用入参全量覆盖，
@@ -301,7 +319,18 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			}
 
 			saved, updated, err := r.Store.WorkItems().UpsertIfNewer(ctx, item, knownExisting)
-			if err != nil || !updated || baseline {
+			if err != nil {
+				// 写入失败与"无变化/基线期"是两回事：合并处理会让工作项静默停留在旧状态，
+				// 无事件无通知且每轮重复发生，必须留痕并计入软失败。
+				softFailed = true
+				if r.Logger != nil {
+					r.Logger.Warn("reconcile work item upsert failed",
+						"repo", repo.FullName, "kind", kind, "number", it.Number,
+						"error_code", "reconcile_upsert_failed", "error", err.Error())
+				}
+				continue
+			}
+			if !updated || baseline {
 				continue
 			}
 			fp := normalizer.Fingerprint("reconcile", repo.FullName, kind, normalizer.ResourceIdentity(kind, int64(saved.Number), 0), "reconcile", saved.SourceUpdatedAt, hash)
@@ -325,7 +354,7 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			break
 		}
 	}
-	return nil
+	return softFailed, nil
 }
 
 // enrichPullRequest 拉取 PR 的审核结论、评审人与检查状态并回填到 item。

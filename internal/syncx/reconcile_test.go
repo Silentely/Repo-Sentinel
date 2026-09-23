@@ -2,17 +2,20 @@ package syncx
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1121,5 +1124,116 @@ func TestReconcileRepository评审非终态清空决策(t *testing.T) {
 	}
 	if pr.ReviewDecision != "" {
 		t.Fatalf("非终态评审应清空 ReviewDecision，got %q", pr.ReviewDecision)
+	}
+}
+
+// upsertFailingWorkItems 包装真实 WorkItemStore：UpsertIfNewer 恒定返回存储错误，
+// 模拟数据库写入失败（磁盘错误、约束冲突等）。
+type upsertFailingWorkItems struct {
+	store.WorkItemStore
+}
+
+func (s upsertFailingWorkItems) UpsertIfNewer(context.Context, store.WorkItem, *store.WorkItem) (store.WorkItem, bool, error) {
+	return store.WorkItem{}, false, errors.New("simulated disk I/O error")
+}
+
+// readFailingWorkItems 包装真实 WorkItemStore：GetByRepoNumber 恒定返回非 NotFound 错误，
+// 模拟瞬时读失败（数据库锁竞争、连接中断）。
+type readFailingWorkItems struct {
+	store.WorkItemStore
+}
+
+func (s readFailingWorkItems) GetByRepoNumber(context.Context, string, int) (store.WorkItem, error) {
+	return store.WorkItem{}, errors.New("simulated read failure")
+}
+
+// workItemsFailingStore 仅替换 WorkItems()，其余存储能力委派给真实 store。
+type workItemsFailingStore struct {
+	store.Store
+	workItems store.WorkItemStore
+}
+
+func (s workItemsFailingStore) WorkItems() store.WorkItemStore { return s.workItems }
+
+// 写入失败不得静默吞掉：必须标记仓库部分失败、记录 error_code 日志，
+// 且不推进 issues 游标（否则失败条目被 since 过滤永久跳过，下轮无从补齐）。
+func TestReconcileWorkItemUpsertFailureNotSilent(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	fake.issuesFn = func(page int) any {
+		return []map[string]any{{
+			"number": 1, "state": "open", "title": "写入将失败",
+			"html_url":   "https://github.com/acme/demo/issues/1",
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"user":       map[string]any{"login": "alice"},
+			"labels":     []any{}, "assignees": []any{},
+		}}
+	}
+	failing := workItemsFailingStore{Store: data, workItems: upsertFailingWorkItems{data.WorkItems()}}
+
+	var buf bytes.Buffer
+	r := &Reconciler{Store: failing, GitHub: fake.client, Logger: slog.New(slog.NewJSONHandler(&buf, nil))}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("单条写入失败不应让整轮对账报错: %v", err)
+	}
+	items, _, err := data.WorkItems().List(ctx, store.ListFilter{Page: 1, PerPage: 20, RepositoryID: repo.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("写入失败时不应有 WorkItem 落库，got %d", len(items))
+	}
+	got, err := data.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastSyncErrorCode != "reconcile_partial" {
+		t.Fatalf("写入失败应标记部分失败，got %q", got.LastSyncErrorCode)
+	}
+	if !strings.Contains(buf.String(), "reconcile_upsert_failed") {
+		t.Fatalf("写入失败应记录 error_code=reconcile_upsert_failed 日志，got: %s", buf.String())
+	}
+	if _, err := data.Cursors().Get(ctx, repo.ID, "issues"); err == nil {
+		t.Fatal("存在写入失败时不应推进 issues 游标")
+	}
+}
+
+// PR 旧行读取失败不得把零值当作"不存在"：既不能白烧一轮 enrich（4 次 API），
+// 也不能让 UpsertIfNewer 内查再次失败后撞唯一索引；必须计入部分失败并留痕。
+func TestReconcileWorkItemReadFailureSkipsEnrich(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	fake.issuesFn = func(page int) any {
+		return []map[string]any{{
+			"number": 7, "state": "open", "title": "读取将失败",
+			"html_url":     "https://github.com/acme/demo/pull/7",
+			"pull_request": map[string]any{"url": "https://api.github.com/repos/acme/demo/pulls/7"},
+			"updated_at":   time.Now().UTC().Format(time.RFC3339),
+			"user":         map[string]any{"login": "alice"},
+			"labels":       []any{}, "assignees": []any{},
+		}}
+	}
+	failing := workItemsFailingStore{Store: data, workItems: readFailingWorkItems{data.WorkItems()}}
+
+	var buf bytes.Buffer
+	r := &Reconciler{Store: failing, GitHub: fake.client, Logger: slog.New(slog.NewJSONHandler(&buf, nil))}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("单条读取失败不应让整轮对账报错: %v", err)
+	}
+	if got := fake.prDetailRequests.Load(); got != 0 {
+		t.Fatalf("读取失败不应触发 PR enrich（浪费 API 配额），got %d 次 PR 详情请求", got)
+	}
+	got, err := data.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastSyncErrorCode != "reconcile_partial" {
+		t.Fatalf("读取失败应标记部分失败，got %q", got.LastSyncErrorCode)
+	}
+	if !strings.Contains(buf.String(), "work_item_read_failed") {
+		t.Fatalf("读取失败应记录 error_code=work_item_read_failed 日志，got: %s", buf.String())
+	}
+	if _, err := data.Cursors().Get(ctx, repo.ID, "issues"); err == nil {
+		t.Fatal("存在读取失败时不应推进 issues 游标")
 	}
 }
