@@ -85,7 +85,7 @@ vi.mock("./api", async () => {
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  return render(
     <QueryClientProvider client={queryClient}>
       <StarredReleasesPage />
     </QueryClientProvider>,
@@ -197,5 +197,58 @@ describe("StarredReleasesPage 立即同步", () => {
       await vi.advanceTimersByTimeAsync(92_000);
     });
     expect(screen.getByText("同步尚未完成，追踪列表请稍后刷新查看。")).toBeInTheDocument();
+  });
+
+  it("卸载后立即停止同步轮询", async () => {
+    syncState.neverAdvances = true;
+    const view = renderPage();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "立即同步 Star 列表" }));
+    });
+    // 进入轮询：等第一个轮询周期落地后卸载，此后不得再发起配置拉取。
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_100);
+    });
+    const pollsAtUnmount = syncState.polls;
+    view.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(syncState.polls).toBe(pollsAtUnmount);
+  });
+});
+
+describe("StarredReleasesPage 表单回填", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("配置 refetch 不覆盖未保存编辑", async () => {
+    renderPage();
+    // 初始查询在微任务中落地：推进 0 并包裹 act 让 React 提交渲染。
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const username = screen.getByPlaceholderText(/可粘贴 github.com/);
+    fireEvent.change(username, { target: { value: "octocat-editing" } });
+    expect(username).toHaveValue("octocat-editing");
+    // 页面重新可见触发配置 refetch（新对象引用）：旧实现会整体回填表单，
+    // 把未保存的编辑覆盖为服务端值。先推进超过 staleTime 使查询过期，可见性变化才会真正重拉。
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    await act(async () => {
+      window.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByPlaceholderText(/可粘贴 github.com/)).toHaveValue("octocat-editing");
   });
 });

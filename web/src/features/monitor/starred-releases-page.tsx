@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 
@@ -84,8 +84,12 @@ export function StarredReleasesPage() {
     return "";
   };
 
+  // 表单仅首次回填：配置被其他 mutation、窗口聚焦等触发 refetch 时不再覆盖未保存编辑
+  // （与设置页同一守卫模式）。
+  const hydratedRef = useRef(false);
   useEffect(() => {
-    if (!config.data) return;
+    if (!config.data || hydratedRef.current) return;
+    hydratedRef.current = true;
     setForm(formFromConfig(config.data));
   }, [config.data]);
 
@@ -123,6 +127,16 @@ export function StarredReleasesPage() {
     saveMut.mutate(configBody(form, config.data));
   }
 
+  // 立即同步轮询在组件卸载后立即停止：mutation 生命周期不随组件卸载取消，
+  // 无此守卫会持续轮询到 90s 上限，并对已卸载组件执行查询失效与提示写入。
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   // 立即同步：触发一轮 star 枚举（新 star 仓即时注册、unstar 仓即时停用）。
   // 后端异步执行：POST 返回只代表同步已启动，此时刷新列表看到的仍是同步前数据
   //（unstar 移除看似没生效）。故轮询 last_star_sync_at 推进后再刷新。
@@ -134,12 +148,14 @@ export function StarredReleasesPage() {
       const deadline = Date.now() + STAR_SYNC_WAIT_MS;
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, STAR_SYNC_POLL_MS));
+        if (!mountedRef.current) return { started: true as const, unmounted: true };
         const cfg = await queryClient.fetchQuery({ ...starredReleasesConfigQueryOptions, staleTime: 0 });
         if ((cfg.last_star_sync_at ?? "") !== before) return { started: true as const };
         if (Date.now() >= deadline) return { started: true as const, timeout: true };
       }
     },
     onSuccess: async (res) => {
+      if ("unmounted" in res && res.unmounted) return;
       await invalidateAll();
       if (!res.started) {
         setMsg("未配置用户名，无法同步。");
