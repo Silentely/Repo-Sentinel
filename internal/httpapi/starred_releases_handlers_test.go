@@ -61,13 +61,33 @@ func TestStarredReleasesConfigAPI(t *testing.T) {
 		t.Fatalf("周期未生效: %+v", view)
 	}
 
+	// 清空用户名应恢复“未配置”状态，供用户退出 Star Release 追踪配置。
+	clearUsername := fixture.request(t, http.MethodPut, "/api/v1/starred-releases/config",
+		`{"username":""}`, "127.0.0.1:450041", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if clearUsername.Code != http.StatusOK {
+		t.Fatalf("清空用户名应成功，status=%d body=%s", clearUsername.Code, clearUsername.Body.String())
+	}
+	if err := json.Unmarshal(clearUsername.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Username != "" {
+		t.Fatalf("清空后用户名应为空: %+v", view)
+	}
+
+	// 恢复合法用户名，后续非法输入测试验证不会覆盖它。
+	restoreUsername := fixture.request(t, http.MethodPut, "/api/v1/starred-releases/config",
+		`{"username":"octocat"}`, "127.0.0.1:450042", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if restoreUsername.Code != http.StatusOK {
+		t.Fatalf("恢复用户名应成功，status=%d body=%s", restoreUsername.Code, restoreUsername.Body.String())
+	}
+
 	// 非法周期拒绝。
 	putBad := fixture.request(t, http.MethodPut, "/api/v1/starred-releases/config",
 		`{"release_poll_interval":"25h"}`, "127.0.0.1:45005", cookies, map[string]string{CSRFHeaderName: csrf.Value})
 	assertAPIError(t, putBad, http.StatusBadRequest, "validation_failed")
 
 	// 非法用户名字符集拒绝：否则会拼出错误 API 路径，star 同步每轮失败且用户侧无反馈。
-	for i, bad := range []string{`"octo cat"`, `"octo/cat"`, `"-octocat"`, `"octocat-"`, `""`} {
+	for i, bad := range []string{`"octo cat"`, `"octo/cat"`, `"-octocat"`, `"octocat-"`} {
 		rejected := fixture.request(t, http.MethodPut, "/api/v1/starred-releases/config",
 			`{"username":`+bad+`}`, "127.0.0.1:45006", cookies, map[string]string{CSRFHeaderName: csrf.Value})
 		assertAPIError(t, rejected, http.StatusBadRequest, "validation_failed")

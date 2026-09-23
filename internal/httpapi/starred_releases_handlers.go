@@ -106,9 +106,9 @@ func (s *server) handlePutStarredReleasesConfig(w http.ResponseWriter, r *http.R
 	usernameChanged := false
 	if body.Username != nil {
 		username := normalizeUsername(*body.Username)
-		if !githubx.ValidGitHubUsername(username) {
+		if username != "" && !githubx.ValidGitHubUsername(username) {
 			// 非法用户名（含 "/"、空格、超长）会拼出错误 API 路径，star 同步每轮失败但
-			// 用户侧无反馈；在写入边界直接拒绝。
+			// 用户侧无反馈；在写入边界直接拒绝。空值保留“未配置”语义，允许用户清空设置。
 			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "username"})
 			return
 		}

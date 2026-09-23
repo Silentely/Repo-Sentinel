@@ -832,6 +832,18 @@ func TestCompleteRetriesExhaustedAnnotatesAttempts(t *testing.T) {
 	}
 }
 
+func TestWithAttemptCountPreservesUnwrapChain(t *testing.T) {
+	original := &callError{
+		code: "timeout",
+		err:  fmt.Errorf("request timed out: %w", context.DeadlineExceeded),
+	}
+
+	wrapped := withAttemptCount(original, 3)
+	if !errors.Is(wrapped, context.DeadlineExceeded) {
+		t.Fatalf("重试次数包装不应丢失原始超时错误: %v", wrapped)
+	}
+}
+
 // TestCompleteRetriesDisabled 验证 Retries=0 不重试（直接构造默认即 0，行为向后兼容）。
 func TestCompleteRetriesDisabled(t *testing.T) {
 	var calls int

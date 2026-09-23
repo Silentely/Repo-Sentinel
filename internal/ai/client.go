@@ -569,7 +569,7 @@ func withAttemptCount(err error, attempts int) error {
 		return &callError{
 			code:   ce.code,
 			status: ce.status,
-			err:    fmt.Errorf("%v (attempts=%d)", ce.err, attempts),
+			err:    fmt.Errorf("%w (attempts=%d)", ce.err, attempts),
 		}
 	}
 	return fmt.Errorf("%w (attempts=%d)", err, attempts)
