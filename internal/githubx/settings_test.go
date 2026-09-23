@@ -226,3 +226,67 @@ func TestSettingsMergeFromStoreUnrelatedSetting(t *testing.T) {
 		t.Fatalf("AppID 被改动: %d", rt.AppID)
 	}
 }
+
+// TestSettingsLoadStoredRuntimeCorruptJSON 验证库内 JSON 无法解析时报错而非静默返回零值：
+// 否则管理台配置的 GitHub 应用会凭空消失且无日志可查。
+// 合法 JSON 但结构与 StoredRuntime 不符（手改库、历史 bug 写入的场景）。
+func TestSettingsLoadStoredRuntimeCorruptJSON(t *testing.T) {
+	data := openGithubTestStore(t)
+	if _, err := data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        ulid.Make().String(),
+		Key:       RuntimeSettingKey,
+		ValueJSON: json.RawMessage(`{"app_id": "not-a-number"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadStoredRuntime(t.Context(), data); err == nil {
+		t.Fatal("库内 JSON 无法解析应报错")
+	}
+	rt := &RuntimeConfig{AppID: 5, Client: &AppClient{}}
+	if err := MergeFromStore(t.Context(), data, nil, rt); err == nil {
+		t.Fatal("MergeFromStore 应向上传递配置解析错误")
+	}
+}
+
+// TestSettingsMergeFromStoreUndecryptableEnvelope 验证信封解不开时报错而非静默降级：
+// 主密钥轮换后旧信封解不开时，webhook 密钥会静默变为未配置，
+// 所有入站 webhook 被拒而管理台仍显示「已配置」，根因不可见。
+func TestSettingsMergeFromStoreUndecryptableEnvelope(t *testing.T) {
+	data := openGithubTestStore(t)
+	ringA := newTestKeyRing(t)
+	// 另一把互不相关的密钥环：模拟主密钥轮换后旧信封解不开。
+	other := make([]byte, 32)
+	for i := range other {
+		other[i] = byte(100 + i)
+	}
+	ringB, err := cryptox.NewKeyRing(config.EncryptionConfig{
+		CurrentKey: config.NewSecret(hex.EncodeToString(other)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	envelope, err := EncryptSecret(t.Context(), &ringA, "webhook-secret-rotated-away")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveStoredRuntime(t.Context(), data, StoredRuntime{
+		AppID:                 7,
+		WebhookSecretEnvelope: envelope,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &RuntimeConfig{AppID: 0, Client: &AppClient{}}
+	err = MergeFromStore(t.Context(), data, &ringB, rt)
+	if err == nil {
+		t.Fatal("信封无法解密应报错")
+	}
+	if !strings.Contains(err.Error(), "decrypt github webhook secret") {
+		t.Fatalf("错误应指明 webhook secret 解密失败, got %v", err)
+	}
+	// 报错时不得把半成品状态留在配置里当作已配置。
+	if rt.WebhookSecret != "" {
+		t.Fatalf("解密失败不应残留 WebhookSecret, got %q", rt.WebhookSecret)
+	}
+}

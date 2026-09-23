@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -29,6 +30,8 @@ type StoredRuntime struct {
 }
 
 // LoadStoredRuntime 读取数据库中的 GitHub 配置；不存在时返回零值。
+// 库内 JSON 损坏（手改库、历史 bug 写入）时报错而非静默返回零值——
+// 否则「管理台配的 GitHub 应用突然全没了」且无任何日志可查（与 ai.LoadStoredConfig 同语义）。
 func LoadStoredRuntime(ctx context.Context, data store.Store) (StoredRuntime, error) {
 	var stored StoredRuntime
 	if data == nil {
@@ -41,7 +44,9 @@ func LoadStoredRuntime(ctx context.Context, data store.Store) (StoredRuntime, er
 		}
 		return stored, err
 	}
-	_ = json.Unmarshal(setting.ValueJSON, &stored)
+	if err := json.Unmarshal(setting.ValueJSON, &stored); err != nil {
+		return StoredRuntime{}, fmt.Errorf("parse github runtime config: %w", err)
+	}
 	return stored, nil
 }
 
@@ -111,7 +116,13 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 			snap.PrivateKeySource = "database"
 		}
 		if env := strings.TrimSpace(stored.PrivateKeyPEMEnvelope); env != "" && keyRing != nil {
-			if plain, err := DecryptSecret(ctx, keyRing, env); err == nil && plain != "" {
+			plain, err := DecryptSecret(ctx, keyRing, env)
+			if err != nil {
+				// 主密钥探针通过后的解密失败 = 信封损坏或密钥不匹配：报错而非静默降级
+				//（否则 GitHub App 全部不可用但配置页显示已配置，无从排查）。
+				return fmt.Errorf("decrypt github private key: %w", err)
+			}
+			if plain != "" {
 				snap.PrivateKeyPEM = plain
 				snap.PrivateKeyPath = ""
 				snap.PrivateKeySource = "database"
@@ -119,7 +130,13 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 		}
 	}
 	if strings.TrimSpace(snap.WebhookSecret) == "" && strings.TrimSpace(stored.WebhookSecretEnvelope) != "" && keyRing != nil {
-		if plain, err := DecryptSecret(ctx, keyRing, stored.WebhookSecretEnvelope); err == nil && plain != "" {
+		plain, err := DecryptSecret(ctx, keyRing, stored.WebhookSecretEnvelope)
+		if err != nil {
+			// 同上：webhook 密钥解不开时所有入站 webhook 都会被拒绝，
+			// 静默降级会让运维在管理台看到「已配置」却找不到根因。
+			return fmt.Errorf("decrypt github webhook secret: %w", err)
+		}
+		if plain != "" {
 			snap.WebhookSecret = plain
 			snap.WebhookSecretSource = "database"
 		}
