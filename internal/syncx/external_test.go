@@ -513,3 +513,27 @@ func TestExternalPollAllPropagatesContextCancelDuringPolling(t *testing.T) {
 		t.Fatalf("轮询期间取消上下文应向上传播，got %v", err)
 	}
 }
+
+// PollOne 是导出方法：并发直呼（测试、后续调用方）不得惰性写 p.Client 字段。
+// 若回归为写字段，-race 下会立即报数据竞争；同时断言字段保持 nil（只读回退）。
+func TestPollOneConcurrentNilClientNoRace(t *testing.T) {
+	data, repo, _ := externalRepoFixture(t, func(w http.ResponseWriter) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"stargazers_count": 1})
+	})
+	// 不预设 Client：走 PollOne 的只读回退路径。
+	p := &ExternalPoller{Store: data}
+	ctx := t.Context()
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// 并发下个别写入可能撞唯一约束而失败：此处只关心不 panic、不竞争。
+			_ = p.PollOne(ctx, repo)
+		}()
+	}
+	wg.Wait()
+	if p.Client != nil {
+		t.Fatal("PollOne 不应写 p.Client 字段（并发直呼会构成数据竞争）")
+	}
+}

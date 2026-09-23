@@ -754,7 +754,11 @@ func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 			// GitHub 侧已归档但本地状态未联动（历史数据）：顺手收口归档，
 			// UpdateSettings 会一并关闭监控与全部能力开关。
 			archived := true
-			_ = r.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived})
+			if err := r.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived}); err != nil && r.Logger != nil {
+				// 收口失败会让本地仓仍参与对账与通知，而 GitHub 侧已归档，必须留痕。
+				r.Logger.Warn("reconcile archived repo state update failed",
+					"repo", repo.FullName, "error_code", "repo_state_update_failed", "error", err.Error())
+			}
 			continue
 		}
 		// 监控总开关关闭的仓库不参与对账。

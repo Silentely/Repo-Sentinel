@@ -38,8 +38,12 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 	if !repo.MonitorEnabled || repo.IsArchived || repo.SyncStatus == store.SyncStatusArchived {
 		return nil
 	}
-	if p.Client == nil {
-		p.Client = &githubx.PublicClient{}
+	// 客户端只读回退到局部变量：不写 p.Client 字段。PollAll 已在派发前一次性初始化
+	// 共享客户端，但导出的 PollOne 被并发直呼（测试、后续调用方）时，惰性写同一字段
+	// 会构成数据竞争（-race 可检出）。
+	client := p.Client
+	if client == nil {
+		client = &githubx.PublicClient{}
 	}
 	isBaseline := repo.SyncStatus == store.SyncStatusBaseline
 	var since *time.Time
@@ -51,7 +55,7 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 			}
 		}
 	}
-	items, remaining, err := p.Client.ListPublicIssues(ctx, repo.Owner, repo.Name, since, 1)
+	items, remaining, err := client.ListPublicIssues(ctx, repo.Owner, repo.Name, since, 1)
 	if err != nil {
 		// 仅 404/410 说明仓转私有或已删除，标记不可用并暂停轮询；
 		// 超时/限流/5xx 是临时故障，保持现状等待下轮重试。
@@ -72,7 +76,7 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 
 	// star 计数快照：公开仓轮询时顺带拉取，失败不阻断。
 	if features.Stars && repo.StarsEnabled {
-		if meta, _, err := p.Client.GetRepository(ctx, repo.Owner, repo.Name); err != nil {
+		if meta, _, err := client.GetRepository(ctx, repo.Owner, repo.Name); err != nil {
 			if p.Logger != nil {
 				p.Logger.Warn("star snapshot poll failed", "repo", repo.FullName, "error_code", "star_snapshot_failed", "error", err.Error())
 			}
@@ -171,7 +175,12 @@ func (p *ExternalPoller) PollAll(ctx context.Context) error {
 		if repo.IsArchived {
 			// GitHub 侧已归档但本地状态未联动：顺手收口归档。
 			archived := true
-			_ = p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived})
+			if err := p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived}); err != nil && p.Logger != nil {
+				// 收口失败会让本地仓仍处于「监控开启 + 能力开启」，平台继续轮询/通知一个
+				// GitHub 侧已归档的仓，必须留痕。
+				p.Logger.Warn("external poll archived repo state update failed",
+					"repo", repo.FullName, "error_code", "repo_state_update_failed", "error", err.Error())
+			}
 			continue
 		}
 		if !repo.MonitorEnabled {
