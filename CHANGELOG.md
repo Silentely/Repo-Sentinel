@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-23
+
+### Changed
+
+- 管理台热点查询与轮询性能收敛：①`notification_outbox` 新增冗余列 `repository_full_name` 与 `(status, repository_full_name)` 索引，取消 unstar 仓未投递 Release 通知改单条批量 UPDATE（SQLite/PostgreSQL 双轨迁移，含回填），不再逐行回查关联事件，事件被级联删除也能正确取消；②仪表盘统计同表维度合并分组聚合（work_items 按 kind、repositories 按 sync_status），整页刷新 SQL 往返由 9 条降至 7 条；③活跃/归档仓 ID 集合缓存随附 `id→full_name` 映射，工作项/运行流/告警三类列表页解析仓库名复用同一份扫描结果；④外部公开仓轮询 `PollAll` 改有界并发（5 worker），整轮耗时不再随仓数线性增长，限流命中即停整轮、逐仓失败不波及其余；⑤对账 PR 补数据改固定 3 路并发扇出，单 PR 由 4 次串行 RTT 降为 2 轮；⑥发件箱列表渠道映射改懒加载、PR 审查在途判定改前缀快速拒绝并将结果幂等查询收敛为单条直查、列表查询保留「COUNT + 取页」两次往返（实测 SQLite 2 万行事件 1.45ms、2000 活跃仓 2.75ms，取证结论记入 `internal/store/CLAUDE.md` FAQ）
+- 安全加固：AI 出站客户端与配置探测禁用 30x 重定向跟随，配置与拨号层双重拦截链路本地及云元数据地址（`metadata.google.internal` / `metadata`）防 SSRF 与 DNS 重绑定，内网自建网关不再被 `.internal` 后缀误拦；按 TLS 与 `X-Forwarded-Proto: https` 自动为会话与 CSRF Cookie 加 Secure 属性；仓库硬删除与 2FA 启用/停用补审计日志落库；`/metrics` 未授权访问日志按来源 IP 采样输出，扫描流量不再打爆访问日志
+- 启用 2FA 端点把会话校验前置于落库：无法定位会话时直接 401，避免 TOTP 配置已写入却因缺 admin_id 写不出审计条目（与停用端点同一模式）
+- 依赖更新：github.com/jackc/pgx/v5 5.11.0、golang.org/x/crypto 0.57.0、golang.org/x/time 0.16.0、react 19.3.0、react-dom 19.3.0、@types/react 19.3.0、@types/react-dom 19.3.0、@tanstack/react-router 1.170.36、zod 4.6.1、lucide-react 1.44.0、@testing-library/user-event 14.6.7
+
+### Fixed
+
+- 已取消星标仓库仍被轮询并推送 Release 通知：GitHub 分页 Link 头在末页与越界页均非空（仅带 `rel="prev"/"first"`，无 `rel="next"`），旧代码以「Link 头非空」判断是否还有下一页，导致 star 同步分页打到页码防御上限、完整分页标记失效，unstar 移除被整体静默跳过（同步日志仍显示成功）；改为以 `rel="next"` 作为唯一翻页依据（与 `ListWorkflowJobs` 一致），页码上限命中补 Warn 留痕
+- 「立即同步」为异步执行，前端此前在同步完成前即刷新追踪列表，用户看到同步前状态以为未生效：配置 API 新增 `last_star_sync_at` 暴露最近一次完整 star 同步落定时刻，前端轮询该时刻推进后再刷新并提示结果
+- 私有仓库手动触发 PR 审查失败：新增仓库安装 ID 解析，优先按本地 installations 表主键 ULID 关联并兼容直接存储的数字安装号，安装令牌缺失时明确返回审查不可用，修复仓库记录未携带 GitHub installation 号时无法获取私有 PR 详情
+- `PollAll` 轮询期间上下文取消被误报为成功：worker 可能在派发完成后才观察到取消，新增派发结束后的 `ctx.Err()` 检查确保取消原因正确向上传播
+- 保留策略清理在途通知：`DeleteTerminalOlderThan` 补「在途行无论多旧都不删」的回归断言，避免 pending / sending 行被清理造成静默丢消息
+- webhook 投递列表 `queryKey` 改用逐字段标量参数：内联对象作为 `queryKey` 时 TanStack Query v5 按 `Object.is` 比较，父组件每次重渲染都产生新缓存条目并触发重复请求
+- 补齐回归测试与文档：PR 审查安装解析四条路径与审查结果幂等判定边界、取消/去重语义与 `repository_full_name` 冗余字段耦合断言、外部轮询前置取消不发起请求的边界语义
+
 ## [0.6.0] - 2026-09-16
 
 ### Added

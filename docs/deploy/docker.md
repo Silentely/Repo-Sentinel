@@ -9,7 +9,7 @@
 ghcr.io/silentely/repo-sentinel:latest
 ```
 
-也可钉死版本，例如 `ghcr.io/silentely/repo-sentinel:v0.6.0`。  
+也可钉死版本，例如 `ghcr.io/silentely/repo-sentinel:v0.6.1`。  
 若包为私有，先登录：
 
 ```bash
