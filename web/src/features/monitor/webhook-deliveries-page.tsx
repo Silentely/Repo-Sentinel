@@ -15,7 +15,6 @@ import {
   replayWebhookDelivery,
   webhookDeliveriesQueryOptions,
   webhookDeliveryDetailQueryOptions,
-  type WebhookDeliveryItem,
 } from "./api";
 import { ClearFiltersButton, RepoFilterSelect, StateFilterButtons, useActiveRepos } from "./list-shared";
 

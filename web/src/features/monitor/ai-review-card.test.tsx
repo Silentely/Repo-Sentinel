@@ -87,6 +87,26 @@ describe("AIReviewCard", () => {
     });
   });
 
+  it("审查结论三类清单均按条目渲染且同文本不撞键", async () => {
+    // 条目文本在结果里可能重复：key 仅用文本会撞键导致列表渲染错乱。
+    fetchMock.mockResolvedValue({
+      ...review,
+      reviewed_at: "2026-09-04T00:00:00Z",
+      security_risks: ["硬编码凭据", "硬编码凭据"],
+      breaking_risks: ["移除公开接口"],
+      code_smells: ["函数过长"],
+    });
+    const view = renderCard();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /AI 代码审查报告/ }));
+    });
+    expect(screen.getByText(/安全风险:/)).toBeInTheDocument();
+    expect(screen.getByText(/破坏性兼容风险:/)).toBeInTheDocument();
+    expect(screen.getByText(/优化建议:/)).toBeInTheDocument();
+    expect(screen.getAllByText("硬编码凭据")).toHaveLength(2);
+    view.unmount();
+  });
+
   it("审查落定后展示结果并自动展开", async () => {
     fetchMock.mockResolvedValue(null);
     triggerMock.mockResolvedValue(receipt);

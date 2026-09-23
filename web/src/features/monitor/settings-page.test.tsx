@@ -34,10 +34,10 @@ const settingsFixture = {
 };
 
 const { saveSystemSettingsMock, saveAIConfigMock, testAIConnectivityMock, activateRepositoryMock, reconcileAllMock, reconcileRepositoryMock } = vi.hoisted(() => ({
-  saveSystemSettingsMock: vi.fn(async (body: Record<string, unknown>) => body),
+  saveSystemSettingsMock: vi.fn(async (_body: Record<string, unknown>) => ({})),
   saveAIConfigMock: vi.fn(async (body: Record<string, unknown>) => body),
   testAIConnectivityMock: vi.fn(
-    async (body: Record<string, unknown>): Promise<{ ok: boolean; message: string; model: string; base_url: string; latency_ms: number }> => ({
+    async (_body: Record<string, unknown>): Promise<{ ok: boolean; message: string; model: string; base_url: string; latency_ms: number }> => ({
       ok: true,
       message: "连通性测试成功：模型 gpt-4o-mini 正常回复（42 ms）",
       model: "gpt-4o-mini",
@@ -364,7 +364,6 @@ describe("设置页", () => {
   });
 
   it("输出 token 上限失焦时钳到合法范围", async () => {
-    const user = userEvent.setup();
     renderPage();
 
     const aiSection = await screen.findByRole("region", { name: "智能值守" });

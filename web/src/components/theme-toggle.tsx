@@ -46,7 +46,7 @@ export function ThemeToggle() {
       <select
         aria-label="主题"
         value={mode}
-        onChange={(event) => setMode(event.target.value as ThemeMode)}
+        onChange={(event) => setMode(parseThemeMode(event.target.value))}
       >
         <option value="system">跟随系统</option>
         <option value="light">浅色</option>
@@ -56,7 +56,12 @@ export function ThemeToggle() {
   );
 }
 
+// select 的 option 虽是字面量，DOM 类型仍是 string：收敛函数让新增选项时的类型检查仍然生效
+// （断言会把任何字符串直接当 ThemeMode，绕过编译期校验）。
+function parseThemeMode(value: string): ThemeMode {
+  return value === "light" || value === "dark" || value === "system" ? value : "system";
+}
+
 function readStoredTheme(): ThemeMode {
-  const stored = window.localStorage.getItem(themeStorageKey);
-  return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+  return parseThemeMode(window.localStorage.getItem(themeStorageKey) ?? "");
 }

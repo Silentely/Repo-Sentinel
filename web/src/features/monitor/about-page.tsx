@@ -3,9 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 
-import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
+import { ApiErrorAlert } from "../../components/error-alert";
 import { GithubIcon } from "../../components/github-icon";
-import { toApiError } from "../../lib/api/errors";
 import { checkForUpdates, versionQueryOptions } from "./api";
 
 const REPO_URL = "https://github.com/Silentely/Repo-Sentinel";

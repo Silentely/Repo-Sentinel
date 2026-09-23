@@ -18,6 +18,20 @@ export interface LoginPageProps {
   version?: string;
 }
 
+/** 读取后端错误 details 中的字符串字段；details 形态不可信，逐个校验而非整体强转。 */
+function detailField(details: unknown, key: string): string | undefined {
+  if (!details || typeof details !== "object") return undefined;
+  const value = (details as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+/** 后端返回的 2FA 剩余可尝试次数；缺失或类型不符时视为未知（不展示次数提示）。 */
+function remainingAttempts(details: unknown): number | undefined {
+  if (!details || typeof details !== "object") return undefined;
+  const value = (details as Record<string, unknown>).remaining_attempts;
+  return typeof value === "number" ? value : undefined;
+}
+
 export function LoginPage({
   loginAction = async (credentials) => {
     return login(credentials);
@@ -85,11 +99,10 @@ export function LoginPage({
       setRequestError(apiErr);
       setPasscode("");
       document.getElementById("login-passcode")?.focus();
-      const details = apiErr.details && typeof apiErr.details === "object" ? (apiErr.details as Record<string, unknown>) : null;
       if (
         apiErr.message.includes("ticket") ||
-        details?.reason === "ticket_expired_or_invalid" ||
-        details?.remaining_attempts === 0
+        detailField(apiErr.details, "reason") === "ticket_expired_or_invalid" ||
+        remainingAttempts(apiErr.details) === 0
       ) {
         setTwoFactorTicket(undefined);
       }
@@ -174,8 +187,8 @@ export function LoginPage({
             }
             message={
               twoFactorTicket
-                ? (requestError.details && typeof requestError.details === "object" && "remaining_attempts" in requestError.details && typeof (requestError.details as Record<string, unknown>).remaining_attempts === "number")
-                  ? `动态验证码不正确，还可尝试 ${(requestError.details as Record<string, unknown>).remaining_attempts} 次；若超过次数将自动返回重新验证密码。`
+                ? remainingAttempts(requestError.details) !== undefined
+                  ? `动态验证码不正确，还可尝试 ${remainingAttempts(requestError.details)} 次；若超过次数将自动返回重新验证密码。`
                   : requestError.message || "请检查身份验证器当前展示的 6 位数字（注意时钟是否同步）；若连续输入错误票据将自动作废。"
                 : invalidCredentials
                   ? "请检查输入后重试；若凭据已遗失，请使用 CLI 重置密码。"

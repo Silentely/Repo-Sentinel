@@ -248,6 +248,26 @@ function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string
 }
 
 // 列表重渲染（切换忽略忙碌态、筛选、分页）不应牵连所有审查卡片：props 未变的卡片跳过渲染。
+/**
+ * 审查结论清单：安全风险 / 破坏性兼容风险 / 优化建议三段结构完全相同，收敛为单一组件。
+ * key 带下标前缀：同一条目文本在结果里可能重复，仅用文本作 key 会撞键导致渲染错乱。
+ */
+function ReviewRiskList({ label, tone, items }: { label: string; tone: "danger" | "warning" | "muted"; items: string[] }) {
+  const color = tone === "danger" ? "var(--color-danger, #ef4444)" : tone === "warning" ? "var(--color-warning, #f59e0b)" : undefined;
+  return (
+    <div style={{ marginTop: "0.5rem" }}>
+      <strong className={tone === "muted" ? "muted" : undefined} style={color ? { color } : undefined}>
+        {label}
+      </strong>
+      <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0 }}>
+        {items.map((item, idx) => (
+          <li key={`${idx}-${item}`}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { workItemId: string; item?: WorkItem }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -520,34 +540,13 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                 <p className="field-hint">Diff 超过审查输入上限，本报告仅覆盖前部变更。</p>
               )}
               {review.security_risks && review.security_risks.length > 0 && (
-                <div style={{ marginTop: "0.5rem" }}>
-                  <strong style={{ color: "var(--color-danger, #ef4444)" }}>🛡️ 安全风险:</strong>
-                  <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0 }}>
-                    {review.security_risks.map((r, idx) => (
-                      <li key={idx}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
+                <ReviewRiskList label="🛡️ 安全风险:" tone="danger" items={review.security_risks} />
               )}
               {review.breaking_risks && review.breaking_risks.length > 0 && (
-                <div style={{ marginTop: "0.5rem" }}>
-                  <strong style={{ color: "var(--color-warning, #f59e0b)" }}>⚠️ 破坏性兼容风险:</strong>
-                  <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0 }}>
-                    {review.breaking_risks.map((r, idx) => (
-                      <li key={idx}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
+                <ReviewRiskList label="⚠️ 破坏性兼容风险:" tone="warning" items={review.breaking_risks} />
               )}
               {review.code_smells && review.code_smells.length > 0 && (
-                <div style={{ marginTop: "0.5rem" }}>
-                  <strong className="muted">💡 优化建议:</strong>
-                  <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0 }}>
-                    {review.code_smells.map((r, idx) => (
-                      <li key={idx}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
+                <ReviewRiskList label="💡 优化建议:" tone="muted" items={review.code_smells} />
               )}
             </div>
           )}

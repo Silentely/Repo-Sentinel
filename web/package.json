@@ -12,6 +12,7 @@
     "dev": "vite",
     "e2e": "pnpm build && playwright test",
     "test": "vitest",
+    "lint": "oxlint src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -35,6 +36,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
     "jsdom": "30.0.1",
+    "oxlint": "^1.85.0",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.0",

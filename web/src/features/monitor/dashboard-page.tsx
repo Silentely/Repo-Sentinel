@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 
 import { CollapsiblePanel } from "../../components/collapsible-panel";
 import { EmptyState } from "../../components/empty-state";
-import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
+import { ApiErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
 import { toApiError } from "../../lib/api/errors";
@@ -116,7 +116,9 @@ export function DashboardPage() {
   const featureActions = settings.data?.["feature.actions"] !== false;
   const featureAlerts = settings.data?.["feature.security_alerts"] !== false;
 
-  const repoItems = repos.data?.items ?? [];
+  // 源数组同样入 memo：`repos.data?.items ?? []` 每次渲染都产出新引用，
+  // 下游 useMemo 的依赖永不相等，派生缓存等于无效（每次渲染仍重建）。
+  const repoItems = useMemo(() => repos.data?.items ?? [], [repos.data?.items]);
   // 仓库与基线：排除已归档，避免归档仓继续占位；派生数据缓存避免每渲染重建。
   const visibleRepos = useMemo(
     () => repoItems.filter((r) => !r.is_archived && r.sync_status !== "archived"),

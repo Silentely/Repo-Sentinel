@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CheckCircle2, CircleDashed, ExternalLink } from "lucide-react";
@@ -323,7 +323,9 @@ export function SettingsPage() {
   }
 
   // ---- 仓库与基线对账（自仪表盘迁入）----
-  const repoItems = repos.data?.items ?? [];
+  // 源数组同样入 memo：`repos.data?.items ?? []` 每次渲染都产出新引用，
+  // 下游 useMemo 的依赖永不相等，派生缓存等于无效（每次渲染仍重建）。
+  const repoItems = useMemo(() => repos.data?.items ?? [], [repos.data?.items]);
   // 排除已归档，避免归档仓继续占位；派生数据缓存避免每渲染重建。
   const visibleRepos = useMemo(
     () => repoItems.filter((r) => !r.is_archived && r.sync_status !== "archived"),

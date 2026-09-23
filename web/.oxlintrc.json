@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "react-hooks",
+    "typescript",
+    "unicorn"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**",
+    "e2e/**",
+    "fallback/**"
+  ],
+  "rules": {
+    "no-unused-vars": "error",
+    "react/set-state-in-effect": "off",
+    "react/preserve-manual-memoization": "off",
+    "react-hooks/exhaustive-deps": "warn"
+  }
+}

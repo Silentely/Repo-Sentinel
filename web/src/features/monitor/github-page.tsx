@@ -3,9 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Circle, Copy, ExternalLink } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
-import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
-import { apiRequest } from "../../lib/api/client";
-import { toApiError } from "../../lib/api/errors";
+import { ApiErrorAlert } from "../../components/error-alert";
 import { useAutoDismiss } from "../../lib/use-auto-dismiss";
 import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import {
