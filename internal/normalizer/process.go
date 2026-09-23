@@ -551,7 +551,9 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 	}
 	if res.Event != nil && env.PullRequest.Merged {
 		// merged 不在 StateHash 内，UpsertIfNewer 会恒早退，必须定向置位。
-		if err := p.Store.WorkItems().MarkMerged(ctx, *res.Event.RepositoryID, env.PullRequest.Number); err != nil {
+		// 用本次解析出的 repo.ID 而非 *res.Event.RepositoryID：事件行的仓库关联并非置位标记
+		// 的前提，指针解引用在这里只会带来空指针风险而无额外信息。
+		if err := p.Store.WorkItems().MarkMerged(ctx, repo.ID, env.PullRequest.Number); err != nil {
 			return res, fmt.Errorf("mark merged: %w", err)
 		}
 	}

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -48,6 +49,22 @@ type apiErrorResponse struct {
 	ErrorCode string         `json:"error_code"`
 	Message   string         `json:"message"`
 	Details   map[string]any `json:"details,omitempty"`
+}
+
+// appendAudit 落一条审计日志。写失败不影响主流程结论（2FA 开关、仓库删除等业务已成功），
+// 但必须 Warn 留痕：静默丢弃会让「谁在何时做了什么」在审计表里凭空消失且无从排查。
+func (s *server) appendAudit(ctx context.Context, entry store.AuditLog) {
+	if s.dependencies.Store == nil {
+		return
+	}
+	if _, err := s.dependencies.Store.Audits().Append(ctx, entry); err != nil {
+		s.dependencies.Logger.Warn("audit log append failed",
+			"error_code", "audit_append_failed",
+			"action", entry.Action,
+			"target_type", entry.TargetType,
+			"target_id", entry.TargetID,
+			"error", err.Error())
+	}
 }
 
 func (s *server) writeMappedError(w http.ResponseWriter, r *http.Request, err error) {

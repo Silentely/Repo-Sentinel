@@ -447,6 +447,69 @@ func TestProcessPullRequestMergedPersistsFlag(t *testing.T) {
 	}
 }
 
+// noRepoIDEventStore 让事件落库返回不带仓库关联的行（模拟事件行缺少 repository_id 的场景）。
+type noRepoIDEventStore struct {
+	store.Store
+}
+
+func (s noRepoIDEventStore) Events() store.EventStore {
+	return noRepoIDEvents{s.Store.Events()}
+}
+
+type noRepoIDEvents struct{ store.EventStore }
+
+func (noRepoIDEvents) Create(ctx context.Context, ev store.Event) (store.Event, error) {
+	ev.RepositoryID = nil
+	return store.Event{}, nil
+}
+
+// TestProcessPullRequestMergedWithoutEventRepoID 守护：合并置位依据本次解析出的仓库 ID，
+// 不得解引用事件行的 RepositoryID 指针——事件行缺少仓库关联时会直接 panic，
+// 让一条正常的 PR 合并 webhook 整个处理失败。
+func TestProcessPullRequestMergedWithoutEventRepoID(t *testing.T) {
+	st := noRepoIDEventStore{Store: openProcessStore(t)}
+	proc := &normalizer.Processor{Store: st}
+	now := time.Now().UTC().Format(time.RFC3339)
+	payload, _ := json.Marshal(map[string]any{
+		"action": "closed",
+		"pull_request": map[string]any{
+			"number":     11,
+			"title":      "feat",
+			"state":      "closed",
+			"merged":     true,
+			"html_url":   "https://github.com/acme/demo/pull/11",
+			"user":       map[string]any{"login": "alice"},
+			"updated_at": now,
+			"labels":     []any{},
+			"assignees":  []any{},
+		},
+		"repository": map[string]any{
+			"id":             99,
+			"name":           "demo",
+			"full_name":      "acme/demo",
+			"private":        false,
+			"html_url":       "https://github.com/acme/demo",
+			"default_branch": "main",
+			"owner":          map[string]any{"login": "acme"},
+		},
+	})
+
+	res, err := proc.Process(t.Context(), "pull_request", "delivery-norepoid", payload)
+	if err != nil {
+		t.Fatalf("事件行缺 repository_id 不应让处理失败: %v", err)
+	}
+	if res.Repository == nil {
+		t.Fatal("应解析出仓库")
+	}
+	item, err := st.WorkItems().GetByRepoNumber(t.Context(), res.Repository.ID, 11)
+	if err != nil {
+		t.Fatalf("查询工作项: %v", err)
+	}
+	if !item.Merged {
+		t.Fatal("合并标记应依据解析出的仓库 ID 落定")
+	}
+}
+
 func TestProcessInstallationCreatedImportsTopLevelRepositories(t *testing.T) {
 	dbURL := "file:" + filepath.Join(t.TempDir(), "install.db")
 	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})

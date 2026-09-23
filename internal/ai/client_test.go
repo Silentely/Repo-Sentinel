@@ -796,6 +796,42 @@ func TestCompleteRetriesExhausted(t *testing.T) {
 	}
 }
 
+// TestCompleteRetriesExhaustedAnnotatesAttempts 守护：重试耗尽的错误必须带上尝试次数，
+// 且错误码分类不受影响——单次失败与连续 N 次失败在告警/降级文案里必须可区分，
+// 排障时才看得出上游是偶发抖动还是持续不可用。
+func TestCompleteRetriesExhaustedAnnotatesAttempts(t *testing.T) {
+	old := retryDelay
+	retryDelay = time.Millisecond
+	t.Cleanup(func() { retryDelay = old })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Retries: 2}
+	_, err := c.Complete(t.Context(), "s", "u")
+	if err == nil {
+		t.Fatal("重试用尽应失败")
+	}
+	if !strings.Contains(err.Error(), "attempts=3") {
+		t.Fatalf("错误文案应带尝试次数，实际: %v", err)
+	}
+	if code, _ := classifyCallError(err); code != "upstream_500" {
+		t.Fatalf("分类应保持 upstream_500，实际 %s", code)
+	}
+
+	// Retries=0：只尝试一次，不附加次数（文案里没有可区分的重试语义）。
+	once := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true}
+	_, err = once.Complete(t.Context(), "s", "u")
+	if err == nil {
+		t.Fatal("5xx 应失败")
+	}
+	if strings.Contains(err.Error(), "attempts=") {
+		t.Fatalf("单次失败不应附加尝试次数，实际: %v", err)
+	}
+}
+
 // TestCompleteRetriesDisabled 验证 Retries=0 不重试（直接构造默认即 0，行为向后兼容）。
 func TestCompleteRetriesDisabled(t *testing.T) {
 	var calls int

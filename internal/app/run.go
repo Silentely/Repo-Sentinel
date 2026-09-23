@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -347,7 +348,9 @@ func ResetAdmin2FA(ctx context.Context, cfg config.Config) (returnedErr error) {
 				return err
 			}
 			now := time.Now().UTC()
-			_, _ = txStore.Audits().Append(ctx, store.AuditLog{
+			// 审计写失败不回滚事务（应急重置 2FA 的意图必须落定），但必须 Warn 留痕：
+			// 静默丢弃会让「谁在何时重置了 2FA」在审计表里凭空消失且无从排查。
+			if _, err := txStore.Audits().Append(ctx, store.AuditLog{
 				ID:           ulid.Make().String(),
 				Action:       "admin.2fa_reset_cli",
 				ActorType:    "cli",
@@ -357,7 +360,13 @@ func ResetAdmin2FA(ctx context.Context, cfg config.Config) (returnedErr error) {
 				MetadataJSON: []byte(`{"reset_2fa":true}`),
 				IPAddress:    "127.0.0.1",
 				CreatedAt:    now,
-			})
+			}); err != nil {
+				slog.Default().Warn("audit log append failed",
+					"error_code", "audit_append_failed",
+					"action", "admin.2fa_reset_cli",
+					"target_id", account.ID,
+					"error", err.Error())
+			}
 		}
 		return nil
 	})

@@ -138,7 +138,7 @@ func (s *server) handleDeleteRepository(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if session, ok := sessionFromContext(r.Context()); ok && s.dependencies.Store != nil {
-		_, _ = s.dependencies.Store.Audits().Append(r.Context(), store.AuditLog{
+		s.appendAudit(r.Context(), store.AuditLog{
 			ID:           ulid.Make().String(),
 			Action:       "repository.delete",
 			ActorType:    "admin",

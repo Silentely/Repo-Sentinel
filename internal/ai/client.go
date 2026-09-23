@@ -539,6 +539,11 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 			return content, nil
 		}
 		if attempt >= maxRetries || !retryableCallError(err) {
+			// 重试耗尽的错误带上尝试次数：单次失败与连续 N 次失败的文案必须可区分，
+			// 否则排障时看不出上游是「偶发」还是「持续不可用」。
+			if attempt > 0 {
+				return "", withAttemptCount(err, attempt+1)
+			}
 			return "", err
 		}
 		// 等待重试间隔；外层预算（由调用方按配置超时派生）到期则放弃，不再发起新尝试。
@@ -554,6 +559,20 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 				"error_code", code, "error", detail, "delay_ms", retryDelay.Milliseconds())
 		}
 	}
+}
+
+// withAttemptCount 在错误文案后追加尝试次数，保留原错误码与 Unwrap 链
+// （分类、errors.Is 判定均不受影响，只是文案更可诊断）。
+func withAttemptCount(err error, attempts int) error {
+	var ce *callError
+	if errors.As(err, &ce) {
+		return &callError{
+			code:   ce.code,
+			status: ce.status,
+			err:    fmt.Errorf("%v (attempts=%d)", ce.err, attempts),
+		}
+	}
+	return fmt.Errorf("%w (attempts=%d)", err, attempts)
 }
 
 // doAttempt 执行单次 Chat Completions 尝试：占用并发槽位、发送请求并解析响应。

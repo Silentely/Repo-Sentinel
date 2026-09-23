@@ -75,4 +75,5 @@ A: 返回 `PublicError` 码 `encryption_key_mismatch`，CLI 只打印安全文�
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-23T00:00:00Z | CLI 应急重置 2FA 的审计写入（`admin.2fa_reset_cli`）失败不再静默丢弃：审计写失败不回滚事务（应急重置的意图必须落定），但补 `slog.Default().Warn` 留痕 `audit_append_failed`，带 action/target_id/error，使「谁在何时重置了 2FA」在审计表缺失时可从日志定位 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

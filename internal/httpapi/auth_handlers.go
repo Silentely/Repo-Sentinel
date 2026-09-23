@@ -444,7 +444,7 @@ func (s *server) handleEnable2FA(w http.ResponseWriter, r *http.Request) {
 		"admin_id", session.AdminID,
 	)
 	if s.dependencies.Store != nil {
-		_, _ = s.dependencies.Store.Audits().Append(r.Context(), store.AuditLog{
+		s.appendAudit(r.Context(), store.AuditLog{
 			ID:           ulid.Make().String(),
 			Action:       "admin.2fa_enabled",
 			ActorType:    "admin",
@@ -493,7 +493,7 @@ func (s *server) handleDisable2FA(w http.ResponseWriter, r *http.Request) {
 		"admin_id", session.AdminID,
 	)
 	if s.dependencies.Store != nil {
-		_, _ = s.dependencies.Store.Audits().Append(r.Context(), store.AuditLog{
+		s.appendAudit(r.Context(), store.AuditLog{
 			ID:           ulid.Make().String(),
 			Action:       "admin.2fa_disabled",
 			ActorType:    "admin",

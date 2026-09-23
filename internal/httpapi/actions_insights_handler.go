@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"math"
 	"net/http"
 	"sort"
@@ -35,12 +36,9 @@ type ActionsInsightsResponse struct {
 func (s *server) handleActionsInsights(w http.ResponseWriter, r *http.Request) {
 	repoID := strings.TrimSpace(r.URL.Query().Get("repository_id"))
 
-	// 查询最近 300 条运行数据进行分析
-	runs, _, err := s.dependencies.Store.WorkflowRuns().List(r.Context(), store.ListFilter{
-		Page:         1,
-		PerPage:      100, // list filter per_page 上限 100
-		RepositoryID: repoID,
-	})
+	// 分析窗口取最近 actionsInsightsSampleSize 条运行：成功率/耗时分位数/失败 Top 都依赖样本量，
+	// 窗口过小会让高频仓库的统计只剩几个小时、噪声掩盖真实趋势。
+	runs, err := s.listRecentWorkflowRuns(r.Context(), repoID)
 	if err != nil {
 		s.writeMappedError(w, r, err)
 		return
@@ -48,6 +46,33 @@ func (s *server) handleActionsInsights(w http.ResponseWriter, r *http.Request) {
 
 	resp := calculateActionsInsights(runs)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// actionsInsightsSampleSize 效能洞察分析的运行样本量（窗口大小）。
+// 列表接口 per_page 上限 100，故按页拉取到样本量为止。
+const actionsInsightsSampleSize = 300
+
+// listRecentWorkflowRuns 按页拉取最近若干条运行；末页不足一页即提前收尾（不做多余查询）。
+func (s *server) listRecentWorkflowRuns(ctx context.Context, repoID string) ([]store.WorkflowRun, error) {
+	var all []store.WorkflowRun
+	for page := 1; len(all) < actionsInsightsSampleSize; page++ {
+		batch, _, err := s.dependencies.Store.WorkflowRuns().List(ctx, store.ListFilter{
+			Page:         page,
+			PerPage:      100, // list filter per_page 上限 100
+			RepositoryID: repoID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, batch...)
+		if len(batch) < 100 {
+			break
+		}
+	}
+	if len(all) > actionsInsightsSampleSize {
+		all = all[:actionsInsightsSampleSize]
+	}
+	return all, nil
 }
 
 func calculateActionsInsights(runs []store.WorkflowRun) ActionsInsightsResponse {

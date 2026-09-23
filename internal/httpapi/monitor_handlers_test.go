@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -521,6 +522,68 @@ type failingChannelStore struct {
 
 func (f failingChannelStore) GetEnabledByType(context.Context, string) (store.NotificationChannel, error) {
 	return store.NotificationChannel{}, f.err
+}
+
+// failingAuditStore 仅让审计写入失败，其余方法透传真实实现。
+type failingAuditStore struct {
+	store.AuditStore
+	err error
+}
+
+func (a failingAuditStore) Append(context.Context, store.AuditLog) (store.AuditLog, error) {
+	return store.AuditLog{}, a.err
+}
+
+type failingAuditWrapper struct {
+	store.Store
+	err error
+}
+
+func (w failingAuditWrapper) Audits() store.AuditStore {
+	return failingAuditStore{AuditStore: w.Store.Audits(), err: w.err}
+}
+
+// TestDeleteRepository审计写入失败仍完成删除并留痕 审计写入失败不得影响主流程结论
+// （仓库已删除，事务外再回滚只会把数据留在中间态），但也绝不能静默丢弃：
+// 否则「谁在何时删了哪个仓库」在审计表里凭空消失且线上无从排查。
+func TestDeleteRepository审计写入失败仍完成删除并留痕(t *testing.T) {
+	logBuffer := &lockedBuffer{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		logger: slog.New(slog.NewJSONHandler(logBuffer, nil)),
+		decorateStore: func(inner store.Store) store.Store {
+			return failingAuditWrapper{Store: inner, err: errors.New("fixture: 注入的审计存储故障")}
+		},
+	})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	if _, err := fixture.store.Repositories().Upsert(t.Context(), store.Repository{
+		ID: "repo-audit-fail-1", Type: store.RepositoryTypeInstallation,
+		Owner: "acme", Name: "audited", FullName: "acme/audited",
+	}); err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+
+	resp := fixture.request(t, http.MethodDelete, "/api/v1/repositories/repo-audit-fail-1",
+		"", "127.0.0.1:45201", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if resp.Code != http.StatusOK {
+		t.Fatalf("审计写入失败不应影响删除结果，status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	if _, err := fixture.store.Repositories().Get(t.Context(), "repo-audit-fail-1"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("仓库应已被删除，Get err=%v", err)
+	}
+
+	logs := logBuffer.String()
+	for _, want := range []string{
+		`"msg":"audit log append failed"`,
+		`"error_code":"audit_append_failed"`,
+		`"action":"repository.delete"`,
+		`"target_id":"repo-audit-fail-1"`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("审计写入失败必须 Warn 留痕且包含 %s，实际: %s", want, logs)
+		}
+	}
 }
 
 func Test渠道Upsert在渠道存储故障时返回500而非静默创建(t *testing.T) {
