@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RefreshCw, Eye } from "lucide-react";
 
@@ -8,6 +8,7 @@ import { QueryGate } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
 import { toApiError } from "../../lib/api/errors";
 import { useAutoDismiss } from "../../lib/use-auto-dismiss";
+import { useModalLayer } from "../../lib/use-modal-layer";
 import { useUrlState } from "../../lib/use-url-state";
 import { webhookStatusLabel } from "../../lib/format";
 import {
@@ -67,15 +68,12 @@ export function WebhookDeliveriesPage() {
   const total = listQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && selectedId) {
-        setSelectedId(null);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedId]);
+  // Inspector 模态层生命周期（背景滚动锁/Escape/焦点循环/焦点归还）统一由 useModalLayer 承担，
+  // 与确认对话框、投递详情抽屉同一实现；替代原先手写的 Escape 监听（缺滚动锁与焦点管理）。
+  const inspectorRef = useModalLayer<HTMLDivElement>({
+    open: selectedId !== null,
+    onClose: () => setSelectedId(null),
+  });
 
   return (
     <>
@@ -257,6 +255,8 @@ export function WebhookDeliveriesPage() {
           onClick={() => setSelectedId(null)}
         >
           <div
+            ref={inspectorRef}
+            tabIndex={-1}
             style={{
               backgroundColor: "var(--color-surface, #fff)",
               borderRadius: "8px",

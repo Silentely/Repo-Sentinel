@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 
-import { ErrorAlert } from "../../components/error-alert";
-import { toApiError } from "../../lib/api/errors";
+import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
+import { ApiError, toApiError } from "../../lib/api/errors";
 import {
   disable2FA,
   enable2FA,
@@ -41,11 +41,18 @@ export function TwoFactorCard() {
   });
 
   const enableMutation = useMutation({
-    mutationFn: () =>
-      enable2FA({
-        secret: setupData!.secret,
-        passcode: verifyCode.trim(),
-      }),
+    mutationFn: async () => {
+      // 密钥非空由下方「第 1 步」区块的渲染条件保证；显式兜底而非非空断言，
+      // 状态被重置（开启成功后清空、重复提交）时给出可读错误而不是空指针崩溃。
+      if (!setupData) {
+        throw new ApiError({
+          status: 0,
+          errorCode: "two_factor_setup_missing",
+          message: "两步验证密钥已失效，请重新配置。",
+        });
+      }
+      return enable2FA({ secret: setupData.secret, passcode: verifyCode.trim() });
+    },
     onSuccess: () => {
       setActionMsg("二步验证已成功开启！下次登录时将需要动态验证码。");
       setActionError(null);
@@ -94,7 +101,13 @@ export function TwoFactorCard() {
           <Shield size={20} />
           <span>两步验证 (2FA / TOTP)</span>
         </h2>
-        {isEnabled ? (
+        {statusQuery.isError ? (
+          // 状态读取失败时不得显示「未开启」：那会让管理员误判账号未受保护并重复配置。
+          <span className="badge badge--neutral" style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+            <ShieldAlert size={14} />
+            状态未知
+          </span>
+        ) : isEnabled ? (
           <span className="badge badge--success" style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
             <ShieldCheck size={14} />
             已开启
@@ -111,153 +124,160 @@ export function TwoFactorCard() {
         基于 RFC 6238 标准的 TOTP 动态口令保护。开启后，登录时不仅需要密码，还需提供验证器 App（如 Google Authenticator、1Password、Bitwarden）生成的 6 位实时验证码。
       </p>
 
-      {actionMsg ? <p className="success-banner" role="status">{actionMsg}</p> : null}
-      {actionError ? <ErrorAlert title="操作失败" message={actionError} /> : null}
+      {statusQuery.isError ? (
+        <ApiErrorAlert error={statusQuery.error} title="无法读取两步验证状态" />
+      ) : (
+        <>
+        {actionMsg ? <p className="success-banner" role="status">{actionMsg}</p> : null}
+        {actionError ? <ErrorAlert title="操作失败" message={actionError} /> : null}
 
-      {!isEnabled && !setupData && (
-        <div>
-          <button
-            className="primary-button primary-button--inline"
-            type="button"
-            disabled={setupMutation.isPending}
-            onClick={() => setupMutation.mutate()}
-          >
-            {setupMutation.isPending ? "正在生成密钥…" : "配置并开启两步验证"}
-          </button>
-        </div>
-      )}
-
-      {!isEnabled && setupData && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "0.5rem", padding: "1rem", background: "var(--surface-sunken, rgba(0,0,0,0.03))", borderRadius: "8px" }}>
-          <h3 style={{ fontSize: "1rem", fontWeight: 600 }}>第 1 步：在验证器中绑定密钥</h3>
-          <p className="field-hint" style={{ margin: 0 }}>
-            在身份验证器应用中选择「手动添加账号」，并输入以下密钥；或者在支持协议的应用中点击快捷导入：
-          </p>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <code style={{ fontSize: "1.1rem", letterSpacing: "2px", fontWeight: "bold", padding: "0.3rem 0.6rem", background: "var(--surface-raised, #fff)", borderRadius: "4px", border: "1px solid var(--border-subtle, #ddd)" }}>
-              {setupData.secret}
-            </code>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={copySecret}
-              title="复制密钥"
-              style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
-            >
-              {copied ? <Check size={16} /> : <Copy size={16} />}
-              {copied ? "已复制" : "复制"}
-            </button>
-            <a
-              href={setupData.otpauth_url}
-              className="ghost-button"
-              style={{ display: "inline-flex", alignItems: "center" }}
-            >
-              应用快速唤起绑定
-            </a>
-          </div>
-
-          <h3 style={{ fontSize: "1rem", fontWeight: 600, marginTop: "0.5rem" }}>第 2 步：输入 6 位动态验证码完成激活</h3>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <input
-              size={12}
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              placeholder="000000"
-              style={{ letterSpacing: "0.2em", textAlign: "center", fontWeight: 600, fontSize: "1.1rem" }}
-              value={verifyCode}
-              onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && verifyCode.trim().length === 6 && !enableMutation.isPending) {
-                  e.preventDefault();
-                  enableMutation.mutate();
-                }
-              }}
-            />
+        {!isEnabled && !setupData && (
+          <div>
             <button
               className="primary-button primary-button--inline"
               type="button"
-              disabled={enableMutation.isPending || verifyCode.trim().length !== 6}
-              onClick={() => enableMutation.mutate()}
+              disabled={setupMutation.isPending}
+              onClick={() => setupMutation.mutate()}
             >
-              {enableMutation.isPending ? "正在校验…" : "确认并开启"}
+              {setupMutation.isPending ? "正在生成密钥…" : "配置并开启两步验证"}
             </button>
+          </div>
+        )}
+
+        {!isEnabled && setupData && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "0.5rem", padding: "1rem", background: "var(--surface-sunken, rgba(0,0,0,0.03))", borderRadius: "8px" }}>
+            <h3 style={{ fontSize: "1rem", fontWeight: 600 }}>第 1 步：在验证器中绑定密钥</h3>
+            <p className="field-hint" style={{ margin: 0 }}>
+              在身份验证器应用中选择「手动添加账号」，并输入以下密钥；或者在支持协议的应用中点击快捷导入：
+            </p>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <code style={{ fontSize: "1.1rem", letterSpacing: "2px", fontWeight: "bold", padding: "0.3rem 0.6rem", background: "var(--surface-raised, #fff)", borderRadius: "4px", border: "1px solid var(--border-subtle, #ddd)" }}>
+                {setupData.secret}
+              </code>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={copySecret}
+                title="复制密钥"
+                style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+              >
+                {copied ? <Check size={16} /> : <Copy size={16} />}
+                {copied ? "已复制" : "复制"}
+              </button>
+              <a
+                href={setupData.otpauth_url}
+                className="ghost-button"
+                style={{ display: "inline-flex", alignItems: "center" }}
+              >
+                应用快速唤起绑定
+              </a>
+            </div>
+
+            <h3 style={{ fontSize: "1rem", fontWeight: 600, marginTop: "0.5rem" }}>第 2 步：输入 6 位动态验证码完成激活</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              <input
+                size={12}
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="000000"
+                style={{ letterSpacing: "0.2em", textAlign: "center", fontWeight: 600, fontSize: "1.1rem" }}
+                value={verifyCode}
+                onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && verifyCode.trim().length === 6 && !enableMutation.isPending) {
+                    e.preventDefault();
+                    enableMutation.mutate();
+                  }
+                }}
+              />
+              <button
+                className="primary-button primary-button--inline"
+                type="button"
+                disabled={enableMutation.isPending || verifyCode.trim().length !== 6}
+                onClick={() => enableMutation.mutate()}
+              >
+                {enableMutation.isPending ? "正在校验…" : "确认并开启"}
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => {
+                  setSetupData(null);
+                  setVerifyCode("");
+                  setActionError(null);
+                }}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isEnabled && !isDisabling && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <p className="field-hint" style={{ margin: 0 }}>
+              若丢失验证器无法登录，可在服务器上运行 <code>reposentinel admin reset-2fa</code> 应急重置。
+            </p>
             <button
+              className="ghost-button danger-button--ghost"
               type="button"
-              className="ghost-button"
               onClick={() => {
-                setSetupData(null);
-                setVerifyCode("");
+                setIsDisabling(true);
                 setActionError(null);
               }}
             >
-              取消
+              关闭两步验证
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {isEnabled && !isDisabling && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <p className="field-hint" style={{ margin: 0 }}>
-            若丢失验证器无法登录，可在服务器上运行 <code>reposentinel admin reset-2fa</code> 应急重置。
-          </p>
-          <button
-            className="ghost-button danger-button--ghost"
-            type="button"
-            onClick={() => {
-              setIsDisabling(true);
-              setActionError(null);
-            }}
-          >
-            关闭两步验证
-          </button>
-        </div>
-      )}
-
-      {isEnabled && isDisabling && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "1rem", background: "var(--surface-sunken, rgba(0,0,0,0.03))", borderRadius: "8px" }}>
-          <p style={{ margin: 0, fontWeight: 500 }}>
-            关闭两步验证需核验当前管理员密码：
-          </p>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <input
-              size={24}
-              type="password"
-              placeholder="请输入当前管理员密码"
-              value={disablePassword}
-              onChange={(e) => setDisablePassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && disablePassword.trim() && !disableMutation.isPending) {
-                  e.preventDefault();
-                  disableMutation.mutate();
-                }
-              }}
-            />
-            <button
-              className="primary-button primary-button--inline"
-              type="button"
-              disabled={disableMutation.isPending || !disablePassword.trim()}
-              onClick={() => disableMutation.mutate()}
-            >
-              {disableMutation.isPending ? "正在关闭…" : "确认关闭"}
-            </button>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => {
-                setIsDisabling(false);
-                setDisablePassword("");
-                setActionError(null);
-              }}
-            >
-              取消
-            </button>
+        {isEnabled && isDisabling && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "1rem", background: "var(--surface-sunken, rgba(0,0,0,0.03))", borderRadius: "8px" }}>
+            <p style={{ margin: 0, fontWeight: 500 }}>
+              关闭两步验证需核验当前管理员密码：
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              <input
+                size={24}
+                type="password"
+                placeholder="请输入当前管理员密码"
+                value={disablePassword}
+                onChange={(e) => setDisablePassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && disablePassword.trim() && !disableMutation.isPending) {
+                    e.preventDefault();
+                    disableMutation.mutate();
+                  }
+                }}
+              />
+              <button
+                className="primary-button primary-button--inline"
+                type="button"
+                disabled={disableMutation.isPending || !disablePassword.trim()}
+                onClick={() => disableMutation.mutate()}
+              >
+                {disableMutation.isPending ? "正在关闭…" : "确认关闭"}
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => {
+                  setIsDisabling(false);
+                  setDisablePassword("");
+                  setActionError(null);
+                }}
+              >
+                取消
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+        </>
       )}
     </section>
   );
 }
+

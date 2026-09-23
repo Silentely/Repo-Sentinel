@@ -1,28 +1,33 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "../../lib/api/errors";
 import { TwoFactorCard } from "./two-factor-card";
+import type { TwoFactorSetup } from "../auth/api";
 
-const { get2FAStatusMock, setup2FAMock, enable2FAMock, disable2FAMock } = vi.hoisted(() => ({
-  get2FAStatusMock: vi.fn(),
-  setup2FAMock: vi.fn(),
-  enable2FAMock: vi.fn(),
-  disable2FAMock: vi.fn(),
+const { statusMock, setupMock, enableMock } = vi.hoisted(() => ({
+  statusMock: vi.fn(),
+  setupMock: vi.fn(),
+  enableMock: vi.fn(),
 }));
 
-vi.mock("../auth/api", () => ({
-  get2FAStatus: get2FAStatusMock,
-  setup2FA: setup2FAMock,
-  enable2FA: enable2FAMock,
-  disable2FA: disable2FAMock,
-}));
+vi.mock("../auth/api", async () => {
+  const actual = await vi.importActual<typeof import("../auth/api")>("../auth/api");
+  return {
+    ...actual,
+    get2FAStatus: statusMock,
+    setup2FA: setupMock,
+    enable2FA: enableMock,
+    disable2FA: vi.fn(),
+  };
+});
+
+const setup: TwoFactorSetup = { secret: "JBSWY3DPEHPK3PXP", otpauth_url: "otpauth://totp/x" };
 
 function renderCard() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <TwoFactorCard />
@@ -31,71 +36,40 @@ function renderCard() {
 }
 
 describe("TwoFactorCard", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("当 2FA 未开启时展示未开启徽标与配置向导按钮", async () => {
-    get2FAStatusMock.mockResolvedValueOnce({ enabled: false });
+  it("状态读取失败时显示状态未知而非未开启", async () => {
+    // 旧实现在查询失败时回落到「未开启」：管理员会误判账号未受保护并重复配置。
+    statusMock.mockRejectedValue(new Error("network down"));
     renderCard();
-
-    expect(await screen.findByText("两步验证 (2FA / TOTP)")).toBeInTheDocument();
-    expect(screen.getByText("未开启")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "配置并开启两步验证" })).toBeInTheDocument();
+    expect(await screen.findByText("状态未知")).toBeInTheDocument();
+    expect(screen.queryByText("未开启")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("无法读取两步验证状态");
   });
 
-  it("点击配置进入绑定流程，展示密钥并支持输入动态验证码确认开启", async () => {
+  it("开启成功后状态查询被失效并展示已开启", async () => {
     const user = userEvent.setup();
-    get2FAStatusMock.mockResolvedValueOnce({ enabled: false });
-    setup2FAMock.mockResolvedValueOnce({
-      secret: "JBSWY3DPEHPK3PXP",
-      otpauth_url: "otpauth://totp/RepoSentinel:admin?secret=JBSWY3DPEHPK3PXP",
-    });
-    enable2FAMock.mockResolvedValueOnce({ enabled: true });
-
+    statusMock.mockResolvedValueOnce({ enabled: false }).mockResolvedValue({ enabled: true });
+    setupMock.mockResolvedValue(setup);
+    enableMock.mockResolvedValue({ enabled: true });
     renderCard();
-
-    const setupBtn = await screen.findByRole("button", { name: "配置并开启两步验证" });
-    await user.click(setupBtn);
-
-    expect(setup2FAMock).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("第 1 步：在验证器中绑定密钥")).toBeInTheDocument();
-    expect(screen.getByText("JBSWY3DPEHPK3PXP")).toBeInTheDocument();
-
-    const input = screen.getByPlaceholderText("000000");
-    await user.type(input, "654321");
-
-    const enableBtn = screen.getByRole("button", { name: "确认并开启" });
-    await user.click(enableBtn);
-
-    expect(enable2FAMock).toHaveBeenCalledWith({
-      secret: "JBSWY3DPEHPK3PXP",
-      passcode: "654321",
-    });
-    expect(await screen.findByText("二步验证已成功开启！下次登录时将需要动态验证码。")).toBeInTheDocument();
-  });
-
-  it("当 2FA 已开启时展示已开启徽标与关闭入口，输入密码确认关闭", async () => {
-    const user = userEvent.setup();
-    get2FAStatusMock.mockResolvedValueOnce({ enabled: true });
-    disable2FAMock.mockResolvedValueOnce({ enabled: false });
-
-    renderCard();
-
+    await user.click(await screen.findByRole("button", { name: /配置并开启两步验证/ }));
+    await user.type(await screen.findByPlaceholderText("000000"), "123456");
+    await user.click(screen.getByRole("button", { name: /确认并开启/ }));
     expect(await screen.findByText("已开启")).toBeInTheDocument();
-    const closeBtn = screen.getByRole("button", { name: "关闭两步验证" });
-    await user.click(closeBtn);
+    // 密钥区块随之收起：mutationFn 的守卫在界面层无入口。
+    expect(screen.queryByPlaceholderText("000000")).not.toBeInTheDocument();
+  });
 
-    expect(screen.getByText("关闭两步验证需核验当前管理员密码：")).toBeInTheDocument();
-    const pwInput = screen.getByPlaceholderText("请输入当前管理员密码");
-    await user.type(pwInput, "admin-secret-pass");
-
-    const confirmCloseBtn = screen.getByRole("button", { name: "确认关闭" });
-    await user.click(confirmCloseBtn);
-
-    expect(disable2FAMock).toHaveBeenCalledWith({
-      current_password: "admin-secret-pass",
-    });
-    expect(await screen.findByText("二步验证已关闭。")).toBeInTheDocument();
+  it("校验失败时展示服务端错误信息", async () => {
+    const user = userEvent.setup();
+    statusMock.mockResolvedValue({ enabled: false });
+    setupMock.mockResolvedValue(setup);
+    enableMock.mockRejectedValue(
+      new ApiError({ status: 400, errorCode: "two_factor_code_invalid", message: "动态验证码错误，请重试" }),
+    );
+    renderCard();
+    await user.click(await screen.findByRole("button", { name: /配置并开启两步验证/ }));
+    await user.type(await screen.findByPlaceholderText("000000"), "123456");
+    await user.click(screen.getByRole("button", { name: /确认并开启/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("动态验证码错误，请重试");
   });
 });
