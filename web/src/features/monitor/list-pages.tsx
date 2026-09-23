@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
@@ -247,13 +247,26 @@ function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string
   return parts.filter(Boolean).join("\n");
 }
 
-function AIReviewCard({ workItemId, item }: { workItemId: string; item?: WorkItem }) {
+// 列表重渲染（切换忽略忙碌态、筛选、分页）不应牵连所有审查卡片：props 未变的卡片跳过渲染。
+export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { workItemId: string; item?: WorkItem }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [triggering, setTriggering] = useState(false);
   const [copied, setCopied] = useState(false);
   const [review, setReview] = useState<CodeReviewResult | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  // 审查轮询循环在组件卸载后立即停止：卸载不会取消进行中的 async 函数，
+  // 无此守卫会按 2s 节奏拉取审查结果到 90s 上限，并对已卸载组件写状态。
+  const mountedRef = useRef(true);
+  // 复制成功提示的复位定时器：卸载或再次复制时清除，避免悬挂定时器在卸载后写状态。
+  const copiedTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (copiedTimerRef.current !== undefined) window.clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   const toggle = async () => {
     if (!open && review === undefined) {
@@ -285,6 +298,7 @@ function AIReviewCard({ workItemId, item }: { workItemId: string; item?: WorkIte
       const pollDeadlineMs = 90_000;
       for (let waited = 0; waited <= pollDeadlineMs; waited += pollIntervalMs) {
         await new Promise((resolve) => setTimeout(resolve, waited === 0 ? 1000 : pollIntervalMs));
+        if (!mountedRef.current) return;
         const latest = await fetchWorkItemAIReview(workItemId);
         if (latest && latest.head_sha === receipt.head_sha && Date.parse(latest.reviewed_at) > prevReviewedAt) {
           setReview(latest);
@@ -305,7 +319,11 @@ function AIReviewCard({ workItemId, item }: { workItemId: string; item?: WorkIte
     try {
       await navigator.clipboard.writeText(formatReviewMarkdown(review, item));
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copiedTimerRef.current !== undefined) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = undefined;
+        setCopied(false);
+      }, 2000);
     } catch {
       // 剪贴板异常降级
     }
@@ -537,7 +555,7 @@ function AIReviewCard({ workItemId, item }: { workItemId: string; item?: WorkIte
       )}
     </div>
   );
-}
+});
 
 function WorkItemsList({ kind, title, description }: { kind: string; title: string; description: string }) {
   const { active: activeRepos } = useActiveRepos();
