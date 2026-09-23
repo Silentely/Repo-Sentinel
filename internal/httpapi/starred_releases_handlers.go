@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/go-chi/chi/v5"
@@ -104,7 +105,14 @@ func (s *server) handlePutStarredReleasesConfig(w http.ResponseWriter, r *http.R
 	}
 	usernameChanged := false
 	if body.Username != nil {
-		if err := upsert(syncx.SettingStarredUsername, normalizeUsername(*body.Username)); err != nil {
+		username := normalizeUsername(*body.Username)
+		if !githubx.ValidGitHubUsername(username) {
+			// 非法用户名（含 "/"、空格、超长）会拼出错误 API 路径，star 同步每轮失败但
+			// 用户侧无反馈；在写入边界直接拒绝。
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "username"})
+			return
+		}
+		if err := upsert(syncx.SettingStarredUsername, username); err != nil {
 			s.writeMappedError(w, r, err)
 			return
 		}

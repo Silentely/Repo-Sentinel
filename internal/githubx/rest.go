@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -420,6 +421,16 @@ func (c *PublicClient) appClient() *AppClient {
 	}
 }
 
+// gitHubUsernameRe 约束 GitHub 用户名字符集：1-39 位字母/数字/连字符，且不以连字符起止。
+// 该值直接进入 API 路径，含 "/"、空格或控制字符的用户名会拼出错误路径（404）或让
+// 请求构造失败，而管理台侧看不到任何反馈。
+var gitHubUsernameRe = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`)
+
+// ValidGitHubUsername 判断是否为可安全用于 API 路径的 GitHub 用户名。
+func ValidGitHubUsername(username string) bool {
+	return gitHubUsernameRe.MatchString(username)
+}
+
 // ListUserStarred 拉取用户公开 star 单页（per_page=100）。
 // 返回 link（Link 响应头）供翻页：是否还有下一页须以 rel="next" 是否存在为准
 // （末页仍可能带 rel="prev"/"first"），不能以头是否非空判断。
@@ -427,7 +438,9 @@ func (c *PublicClient) ListUserStarred(ctx context.Context, username string, pag
 	if page <= 0 {
 		page = 1
 	}
-	path := fmt.Sprintf("/users/%s/starred?per_page=100&page=%d", username, page)
+	// 用户名来自管理台配置，写入侧已校验字符集；此处再转义，避免历史脏值或其他写入
+	// 路径漏校验时把 "/"、空格拼进路径造成路径注入或请求构造失败。
+	path := fmt.Sprintf("/users/%s/starred?per_page=100&page=%d", url.PathEscape(username), page)
 	var items []StarredRepoItem
 	remaining, link, err := c.appClient().DoJSONPage(ctx, "GET", path, c.PAT, &items)
 	return items, link, remaining, err

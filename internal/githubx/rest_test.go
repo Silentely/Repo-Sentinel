@@ -262,3 +262,42 @@ func TestListWorkflowJobs(t *testing.T) {
 		t.Fatalf("unexpected steps: %+v", jobs[0].Steps)
 	}
 }
+
+// TestValidGitHubUsername 验证 GitHub 用户名字符集校验：含 "/"、空格、控制字符、
+// 超长、以连字符起止的值必须拒绝（它们会拼出错误 API 路径且用户侧无反馈）。
+func TestValidGitHubUsername(t *testing.T) {
+	valid := []string{"a", "octocat", "Ab-1", "a-b-c", "012345678901234567890123456789012345678"}
+	for _, v := range valid {
+		if !ValidGitHubUsername(v) {
+			t.Fatalf("%q 应判为合法", v)
+		}
+	}
+	invalid := []string{"", "octo cat", "octo/cat", "octo cat/../x", "-octocat", "octocat-", "octo@cat", "octo.cat",
+		"0123456789012345678901234567890123456789", "octocat\n", " octocat", "octocat ", "octo:cat", "café"}
+	for _, v := range invalid {
+		if ValidGitHubUsername(v) {
+			t.Fatalf("%q 应判为非法", v)
+		}
+	}
+}
+
+// TestListUserStarredEscapesUsername 验证用户名进入路径前被转义：含 "/" 的脏值
+// 不再拼出越界路径（/users/a/b/starred），而是作为单一路径段转义后请求。
+func TestListUserStarredEscapesUsername(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// EscapedPath 才是线上真实发出的路径（URL.Path 已被解码）。
+		gotPath = r.URL.EscapedPath()
+		w.Header().Set("X-RateLimit-Remaining", "59")
+		w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	p := &PublicClient{HTTP: srv.Client(), BaseURL: srv.URL}
+
+	if _, _, _, err := p.ListUserStarred(context.Background(), "../evil", 1); err != nil {
+		t.Fatalf("ListUserStarred: %v", err)
+	}
+	if gotPath != "/users/..%2Fevil/starred" {
+		t.Fatalf("path = %q, 用户名应被转义为单一路径段", gotPath)
+	}
+}

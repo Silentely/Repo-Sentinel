@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,6 +65,24 @@ func TestStarredReleasesConfigAPI(t *testing.T) {
 	putBad := fixture.request(t, http.MethodPut, "/api/v1/starred-releases/config",
 		`{"release_poll_interval":"25h"}`, "127.0.0.1:45005", cookies, map[string]string{CSRFHeaderName: csrf.Value})
 	assertAPIError(t, putBad, http.StatusBadRequest, "validation_failed")
+
+	// 非法用户名字符集拒绝：否则会拼出错误 API 路径，star 同步每轮失败且用户侧无反馈。
+	for i, bad := range []string{`"octo cat"`, `"octo/cat"`, `"-octocat"`, `"octocat-"`, `""`} {
+		rejected := fixture.request(t, http.MethodPut, "/api/v1/starred-releases/config",
+			`{"username":`+bad+`}`, "127.0.0.1:45006", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+		assertAPIError(t, rejected, http.StatusBadRequest, "validation_failed")
+		if !strings.Contains(rejected.Body.String(), `"field":"username"`) {
+			t.Fatalf("第 %d 个非法用户名应指明 field=username: %s", i, rejected.Body.String())
+		}
+	}
+	// 拒绝后已保存的合法用户名不被覆盖。
+	getAfterBad := fixture.request(t, http.MethodGet, "/api/v1/starred-releases/config", "", "127.0.0.1:45007", cookies, nil)
+	if err := json.Unmarshal(getAfterBad.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Username != "octocat" {
+		t.Fatalf("非法用户名不应覆盖已保存值: %+v", view)
+	}
 }
 
 // TestStarredReleasesConfigLastSyncAt缺省 覆盖配置视图的 last_star_sync_at：

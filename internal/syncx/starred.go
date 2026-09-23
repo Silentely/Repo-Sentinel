@@ -210,6 +210,14 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 		p.debug("star sync skipped", "reason", "username_not_set")
 		return nil
 	}
+	if !githubx.ValidGitHubUsername(username) {
+		// 非法用户名（写入侧已校验，此处兜底历史脏值）：同样推进记账避免空转，
+		// 但 Warn 留痕指明根因，运维据此去配置页修正。
+		p.lastStarSync = now
+		p.warn("star sync skipped", "reason", "invalid_username",
+			"error_code", "star_sync_invalid_username", "username", username)
+		return nil
+	}
 	client := p.Public
 	if client == nil {
 		client = &githubx.PublicClient{}

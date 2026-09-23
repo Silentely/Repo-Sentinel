@@ -102,6 +102,7 @@ A: `reconcileAllRunning` atomic 防重入。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-23T00:00:00Z | star 同步用户名收敛写入与消费两侧边界：管理台 `PUT /api/v1/starred-releases/config` 对归一化后的用户名按 GitHub 字符集校验（`githubx.ValidGitHubUsername`，1-39 位字母/数字/连字符且不以连字符起止），非法值返回 400 `validation_failed` 并指明 `field=username`（此前含 `/`、空格的值会拼出错误 API 路径，star 同步每轮失败而用户侧无反馈）；`ListUserStarred` 路径构造改 `url.PathEscape` 兜底转义（历史脏值或其他写入路径漏校验时不再构成路径注入）；`syncStarsLocked` 对非法用户名跳过本轮、推进记账并 Warn 留痕 `star_sync_invalid_username`（与未配置同样避免每 1m 节拍空转）；补用户名字符集表驱动测试、含 `/` 用户名的线上转义路径断言、处理器 400 拒绝不覆盖已存合法值、轮询端跳过留痕四条回归 |
 | 2026-09-20T00:00:00Z | 管理面健壮性：①`/metrics` 未授权访问日志按来源 IP 采样输出（扫描类流量不再逐条打爆访问日志，正常访问仍逐条留痕）；②发件箱列表的渠道类型→名称映射改懒加载，无 `channel_type` 筛选且结果为空时不再无谓查渠道；③启用 2FA 端点（`handleEnable2FA`）把会话校验前置于落库：无法定位会话时直接 401，避免 TOTP 配置已写入却因缺 admin_id 写不出审计条目（与 `handleDisable2FA` 同一模式）；④AI 配置的 Base URL 校验仅拦截云元数据域名（`metadata.google.internal` / `metadata`），内网自建网关不再被 `.internal` 后缀误拦，IP 级防护由 `validAIBaseURL` 与 `safeAIDialContext` 拨号层双重兜底 |
 | 2026-09-20T00:00:00Z | starred-releases 配置 API 响应新增 `last_star_sync_at`（最近一次完整 star 同步落定时刻，未同步为空）：「立即同步」异步执行，前端据此等待同步落定后再刷新追踪列表；`POST /api/v1/starred-releases/sync` 行为不变 |
 | 2026-09-16T00:00:00Z | 新增 PR 审查获取/触发端点 /api/v1/work-items/{id}/ai-review（异步入队 202 回执，错误按类别映射 404/400/503/409）与对应 MCP 审查工具；MCP 新增 trigger_reconciliation、retry_failed_outbox、replay_webhook_delivery 运维写工具；httpapi.New 支持外部注入 WebhookService 统一生命周期管理 |

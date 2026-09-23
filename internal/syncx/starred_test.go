@@ -1,6 +1,7 @@
 package syncx
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -8,6 +9,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -920,5 +922,33 @@ func TestStarredSyncStars_映射加载失败中止(t *testing.T) {
 	}
 	if tk.State != store.TrackerStateDisabled || tk.LastReleaseID != 42 || tk.ETag != "e1" {
 		t.Fatalf("映射加载失败中止不应改写存量追踪状态: %+v", tk)
+	}
+}
+
+// TestStarredSyncStars_非法用户名跳过并留痕 验证写入侧漏校验的历史脏值不会每轮
+// 拼出错误 API 路径空转：轮询端直接跳过本轮、推进记账，并 Warn 指明根因。
+func TestStarredSyncStars_非法用户名跳过并留痕(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {
+		env.starred[1] = []map[string]any{{"full_name": "octocat/Hello-World", "fork": false, "archived": false}}
+	})
+	var buf bytes.Buffer
+	env.poller.Logger = slog.New(slog.NewJSONHandler(&buf, nil))
+	if _, err := env.data.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID: ulid.Make().String(), Key: SettingStarredUsername, ValueJSON: json.RawMessage(`"octo/cat"`),
+		UpdatedAt: time.Now().UTC(), UpdatedBy: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.poller.SyncStarsNow(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.data.StarredTrackers().GetByFullName(t.Context(), "octocat/Hello-World"); err != store.ErrNotFound {
+		t.Fatalf("非法用户名不应注册任何追踪: %v", err)
+	}
+	if env.poller.LastStarSyncAt().IsZero() {
+		t.Fatal("确定性跳过后应推进记账，避免每节拍空转")
+	}
+	if !strings.Contains(buf.String(), "star_sync_invalid_username") {
+		t.Fatalf("应 Warn 留痕指明非法用户名: %s", buf.String())
 	}
 }
