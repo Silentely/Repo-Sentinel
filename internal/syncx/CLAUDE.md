@@ -60,6 +60,7 @@ A: `app.Build` 设 `MaxPages: 3`，限制单次对账 API 消耗。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-23T00:00:00Z | 归档收口重复实现收敛为 `collapseArchived`（`archived.go`）：对账 `ReconcileAll` 与外部轮询 `PollAll` 两条路径各自的 `UpdateSettings{IsArchived}` + `repo_state_update_failed` Warn 合并为单一辅助函数（`store`/`logger`/日志文案作参数），行为与日志内容不变 |
 | 2026-09-23T00:00:00Z | star 同步用户名收敛写入与消费两侧边界：管理台 `PUT /api/v1/starred-releases/config` 对归一化后的用户名按 GitHub 字符集校验（`githubx.ValidGitHubUsername`，1-39 位字母/数字/连字符且不以连字符起止），非法值返回 400 `validation_failed` 并指明 `field=username`（此前含 `/`、空格的值会拼出错误 API 路径，star 同步每轮失败而用户侧无反馈）；`ListUserStarred` 路径构造改 `url.PathEscape` 兜底转义（历史脏值或其他写入路径漏校验时不再构成路径注入）；`syncStarsLocked` 对非法用户名跳过本轮、推进记账并 Warn 留痕 `star_sync_invalid_username`（与未配置同样避免每 1m 节拍空转）；补用户名字符集表驱动测试、含 `/` 用户名的线上转义路径断言、处理器 400 拒绝不覆盖已存合法值、轮询端跳过留痕四条回归 |
 | 2026-09-23T00:00:00Z | 外部轮询/对账发现「GitHub 侧已归档但本地未联动」的仓时，顺手收口归档的 `UpdateSettings` 失败补 `repo_state_update_failed` Warn（此前 `_ =` 丢弃，本地仓会继续轮询并通知已归档仓）；`PollOne` 的客户端惰性初始化改只读回退到局部变量，导出的 `PollOne` 被并发直呼时不再构成 `p.Client` 同一字段的并发写，补 `-race` 回归测试 |
 | 2026-09-23T00:00:00Z | 对账工作项读写失败不再静默吞掉：`UpsertIfNewer` 存储错误与「无变化/基线期」拆分为独立分支（`error_code=reconcile_upsert_failed` 留痕并计入软失败）；PR 旧行 `GetByRepoNumber` 读取错误显式区分 `store.ErrNotFound`，真实错误跳过该条（`error_code=work_item_read_failed`）且不再触发 enrich；存在读取/持久化失败时不推进 issues 游标，下轮从 since 重拉补齐（事件指纹幂等）；补写入失败与读取失败两条回归测试 |

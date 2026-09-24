@@ -7,7 +7,7 @@
 ### Changed
 
 - 审计写入可见性收口：`admin.2fa_enabled` / `admin.2fa_disabled` / `repository.delete` / CLI 应急重置 2FA 四处此前以 `_, _ =` 丢弃审计落库错误，改为统一经 `server.appendAudit` 在失败时 Warn 留痕 `audit_append_failed`（带 action/target_type/target_id/error），主流程结论不变，但「谁在何时做了什么」在审计表缺失时仍可从日志定位
-- `/api/v1/stats/actions-insights` 分析窗口按 300 条样本取（`actionsInsightsSampleSize`，逐页拉取、末页不足一页提前收尾、超上限截断）：此前注释写 300 条而实际只取第一页 100 条，成功率与耗时分位数依赖样本量，窗口过小让高频仓库的统计只剩几个小时
+- `/api/v1/stats/actions-insights` 分析窗口按 300 条样本取（`actionsInsightsSampleSize` 样本量、`workflowRunsPageSize` 页大小，每页按剩余样本量取、末页不足一页提前收尾）：此前注释写 300 条而实际只取第一页 100 条，成功率与耗时分位数依赖样本量，窗口过小让高频仓库的统计只剩几个小时；按剩余量取页后不再多取再截断
 - AI 重试耗尽的错误文案追加尝试次数（`attempts=N`，保留原错误码与 Unwrap 链，`classifyCallError` 分类不变）：单次失败与连续 N 次失败此前返回同一句文案，告警与降级提示无法区分上游是偶发抖动还是持续不可用；`Retries=0` 的单次失败不附加次数
 - 接入 oxlint 静态检查（`pnpm --dir web lint`，correctness 类别为 error）：项目使用 typescript 7.0.2，超出 typescript-eslint 的 peer 支持范围（`<6.1.0`，parser 直接抛 `typescript-eslint does not support TS 7.0`），故选用不依赖 TypeScript 版本的 oxlint，类型正确性仍由 `tsc --noEmit` 保证
 
@@ -24,6 +24,8 @@
 - 前端派生缓存与渲染：仪表盘与设置页 `repoItems` 源数组入 memo（`repos.data?.items ?? []` 每次渲染产出新引用，下游 useMemo 依赖永不相等、派生缓存实际无效）；审查结论三类清单（安全风险/破坏性兼容风险/优化建议）抽取为 `ReviewRiskList` 组件并以 `${idx}-${item}` 作 key（条目文本可能重复，纯文本 key 会撞键）；Webhook 投递历史页码同步 URL（`?page=`，含 0/非数字回退第 1 页）
 - 前端类型安全：主题选择与登录页剩余重试次数改用收敛函数取代 `as ThemeMode`、`as Record<string, unknown>` 强转；据 oxlint 结果清理 7 处未使用导入
 - PR 合并置位（`MarkMerged`）改用本次解析出的 `repo.ID`，不再解引用 `*res.Event.RepositoryID`：事件行的仓库关联并非置位标记的前提，指针解引用只带来空指针风险，事件行缺 `repository_id` 时一条正常的 PR 合并 webhook 会 panic 致整个处理失败
+- 归档收口重复实现收敛为 `collapseArchived`（`internal/syncx`）：对账与外部轮询两条路径各自的 `UpdateSettings{IsArchived}` + `repo_state_update_failed` Warn 合并为单一辅助函数，日志文案由调用方区分，行为不变
+- Star Release 页 `setPage` 改 `useCallback` 稳定引用：超界钳制 effect 的依赖不再每渲染变化，消除 oxlint `react-hooks/exhaustive-deps` 告警（该 effect 此前每次渲染都会重跑）
 
 ## [0.6.1] - 2026-09-23
 

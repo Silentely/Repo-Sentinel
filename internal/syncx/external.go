@@ -173,14 +173,9 @@ func (p *ExternalPoller) PollAll(ctx context.Context) error {
 			continue
 		}
 		if repo.IsArchived {
-			// GitHub 侧已归档但本地状态未联动：顺手收口归档。
-			archived := true
-			if err := p.Store.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{IsArchived: &archived}); err != nil && p.Logger != nil {
-				// 收口失败会让本地仓仍处于「监控开启 + 能力开启」，平台继续轮询/通知一个
-				// GitHub 侧已归档的仓，必须留痕。
-				p.Logger.Warn("external poll archived repo state update failed",
-					"repo", repo.FullName, "error_code", "repo_state_update_failed", "error", err.Error())
-			}
+			// GitHub 侧已归档但本地状态未联动：顺手收口归档，
+			// UpdateSettings 会一并关闭监控与全部能力开关。
+			collapseArchived(ctx, p.Store, p.Logger, "external poll archived repo state update failed", repo)
 			continue
 		}
 		if !repo.MonitorEnabled {

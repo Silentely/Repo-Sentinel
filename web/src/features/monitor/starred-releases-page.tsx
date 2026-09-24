@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 
@@ -172,7 +172,9 @@ export function StarredReleasesPage() {
   // 分页与状态筛选同步到 URL（?page=2&state=inactive 等）：刷新/复制链接保留当前视角。
   const [pageRaw, setPageRaw] = useUrlState("page", "1");
   const page = Math.max(1, Number(pageRaw) || 1);
-  const setPage = (next: number) => setPageRaw(String(next));
+  // setPage 以 useCallback 稳定引用：下方超界钳制的 effect 依赖它，
+  // 内联箭头每次渲染都是新函数，会让该 effect 每次渲染都重跑。
+  const setPage = useCallback((next: number) => setPageRaw(String(next)), [setPageRaw]);
   const [stateFilter, setStateFilter] = useUrlState("state", "tracking");
   const trackers = useQuery({
     queryKey: ["starred-releases-trackers", page, stateFilter] as const,

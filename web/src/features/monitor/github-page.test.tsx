@@ -73,8 +73,7 @@ describe("GitHubPage 配置表单回填", () => {
     expect(clientID).toHaveValue("Iv1.editing");
 
     // 窗口重新可见触发配置 refetch（新对象引用）：旧实现会整体回填，
-    // 把未保存的编辑覆盖为服务端值。先推进超过 staleTime 使查询过期，可见性变化才会真正重拉。
-    // 先推进超过 staleTime（10s）使查询过期，可见性变化才会真正重拉配置。
+    // 把未保存的编辑覆盖为服务端值。先推进超过 staleTime（10s）使查询过期，可见性变化才会真正重拉配置。
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000);
     });

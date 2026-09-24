@@ -48,29 +48,31 @@ func (s *server) handleActionsInsights(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// workflowRunsPageSize 列表接口单页上限（store.ListFilter.PerPage 的硬上限）。
+const workflowRunsPageSize = 100
+
 // actionsInsightsSampleSize 效能洞察分析的运行样本量（窗口大小）。
 // 列表接口 per_page 上限 100，故按页拉取到样本量为止。
 const actionsInsightsSampleSize = 300
 
-// listRecentWorkflowRuns 按页拉取最近若干条运行；末页不足一页即提前收尾（不做多余查询）。
+// listRecentWorkflowRuns 按页拉取最近若干条运行：每页按剩余样本量取（末页不整页），
+// 末页不足一页即提前收尾，不做多余查询也不多取后截断。
 func (s *server) listRecentWorkflowRuns(ctx context.Context, repoID string) ([]store.WorkflowRun, error) {
-	var all []store.WorkflowRun
+	all := make([]store.WorkflowRun, 0, actionsInsightsSampleSize)
 	for page := 1; len(all) < actionsInsightsSampleSize; page++ {
+		perPage := min(workflowRunsPageSize, actionsInsightsSampleSize-len(all))
 		batch, _, err := s.dependencies.Store.WorkflowRuns().List(ctx, store.ListFilter{
 			Page:         page,
-			PerPage:      100, // list filter per_page 上限 100
+			PerPage:      perPage,
 			RepositoryID: repoID,
 		})
 		if err != nil {
 			return nil, err
 		}
 		all = append(all, batch...)
-		if len(batch) < 100 {
+		if len(batch) < perPage {
 			break
 		}
-	}
-	if len(all) > actionsInsightsSampleSize {
-		all = all[:actionsInsightsSampleSize]
 	}
 	return all, nil
 }
