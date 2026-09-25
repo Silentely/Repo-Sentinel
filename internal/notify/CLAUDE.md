@@ -55,4 +55,5 @@ A: 管理 API `POST .../outbox/{id}/retry` → `Outbox.RetryDead`。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T07:25:00Z | 优化已删除渠道投递错误分类：当 `Channels().Get` 返回 `store.ErrNotFound` 时包装为 `channel_not_found` 并加入 `isPermanentDeliveryError`，立即标记死信并触发 `OnDead`，避免无谓重试 8 次耗时 30 小时 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

@@ -49,6 +49,7 @@ func createPendingOutbox(t *testing.T, st store.Store, id string, attempts int) 
 // 限流退避达到重试上限时必须转入死信，否则目标长期 429 会无限重投。
 func TestIsPermanentDeliveryError(t *testing.T) {
 	for _, code := range []string{
+		"channel_not_found",
 		"unknown_channel",
 		"telegram_not_configured",
 		"missing_keyring",
@@ -471,5 +472,43 @@ func TestWorkerCrossChannelConcurrency(t *testing.T) {
 	case <-tickDone:
 	case <-time.After(3 * time.Second):
 		t.Fatal("tick 未在 3s 内结束")
+	}
+}
+
+func TestWorkerDeliverChannelNotFoundGoesDead(t *testing.T) {
+	st := openWorkerTestStore(t)
+	now := time.Now().UTC()
+	_, err := st.Outbox().Create(t.Context(), store.NotificationOutbox{
+		ID: "ob-ch-missing", ChannelID: "ch-deleted-999", IdempotencyKey: "idem-ch-missing",
+		Status: store.OutboxPending, NextAttemptAt: now.Add(-time.Second),
+		Title: "test title", BodyText: "test body", AttemptCount: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deadFired := false
+	w := &Worker{
+		Store: st,
+		OnDead: func() {
+			deadFired = true
+		},
+	}
+
+	w.tick(t.Context())
+
+	if !deadFired {
+		t.Fatal("channel 不存在时应立即死信，未触发 OnDead")
+	}
+
+	items, _, err := st.Outbox().List(t.Context(), store.ListFilter{Status: store.OutboxDead})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 dead item, got %d", len(items))
+	}
+	if items[0].LastErrorCode != "channel_not_found" {
+		t.Fatalf("expected last_error_code channel_not_found, got %q", items[0].LastErrorCode)
 	}
 }

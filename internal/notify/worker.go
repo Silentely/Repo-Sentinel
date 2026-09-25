@@ -222,6 +222,9 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 		var err error
 		ch, err = w.Store.Channels().Get(ctx, item.ChannelID)
 		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return "", fmt.Errorf("channel_not_found: %w", err)
+			}
 			return "", err
 		}
 	}
@@ -533,7 +536,7 @@ func deliveryErrorCode(err error) string {
 // 直接死信而非按退避阶梯重试（见 handleFailure）。
 func isPermanentDeliveryError(code string) bool {
 	switch code {
-	case "unknown_channel", "telegram_not_configured", "missing_keyring", "decrypt_secret",
+	case "channel_not_found", "unknown_channel", "telegram_not_configured", "missing_keyring", "decrypt_secret",
 		// 配置类：URL 非法 / 私网拦截，保存时即应修正
 		"invalid_webhook_url", "ssrf_blocked", "private_target_blocked":
 		return true
