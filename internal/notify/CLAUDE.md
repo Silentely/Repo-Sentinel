@@ -55,6 +55,7 @@ A: 管理 API `POST .../outbox/{id}/retry` → `Outbox.RetryDead`。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T09:30:00Z | 优化 Webhook 签名与投递错误码性能：sendHTTPWebhook 改用栈缓冲区生成 HMAC-SHA256 十六进制签名消除堆分配；状态码错误使用 strconv.Itoa 替代 fmt.Sprintf 消除装箱开销 |
 | 2026-09-25T08:20:00Z | 优化通知管道文本截断与 HTML 转纯文本性能：消除 truncateLogTitle 的 []rune 堆分配；引入 isDeliveryCode 线性扫描替代正则匹配；htmlToPlainText 增加无标签与实体的零分配快速路径并支持大写 `<A HREF>`；truncateRunes 省略号前清理尾随空白；加固 Feishu/WeCom/DingTalk/Bark 机器人错误详情兜底回显 |
 | 2026-09-25T07:25:00Z | 优化已删除渠道投递错误分类：当 `Channels().Get` 返回 `store.ErrNotFound` 时包装为 `channel_not_found` 并加入 `isPermanentDeliveryError`，立即标记死信并触发 `OnDead`，避免无谓重试 8 次耗时 30 小时 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
