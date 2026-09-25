@@ -46,3 +46,26 @@ func TestParseSemverIgnoresPreRelease(t *testing.T) {
 		t.Fatalf("got %d.%d.%d", maj, min, pat)
 	}
 }
+
+func TestParseSemverTable(t *testing.T) {
+	cases := []struct {
+		in               string
+		wMaj, wMin, wPat int
+	}{
+		{"", 0, 0, 0},
+		{"   ", 0, 0, 0},
+		{"v1", 1, 0, 0},
+		{"V2.5", 2, 5, 0},
+		{"3.4.5.6", 3, 4, 5},
+		{"10.20.30", 10, 20, 30},
+		{"invalid.version", 0, 0, 0},
+		{"v1.x.3", 1, 0, 3},
+		{"1.2.3-rc1+2026", 1, 2, 3},
+	}
+	for _, tc := range cases {
+		maj, min, pat := ParseSemver(tc.in)
+		if maj != tc.wMaj || min != tc.wMin || pat != tc.wPat {
+			t.Errorf("ParseSemver(%q) = (%d, %d, %d), want (%d, %d, %d)", tc.in, maj, min, pat, tc.wMaj, tc.wMin, tc.wPat)
+		}
+	}
+}

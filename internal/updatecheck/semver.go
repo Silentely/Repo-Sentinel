@@ -15,37 +15,44 @@ func NormalizeVersion(raw string) string {
 }
 
 // ParseSemver 解析 major.minor.patch；忽略 prerelease/build；无法解析的段视为 0。
+// 采用直接切片与数字计算，消除切片分配与临时字符串创建。
 func ParseSemver(raw string) (major, minor, patch int) {
 	s := NormalizeVersion(raw)
 	if s == "" {
 		return 0, 0, 0
 	}
-	s = strings.SplitN(s, "+", 2)[0]
-	s = strings.SplitN(s, "-", 2)[0]
-	parts := strings.Split(s, ".")
-	out := make([]int, 0, 3)
-	for _, piece := range parts {
-		digits := ""
-		for _, ch := range piece {
+	if idx := strings.IndexByte(s, '+'); idx != -1 {
+		s = s[:idx]
+	}
+	if idx := strings.IndexByte(s, '-'); idx != -1 {
+		s = s[:idx]
+	}
+	var out [3]int
+	outIdx := 0
+	for len(s) > 0 && outIdx < 3 {
+		dotIdx := strings.IndexByte(s, '.')
+		piece := s
+		if dotIdx != -1 {
+			piece = s[:dotIdx]
+			s = s[dotIdx+1:]
+		} else {
+			s = ""
+		}
+		num := 0
+		hasDigits := false
+		for i := 0; i < len(piece); i++ {
+			ch := piece[i]
 			if ch >= '0' && ch <= '9' {
-				digits += string(ch)
+				hasDigits = true
+				num = num*10 + int(ch-'0')
 			} else {
 				break
 			}
 		}
-		if digits == "" {
-			out = append(out, 0)
-		} else if n, err := strconv.Atoi(digits); err == nil {
-			out = append(out, n)
-		} else {
-			out = append(out, 0)
+		if hasDigits {
+			out[outIdx] = num
 		}
-		if len(out) >= 3 {
-			break
-		}
-	}
-	for len(out) < 3 {
-		out = append(out, 0)
+		outIdx++
 	}
 	return out[0], out[1], out[2]
 }
@@ -53,8 +60,10 @@ func ParseSemver(raw string) (major, minor, patch int) {
 // versionHasPrerelease 判定版本是否带预发布段（如 -rc1、-beta）。
 func versionHasPrerelease(raw string) bool {
 	s := NormalizeVersion(raw)
-	s = strings.SplitN(s, "+", 2)[0]
-	return strings.Contains(s, "-")
+	if idx := strings.IndexByte(s, '+'); idx != -1 {
+		s = s[:idx]
+	}
+	return strings.IndexByte(s, '-') != -1
 }
 
 // compareVersions 按 SemVer 比较两版本：major/minor/patch 相等时，
