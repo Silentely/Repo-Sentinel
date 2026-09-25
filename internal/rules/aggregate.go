@@ -91,8 +91,8 @@ func (a *Aggregator) ReloadFrom(ctx context.Context) error {
 	window, err1 := readPositiveIntSetting(ctx, a.Store, "notify.aggregate_window_sec")
 	threshold, err2 := readPositiveIntSetting(ctx, a.Store, "notify.burst_threshold")
 	burstWindow, err3 := readPositiveIntSetting(ctx, a.Store, "notify.burst_window_sec")
-	if err1 != nil && err2 != nil && err3 != nil {
-		return err1
+	if err := errors.Join(err1, err2, err3); err != nil {
+		return err
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()

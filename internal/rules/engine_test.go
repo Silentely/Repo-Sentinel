@@ -1037,3 +1037,11 @@ func TestWorkflowFailureAnalysisGateOrder(t *testing.T) {
 		})
 	}
 }
+
+func TestIdempotencyKeyComputation(t *testing.T) {
+	got := idempotencyKey("chan-1", "event-2", "realtime")
+	expected := "3904e1c28da918ca0eebf9e202ded4af75cf56bcadc4b7dcfa0c4a867f63145e"
+	if got != expected {
+		t.Fatalf("expected idempotencyKey to be %s, got %s", expected, got)
+	}
+}

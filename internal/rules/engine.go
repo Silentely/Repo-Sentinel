@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	htmlpkg "html"
+	"io"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -563,6 +564,15 @@ func payloadStringSlice(m map[string]any, key string) []string {
 }
 
 func idempotencyKey(channelID, eventID, variant string) string {
-	sum := sha256.Sum256([]byte(channelID + "|" + eventID + "|" + variant))
-	return hex.EncodeToString(sum[:])
+	h := sha256.New()
+	_, _ = io.WriteString(h, channelID)
+	_, _ = io.WriteString(h, "|")
+	_, _ = io.WriteString(h, eventID)
+	_, _ = io.WriteString(h, "|")
+	_, _ = io.WriteString(h, variant)
+	var sum [sha256.Size]byte
+	h.Sum(sum[:0])
+	var buf [sha256.Size * 2]byte
+	hex.Encode(buf[:], sum[:])
+	return string(buf[:])
 }
