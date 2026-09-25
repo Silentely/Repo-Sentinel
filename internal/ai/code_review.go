@@ -138,8 +138,10 @@ func getDiffPriority(path string, isNoise bool) int {
 }
 
 func parseDiffChunks(rawDiff string) []diffChunk {
-	rawDiff = strings.ReplaceAll(rawDiff, "\r\n", "\n")
-	rawDiff = strings.ReplaceAll(rawDiff, "\r", "\n")
+	if strings.Contains(rawDiff, "\r") {
+		rawDiff = strings.ReplaceAll(rawDiff, "\r\n", "\n")
+		rawDiff = strings.ReplaceAll(rawDiff, "\r", "\n")
+	}
 	if !strings.Contains(rawDiff, "diff --git ") && !strings.Contains(rawDiff, "--- ") {
 		if strings.TrimSpace(rawDiff) == "" {
 			return nil
@@ -492,6 +494,7 @@ func (c *Client) ReviewPR(ctx context.Context, repo, title, author, diff string)
 // FormatPRComment 将审查结果渲染为 GitHub PR 评论格式的 Markdown 文本。
 func FormatPRComment(res *CodeReviewResult) string {
 	var sb strings.Builder
+	sb.Grow(1024)
 	sb.WriteString("## 🤖 RepoSentinel AI Code Review\n\n")
 
 	// 存在安全风险或严重低分时，顶部给出醒目风险横幅
