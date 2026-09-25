@@ -95,6 +95,7 @@ A: AI/文档扫描应忽略；构建产物由 CI/Docker 多阶段生成。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T11:25:00Z | 优化 Star Release 列表项重渲染性能：抽取 TrackerRowItem 结合 React.memo 保持 handleToggle 引用稳定，消除表单输入与状态轮询时全量追踪行的冗余重渲染 |
 | 2026-09-25T10:30:00Z | 优化仪表盘页面仓库集合与映射派生计算：visibleRepos 与 baselineRepos 改为单次循环划分，消除多重数组迭代与中间切片分配；repoNameMap 直接使用键值赋值替代 Object.fromEntries(map) 临时元组分配 |
 | 2026-09-25T09:55:00Z | 优化相对时间格式化性能：formatRelativeTime 支持毫秒数值输入并改用 Date.parse 解析时间戳，避免反复构造 new Date() 对象开销；RelativeTime 定时派发直传时间戳数值 |
 | 2026-09-25T09:45:00Z | 优化仓库管理页渲染性能：使用 useMemo 单次线性遍历切分活跃与归档仓库，消除多轮重复 filter；使用 React.memo 包裹 RepoCard，避免开关切换与翻页时未修改仓库的冗余重渲染 |

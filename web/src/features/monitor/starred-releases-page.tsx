@@ -302,11 +302,11 @@ export function StarredReleasesPage() {
         ) : !trackers.isError ? (
           <ul className="plain-list" aria-label="Star Release 追踪列表">
             {items.map((it) => (
-              <TrackerRow
+              <TrackerRowItem
                 key={it.id}
                 item={it}
                 busy={setStateMut.isPending && setStateMut.variables?.id === it.id}
-                onToggle={(state) => handleToggle(it.id, state)}
+                onToggle={handleToggle}
               />
             ))}
           </ul>
@@ -327,6 +327,22 @@ export function StarredReleasesPage() {
     </>
   );
 }
+
+const TrackerRowItem = memo(function TrackerRowItem({
+  item,
+  busy,
+  onToggle,
+}: {
+  item: StarredTrackerItem;
+  busy: boolean;
+  onToggle: (id: string, state: "disabled" | "tracking") => void;
+}) {
+  const handleToggle = useCallback(
+    (state: "disabled" | "tracking") => onToggle(item.id, state),
+    [item.id, onToggle],
+  );
+  return <TrackerRow item={item} busy={busy} onToggle={handleToggle} />;
+});
 
 export const TrackerRow = memo(function TrackerRow({
   item,
