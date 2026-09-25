@@ -204,3 +204,24 @@ func TestRenderMessageReleasePublished(t *testing.T) {
 		t.Fatalf("htmlURL 不正确: %s", htmlURL)
 	}
 }
+
+func TestRenderMessageTitlePlainTextSecurity(t *testing.T) {
+	ev := &store.Event{
+		Kind:    store.WorkItemKindIssue,
+		Action:  "opened",
+		Title:   "Fix <UserProfile> component & style",
+		HTMLURL: "https://example.com",
+	}
+	title, body, _ := renderMessage(ev, "owner/repo&test")
+	// 标题必须是纯文本，不可包含 &lt; 或 &amp;
+	if !strings.Contains(title, "Fix <UserProfile> component & style") {
+		t.Fatalf("title 应为纯文本不包含实体转义，got: %s", title)
+	}
+	if strings.Contains(title, "&lt;") || strings.Contains(title, "&amp;") {
+		t.Fatalf("title 不应包含 HTML 实体编码，got: %s", title)
+	}
+	// 正文必须完成 HTML 转义，防止标签或实体破坏 Telegram HTML parse mode
+	if !strings.Contains(body, "Fix &lt;UserProfile&gt; component &amp; style") {
+		t.Fatalf("body 必须完成转义，got: %s", body)
+	}
+}

@@ -870,3 +870,27 @@ func TestReportBodyReqIDConsistent(t *testing.T) {
 		t.Fatalf("digest 与 ai 层 req_id 应一致，实际: %s", buf.String())
 	}
 }
+
+func TestBuildReportBody_EscapesRepoPrefixAndTitle(t *testing.T) {
+	repoID := "repo-1"
+	num := int64(10)
+	events := []store.Event{
+		{
+			Kind:          store.WorkItemKindIssue,
+			Action:        "opened",
+			Title:         "Crash <script>alert(1)</script> & bug",
+			SubjectNumber: &num,
+			RepositoryID:  &repoID,
+		},
+	}
+	body := buildReportBody("每日摘要 <2026-08-08> & more", events, "过去 24 小时", map[string]string{"repo-1": "org/repo<test>&demo"}, reportGeneratedAt)
+	if !strings.Contains(body, "org/repo&lt;test&gt;&amp;demo#10") {
+		t.Fatalf("repoPrefix 必须完成 HTML 转义，got: %s", body)
+	}
+	if !strings.Contains(body, "Crash &lt;script&gt;alert(1)&lt;/script&gt; &amp; bug") {
+		t.Fatalf("event.Title 必须完成 HTML 转义，got: %s", body)
+	}
+	if !strings.Contains(body, "<b>每日摘要 &lt;2026-08-08&gt; &amp; more</b>") {
+		t.Fatalf("title 必须完成 HTML 转义，got: %s", body)
+	}
+}

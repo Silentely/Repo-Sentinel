@@ -63,4 +63,5 @@ A: 使用 `store.IsFailureConclusion` 单一来源。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T07:45:00Z | 通知标题纯文本与正文 HTML 转义安全收口：`renderMessage` 与 `renderMergedMessage` 返回纯文本标题（供 Outbox.Title 及钉钉/飞书/企微/Slack 标题消费，杜绝 `&lt;`、`&amp;` 等实体泄漏），并在 HTML 正文的 `<b>` 标签中统一使用 `htmlpkg.EscapeString` 转义，兼顾各渠道展示美观与 Telegram 解析安全 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

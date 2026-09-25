@@ -325,9 +325,9 @@ func renderMergedMessage(repoName, category string, events []*store.Event, windo
 	categoryCN := categoryDisplayName(category)
 	// 「已聚合」而非「已合并」：避免与 PR 的「已合并」状态语义混淆
 	//（同一条通知里既可能包含已合并的 PR，也可能表示本通知是聚合产物）。
-	title := fmt.Sprintf("📋 %s：%s × %d（已聚合）", htmlpkg.EscapeString(repoName), htmlpkg.EscapeString(categoryCN), len(events))
+	title := fmt.Sprintf("📋 %s：%s × %d（已聚合）", repoName, categoryCN, len(events))
 	var body strings.Builder
-	body.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
+	body.WriteString(fmt.Sprintf("<b>%s</b>\n", htmlpkg.EscapeString(title)))
 	body.WriteString("────────────────\n")
 	maxSamples := 8
 	for i, ev := range events {
@@ -379,7 +379,7 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eid,
 			AggregateKey: idScope + "|burst", IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
-			Title: safeTitle, BodyText: body, ParseMode: "HTML",
+			Title: title, BodyText: body, ParseMode: "HTML",
 			// 有事件链接时附带跳转按钮，用户可从摘要直达原始事件。
 			HTMLURL: sample.HTMLURL,
 		})

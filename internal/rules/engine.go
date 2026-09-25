@@ -433,14 +433,14 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		return "", "", ""
 	}
 	statusEmoji, statusLabel := statusDisplay(ev)
-	escapedTitle := htmlpkg.EscapeString(ev.Title)
 	// 标题把状态放最前，通知列表/推送预览第一眼就能看出打开还是关闭。
-	title = fmt.Sprintf("%s %s｜%s", statusEmoji, statusLabel, escapedTitle)
+	// Outbox.Title 保存纯文本（供各渠道纯文本/Markdown 标题与管理台列表使用，不带 HTML 实体）。
+	title = fmt.Sprintf("%s %s｜%s", statusEmoji, statusLabel, ev.Title)
 
 	var b strings.Builder
 	b.Grow(512)
 	b.WriteString("<b>")
-	b.WriteString(title)
+	b.WriteString(htmlpkg.EscapeString(title))
 	b.WriteString("</b>\n────────────────\n")
 
 	// 状态置顶：正文第二行再次强化，避免只看字段时漏掉。

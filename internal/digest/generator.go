@@ -251,7 +251,7 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 		g.Logger.Info("digest ai used", "req_id", reqID, "title", title, "events", len(events), "duration_ms", duration.Milliseconds())
 	}
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
+	b.WriteString(fmt.Sprintf("<b>%s</b>\n", htmlpkg.EscapeString(title)))
 	b.WriteString("────────────────\n")
 	// AI 输出为模型生成文本，嵌入 HTML 正文前必须转义，避免破坏 parse_mode=HTML。
 	b.WriteString(htmlpkg.EscapeString(summary))
@@ -348,7 +348,7 @@ func (g *Generator) enqueue(
 // 让用户能判断报告新鲜度，避免把旧报告误认为当前时刻。
 func buildReportBody(title string, events []store.Event, period string, repoNames map[string]string, generatedAt time.Time) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("<b>%s</b>\n", title))
+	b.WriteString(fmt.Sprintf("<b>%s</b>\n", htmlpkg.EscapeString(title)))
 	b.WriteString("────────────────\n")
 
 	if len(events) == 0 {
@@ -398,7 +398,7 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 		// release 事件（star 追踪）无 RepositoryID，经 EventRepoName 回退 PayloadSummary 补仓库名；
 		// star/watch 事件标题即仓库名，不再重复前缀。
 		if name := store.EventRepoName(ev, repoNames); name != "" && name != ev.Title {
-			repoPrefix = name
+			repoPrefix = htmlpkg.EscapeString(name)
 		}
 		numStr := ""
 		if ev.SubjectNumber != nil {

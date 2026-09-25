@@ -512,3 +512,28 @@ func TestAggregatorFlushBudget(t *testing.T) {
 		t.Fatalf("AI 45s 超时应放宽为 55s，got %v", got)
 	}
 }
+
+func TestRenderMergedMessageTitlePlainText(t *testing.T) {
+	events := []*store.Event{
+		{
+			Kind:   store.WorkItemKindIssue,
+			Action: "opened",
+			Title:  "Bug & Fix <1>",
+		},
+	}
+	title, body := renderMergedMessage("acme/core&ui", "issue", events, time.Now().UTC())
+	// title 应为纯文本
+	if !strings.Contains(title, "acme/core&ui") {
+		t.Fatalf("title 应为纯文本，got: %s", title)
+	}
+	if strings.Contains(title, "&amp;") {
+		t.Fatalf("title 不应转义，got: %s", title)
+	}
+	// body 必须转义
+	if !strings.Contains(body, "acme/core&amp;ui") {
+		t.Fatalf("body 头部必须转义，got: %s", body)
+	}
+	if !strings.Contains(body, "Bug &amp; Fix &lt;1&gt;") {
+		t.Fatalf("body 列表项必须转义，got: %s", body)
+	}
+}
