@@ -3,8 +3,8 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"strconv"
 	"net/http"
+	"strconv"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/store"

@@ -46,26 +46,12 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 	}
 	result := SyncInstallationResult{Installations: len(installations)}
 	// 一次性加载本地仓库建 full_name→repo 映射，避免对每个安装仓库 GetByFullName 的
-	// N+1 查询（安装仓库多时一轮同步数百次单查）。加载失败降级逐仓单查并留痕。
-	var existingByFullName map[string]store.Repository
-	for page := 1; ; page++ {
-		repos, res, err := r.Store.Repositories().List(ctx, store.ListFilter{Page: page, PerPage: 100})
-		if err != nil {
-			r.warn("load local repositories failed", 0, "installation_repo_map_load_failed", err)
-			break
-		}
-		if existingByFullName == nil {
-			existingByFullName = make(map[string]store.Repository, res.Total)
-		}
-		for _, repo := range repos {
-			existingByFullName[repo.FullName] = repo
-		}
-		if page*res.PerPage >= res.Total || len(repos) == 0 {
-			break
-		}
-	}
-	if existingByFullName == nil {
-		existingByFullName = make(map[string]store.Repository)
+	// N+1 查询（安装仓库多时一轮同步数百次单查）。映射不完整时中止，避免用新仓库
+	// baseline 语义覆盖已有仓库的 active、archived 或 unavailable 状态。
+	existingByFullName, err := loadExistingRepositories(ctx, r.Store.Repositories())
+	if err != nil {
+		r.warn("load local repositories failed", 0, "installation_repo_map_load_failed", err)
+		return result, err
 	}
 	for _, inst := range installations {
 		token, err := r.GitHub.InstallationToken(ctx, inst.InstallationID)
@@ -143,8 +129,7 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 					result.Imported++
 					continue
 				}
-				// map 不命中 = 本地尚无该仓库：按新建入库（语义与 GetByFullName 的
-				// ErrNotFound 分支一致；映射加载失败降级时同样走此路径）。
+				// map 不命中 = 本地尚无该仓库：按新建入库。
 				now := time.Now().UTC()
 				in.BaselineStartedAt = &now
 				if _, err := r.Store.Repositories().Upsert(ctx, in); err != nil {
@@ -159,6 +144,31 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 		}
 	}
 	return result, nil
+}
+
+// loadExistingRepositories 构建 full_name→repo 映射；任一页读取失败都返回错误，
+// 禁止调用方用不完整映射把已有仓库当成新仓库写回 baseline。
+func loadExistingRepositories(ctx context.Context, repositories store.RepositoryStore) (map[string]store.Repository, error) {
+	var existingByFullName map[string]store.Repository
+	for page := 1; ; page++ {
+		repos, res, err := repositories.List(ctx, store.ListFilter{Page: page, PerPage: 100})
+		if err != nil {
+			return nil, err
+		}
+		if existingByFullName == nil {
+			existingByFullName = make(map[string]store.Repository, res.Total)
+		}
+		for _, repo := range repos {
+			existingByFullName[repo.FullName] = repo
+		}
+		if page*res.PerPage >= res.Total || len(repos) == 0 {
+			break
+		}
+	}
+	if existingByFullName == nil {
+		existingByFullName = make(map[string]store.Repository)
+	}
+	return existingByFullName, nil
 }
 
 // warn 统一安装同步路径的 Warn 留痕：必带 error_code 便于按码归类检索；

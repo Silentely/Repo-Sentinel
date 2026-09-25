@@ -159,6 +159,9 @@ func (s *server) acquireWebhookSlot(ctx context.Context) bool {
 
 // releaseWebhookSlot 归还 webhook 处理槽位，与 acquireWebhookSlot 配对使用。
 func (s *server) releaseWebhookSlot() {
+	if s.webhookSem == nil {
+		return
+	}
 	<-s.webhookSem
 }
 

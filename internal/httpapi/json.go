@@ -31,7 +31,7 @@ func isJSONContentType(ct string) bool {
 	if strings.EqualFold(ct, "application/json") {
 		return true
 	}
-	if len(ct) >= 17 && strings.EqualFold(ct[:17], "application/json;") {
+	if strings.EqualFold(ct, "application/json; charset=utf-8") {
 		return true
 	}
 	mediaType, _, err := mime.ParseMediaType(ct)

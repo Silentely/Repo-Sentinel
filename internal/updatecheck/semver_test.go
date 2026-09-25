@@ -61,6 +61,7 @@ func TestParseSemverTable(t *testing.T) {
 		{"invalid.version", 0, 0, 0},
 		{"v1.x.3", 1, 0, 3},
 		{"1.2.3-rc1+2026", 1, 2, 3},
+		{"999999999999999999999999.2.3", 0, 2, 3},
 	}
 	for _, tc := range cases {
 		maj, min, pat := ParseSemver(tc.in)

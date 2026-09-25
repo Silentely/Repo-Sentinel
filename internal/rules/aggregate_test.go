@@ -501,6 +501,34 @@ func TestAggregatorReloadFromUnsetKeys(t *testing.T) {
 	}
 }
 
+func TestAggregatorReloadFromMalformedSettingKeepsValidSettings(t *testing.T) {
+	data := openTestStore(t)
+	ctx := t.Context()
+	agg := NewAggregator(data, time.Minute, 3, time.Minute)
+
+	valid, _ := json.Marshal(120)
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: ulid.Make().String(), Key: "notify.burst_threshold", ValueJSON: valid, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: ulid.Make().String(), Key: "notify.aggregate_window_sec", ValueJSON: []byte(`"bad"`), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := agg.ReloadFrom(ctx); err != nil {
+		t.Fatalf("非法设置不应阻断其它合法设置: %v", err)
+	}
+	if agg.BurstThreshold != 120 {
+		t.Fatalf("合法设置应热生效，got threshold=%d", agg.BurstThreshold)
+	}
+	if agg.Window != time.Minute {
+		t.Fatalf("非法设置不应覆盖现值，got window=%v", agg.Window)
+	}
+}
+
 // TestAggregatorFlushBudget 守护：flush 预算下限 30s，AI 配置超时更高时随之放宽
 // （与 webhook 直发路径同一语义，避免聚合回放被硬顶截断）。
 func TestAggregatorFlushBudget(t *testing.T) {

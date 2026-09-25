@@ -28,6 +28,7 @@ func ParseSemver(raw string) (major, minor, patch int) {
 		s = s[:idx]
 	}
 	var out [3]int
+	maxInt := int(^uint(0) >> 1)
 	outIdx := 0
 	for len(s) > 0 && outIdx < 3 {
 		dotIdx := strings.IndexByte(s, '.')
@@ -43,8 +44,15 @@ func ParseSemver(raw string) (major, minor, patch int) {
 		for i := 0; i < len(piece); i++ {
 			ch := piece[i]
 			if ch >= '0' && ch <= '9' {
+				digit := int(ch - '0')
+				if num > (maxInt-digit)/10 {
+					// 与原 strconv.Atoi 的错误语义保持一致：溢出段视为无效。
+					hasDigits = false
+					num = 0
+					break
+				}
 				hasDigits = true
-				num = num*10 + int(ch-'0')
+				num = num*10 + digit
 			} else {
 				break
 			}

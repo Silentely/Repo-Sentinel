@@ -196,7 +196,7 @@ func (r *Reconciler) finalizeSyncState(ctx context.Context, repo store.Repositor
 	if softFailed {
 		repo.LastSyncErrorCode = "reconcile_partial"
 	}
-	if isBaseline {
+	if isBaseline && !softFailed {
 		repo.SyncStatus = store.SyncStatusActive
 		repo.BaselineFinishedAt = &now
 	}

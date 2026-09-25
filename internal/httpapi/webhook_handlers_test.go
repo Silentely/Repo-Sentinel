@@ -457,6 +457,20 @@ func TestWebhookAcquireSlotNilSemaphoreUnlimited(t *testing.T) {
 	}
 }
 
+func TestWebhookReleaseSlotNilSemaphoreReturns(t *testing.T) {
+	done := make(chan struct{})
+	go func() {
+		srv := &server{}
+		srv.releaseWebhookSlot()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("nil 信号量释放不应阻塞")
+	}
+}
+
 // 异步 panic 用例说明：通读 internal/normalizer/process.go 后确认 Process 对全部畸形输入
 // （非法 JSON、缺失字段、未知 event type）都返回 error，没有可稳定触达的 panic 路径；
 // 因此按保底方案直接驱动 safeGo，验证 recover 会记录日志且进程保持可用。

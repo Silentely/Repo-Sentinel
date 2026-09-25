@@ -1198,6 +1198,39 @@ func TestReconcileWorkItemUpsertFailureNotSilent(t *testing.T) {
 	}
 }
 
+func TestReconcileBaselineWorkItemFailureDoesNotFinishBaseline(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	if err := data.Repositories().UpdateSettings(ctx, repo.ID, store.RepositorySettings{}); err != nil {
+		t.Fatal(err)
+	}
+	// 直接更新状态，保留 fixture 的其它字段。
+	repo.SyncStatus = store.SyncStatusBaseline
+	if _, err := data.Repositories().Upsert(ctx, repo); err != nil {
+		t.Fatal(err)
+	}
+	fake.issuesFn = func(page int) any {
+		return []map[string]any{{
+			"number": 1, "state": "open", "title": "基线写入失败",
+			"html_url":   "https://github.com/acme/demo/issues/1",
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"user":       map[string]any{"login": "alice"}, "labels": []any{}, "assignees": []any{},
+		}}
+	}
+	failing := workItemsFailingStore{Store: data, workItems: upsertFailingWorkItems{data.WorkItems()}}
+	r := &Reconciler{Store: failing, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("基线单条写入失败不应让整轮报错: %v", err)
+	}
+	got, err := data.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SyncStatus != store.SyncStatusBaseline || got.BaselineFinishedAt != nil {
+		t.Fatalf("基线软失败不应标记完成: status=%s finished_at=%v", got.SyncStatus, got.BaselineFinishedAt)
+	}
+}
+
 // PR 旧行读取失败不得把零值当作"不存在"：既不能白烧一轮 enrich（4 次 API），
 // 也不能让 UpsertIfNewer 内查再次失败后撞唯一索引；必须计入部分失败并留痕。
 func TestReconcileWorkItemReadFailureSkipsEnrich(t *testing.T) {

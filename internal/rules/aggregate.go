@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strconv"
 	htmlpkg "html"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -108,7 +108,7 @@ func (a *Aggregator) ReloadFrom(ctx context.Context) error {
 	return nil
 }
 
-// readPositiveIntSetting 读取整型设置；键不存在或值非法时返回 0（不算错误）。
+// readPositiveIntSetting 读取整型设置；键不存在、JSON 类型错误或数值非法时返回 0（不算错误）。
 // 仅真实 DB 错误上抛：三个键都未设置是常态（默认实例），此前把 ErrNotFound 透传导致
 // 设置页保存任意设置都打「aggregator reload failed」假 Warn。
 func readPositiveIntSetting(ctx context.Context, st store.Store, key string) (int, error) {
@@ -124,7 +124,7 @@ func readPositiveIntSetting(ctx context.Context, st store.Store, key string) (in
 	}
 	var v float64
 	if err := json.Unmarshal(row.ValueJSON, &v); err != nil {
-		return 0, err
+		return 0, nil
 	}
 	n, ok := store.CoerceInt(v)
 	if !ok || n <= 0 {

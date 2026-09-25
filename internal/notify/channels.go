@@ -238,16 +238,16 @@ func (w *Worker) postJSONChannel(ctx context.Context, ch store.NotificationChann
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		return deliveryErrorf(channelTag + "_redirect_" + strconv.Itoa(resp.StatusCode), readBodyDetail(resp))
+		return deliveryErrorf(channelTag+"_redirect_"+strconv.Itoa(resp.StatusCode), readBodyDetail(resp))
 	}
 	if resp.StatusCode == 408 || resp.StatusCode == 425 || resp.StatusCode == 429 || resp.StatusCode >= 500 {
 		if ra := parseRetryAfter(resp); ra > 0 {
 			return &retryAfterError{seconds: ra, code: channelTag + "_retry_after"}
 		}
-		return deliveryErrorf(channelTag + "_status_" + strconv.Itoa(resp.StatusCode), readBodyDetail(resp))
+		return deliveryErrorf(channelTag+"_status_"+strconv.Itoa(resp.StatusCode), readBodyDetail(resp))
 	}
 	if resp.StatusCode >= 400 {
-		return deliveryErrorf(channelTag + "_client_error_" + strconv.Itoa(resp.StatusCode), readBodyDetail(resp))
+		return deliveryErrorf(channelTag+"_client_error_"+strconv.Itoa(resp.StatusCode), readBodyDetail(resp))
 	}
 
 	// 针对部分返回 200 但在 Body 中报告错误的平台（如飞书 errcode!=0 / 企业微信 errcode!=0 / 钉钉 errcode!=0）
@@ -263,7 +263,7 @@ func (w *Worker) postJSONChannel(ctx context.Context, ch store.NotificationChann
 				if msg == "" {
 					msg = strings.TrimSpace(string(bodyBytes))
 				}
-				return deliveryErrorf(channelTag + "_client_error_" + strconv.Itoa(barkResp.Code), msg)
+				return deliveryErrorf(channelTag+"_client_error_"+strconv.Itoa(barkResp.Code), msg)
 			}
 		} else {
 			var statusResp struct {
@@ -281,7 +281,7 @@ func (w *Worker) postJSONChannel(ctx context.Context, ch store.NotificationChann
 					if msg == "" {
 						msg = strings.TrimSpace(string(bodyBytes))
 					}
-					return deliveryErrorf(channelTag + "_client_error_" + strconv.Itoa(statusResp.Code), msg)
+					return deliveryErrorf(channelTag+"_client_error_"+strconv.Itoa(statusResp.Code), msg)
 				}
 				if statusResp.ErrCode != 0 {
 					msg := statusResp.ErrMsg
@@ -291,7 +291,7 @@ func (w *Worker) postJSONChannel(ctx context.Context, ch store.NotificationChann
 					if msg == "" {
 						msg = strings.TrimSpace(string(bodyBytes))
 					}
-					return deliveryErrorf(channelTag + "_client_error_" + strconv.Itoa(statusResp.ErrCode), msg)
+					return deliveryErrorf(channelTag+"_client_error_"+strconv.Itoa(statusResp.ErrCode), msg)
 				}
 			}
 		}
