@@ -68,3 +68,19 @@ func TestCSRF随机源不足时不返回部分令牌(t *testing.T) {
 		t.Fatal("随机源失败时不得返回部分 CSRF 令牌或哈希")
 	}
 }
+
+func TestCSRFValidateZeroAllocation(t *testing.T) {
+	tokens := NewCSRFTokens(bytes.NewReader(sequentialBytes(32)))
+	rawToken, tokenHash, err := tokens.Issue()
+	if err != nil {
+		t.Fatalf("签发 CSRF 令牌失败: %v", err)
+	}
+	allocs := testing.AllocsPerRun(100, func() {
+		if err := tokens.Validate(rawToken, rawToken, tokenHash); err != nil {
+			t.Fatalf("校验失败: %v", err)
+		}
+	})
+	if allocs > 0 {
+		t.Fatalf("期望 CSRF 校验 0 次堆分配，实际分配次数=%f", allocs)
+	}
+}

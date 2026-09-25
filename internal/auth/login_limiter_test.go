@@ -125,3 +125,21 @@ func TestLoginLimiterAccountFailurePenalty(t *testing.T) {
 		t.Fatalf("成功清零后延迟=%v, want 0", d)
 	}
 }
+
+func TestLoginLimiterMaxEntriesCapacityBound(t *testing.T) {
+	clock := newFakeClock(time.Date(2026, 7, 27, 21, 0, 0, 0, time.UTC))
+	limiter := NewLoginLimiter(clock)
+
+	for i := 0; i < maxLimiterEntries; i++ {
+		limiter.entries[string(rune(i))] = &loginLimiterEntry{lastSeen: clock.Now().UTC()}
+	}
+
+	if limiter.Allow("new.ip.address") {
+		t.Fatal("达到最大条目上限且未超时时，新 IP 应该被防御性拒绝")
+	}
+
+	clock.Advance(loginLimiterEntryTTL + time.Second)
+	if !limiter.Allow("new.ip.address") {
+		t.Fatal("推进时间超过 TTL 后，应清理过期条目并允许新 IP")
+	}
+}

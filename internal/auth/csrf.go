@@ -35,28 +35,41 @@ func (c CSRFTokens) Issue() (rawToken, tokenHash string, err error) {
 }
 
 // Validate 对 Cookie、Header 与 Session 哈希执行双提交校验。
+// 内部全部使用栈上固定数组与就地解码，达到 0 堆分配，降低 API 鉴权高频路径的 GC 压力。
 func (c CSRFTokens) Validate(cookieToken, headerToken, expectedHash string) error {
 	if len(cookieToken) != encodedTokenLength || len(headerToken) != encodedTokenLength || len(expectedHash) != sha256.Size*2 {
 		return ErrCSRFFailed
 	}
-	cookieRaw, err := decodeEncodedToken(cookieToken)
-	if err != nil {
+	var cookieRaw [randomTokenBytes]byte
+	if err := decodeTokenTo(&cookieRaw, cookieToken); err != nil {
 		return ErrCSRFFailed
 	}
-	headerRaw, err := decodeEncodedToken(headerToken)
-	if err != nil {
+	var headerRaw [randomTokenBytes]byte
+	if err := decodeTokenTo(&headerRaw, headerToken); err != nil {
 		return ErrCSRFFailed
 	}
-	expectedDigest, err := hex.DecodeString(expectedHash)
-	if err != nil || len(expectedDigest) != sha256.Size {
+	var expectedDigest [sha256.Size]byte
+	n, err := hex.Decode(expectedDigest[:], []byte(expectedHash))
+	if err != nil || n != sha256.Size {
 		return ErrCSRFFailed
 	}
 
-	cookieDigest := sha256.Sum256(cookieRaw)
-	tokenMatch := subtle.ConstantTimeCompare(cookieRaw, headerRaw)
-	hashMatch := subtle.ConstantTimeCompare(cookieDigest[:], expectedDigest)
+	cookieDigest := sha256.Sum256(cookieRaw[:])
+	tokenMatch := subtle.ConstantTimeCompare(cookieRaw[:], headerRaw[:])
+	hashMatch := subtle.ConstantTimeCompare(cookieDigest[:], expectedDigest[:])
 	if tokenMatch&hashMatch != 1 {
 		return ErrCSRFFailed
+	}
+	return nil
+}
+
+func decodeTokenTo(dst *[randomTokenBytes]byte, rawToken string) error {
+	if len(rawToken) != encodedTokenLength {
+		return errors.New("token is invalid")
+	}
+	n, err := base64.RawURLEncoding.Decode(dst[:], []byte(rawToken))
+	if err != nil || n != randomTokenBytes {
+		return errors.New("token is invalid")
 	}
 	return nil
 }
@@ -88,13 +101,11 @@ func hashEncodedToken(rawToken string) (string, error) {
 }
 
 func decodeEncodedToken(rawToken string) ([]byte, error) {
-	if len(rawToken) != encodedTokenLength {
-		return nil, errors.New("token is invalid")
+	var raw [randomTokenBytes]byte
+	if err := decodeTokenTo(&raw, rawToken); err != nil {
+		return nil, err
 	}
-	raw := make([]byte, randomTokenBytes)
-	n, err := base64.RawURLEncoding.Decode(raw, []byte(rawToken))
-	if err != nil || n != randomTokenBytes {
-		return nil, errors.New("token is invalid")
-	}
-	return raw, nil
+	out := make([]byte, randomTokenBytes)
+	copy(out, raw[:])
+	return out, nil
 }

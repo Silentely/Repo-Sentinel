@@ -14,6 +14,8 @@ const (
 	loginLimiterPruneInterval = time.Minute
 	loginLimiterEntryTTL      = 10 * time.Minute
 	accountFailureTTL         = 15 * time.Minute
+	maxLimiterEntries         = 10000
+	maxAccountFailureEntries  = 10000
 )
 
 type loginLimiterEntry struct {
@@ -56,11 +58,15 @@ func (l *LoginLimiter) Allow(ip string) bool {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if now.Sub(l.lastPrune) >= loginLimiterPruneInterval {
+	if now.Sub(l.lastPrune) >= loginLimiterPruneInterval || len(l.entries) > maxLimiterEntries {
 		l.prune(now)
 	}
 	entry := l.entries[key]
 	if entry == nil {
+		if len(l.entries) >= maxLimiterEntries {
+			// 超出最大容量防爆破，直接拒绝
+			return false
+		}
 		entry = &loginLimiterEntry{
 			limiter: rate.NewLimiter(rate.Every(loginLimiterRefill), loginLimiterBurst),
 		}
@@ -82,6 +88,12 @@ func (l *LoginLimiter) RecordFailure(account string) {
 	defer l.mu.Unlock()
 	entry := l.accountFailures[key]
 	if entry == nil || now.Sub(entry.lastFailed) > accountFailureTTL {
+		if len(l.accountFailures) >= maxAccountFailureEntries {
+			l.prune(now)
+		}
+		if len(l.accountFailures) >= maxAccountFailureEntries {
+			return
+		}
 		entry = &accountFailureEntry{}
 		l.accountFailures[key] = entry
 	}
