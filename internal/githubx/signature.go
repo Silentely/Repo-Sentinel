@@ -8,13 +8,19 @@ import (
 )
 
 // VerifySignature 校验 X-Hub-Signature-256；支持当前与 previous secret。
+// 通过长度预检与栈缓冲区解码/校验，实现零堆分配签名验证。
 func VerifySignature(body []byte, header string, secrets ...string) bool {
 	header = strings.TrimSpace(header)
-	if !strings.HasPrefix(header, "sha256=") {
+	const prefix = "sha256="
+	if !strings.HasPrefix(header, prefix) {
 		return false
 	}
-	got, err := hex.DecodeString(strings.TrimPrefix(header, "sha256="))
-	if err != nil || len(got) != sha256.Size {
+	hexPart := header[len(prefix):]
+	if len(hexPart) != sha256.Size*2 {
+		return false
+	}
+	var got [sha256.Size]byte
+	if _, err := hex.Decode(got[:], []byte(hexPart)); err != nil {
 		return false
 	}
 	for _, secret := range secrets {
@@ -24,7 +30,9 @@ func VerifySignature(body []byte, header string, secrets ...string) bool {
 		}
 		mac := hmac.New(sha256.New, []byte(secret))
 		_, _ = mac.Write(body)
-		if hmac.Equal(got, mac.Sum(nil)) {
+		var expected [sha256.Size]byte
+		mac.Sum(expected[:0])
+		if hmac.Equal(got[:], expected[:]) {
 			return true
 		}
 	}

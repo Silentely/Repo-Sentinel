@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -421,14 +420,30 @@ func (c *PublicClient) appClient() *AppClient {
 	}
 }
 
-// gitHubUsernameRe 约束 GitHub 用户名字符集：1-39 位字母/数字/连字符，且不以连字符起止。
-// 该值直接进入 API 路径，含 "/"、空格或控制字符的用户名会拼出错误路径（404）或让
-// 请求构造失败，而管理台侧看不到任何反馈。
-var gitHubUsernameRe = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`)
-
 // ValidGitHubUsername 判断是否为可安全用于 API 路径的 GitHub 用户名。
+// 规则对齐 GitHub 用户名规范：1-39 位字母/数字/连字符，且不以连字符起止。
+// 采用 ASCII 线性扫描代替正则，消除正则匹配开销。
 func ValidGitHubUsername(username string) bool {
-	return gitHubUsernameRe.MatchString(username)
+	n := len(username)
+	if n < 1 || n > 39 {
+		return false
+	}
+	isAlphaNum := func(c byte) bool {
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+	}
+	if !isAlphaNum(username[0]) {
+		return false
+	}
+	if n > 1 && !isAlphaNum(username[n-1]) {
+		return false
+	}
+	for i := 1; i < n-1; i++ {
+		c := username[i]
+		if !isAlphaNum(c) && c != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // ListUserStarred 拉取用户公开 star 单页（per_page=100）。

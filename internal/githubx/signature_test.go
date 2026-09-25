@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"testing"
 )
 
@@ -24,5 +25,17 @@ func TestVerifySignature(t *testing.T) {
 	}
 	if VerifySignature(body, "sha1=abc", "secret-a") {
 		t.Fatal("非 sha256 头不应通过")
+	}
+	if VerifySignature(body, "sha256=123", "secret-a") {
+		t.Fatal("长度不足 64 hex 不应通过")
+	}
+	if VerifySignature(body, "sha256="+string(make([]byte, 65)), "secret-a") {
+		t.Fatal("长度超 64 hex 不应通过")
+	}
+	if VerifySignature(body, "sha256="+strings.Repeat("z", 64), "secret-a") {
+		t.Fatal("非法 hex 字符不应通过")
+	}
+	if VerifySignature(body, header, "  ", "") {
+		t.Fatal("空白密钥不应通过")
 	}
 }
