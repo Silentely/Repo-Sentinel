@@ -152,7 +152,7 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 	}
 
 	// 同一 PR 同一提交只允许一个审查任务在途，避免 webhook 重试重复消耗 AI 配额。
-	key := fmt.Sprintf("%s#%d#%s", fullName, prNum, payload.PullRequest.Head.SHA)
+	key := reviewKey(fullName, prNum, payload.PullRequest.Head.SHA)
 	if !s.reviews.acquire(key) {
 		return
 	}
@@ -438,7 +438,7 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 	// 同一 PR 换 commit 后并发审查会各自消耗 AI 配额，并争抢同一 ai.pr_review.<itemID>
 	// 挂载点（后写覆盖先写）。代价是该 PR 的新 head SHA 需等在途任务结束后重试；
 	// 精确的同 SHA 去重仍由下方 acquire 负责。
-	if s.reviews.inFlightPrefix(fmt.Sprintf("%s#%d#", fullName, item.Number)) {
+	if s.reviews.inFlightPrefix(reviewKeyPrefix(fullName, item.Number)) {
 		return "", ErrReviewInProgress
 	}
 	installationID := s.resolveRepoInstallationID(ctx, repoRec)
@@ -460,7 +460,7 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 		return "", fmt.Errorf("%w: pr head sha unavailable", ErrReviewUnavailable)
 	}
 
-	key := fmt.Sprintf("%s#%d#%s", fullName, item.Number, headSHA)
+	key := reviewKey(fullName, item.Number, headSHA)
 	if !s.reviews.acquire(key) {
 		return "", ErrReviewInProgress
 	}
@@ -550,9 +550,9 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 
 	htmlURL := item.HTMLURL
 	if htmlURL == "" {
-		htmlURL = fmt.Sprintf("https://github.com/%s/pull/%d", repoFullName, prNum)
+		htmlURL = "https://github.com/" + repoFullName + "/pull/" + strconv.Itoa(prNum)
 	}
-	repoURL := fmt.Sprintf("https://github.com/%s", repoFullName)
+	repoURL := "https://github.com/" + repoFullName
 
 	// 根据评分与安全隐患自适应预警等级
 	levelEmoji := "⚠️"
@@ -575,15 +575,33 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		scoreBadge = "高危风险"
 	}
 
-	title := fmt.Sprintf("%s [%s] %s PR #%d 发现潜在风险 (评分: %d)", levelEmoji, titlePrefix, repoFullName, prNum, res.Score)
+	title := levelEmoji + " [" + titlePrefix + "] " + repoFullName + " PR #" + strconv.Itoa(prNum) + " 发现潜在风险 (评分: " + strconv.Itoa(res.Score) + ")"
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s <b>%s</b>\n", levelEmoji, levelText))
-	sb.WriteString(fmt.Sprintf("仓库：<a href=\"%s\">%s</a>\n", repoURL, htmlpkg.EscapeString(repoFullName)))
-	sb.WriteString(fmt.Sprintf("PR：<a href=\"%s\">#%d %s</a>\n", htmlURL, prNum, htmlpkg.EscapeString(item.Title)))
+	sb.Grow(512)
+	sb.WriteString(levelEmoji)
+	sb.WriteString(" <b>")
+	sb.WriteString(levelText)
+	sb.WriteString("</b>\n仓库：<a href=\"")
+	sb.WriteString(repoURL)
+	sb.WriteString("\">")
+	sb.WriteString(htmlpkg.EscapeString(repoFullName))
+	sb.WriteString("</a>\nPR：<a href=\"")
+	sb.WriteString(htmlURL)
+	sb.WriteString("\">#")
+	sb.WriteString(strconv.Itoa(prNum))
+	sb.WriteString(" ")
+	sb.WriteString(htmlpkg.EscapeString(item.Title))
+	sb.WriteString("</a>\n")
 	if item.Author != "" {
-		sb.WriteString(fmt.Sprintf("作者：<code>%s</code>\n", htmlpkg.EscapeString(item.Author)))
+		sb.WriteString("作者：<code>")
+		sb.WriteString(htmlpkg.EscapeString(item.Author))
+		sb.WriteString("</code>\n")
 	}
-	sb.WriteString(fmt.Sprintf("综合评分：<b>%d / 100</b> (%s)\n", res.Score, scoreBadge))
+	sb.WriteString("综合评分：<b>")
+	sb.WriteString(strconv.Itoa(res.Score))
+	sb.WriteString(" / 100</b> (")
+	sb.WriteString(scoreBadge)
+	sb.WriteString(")\n")
 
 	if len(res.SecurityRisks) > 0 {
 		sb.WriteString("\n🚨 <b>安全风险：</b>\n")
@@ -609,7 +627,7 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		sb.WriteString("• 评分较低或包含破坏性变更，建议要求作者补充向下兼容处理与单元测试。\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("\n🔗 <a href=\"%s\">在 GitHub 查看完整 PR</a>\n", htmlURL))
+	sb.WriteString("\n🔗 <a href=\"" + htmlURL + "\">在 GitHub 查看完整 PR</a>\n")
 
 	body := sb.String()
 
@@ -623,7 +641,7 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		if !ch.Enabled || !ch.AcceptsKind(store.WorkItemKindPR) {
 			continue
 		}
-		idem := fmt.Sprintf("%s:ai_review:%s:%s", ch.ID, item.ID, shaKey)
+		idem := ch.ID + ":ai_review:" + item.ID + ":" + shaKey
 		if _, err := s.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID:             ulid.Make().String(),
 			ChannelID:      ch.ID,

@@ -2,6 +2,7 @@ package webhooksvc
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -113,4 +114,15 @@ func (t *reviewTracker) wait(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// reviewKey 构造审查互斥跟踪键，格式为 fullName#prNum#headSHA。
+// 使用原生字符串拼接与 strconv 消除 fmt.Sprintf 堆分配与反射装箱。
+func reviewKey(fullName string, prNum int, headSHA string) string {
+	return fullName + "#" + strconv.Itoa(prNum) + "#" + headSHA
+}
+
+// reviewKeyPrefix 构造 PR 粒度的在途任务前缀，格式为 fullName#prNum#。
+func reviewKeyPrefix(fullName string, prNum int) string {
+	return fullName + "#" + strconv.Itoa(prNum) + "#"
 }
