@@ -74,3 +74,34 @@ func TestNormalizeRepositoryArchivedLinksSettings(t *testing.T) {
 		t.Fatalf("expected same repo id, got %s vs %s", loaded.ID, existing.ID)
 	}
 }
+
+func BenchmarkNormalizeRepository(b *testing.B) {
+	data := openStoreBench(b)
+	gh := &ghRepository{
+		ID: 101, Name: "demo", FullName: "acme/demo", Private: false,
+		HTMLURL: "https://github.com/acme/demo", DefaultBranch: "main", Archived: false,
+		Owner: struct {
+			Login string `json:"login"`
+		}{Login: "acme"},
+	}
+	ctx := context.Background()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := NormalizeRepository(ctx, data, gh, nil, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func openStoreBench(b *testing.B) store.Store {
+	b.Helper()
+	dbURL := "file:" + b.TempDir() + "/repo_bench.db"
+	data, err := store.Open(context.Background(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = data.Close() })
+	return data
+}

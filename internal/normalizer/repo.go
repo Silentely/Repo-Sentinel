@@ -3,7 +3,6 @@ package normalizer
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -40,17 +39,17 @@ func (g *ghRepository) GetOwnerLogin() string    { return g.Owner.Login }
 // logger 可选：归档联动写失败（GitHub 已归档但本地能力开关未收口）时 Warn 留痕。
 func NormalizeRepository(ctx context.Context, s store.Store, gh repoSource, installationID *string, logger *slog.Logger) (store.Repository, error) {
 	if gh.GetFullName() == "" {
-		return store.Repository{}, fmt.Errorf("missing repository")
+		return store.Repository{}, errors.New("missing repository")
 	}
 
-	parts := strings.SplitN(gh.GetFullName(), "/", 2)
+	fullName := gh.GetFullName()
 	owner, name := gh.GetOwnerLogin(), gh.GetName()
-	if len(parts) == 2 {
+	if idx := strings.IndexByte(fullName, '/'); idx >= 0 {
 		if owner == "" {
-			owner = parts[0]
+			owner = fullName[:idx]
 		}
 		if name == "" {
-			name = parts[1]
+			name = fullName[idx+1:]
 		}
 	}
 
