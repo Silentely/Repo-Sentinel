@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -397,9 +398,11 @@ type reqIDCtxKey struct{}
 func NewRequestID() string {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		return fmt.Sprintf("req-%d", time.Now().UnixNano())
+		return "req-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
-	return hex.EncodeToString(b[:])
+	var hexBuf [16]byte
+	hex.Encode(hexBuf[:], b[:])
+	return string(hexBuf[:])
 }
 
 // WithRequestID 返回携带请求关联 ID 的 context，供上层在参与度日志与调用日志间串联。
@@ -447,7 +450,7 @@ func classifyCallError(err error) (code, detail string) {
 	var ce *callError
 	if errors.As(err, &ce) {
 		if ce.status > 0 {
-			return fmt.Sprintf("upstream_%d", ce.status), err.Error()
+			return "upstream_" + strconv.Itoa(ce.status), err.Error()
 		}
 		return ce.code, err.Error()
 	}

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -438,15 +439,25 @@ func (c *Client) ReviewPR(ctx context.Context, repo, title, author, diff string)
 	cleanedDiff, diffTruncated := cleanAndPrioritizeDiff(diff, maxPRDiffChars)
 
 	var promptBuilder strings.Builder
-	promptBuilder.WriteString(fmt.Sprintf("仓库：%s\nPR 标题：%s\n作者：%s\n", repo, title, author))
+	promptBuilder.Grow(len(repo) + len(title) + len(author) + len(cleanedDiff) + 256)
+	promptBuilder.WriteString("仓库：")
+	promptBuilder.WriteString(repo)
+	promptBuilder.WriteString("\nPR 标题：")
+	promptBuilder.WriteString(title)
+	promptBuilder.WriteString("\n作者：")
+	promptBuilder.WriteString(author)
+	promptBuilder.WriteString("\n")
 	if len(heuristics.hints) > 0 {
 		promptBuilder.WriteString("\n【系统前置启发式规则引擎警示】\n")
 		for _, hint := range heuristics.hints {
-			promptBuilder.WriteString(fmt.Sprintf("- ⚠️ %s\n", hint))
+			promptBuilder.WriteString("- ⚠️ ")
+			promptBuilder.WriteString(hint)
+			promptBuilder.WriteString("\n")
 		}
 		promptBuilder.WriteString("请结合 Diff 重点核验上述可疑特征，若确认风险请务必记录于 security_risks 并重度扣分！\n")
 	}
-	promptBuilder.WriteString(fmt.Sprintf("\n代码变动 (Diff)：\n%s", cleanedDiff))
+	promptBuilder.WriteString("\n代码变动 (Diff)：\n")
+	promptBuilder.WriteString(cleanedDiff)
 
 	out, err := c.Complete(ctx, codeReviewSystemPrompt, promptBuilder.String())
 	if err != nil {
@@ -511,7 +522,11 @@ func FormatPRComment(res *CodeReviewResult) string {
 		scoreBadge = "🟡 需关注"
 	}
 
-	sb.WriteString(fmt.Sprintf("**代码健康评分**: `%d / 100` (%s)\n\n", res.Score, scoreBadge))
+	sb.WriteString("**代码健康评分**: `")
+	sb.WriteString(strconv.Itoa(res.Score))
+	sb.WriteString(" / 100` (")
+	sb.WriteString(scoreBadge)
+	sb.WriteString(")\n\n")
 	if res.DiffTruncated {
 		sb.WriteString("> ⚠️ 本次 Diff 超过输入上限，报告仅覆盖前部变更。\n\n")
 	}
@@ -524,7 +539,9 @@ func FormatPRComment(res *CodeReviewResult) string {
 		sb.WriteString("- ✅ 未检测到明显的敏感凭据或安全注入风险\n\n")
 	} else {
 		for _, r := range res.SecurityRisks {
-			sb.WriteString(fmt.Sprintf("- ⚠️ %s\n", r))
+			sb.WriteString("- ⚠️ ")
+			sb.WriteString(r)
+			sb.WriteString("\n")
 		}
 		sb.WriteString("\n")
 	}
@@ -534,7 +551,9 @@ func FormatPRComment(res *CodeReviewResult) string {
 		sb.WriteString("- ✅ 未检测到破坏向前兼容的 API 或迁移改动\n\n")
 	} else {
 		for _, r := range res.BreakingRisks {
-			sb.WriteString(fmt.Sprintf("- ⚠️ %s\n", r))
+			sb.WriteString("- ⚠️ ")
+			sb.WriteString(r)
+			sb.WriteString("\n")
 		}
 		sb.WriteString("\n")
 	}
@@ -544,7 +563,9 @@ func FormatPRComment(res *CodeReviewResult) string {
 		sb.WriteString("- ✅ 代码结构良好，未见明显资源泄露或性能反模式\n\n")
 	} else {
 		for _, r := range res.CodeSmells {
-			sb.WriteString(fmt.Sprintf("- 💡 %s\n", r))
+			sb.WriteString("- 💡 ")
+			sb.WriteString(r)
+			sb.WriteString("\n")
 		}
 		sb.WriteString("\n")
 	}

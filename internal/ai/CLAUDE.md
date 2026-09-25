@@ -74,6 +74,7 @@ A: 可以，将 BaseURL 指向 OpenAI 兼容网关即可。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T10:15:00Z | 优化请求 ID 与审查 Prompt/Markdown 组装：NewRequestID 改用栈缓冲区十六进制编码消除堆分配；classifyCallError 使用 strconv.Itoa 替代 fmt.Sprintf；ReviewPR 与 FormatMarkdownComment 采用预分配容量与直接写入消除格式化装箱 |
 | 2026-09-25T08:22:00Z | 优化 AI 审查 Diff 解析与评论渲染内存开销：在 parseDiffChunks 仅当包含 \r 时才执行 CRLF 替换，避免标准 Unix 换行 Diff 重复产生大字符串堆副本；FormatPRComment 预分配 StringBuilder 容量 (1024 字节) 避免动态扩容 |
 | 2026-09-25T07:28:00Z | Diff 切片解析与优先级格式安全收口：在 `parseDiffChunks` 中预先规范化 Windows CRLF (`\r\n` / `\r` -> `\n`)，并在拼接各文件 Diff chunk 时严格保证换行分隔符，杜绝跨文件 diff 标头被粘滞在上一文件代码行尾的问题 |
 | 2026-09-23T00:00:00Z | 重试耗尽的错误文案追加尝试次数（`attempts=N`，`withAttemptCount` 保留原错误码与 Unwrap 链，`classifyCallError` 分类不变）：此前单次失败与连续 N 次失败返回同一句「ai: http 500: boom」，告警与降级文案无法区分上游是偶发抖动还是持续不可用；`Retries=0` 的单次失败不附加次数；补尝试次数标注与分类不受影响的回归 |
