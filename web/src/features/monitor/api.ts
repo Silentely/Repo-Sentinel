@@ -163,7 +163,9 @@ export const repositoriesQueryOptions = queryOptions({
     for (const page of restPages) {
       items.push(...page.items);
     }
-    return { ...first, items };
+    // 按 id 去重：分页期间若有并发新增或分页偏移，避免向下游抛出重复 id 导致 React key 冲突
+    const deduplicated = Array.from(new Map(items.map((r) => [r.id, r])).values());
+    return { ...first, items: deduplicated };
   },
   staleTime: 15_000,
 });

@@ -42,7 +42,9 @@ export function useModalLayer<T extends HTMLElement>({
     if (!open) {
       return;
     }
-    triggerRef.current = document.activeElement as HTMLElement | null;
+    const currentActive = document.activeElement as HTMLElement | null;
+    triggerRef.current = currentActive;
+    const targetToRestore = restoreRef?.current ?? currentActive;
     const panel = containerRef.current;
     const initial = initialFocusSelector
       ? panel?.querySelector<HTMLElement>(initialFocusSelector)
@@ -81,7 +83,7 @@ export function useModalLayer<T extends HTMLElement>({
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
-      (restoreRef?.current ?? triggerRef.current)?.focus();
+      targetToRestore?.focus();
     };
   }, [open, initialFocusSelector, restoreRef]);
 

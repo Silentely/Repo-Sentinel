@@ -402,11 +402,12 @@ export function releaseURL(fullName: string, tag: string | undefined): string {
  */
 export function parseGoDurationSeconds(raw: string): number | null {
   const s = raw.trim();
-  if (!s || !/^(\d+(\.\d+)?(ms|s|m|h|d))+$/.test(s)) {
+  // Go 标准库 time.ParseDuration 不支持 d（天），最大单位为 h。
+  if (!s || !/^(\d+(\.\d+)?(ms|s|m|h))+$/.test(s)) {
     return null;
   }
   let total = 0;
-  const re = /(\d+(?:\.\d+)?)(ms|s|m|h|d)/g;
+  const re = /(\d+(?:\.\d+)?)(ms|s|m|h)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(s)) !== null) {
     const value = parseFloat(m[1] ?? "");
@@ -422,9 +423,6 @@ export function parseGoDurationSeconds(raw: string): number | null {
         break;
       case "h":
         total += value * 3600;
-        break;
-      case "d":
-        total += value * 86400;
         break;
       default:
         return null; // 前置正则已限定单位，理论不可达

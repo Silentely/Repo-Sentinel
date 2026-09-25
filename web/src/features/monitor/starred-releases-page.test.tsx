@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StarredReleasesPage, TrackerRow } from "./starred-releases-page";
+import { StarredReleasesPage, TrackerRow, parseGoDurationSeconds } from "./starred-releases-page";
 import type { StarredTrackerItem } from "./api";
 
 const base: StarredTrackerItem = {
@@ -249,5 +249,24 @@ describe("StarredReleasesPage 表单回填", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(screen.getByPlaceholderText(/可粘贴 github.com/)).toHaveValue("octocat-editing");
+  });
+});
+
+describe("parseGoDurationSeconds", () => {
+  it("正确解析合法的 Go duration（ms, s, m, h 组合）", () => {
+    expect(parseGoDurationSeconds("500ms")).toBe(0.5);
+    expect(parseGoDurationSeconds("30s")).toBe(30);
+    expect(parseGoDurationSeconds("10m")).toBe(600);
+    expect(parseGoDurationSeconds("2h")).toBe(7200);
+    expect(parseGoDurationSeconds("1h30m")).toBe(5400);
+    expect(parseGoDurationSeconds("1.5h")).toBe(5400);
+  });
+
+  it("拒绝 Go time.ParseDuration 不支持的 d 单位与非法字符串", () => {
+    expect(parseGoDurationSeconds("1d")).toBeNull();
+    expect(parseGoDurationSeconds("7d")).toBeNull();
+    expect(parseGoDurationSeconds("invalid")).toBeNull();
+    expect(parseGoDurationSeconds("")).toBeNull();
+    expect(parseGoDurationSeconds("-5s")).toBeNull();
   });
 });

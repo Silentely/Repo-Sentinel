@@ -3,6 +3,20 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixtures = vi.hoisted(() => ({
+  repositories: {
+    items: [
+      {
+        id: "repo-1",
+        owner: "acme",
+        name: "repo",
+        full_name: "acme/repo",
+        sync_status: "synced",
+      },
+    ],
+    page: 1,
+    per_page: 20,
+    total: 1,
+  },
   deliveries: {
     items: [
       {
@@ -33,6 +47,9 @@ const fixtures = vi.hoisted(() => ({
     payload_raw: '{"ref":"refs/heads/main","commits":[]}',
   },
   apiRequest: vi.fn(async (path: string): Promise<unknown> => {
+    if (path.includes("/repositories")) {
+      return fixtures.repositories;
+    }
     if (path.includes("/replay")) {
       return { status: "replayed", id: "del-2", delivery_id: "gh-del-12345-replay-1" };
     }
@@ -55,7 +72,7 @@ describe("WebhookDeliveriesPage", () => {
     vi.clearAllMocks();
   });
 
-  it("渲染 Webhook 投递历史列表并支持打开 Inspector 检查载荷与重放", async () => {
+  it("渲染 Webhook 传递历史列表并支持打开 Inspector 检查负载与重放", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -68,14 +85,14 @@ describe("WebhookDeliveriesPage", () => {
 
     // 1. 验证列表项呈现
     expect(await screen.findByText("gh-del-12345")).toBeInTheDocument();
-    expect(screen.getByText("acme/repo")).toBeInTheDocument();
     const list = screen.getByRole("list");
+    expect(within(list).getByText("acme/repo")).toBeInTheDocument();
     expect(within(list).getByText("已处理")).toBeInTheDocument();
 
     // 2. 点击检查按钮打开 Inspector
     fireEvent.click(screen.getByRole("button", { name: /检查/i }));
 
-    // 3. 验证 Inspector 对话框中展示 JSON 载荷
+    // 3. 验证 Inspector 对话框中展示 JSON 负载
     expect(await screen.findByText(/Webhook 载荷检查/i)).toBeInTheDocument();
     expect(await screen.findByText(/refs\/heads\/main/i)).toBeInTheDocument();
 
@@ -92,14 +109,17 @@ describe("WebhookDeliveriesPage", () => {
     });
   });
 
-  it("载荷拉取失败时提示错误而非「未找到记录详情」", async () => {
+  it("负载拉取失败时提示错误而非「未找到记录详情」", async () => {
     // 旧实现把查询失败落到 else 分支：网络/服务端错误被误报为记录不存在。
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     fixtures.apiRequest.mockImplementation(async (path: string): Promise<unknown> => {
+      if (path.includes("/repositories")) {
+        return fixtures.repositories;
+      }
       if (path.endsWith("/del-1")) {
-        throw new ApiError({ status: 500, errorCode: "internal", message: "投递记录读取失败" });
+        throw new ApiError({ status: 500, errorCode: "internal", message: "传递记录读取失败" });
       }
       return fixtures.deliveries;
     });
@@ -120,6 +140,7 @@ describe("WebhookDeliveriesPage", () => {
       defaultOptions: { queries: { retry: false } },
     });
     fixtures.apiRequest.mockImplementation(async (path: string): Promise<unknown> => {
+      if (path.includes("/repositories")) return fixtures.repositories;
       if (path.endsWith("/del-1")) return fixtures.detail;
       return { ...fixtures.deliveries, total: 45 };
     });
@@ -140,6 +161,11 @@ describe("WebhookDeliveriesPage", () => {
   it("URL 中非法页码安全回退到第 1 页", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
+    });
+    fixtures.apiRequest.mockImplementation(async (path: string): Promise<unknown> => {
+      if (path.includes("/repositories")) return fixtures.repositories;
+      if (path.endsWith("/del-1")) return fixtures.detail;
+      return { ...fixtures.deliveries, total: 45 };
     });
     window.history.replaceState(null, "", "/webhook-deliveries?page=0");
 
