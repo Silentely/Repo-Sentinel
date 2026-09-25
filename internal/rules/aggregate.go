@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"strconv"
 	htmlpkg "html"
 	"log/slog"
 	"strings"
@@ -197,7 +197,7 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 		// repoFullName 为空（如聚合器单事件回放）时回退通用标题；写入前统一转义。
 		title := "⚠️ 通知频率超限"
 		if repoFullName != "" {
-			title = fmt.Sprintf("⚠️ 通知频率超限：%s", repoFullName)
+			title = "⚠️ 通知频率超限：" + repoFullName
 		}
 		a.mu.Unlock()
 		// 降级：只写一条速率限制摘要（必须在锁外访问 Store）
@@ -302,7 +302,7 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 		if idScope == "" {
 			idScope = b.repoName
 		}
-		variant := fmt.Sprintf("agg|%s|%s|%d", idScope, b.category, bucket)
+		variant := "agg|" + idScope + "|" + b.category + "|" + strconv.FormatInt(bucket, 10)
 		idem := idempotencyKey(ch.ID, idScope, variant)
 		eventID := sub[0].ID
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
@@ -325,27 +325,27 @@ func renderMergedMessage(repoName, category string, events []*store.Event, windo
 	categoryCN := categoryDisplayName(category)
 	// 「已聚合」而非「已合并」：避免与 PR 的「已合并」状态语义混淆
 	//（同一条通知里既可能包含已合并的 PR，也可能表示本通知是聚合产物）。
-	title := fmt.Sprintf("📋 %s：%s × %d（已聚合）", repoName, categoryCN, len(events))
+	title := "📋 " + repoName + "：" + categoryCN + " × " + strconv.Itoa(len(events)) + "（已聚合）"
 	var body strings.Builder
-	body.WriteString(fmt.Sprintf("<b>%s</b>\n", htmlpkg.EscapeString(title)))
+	body.WriteString("<b>" + htmlpkg.EscapeString(title) + "</b>\n")
 	body.WriteString("────────────────\n")
 	maxSamples := 8
 	for i, ev := range events {
 		if i >= maxSamples {
-			body.WriteString(fmt.Sprintf("…另有 %d 条\n", len(events)-maxSamples))
+			body.WriteString("…另有 " + strconv.Itoa(len(events)-maxSamples) + " 条\n")
 			break
 		}
 		statusEmoji, statusLabel := statusDisplay(ev)
 		numStr := ""
 		if ev.SubjectNumber != nil {
-			numStr = fmt.Sprintf(" #%d", *ev.SubjectNumber)
+			numStr = " #" + strconv.FormatInt(*ev.SubjectNumber, 10)
 		}
 		// 状态中文放标题前，合并列表同样一眼可读。
-		body.WriteString(fmt.Sprintf("%s [%s]%s %s\n", statusEmoji, htmlpkg.EscapeString(statusLabel), numStr, htmlpkg.EscapeString(ev.Title)))
+		body.WriteString(statusEmoji + " [" + htmlpkg.EscapeString(statusLabel) + "]" + numStr + " " + htmlpkg.EscapeString(ev.Title) + "\n")
 	}
 	if !windowEnd.IsZero() {
 		body.WriteString("────────────────\n")
-		body.WriteString(fmt.Sprintf("⏰ 时间：%s\n", windowEnd.UTC().Format("2006-01-02 15:04 UTC")))
+		body.WriteString("⏰ 时间：" + windowEnd.UTC().Format("2006-01-02 15:04 UTC") + "\n")
 	}
 	return title, body.String()
 }
@@ -361,7 +361,7 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 	safeTitle := htmlpkg.EscapeString(title)
 	safeRepo := htmlpkg.EscapeString(repoName)
 	safeCat := htmlpkg.EscapeString(categoryCN)
-	body := fmt.Sprintf("<b>%s</b>\n────────────────\n📦 仓库：<code>%s</code>\n📋 类型：%s\n🔇 已降级为摘要模式，请在仪表盘查看详情\n⏰ 时间：%s", safeTitle, safeRepo, safeCat, now.Format("2006-01-02 15:04 UTC"))
+	body := "<b>" + safeTitle + "</b>\n────────────────\n📦 仓库：<code>" + safeRepo + "</code>\n📋 类型：" + safeCat + "\n🔇 已降级为摘要模式，请在仪表盘查看详情\n⏰ 时间：" + now.Format("2006-01-02 15:04 UTC")
 	for _, ch := range channels {
 		// 以 sample 事件的类型判定渠道是否接收超频摘要。
 		if !ch.Enabled || !ch.AcceptsKind(sample.Kind) {
@@ -372,7 +372,7 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 		if idScope == "" {
 			idScope = repoName
 		}
-		variant := fmt.Sprintf("burst|%s|%s|%d", idScope, cat, bucket)
+		variant := "burst|" + idScope + "|" + cat + "|" + strconv.FormatInt(bucket, 10)
 		idem := idempotencyKey(ch.ID, idScope, variant)
 		eid := sample.ID
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{

@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	htmlpkg "html"
 	"io"
 	"log/slog"
@@ -361,7 +360,7 @@ func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, r
 						jobHasFailedStep := false
 						for _, s := range j.Steps {
 							if store.IsFailureConclusion(s.Conclusion) {
-								failedSteps = append(failedSteps, fmt.Sprintf("%s / %s", j.Name, s.Name))
+								failedSteps = append(failedSteps, j.Name + " / " + s.Name)
 								jobHasFailedStep = true
 							}
 						}
