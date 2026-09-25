@@ -47,12 +47,15 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 	result := SyncInstallationResult{Installations: len(installations)}
 	// 一次性加载本地仓库建 full_name→repo 映射，避免对每个安装仓库 GetByFullName 的
 	// N+1 查询（安装仓库多时一轮同步数百次单查）。加载失败降级逐仓单查并留痕。
-	existingByFullName := make(map[string]store.Repository)
+	var existingByFullName map[string]store.Repository
 	for page := 1; ; page++ {
 		repos, res, err := r.Store.Repositories().List(ctx, store.ListFilter{Page: page, PerPage: 100})
 		if err != nil {
 			r.warn("load local repositories failed", 0, "installation_repo_map_load_failed", err)
 			break
+		}
+		if existingByFullName == nil {
+			existingByFullName = make(map[string]store.Repository, res.Total)
 		}
 		for _, repo := range repos {
 			existingByFullName[repo.FullName] = repo
@@ -60,6 +63,9 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 		if page*res.PerPage >= res.Total || len(repos) == 0 {
 			break
 		}
+	}
+	if existingByFullName == nil {
+		existingByFullName = make(map[string]store.Repository)
 	}
 	for _, inst := range installations {
 		token, err := r.GitHub.InstallationToken(ctx, inst.InstallationID)
