@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/config"
@@ -510,5 +511,57 @@ func TestWorkerDeliverChannelNotFoundGoesDead(t *testing.T) {
 	}
 	if items[0].LastErrorCode != "channel_not_found" {
 		t.Fatalf("expected last_error_code channel_not_found, got %q", items[0].LastErrorCode)
+	}
+}
+
+func TestHTMLToPlainTextFastPathAndUppercase(t *testing.T) {
+	// 纯文本（无 < 也无 &）：直接走快速路径返回自身
+	plain := "这是没有任何 HTML 标签或实体的纯文本"
+	if got := htmlToPlainText(plain); got != plain {
+		t.Fatalf("纯文本走快路径应原样返回: %q", got)
+	}
+
+	// 仅实体无标签
+	entityOnly := "Foo &amp; Bar"
+	if got := htmlToPlainText(entityOnly); got != "Foo & Bar" {
+		t.Fatalf("仅实体无标签反转义失败: %q", got)
+	}
+
+	// 大写标签 <A HREF="...">
+	upperLink := `<A HREF="https://example.com/uppercase">UPPER LINK</A>`
+	if got := htmlToPlainText(upperLink); got != "UPPER LINK (https://example.com/uppercase)" {
+		t.Fatalf("大写 A 标签转换失败: %q", got)
+	}
+}
+
+func TestIsDeliveryCode(t *testing.T) {
+	valid := []string{"telegram_rate_limited", "http_webhook_status_500", "decrypt_secret", "a", "a_1", "ok_200"}
+	for _, s := range valid {
+		if !isDeliveryCode(s) {
+			t.Errorf("isDeliveryCode(%q) = false, want true", s)
+		}
+	}
+
+	invalid := []string{"", "123", "_foo", "Telegram", "bad-code", "foo bar", "code: detail"}
+	for _, s := range invalid {
+		if isDeliveryCode(s) {
+			t.Errorf("isDeliveryCode(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestTruncateLogTitleOptimization(t *testing.T) {
+	short := "短标题"
+	if got := truncateLogTitle(short); got != short {
+		t.Fatalf("短标题不应截断: %q", got)
+	}
+
+	long := strings.Repeat("标", 150)
+	got := truncateLogTitle(long)
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("超长标题应截断并带省略号: %q", got)
+	}
+	if utf8.RuneCountInString(got) != logTitleLimit+1 {
+		t.Fatalf("截断后码点数应为 %d, 实际为 %d", logTitleLimit+1, utf8.RuneCountInString(got))
 	}
 }

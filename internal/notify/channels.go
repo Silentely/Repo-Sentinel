@@ -30,7 +30,7 @@ func truncateRunes(s string, maxRunes int) string {
 	count := 0
 	for i := range s {
 		if count == maxRunes {
-			return s[:i] + "…"
+			return strings.TrimRight(s[:i], " \n\r\t") + "…"
 		}
 		count++
 	}
@@ -260,7 +260,11 @@ func (w *Worker) postJSONChannel(ctx context.Context, ch store.NotificationChann
 				Message string `json:"message"`
 			}
 			if json.Unmarshal(bodyBytes, &barkResp) == nil && barkResp.Code != 0 && barkResp.Code != 200 {
-				return deliveryErrorf(fmt.Sprintf("%s_client_error_%d", channelTag, barkResp.Code), barkResp.Message)
+				msg := barkResp.Message
+				if msg == "" {
+					msg = strings.TrimSpace(string(bodyBytes))
+				}
+				return deliveryErrorf(fmt.Sprintf("%s_client_error_%d", channelTag, barkResp.Code), msg)
 			}
 		} else {
 			var statusResp struct {
@@ -271,10 +275,24 @@ func (w *Worker) postJSONChannel(ctx context.Context, ch store.NotificationChann
 			}
 			if json.Unmarshal(bodyBytes, &statusResp) == nil {
 				if statusResp.Code != 0 {
-					return deliveryErrorf(fmt.Sprintf("%s_client_error_%d", channelTag, statusResp.Code), statusResp.Msg)
+					msg := statusResp.Msg
+					if msg == "" {
+						msg = statusResp.ErrMsg
+					}
+					if msg == "" {
+						msg = strings.TrimSpace(string(bodyBytes))
+					}
+					return deliveryErrorf(fmt.Sprintf("%s_client_error_%d", channelTag, statusResp.Code), msg)
 				}
 				if statusResp.ErrCode != 0 {
-					return deliveryErrorf(fmt.Sprintf("%s_client_error_%d", channelTag, statusResp.ErrCode), statusResp.ErrMsg)
+					msg := statusResp.ErrMsg
+					if msg == "" {
+						msg = statusResp.Msg
+					}
+					if msg == "" {
+						msg = strings.TrimSpace(string(bodyBytes))
+					}
+					return deliveryErrorf(fmt.Sprintf("%s_client_error_%d", channelTag, statusResp.ErrCode), msg)
 				}
 			}
 		}

@@ -462,11 +462,17 @@ const logTitleLimit = 120
 // truncateLogTitle 按码点截断日志标题并追加省略号，压缩内部多余空白与换行，避免超长标题刷屏。
 func truncateLogTitle(title string) string {
 	title = strings.TrimSpace(strings.Join(strings.Fields(title), " "))
-	runes := []rune(title)
-	if len(runes) <= logTitleLimit {
+	if len(title) <= logTitleLimit || utf8.RuneCountInString(title) <= logTitleLimit {
 		return title
 	}
-	return string(runes[:logTitleLimit]) + "…"
+	count := 0
+	for i := range title {
+		if count == logTitleLimit {
+			return title[:i] + "…"
+		}
+		count++
+	}
+	return title
 }
 
 // readBodyDetail 读取响应体前 bodyDetailLimit+1 字节并压缩为单行文本；
@@ -512,7 +518,27 @@ func deliveryErrorf(code, detail string) error {
 
 // deliveryCodeRe 限定错误码风格：小写字母开头、仅含小写字母/数字/下划线，
 // 用于从错误串中提取稳定前缀，防止响应体详情等长文本写入 last_error_code。
-var deliveryCodeRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+// isDeliveryCode 判定错误码风格：小写字母开头、仅含小写字母/数字/下划线。
+// 采用 ASCII 高性能线性扫描替代正则匹配，消除高频错误码提取时的正则开销与堆分配。
+func isDeliveryCode(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if i == 0 {
+			if c < 'a' || c > 'z' {
+				return false
+			}
+		} else {
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '_' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 
 // deliveryErrorCode 从投递错误推导稳定的错误码（写入 outbox.last_error_code，
 // 管理台「投递记录」页直接展示）：retryAfterError 用自带 code；其余错误取
@@ -526,7 +552,7 @@ func deliveryErrorCode(err error) string {
 	if i := strings.Index(s, ": "); i > 0 {
 		s = s[:i]
 	}
-	if deliveryCodeRe.MatchString(s) {
+	if isDeliveryCode(s) {
 		return s
 	}
 	return "delivery_failed"
@@ -557,7 +583,7 @@ const telegramTextLimit = 4000
 
 // htmlLinkRe / htmlTagRe 用于把 Telegram HTML 正文转为纯文本（HTTP Webhook 接收端消费）。
 var (
-	htmlLinkRe = regexp.MustCompile(`<a\s+(?:[^>]*?\s+)?href=["']([^"']*)["'][^>]*>([^<]*)</a>`)
+	htmlLinkRe = regexp.MustCompile(`(?i)<a\s+(?:[^>]*?\s+)?href=["']([^"']*)["'][^>]*>([^<]*)</a>`)
 	htmlTagRe  = regexp.MustCompile(`<[^>]+>`)
 )
 
@@ -565,8 +591,13 @@ var (
 // 链接标签保留「文字 (URL)」便于接收端直接阅读，其余标签（<b>/<code> 等）剔除，
 // HTML 实体（&amp; 等）反转义。仅作展示降级，不影响原 HTML 正文投递。
 func htmlToPlainText(s string) string {
-	s = htmlLinkRe.ReplaceAllString(s, `$2 ($1)`)
-	s = htmlTagRe.ReplaceAllString(s, "")
+	if !strings.Contains(s, "<") && !strings.Contains(s, "&") {
+		return s
+	}
+	if strings.Contains(s, "<") {
+		s = htmlLinkRe.ReplaceAllString(s, `$2 ($1)`)
+		s = htmlTagRe.ReplaceAllString(s, "")
+	}
 	return html.UnescapeString(s)
 }
 

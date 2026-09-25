@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -185,6 +186,73 @@ func TestSendBark(t *testing.T) {
 		}
 		if received["group"] != "RepoSentinel" {
 			t.Fatalf("expected group RepoSentinel, got %v", received["group"])
+		}
+	})
+}
+
+func TestTruncateRunes(t *testing.T) {
+	cases := []struct {
+		input    string
+		maxRunes int
+		want     string
+	}{
+		{"", 10, ""},
+		{"hello", 0, ""},
+		{"hello", -1, ""},
+		{"hello", 5, "hello"},
+		{"hello", 10, "hello"},
+		{"hello world", 5, "hello…"},
+		{"hello   world", 5, "hello…"},
+		{"你好世界，欢迎来到开源监控", 4, "你好世界…"},
+	}
+	for _, tc := range cases {
+		got := truncateRunes(tc.input, tc.maxRunes)
+		if got != tc.want {
+			t.Errorf("truncateRunes(%q, %d) = %q, want %q", tc.input, tc.maxRunes, got, tc.want)
+		}
+	}
+}
+
+func TestPostJSONChannelDetailFallback(t *testing.T) {
+	t.Run("FeishuErrcodeFallbackToErrMsg", func(t *testing.T) {
+		w, ch, item := newChannelTestHarness(t, store.ChannelFeishu, func(rw http.ResponseWriter, _ *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+			_, _ = rw.Write([]byte(`{"errcode":9999,"errmsg":"custom error detail"}`))
+		})
+		err := w.sendFeishu(t.Context(), ch, "", item)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "custom error detail") {
+			t.Fatalf("expected error detail from errmsg, got %v", err)
+		}
+	})
+
+	t.Run("FeishuCodeFallbackToRawBodyWhenEmptyMsg", func(t *testing.T) {
+		w, ch, item := newChannelTestHarness(t, store.ChannelFeishu, func(rw http.ResponseWriter, _ *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+			_, _ = rw.Write([]byte(`{"code":50001}`))
+		})
+		err := w.sendFeishu(t.Context(), ch, "", item)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), `{"code":50001}`) {
+			t.Fatalf("expected raw body fallback, got %v", err)
+		}
+	})
+
+	t.Run("BarkClientErrorCodeFallbackToRawBody", func(t *testing.T) {
+		w, ch, item := newChannelTestHarness(t, store.ChannelBark, func(rw http.ResponseWriter, _ *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+			_, _ = rw.Write([]byte(`{"code":400}`))
+		})
+		err := w.sendBark(t.Context(), ch, "testkey", item)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), `{"code":400}`) {
+			t.Fatalf("expected raw body fallback for bark, got %v", err)
 		}
 	})
 }
