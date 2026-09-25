@@ -3,21 +3,21 @@
  * 用于列表与仪表盘共用。
  * @param now 可选基准时间（测试注入用），默认当前时间。
  */
-export function formatRelativeTime(dateString: string, now: Date = new Date()): string {
+export function formatRelativeTime(dateString: string, now: Date | number = Date.now()): string {
   if (!dateString) return "";
-  const date = new Date(dateString);
-  if (isNaN(date.getTime()) || isNaN(now.getTime())) return "";
-  const diffMs = now.getTime() - date.getTime();
+  const nowMs = typeof now === "number" ? now : now.getTime();
+  if (isNaN(nowMs)) return "";
+  const targetMs = Date.parse(dateString);
+  if (isNaN(targetMs)) return "";
+  const diffMs = nowMs - targetMs;
   // 未来时间（客户端与服务端存在时钟偏差、或事件带计划时间）不渲染空白，
   // 与 60 秒内同样归为「刚刚」，避免列表时间列留白。
   if (diffMs < 60 * 1000) return "刚刚";
-  const diffSeconds = Math.floor(diffMs / 1000);
-  const diffMinutes = Math.floor(diffSeconds / 60);
-  const diffHours = Math.floor(diffMinutes / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
+  const diffMinutes = Math.floor(diffMs / (60 * 1000));
   if (diffMinutes < 60) return `${diffMinutes} 分钟前`;
+  const diffHours = Math.floor(diffMinutes / 60);
   if (diffHours < 24) return `${diffHours} 小时前`;
+  const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 30) return `${diffDays} 天前`;
   // 超过一个月改用月/年粒度，与列表其余行的相对时间风格保持一致；
   // 直接显示绝对日期会与整列「X 前」的节奏割裂。

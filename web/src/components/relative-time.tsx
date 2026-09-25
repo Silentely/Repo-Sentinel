@@ -50,7 +50,7 @@ export const RelativeTime = React.memo(function RelativeTime({
     if (isNaN(d.getTime())) return null;
     return {
       title: d.toLocaleString("zh-CN"),
-      formatted: formatRelativeTime(date, new Date(now)),
+      formatted: formatRelativeTime(date, now),
     };
   }, [date, now]);
 
