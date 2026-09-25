@@ -150,3 +150,14 @@ func TestReviewTrackerInFlightPrefix(t *testing.T) {
 		t.Fatal("nil 跟踪器应放行（不拦截）")
 	}
 }
+
+// TestReviewTrackerWaitEmptyFastPath 守护在途任务为空时的零分配快速退出路径：
+// 无需启动 context 监听 goroutine 即可立即返回。
+func TestReviewTrackerWaitEmptyFastPath(t *testing.T) {
+	tr := &reviewTracker{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := tr.wait(ctx); err != nil {
+		t.Fatalf("在途任务为空时 wait 应立即返回 nil，got: %v", err)
+	}
+}

@@ -90,6 +90,9 @@ func (t *reviewTracker) wait(ctx context.Context) error {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if len(t.inFlight) == 0 {
+		return nil
+	}
 	if t.cond == nil {
 		t.cond = sync.NewCond(&t.mu)
 	}
