@@ -39,3 +39,18 @@ func TestVerifySignature(t *testing.T) {
 		t.Fatal("空白密钥不应通过")
 	}
 }
+
+func BenchmarkVerifySignature(b *testing.B) {
+	body := []byte(`{"action":"opened","repository":{"full_name":"octocat/Hello-World"}}`)
+	mac := hmac.New(sha256.New, []byte("test-secret"))
+	mac.Write(body)
+	header := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !VerifySignature(body, header, "test-secret") {
+			b.Fatal("verify failed")
+		}
+	}
+}

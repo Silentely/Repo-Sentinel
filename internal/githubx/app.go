@@ -238,7 +238,7 @@ func (c *AppClient) fetchInstallationToken(ctx context.Context, installationID i
 	if base == "" {
 		base = "https://api.github.com"
 	}
-	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", base, installationID)
+	url := base + "/app/installations/" + strconv.FormatInt(installationID, 10) + "/access_tokens"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return "", time.Time{}, err
@@ -473,4 +473,4 @@ type HTTPStatusError struct {
 	StatusCode int
 }
 
-func (e *HTTPStatusError) Error() string { return fmt.Sprintf("github_http_%d", e.StatusCode) }
+func (e *HTTPStatusError) Error() string { return "github_http_" + strconv.Itoa(e.StatusCode) }

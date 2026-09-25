@@ -19,8 +19,10 @@ func VerifySignature(body []byte, header string, secrets ...string) bool {
 	if len(hexPart) != sha256.Size*2 {
 		return false
 	}
+	var hexPartBytes [sha256.Size * 2]byte
+	copy(hexPartBytes[:], hexPart)
 	var got [sha256.Size]byte
-	if _, err := hex.Decode(got[:], []byte(hexPart)); err != nil {
+	if _, err := hex.Decode(got[:], hexPartBytes[:]); err != nil {
 		return false
 	}
 	for _, secret := range secrets {
