@@ -17,11 +17,12 @@ import (
 
 // handleListWebhookDeliveries 查询 Webhook 投递历史列表。
 func (s *server) handleListWebhookDeliveries(w http.ResponseWriter, r *http.Request) {
-	page, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("page")))
-	perPage, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("per_page")))
-	status := strings.TrimSpace(r.URL.Query().Get("status"))
-	kind := strings.TrimSpace(r.URL.Query().Get("event_type"))
-	repo := strings.TrimSpace(r.URL.Query().Get("repository"))
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(strings.TrimSpace(q.Get("page")))
+	perPage, _ := strconv.Atoi(strings.TrimSpace(q.Get("per_page")))
+	status := strings.TrimSpace(q.Get("status"))
+	kind := strings.TrimSpace(q.Get("event_type"))
+	repo := strings.TrimSpace(q.Get("repository"))
 
 	items, pageRes, err := s.dependencies.Store.WebhookDeliveries().List(r.Context(), store.ListFilter{
 		Page:         page,

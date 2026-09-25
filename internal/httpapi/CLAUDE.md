@@ -102,6 +102,7 @@ A: `reconcileAllRunning` atomic 防重入。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T09:25:00Z | 优化 HTTP 查询参数解析性能：消除 handlers 对 r.URL.Query() 的多次重复解析与 map 堆分配；重构 listFilterFromQuery 与 queryTrimmed 共享已解析的 Values 集合 |
 | 2026-09-25T08:24:00Z | 优化 JSON 请求体解码性能：isJSONContentType 增加针对标准 application/json 与带参数 Content-Type 的零分配快速路径判定，避免每次写请求重复调用 mime.ParseMediaType 分配参数字典 |
 | 2026-09-25T07:31:00Z | 渠道配置与仓库激活审计留痕：在 `handleUpsertChannel`、`handleDeleteChannel`、`handleActivateRepository`、`handleUpdateRepositorySettings` 中补齐 `s.appendAudit` 审计调用，统一沉淀操作者、IP、目标类型与关键参数 |
 | 2026-09-23T00:00:00Z | 审计写入可见性与洞察统计窗口收口：①新增 `server.appendAudit` 统一落审计（`admin.2fa_enabled`/`admin.2fa_disabled`/`repository.delete` 三处原 `_, _ = ...Audits().Append(...)` 静默丢弃写失败错误），失败不改变主流程结论但 Warn 留痕 `audit_append_failed`（带 action/target_type/target_id/error），使「谁在何时做了什么」在审计表缺失时仍可从日志定位；②`/api/v1/stats/actions-insights` 分析窗口从「实际只取第一页 100 条、注释却写 300 条」改为按 300 条样本（`actionsInsightsSampleSize` 样本量、`workflowRunsPageSize` 页大小，`listRecentWorkflowRuns` 逐页拉取、每页按剩余样本量取、末页不足一页提前收尾）：成功率与耗时分位数依赖样本量，窗口过小让高频仓库的统计只剩几个小时；③新增 actions-insights 三个 handler 回归（250 条全量纳入、样本上限 300、`repository_id` 过滤生效，均先缩小窗口/去掉过滤验证可捕获缺陷） |

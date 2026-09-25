@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -55,8 +56,9 @@ func writeListResponse[T any](w http.ResponseWriter, items []T, page store.PageR
 }
 
 func (s *server) handleListRepositories(w http.ResponseWriter, r *http.Request) {
-	f := listFilterFromRequest(r)
-	f.Kind = queryTrimmed(r, "type")
+	q := r.URL.Query()
+	f := listFilterFromQuery(q)
+	f.Kind = queryTrimmed(q, "type")
 	items, page, err := s.dependencies.Store.Repositories().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
@@ -202,14 +204,15 @@ func (s *server) handleUpdateRepositorySettings(w http.ResponseWriter, r *http.R
 }
 
 func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
-	f := listFilterFromRequest(r)
-	f.Kind = queryTrimmed(r, "kind")
-	f.State = queryTrimmed(r, "state")
-	f.RepositoryID = queryTrimmed(r, "repository_id")
+	q := r.URL.Query()
+	f := listFilterFromQuery(q)
+	f.Kind = queryTrimmed(q, "kind")
+	f.State = queryTrimmed(q, "state")
+	f.RepositoryID = queryTrimmed(q, "repository_id")
 	// PR 维度过滤下沉到 SQL：客户端对首页 50 条二次过滤会导致总数失真。
-	f.ReviewDecision = queryTrimmed(r, "review")
-	f.CheckStatus = mapCheckStatusParam(r.URL.Query().Get("check"))
-	applyIgnoredFilter(&f, r)
+	f.ReviewDecision = queryTrimmed(q, "review")
+	f.CheckStatus = mapCheckStatusParam(q.Get("check"))
+	applyIgnoredFilter(&f, q)
 	// closed 状态应用系统设置的显示限制，避免历史数据无限增长。
 	if f.State == "closed" && f.PerPage == 0 {
 		if limit := s.getIntSetting(r.Context(), "display.closed_limit", 20); limit > 0 {
@@ -228,10 +231,11 @@ func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) {
-	f := listFilterFromRequest(r)
-	f.Status = queryTrimmed(r, "conclusion")
-	f.RepositoryID = queryTrimmed(r, "repository_id")
-	applyIgnoredFilter(&f, r)
+	q := r.URL.Query()
+	f := listFilterFromQuery(q)
+	f.Status = queryTrimmed(q, "conclusion")
+	f.RepositoryID = queryTrimmed(q, "repository_id")
+	applyIgnoredFilter(&f, q)
 	items, page, err := s.dependencies.Store.WorkflowRuns().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
@@ -241,11 +245,12 @@ func (s *server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *server) handleListSecurityAlerts(w http.ResponseWriter, r *http.Request) {
-	f := listFilterFromRequest(r)
-	f.Kind = queryTrimmed(r, "alert_kind")
-	f.State = queryTrimmed(r, "state")
-	f.RepositoryID = queryTrimmed(r, "repository_id")
-	applyIgnoredFilter(&f, r)
+	q := r.URL.Query()
+	f := listFilterFromQuery(q)
+	f.Kind = queryTrimmed(q, "alert_kind")
+	f.State = queryTrimmed(q, "state")
+	f.RepositoryID = queryTrimmed(q, "repository_id")
+	applyIgnoredFilter(&f, q)
 	// dismissed/resolved 状态应用显示限制。
 	if f.State != "" && f.State != "open" && f.PerPage == 0 {
 		if limit := s.getIntSetting(r.Context(), "display.closed_limit", 20); limit > 0 {
@@ -267,8 +272,8 @@ func (s *server) handleListSecurityAlerts(w http.ResponseWriter, r *http.Request
 // - 缺省 / ignored=false：只返回未忽略
 // - ignored=true：只返回已忽略
 // - ignored=all：返回全部
-func applyIgnoredFilter(f *store.ListFilter, r *http.Request) {
-	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("ignored"))) {
+func applyIgnoredFilter(f *store.ListFilter, q url.Values) {
+	switch strings.ToLower(strings.TrimSpace(q.Get("ignored"))) {
 	case "true", "1", "yes":
 		f.OnlyIgnored = true
 	case "all":
@@ -327,9 +332,10 @@ func (s *server) getIntSetting(ctx context.Context, key string, defaultVal int) 
 }
 
 func (s *server) handleListEvents(w http.ResponseWriter, r *http.Request) {
-	f := listFilterFromRequest(r)
-	f.Kind = queryTrimmed(r, "kind")
-	f.RepositoryID = queryTrimmed(r, "repository_id")
+	q := r.URL.Query()
+	f := listFilterFromQuery(q)
+	f.Kind = queryTrimmed(q, "kind")
+	f.RepositoryID = queryTrimmed(q, "repository_id")
 	items, page, err := s.dependencies.Store.Events().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
@@ -351,9 +357,10 @@ func resolveChannelIDsByType(channels []store.NotificationChannel, channelType s
 }
 
 func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
-	f := listFilterFromRequest(r)
-	f.Status = queryTrimmed(r, "status")
-	channelTypeFilter := queryTrimmed(r, "channel_type")
+	q := r.URL.Query()
+	f := listFilterFromQuery(q)
+	f.Status = queryTrimmed(q, "status")
+	channelTypeFilter := queryTrimmed(q, "channel_type")
 	// 渠道懒加载：仅 channel_type 过滤（需 ID 集合下沉 SQL 保证分页/total 正确）
 	// 与响应类型回填两种场景才需要；无筛选且结果为空时完全跳过查询
 	// （渠道 List 本身有短 TTL 缓存，这里省掉缓存未命中时的无谓访问）。
@@ -418,13 +425,13 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": enriched, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
 }
 
-func queryTrimmed(r *http.Request, key string) string {
-	return strings.TrimSpace(r.URL.Query().Get(key))
+func queryTrimmed(q url.Values, key string) string {
+	return strings.TrimSpace(q.Get(key))
 }
 
-func listFilterFromRequest(r *http.Request) store.ListFilter {
-	page, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("page")))
-	perPage, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("per_page")))
+func listFilterFromQuery(q url.Values) store.ListFilter {
+	page, _ := strconv.Atoi(strings.TrimSpace(q.Get("page")))
+	perPage, _ := strconv.Atoi(strings.TrimSpace(q.Get("per_page")))
 	return store.ListFilter{Page: page, PerPage: perPage}
 }
 
@@ -590,4 +597,8 @@ func (s *server) handleTriggerWorkItemAIReview(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "work_item_id": id, "head_sha": headSHA})
+}
+
+func listFilterFromRequest(r *http.Request) store.ListFilter {
+	return listFilterFromQuery(r.URL.Query())
 }

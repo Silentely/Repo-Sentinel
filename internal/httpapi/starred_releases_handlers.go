@@ -213,8 +213,9 @@ func (s *server) handleListStarredTrackers(w http.ResponseWriter, r *http.Reques
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
-	f := listFilterFromRequest(r)
-	f.State = r.URL.Query().Get("state")
+	q := r.URL.Query()
+	f := listFilterFromQuery(q)
+	f.State = queryTrimmed(q, "state")
 	items, page, err := s.dependencies.Store.StarredTrackers().List(r.Context(), f)
 	if err != nil {
 		s.writeMappedError(w, r, err)
