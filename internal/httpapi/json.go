@@ -23,9 +23,23 @@ func (e jsonDecodeError) Error() string {
 	return "invalid JSON request"
 }
 
+// isJSONContentType 校验 Content-Type 是否为 application/json。
+// 针对常见标准格式（"application/json" 与 "application/json; charset=utf-8"）提供
+// 零分配快速路径，避免高频请求重复调用 mime.ParseMediaType 解析并分配参数字典。
+func isJSONContentType(ct string) bool {
+	ct = strings.TrimSpace(ct)
+	if strings.EqualFold(ct, "application/json") {
+		return true
+	}
+	if len(ct) >= 17 && strings.EqualFold(ct[:17], "application/json;") {
+		return true
+	}
+	mediaType, _, err := mime.ParseMediaType(ct)
+	return err == nil && strings.EqualFold(mediaType, "application/json")
+}
+
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || !strings.EqualFold(mediaType, "application/json") {
+	if !isJSONContentType(r.Header.Get("Content-Type")) {
 		return jsonDecodeError{status: http.StatusUnsupportedMediaType}
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
