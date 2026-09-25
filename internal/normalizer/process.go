@@ -715,7 +715,7 @@ func normalizeWorkflowRun(run *ghWorkflowRun, repoFullName string, repoID string
 		run.HeadSHA = "0000000000000000000000000000000000000000"
 	}
 	if strings.TrimSpace(run.HTMLURL) == "" {
-		run.HTMLURL = fmt.Sprintf("https://github.com/%s/actions/runs/%d", repoFullName, run.ID)
+		run.HTMLURL = "https://github.com/" + repoFullName + "/actions/runs/" + strconv.FormatInt(run.ID, 10)
 	}
 	hash := StateHash(strconv.FormatInt(run.ID, 10), run.Status, conclusion, strconv.Itoa(run.RunAttempt), run.HeadSHA)
 	in := store.WorkflowRun{
