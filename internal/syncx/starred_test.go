@@ -968,7 +968,9 @@ func TestStarredCreateReleaseEventSanitization(t *testing.T) {
 		Body:        "release body",
 		PublishedAt: now,
 		HTMLURL:     " https://github.com/octocat/Hello-World/releases/tag/v1.0.0 ",
-		Author:      struct { Login string `json:"login"` }{Login: " octocat "},
+		Author: struct {
+			Login string `json:"login"`
+		}{Login: " octocat "},
 	})
 	if err != nil {
 		t.Fatal(err)

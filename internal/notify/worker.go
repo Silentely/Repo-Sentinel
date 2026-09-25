@@ -539,7 +539,6 @@ func isDeliveryCode(s string) bool {
 	return true
 }
 
-
 // deliveryErrorCode 从投递错误推导稳定的错误码（写入 outbox.last_error_code，
 // 管理台「投递记录」页直接展示）：retryAfterError 用自带 code；其余错误取
 // 错误串冒号前的稳定前缀，非代码风格一律归为 delivery_failed。
