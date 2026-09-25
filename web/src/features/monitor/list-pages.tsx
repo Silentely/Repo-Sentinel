@@ -884,10 +884,23 @@ export function ReposPage() {
     onError: (error) => setDeleteError(toApiError(error).message || "删除失败"),
   });
 
-  const allRepos = repos.data?.items ?? [];
-  const activeRepos = allRepos.filter((r) => !r.is_archived);
-  const archivedRepos = allRepos.filter((r) => r.is_archived);
-  const displayed = showArchived ? archivedRepos : activeRepos;
+  const { activeRepos, archivedRepos, displayed } = useMemo(() => {
+    const all = repos.data?.items ?? [];
+    const active: Repository[] = [];
+    const archived: Repository[] = [];
+    for (const r of all) {
+      if (r.is_archived) {
+        archived.push(r);
+      } else {
+        active.push(r);
+      }
+    }
+    return {
+      activeRepos: active,
+      archivedRepos: archived,
+      displayed: showArchived ? archived : active,
+    };
+  }, [repos.data?.items, showArchived]);
 
   return (
     <ListShell eyebrow="仓库" title="仓库管理" description="「监控」为总开关；子能力受全局功能模块约束。本系统归档会停采集（可撤销），与 GitHub 侧已归档是两回事。">
@@ -948,7 +961,7 @@ export function ReposPage() {
   );
 }
 
-function RepoCard({
+const RepoCard = memo(function RepoCard({
   repo,
   onToggle,
   saving,
@@ -1101,7 +1114,7 @@ function RepoCard({
       />
     </li>
   );
-}
+});
 
 /** 能力开关：展示「有效开」与全局/仓级原因，不把仓级配置静默写成 false。 */
 function CapabilityToggle({

@@ -95,6 +95,7 @@ A: AI/文档扫描应忽略；构建产物由 CI/Docker 多阶段生成。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T09:45:00Z | 优化仓库管理页渲染性能：使用 useMemo 单次线性遍历切分活跃与归档仓库，消除多轮重复 filter；使用 React.memo 包裹 RepoCard，避免开关切换与翻页时未修改仓库的冗余重渲染 |
 | 2026-09-25T08:00:00Z | 监控页面渲染性能优化：①`StarredReleasesPage` 记忆化 `items` 数组与 `handleToggle` 回调，并将 `TrackerRow` 包裹 `memo`，消除状态变更或轮询时全量追踪列表重渲染；②`OutboxPage` 记忆化 `items` 列表与 `deadCount` 统计，避免每次渲染重复执行全量数组过滤；③`WebhookDeliveriesPage` 记忆化 `items` 列表引用，保持列表数据引用稳定性 |
 | 2026-09-25T07:48:00Z | 投递文本与渠道渲染优化：①`htmlToPlainText` 增强对单双引号属性、大小写标签、额外属性（如 `target="_blank"`）与标准库数字实体（`&#34;`、`&#39;`、`&apos;`）的完整反转义支持；②`outboxErrorHint` 补全 `channel_not_found`（渠道被删除）与 `missing_target` 错误码中文排障提示；③`NotifyPage` 增加渠道列表引用与渠道类型索引 Map 记忆化（useMemo），消除每次渲染重复创建数组和多轮线性查找开销 |
 | 2026-09-25T07:32:00Z | 交互与时间格式健壮性优化：①`useModalLayer` 修复 Hooks cleanup 访问 ref.current 的 oxlint 告警，达到 0 warning 0 error；②`repositoriesQueryOptions` 增加跨页 ID 去重防 React key 冲突；③`parseGoDurationSeconds` 移除非 Go 标准库的 `d` 单位，与 Go `time.ParseDuration` 严格对齐并消除 400 校验错误 |
