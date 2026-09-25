@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
@@ -287,13 +287,19 @@ export function NotifyPage() {
   const [message, setMessage] = useAutoDismiss();
   const [error, setError] = useState("");
 
-  const telegramCh = channels.data?.items.find((ch) => ch.channel_type === "telegram");
-  const httpCh = channels.data?.items.find((ch) => ch.channel_type === "http_webhook");
-  const feishuCh = channels.data?.items.find((ch) => ch.channel_type === "feishu");
-  const wecomCh = channels.data?.items.find((ch) => ch.channel_type === "wecom");
-  const dingtalkCh = channels.data?.items.find((ch) => ch.channel_type === "dingtalk");
-  const discordCh = channels.data?.items.find((ch) => ch.channel_type === "discord");
-  const barkCh = channels.data?.items.find((ch) => ch.channel_type === "bark");
+  const channelItems = useMemo(() => channels.data?.items ?? [], [channels.data?.items]);
+  const channelsByType = useMemo(
+    () => new Map(channelItems.map((ch) => [ch.channel_type, ch])),
+    [channelItems],
+  );
+
+  const telegramCh = channelsByType.get("telegram");
+  const httpCh = channelsByType.get("http_webhook");
+  const feishuCh = channelsByType.get("feishu");
+  const wecomCh = channelsByType.get("wecom");
+  const dingtalkCh = channelsByType.get("dingtalk");
+  const discordCh = channelsByType.get("discord");
+  const barkCh = channelsByType.get("bark");
   const digestTime = String(settings.data?.["digest.local_time"] ?? "09:00");
   const digestTz = String(settings.data?.["admin.timezone"] ?? "UTC");
 
@@ -379,11 +385,11 @@ export function NotifyPage() {
         <QueryGate
           query={channels}
           errorTitle="无法加载渠道"
-          isEmpty={(channels.data?.items ?? []).length === 0}
+          isEmpty={channelItems.length === 0}
           emptyState={<EmptyState title="尚未配置渠道" description="请在下方添加 Telegram 或 HTTP Webhook 渠道。" />}
         >
           <ul className="event-list">
-            {(channels.data?.items ?? []).map((ch) => (
+            {channelItems.map((ch) => (
               <li key={ch.id} className="channel-row">
                 <span className={`event-kind ${ch.enabled ? "status-sent" : "status-dead"}`}>
                   {ch.channel_type === "telegram" ? "📱 " : ch.channel_type === "feishu" ? "🕊️ " : ch.channel_type === "wecom" ? "💬 " : ch.channel_type === "dingtalk" ? "🔔 " : ch.channel_type === "discord" ? "🎮 " : ch.channel_type === "bark" ? "📲 " : "🌐 "}{channelLabel(ch.channel_type)}

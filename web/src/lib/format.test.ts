@@ -156,6 +156,8 @@ describe("outboxErrorHint", () => {
     expect(outboxErrorHint("http_webhook_status_503")).toContain("服务端错误");
     expect(outboxErrorHint("decrypt_secret")).toContain("密钥");
     expect(outboxErrorHint("database_unavailable")).toContain("数据库");
+    expect(outboxErrorHint("channel_not_found")).toContain("通知渠道不存在");
+    expect(outboxErrorHint("missing_target")).toContain("目标地址");
   });
 
   it("未收录错误码返回空串，不占用展示空间", () => {
@@ -171,6 +173,14 @@ describe("htmlToPlainText", () => {
     expect(got).not.toContain("<b>");
     expect(got).toContain("x < y");
     expect(got).toContain("链接 (https://example.com/a?b=1&c=2)");
+  });
+
+  it("支持单引号属性与数字实体反转义", () => {
+    const html = `<a target="_blank" href='https://example.com'>官网</a> &#34;hello&#34; &amp; &apos;world&#39;`;
+    const got = htmlToPlainText(html);
+    expect(got).toContain("官网 (https://example.com)");
+    expect(got).toContain("hello");
+    expect(got).toContain("world");
   });
 });
 
