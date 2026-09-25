@@ -65,3 +65,12 @@ func TestTruncateUTF8BytesLongMultibyteText(t *testing.T) {
 		t.Fatalf("截断结果丢失前缀")
 	}
 }
+
+func BenchmarkTruncateUTF8Bytes(b *testing.B) {
+	text := strings.Repeat("hello 你好 世界 🌍 ", 100)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = TruncateUTF8Bytes(text, 501)
+	}
+}

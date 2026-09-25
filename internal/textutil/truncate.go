@@ -16,9 +16,8 @@ func TruncateUTF8Bytes(value string, limit int) string {
 	if len(value) <= limit {
 		return value
 	}
-	truncated := value[:limit]
-	for !utf8.ValidString(truncated) {
-		truncated = truncated[:len(truncated)-1]
+	for limit > 0 && !utf8.RuneStart(value[limit]) {
+		limit--
 	}
-	return truncated
+	return value[:limit]
 }
