@@ -275,7 +275,7 @@ func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text, htmlURL,
 	if token == "" || chatID == "" {
 		return fmt.Errorf("telegram_not_configured")
 	}
-	api := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
+	api := "https://api.telegram.org/bot" + token + "/sendMessage"
 	return w.sendTelegramDirect(ctx, api, chatID, token, text, htmlURL, parseMode)
 }
 
