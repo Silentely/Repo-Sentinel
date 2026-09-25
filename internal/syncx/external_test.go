@@ -537,3 +537,83 @@ func TestPollOneConcurrentNilClientNoRace(t *testing.T) {
 		t.Fatal("PollOne 不应写 p.Client 字段（并发直呼会构成数据竞争）")
 	}
 }
+
+type failWorkItemStore struct {
+	store.Store
+}
+
+func (f failWorkItemStore) WorkItems() store.WorkItemStore {
+	return failWorkItemsRepo{WorkItemStore: f.Store.WorkItems()}
+}
+
+type failWorkItemsRepo struct {
+	store.WorkItemStore
+}
+
+func (f failWorkItemsRepo) UpsertIfNewer(ctx context.Context, item store.WorkItem, existing *store.WorkItem) (store.WorkItem, bool, error) {
+	return store.WorkItem{}, false, errors.New("simulated workitem write error")
+}
+
+func TestExternalPollWorkItemUpsertSoftFail(t *testing.T) {
+	data := openSyncStore(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/issues") {
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"number":     42,
+					"state":      "open",
+					"title":      "soft fail issue",
+					"html_url":   "https://github.com/acme/demo/issues/42",
+					"updated_at": time.Now().UTC().Format(time.RFC3339),
+					"user":       map[string]any{"login": "alice"},
+					"labels":     []any{},
+					"assignees":  []any{},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"stargazers_count": 10})
+	}))
+	t.Cleanup(srv.Close)
+
+	repo, err := data.Repositories().Upsert(t.Context(), store.Repository{
+		ID: ulid.Make().String(), Type: store.RepositoryTypeExternal,
+		SyncStatus: store.SyncStatusBaseline, Owner: "acme", Name: "demo", FullName: "acme/demo",
+		HTMLURL: "https://github.com/acme/demo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	p := &ExternalPoller{
+		Store:  failWorkItemStore{Store: data},
+		Client: &githubx.PublicClient{BaseURL: srv.URL, HTTP: srv.Client()},
+		Logger: slog.New(slog.NewTextHandler(&buf, nil)),
+	}
+
+	if err := p.PollOne(t.Context(), repo); err != nil {
+		t.Fatalf("PollOne should not fail on soft fail: %v", err)
+	}
+
+	logs := buf.String()
+	if !strings.Contains(logs, "work_item_upsert_failed") {
+		t.Fatalf("expected work_item_upsert_failed in logs, got %q", logs)
+	}
+
+	got, err := data.Repositories().Get(t.Context(), repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastSyncErrorCode != "external_partial" {
+		t.Fatalf("expected LastSyncErrorCode external_partial, got %q", got.LastSyncErrorCode)
+	}
+	// 基线仓发生 softFail 时不应推进至 active
+	if got.SyncStatus != store.SyncStatusBaseline {
+		t.Fatalf("expected baseline status retained on soft fail, got %s", got.SyncStatus)
+	}
+	// 游标不应推进
+	if _, err := data.Cursors().Get(t.Context(), repo.ID, "issues"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("expected no issues cursor on soft fail, got err: %v", err)
+	}
+}

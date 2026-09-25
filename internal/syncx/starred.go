@@ -585,20 +585,24 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 	}
 	num := rel.ID
 	src := rel.PublishedAt
-	title := rel.Name
+	title := strings.TrimSpace(rel.Name)
+	tagName := strings.TrimSpace(rel.TagName)
 	if title == "" {
-		title = rel.TagName
+		title = tagName
+	}
+	if title == "" {
+		title = fmt.Sprintf("Release %d", rel.ID)
 	}
 	notes := textutil.TruncateUTF8Bytes(rel.Body, maxReleaseNotesStored)
 	// 外部 star 仓不建 Repository 行（tracker 独立表），事件无法挂 RepositoryID；
 	// 仓库名写入 PayloadSummary，供每日摘要预览与 AI 总结回退引用，避免 release 事件丢失归属。
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "starred_releases", Kind: store.ReleaseKind, Action: "published",
-		Title: title, SubjectNumber: &num, Actor: rel.Author.Login,
-		OccurredAt: rel.PublishedAt, SourceUpdatedAt: &src, HTMLURL: rel.HTMLURL,
+		Title: title, SubjectNumber: &num, Actor: strings.TrimSpace(rel.Author.Login),
+		OccurredAt: rel.PublishedAt, SourceUpdatedAt: &src, HTMLURL: strings.TrimSpace(rel.HTMLURL),
 		DedupeFingerprint: fp, StateHash: stateHash,
 		PayloadSummary: map[string]any{
-			"tag_name": rel.TagName, "prerelease": rel.Prerelease, "notes": notes,
+			"tag_name": tagName, "prerelease": rel.Prerelease, "notes": notes,
 			"repository": fullName,
 		},
 	}

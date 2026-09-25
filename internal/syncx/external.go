@@ -90,6 +90,7 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		}
 	}
 
+	var softFailed bool
 	for _, it := range items {
 		kind := store.WorkItemKindIssue
 		if it.PullRequest != nil {
@@ -113,7 +114,16 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 			Draft: it.Draft, SourceUpdatedAt: it.UpdatedAt, StateHash: hash,
 		}
 		saved, updated, err := p.Store.WorkItems().UpsertIfNewer(ctx, item, nil)
-		if err != nil || !updated {
+		if err != nil {
+			softFailed = true
+			if p.Logger != nil {
+				p.Logger.Warn("external poll work item upsert failed",
+					"repo", repo.FullName, "kind", kind, "number", it.Number,
+					"error_code", "work_item_upsert_failed", "error", err.Error())
+			}
+			continue
+		}
+		if !updated {
 			continue
 		}
 		if isBaseline {
@@ -130,30 +140,40 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 			RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
 			OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &src, HTMLURL: saved.HTMLURL,
 			DedupeFingerprint: fp, StateHash: hash, PayloadSummary: map[string]any{"state": saved.State},
-		}); err != nil && p.Logger != nil {
-			// 事件落库失败意味着通知丢失，必须留痕。
-			p.Logger.Warn("external poll event create failed", "repo", repo.FullName, "kind", kind, "error_code", "event_create_failed", "error", err.Error())
+		}); err != nil {
+			softFailed = true
+			if p.Logger != nil {
+				// 事件落库失败意味着通知丢失，必须留痕。
+				p.Logger.Warn("external poll event create failed", "repo", repo.FullName, "kind", kind, "error_code", "event_create_failed", "error", err.Error())
+			}
 		}
 	}
 	now := time.Now().UTC()
 	repo.LastSyncedAt = &now
-	if isBaseline {
-		repo.SyncStatus = store.SyncStatusActive
+	if softFailed {
+		repo.LastSyncErrorCode = "external_partial"
+	} else {
+		repo.LastSyncErrorCode = ""
+		if isBaseline {
+			repo.SyncStatus = store.SyncStatusActive
 		repo.BaselineFinishedAt = &now
+		}
 	}
 	if _, err := p.Store.Repositories().Upsert(ctx, repo); err != nil && p.Logger != nil {
 		// 状态推进失败会留下陈旧 sync_status，影响后续调度判断，必须留痕。
 		p.Logger.Warn("external repo sync status advance failed", "repo", repo.FullName, "error_code", "repo_upsert_failed", "error", err.Error())
 	}
-	if _, err := p.Store.Cursors().Upsert(ctx, store.SyncCursor{
-		RepositoryID: repo.ID, Resource: "issues", CursorValue: now.Format(time.RFC3339), LastSuccessAt: &now,
-	}); err != nil && p.Logger != nil {
-		// 游标推进失败会让下次轮询重拉本轮数据（幂等键兜底），记录日志便于排查重复。
+	if !softFailed {
+		if _, err := p.Store.Cursors().Upsert(ctx, store.SyncCursor{
+			RepositoryID: repo.ID, Resource: "issues", CursorValue: now.Format(time.RFC3339), LastSuccessAt: &now,
+		}); err != nil && p.Logger != nil {
+			// 游标推进失败会让下次轮询重拉本轮数据（幂等键兜底），记录日志便于排查重复。
 		p.Logger.Warn("external issues cursor advance failed", "repo", repo.FullName, "error_code", "cursor_upsert_failed", "error", err.Error())
+		}
 	}
 	if p.Logger != nil {
 		// 单仓轮询成功留痕（Debug）：排查"外部仓到底轮询过没有"不必依赖调度成功日志。
-		p.Logger.Debug("external poll ok", "repo", repo.FullName, "baseline", isBaseline)
+		p.Logger.Debug("external poll ok", "repo", repo.FullName, "baseline", isBaseline, "soft_failed", softFailed)
 	}
 	return nil
 }

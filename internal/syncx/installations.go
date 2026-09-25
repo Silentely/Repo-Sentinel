@@ -122,8 +122,7 @@ func (r *Reconciler) SyncInstallations(ctx context.Context, maxPages int) (SyncI
 					// GitHub 侧已归档而本地未归档：联动收口归档状态与能力开关
 					//（与 normalizer 的 webhook 侧处理同一语义）。
 					if gr.Archived && existing.SyncStatus != store.SyncStatusArchived {
-						archived := true
-						if uerr := r.Store.Repositories().UpdateSettings(ctx, existing.ID, store.RepositorySettings{IsArchived: &archived}); uerr == nil {
+						if collapseArchived(ctx, r.Store, r.Logger, "installation sync archived repo state update failed", existing) {
 							in.SyncStatus = store.SyncStatusArchived
 						}
 					}

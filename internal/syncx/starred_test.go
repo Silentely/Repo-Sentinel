@@ -66,7 +66,9 @@ func newStarredTestEnv(t *testing.T, setup func(env *starredTestEnv)) *starredTe
 	}); err != nil {
 		t.Fatal(err)
 	}
-	setup(env)
+	if setup != nil {
+		setup(env)
+	}
 
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
@@ -950,5 +952,71 @@ func TestStarredSyncStars_非法用户名跳过并留痕(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "star_sync_invalid_username") {
 		t.Fatalf("应 Warn 留痕指明非法用户名: %s", buf.String())
+	}
+}
+
+func TestStarredCreateReleaseEventSanitization(t *testing.T) {
+	env := newStarredTestEnv(t, func(env *starredTestEnv) {})
+	ctx := t.Context()
+	now := time.Now().UTC()
+
+	// 1. 测试首尾空格清理与 tag_name 回退
+	created, err := env.poller.createReleaseEvent(ctx, "octocat/Hello-World", githubx.ReleaseItem{
+		ID:          1001,
+		TagName:     "  v1.0.0  ",
+		Name:        "   ",
+		Body:        "release body",
+		PublishedAt: now,
+		HTMLURL:     " https://github.com/octocat/Hello-World/releases/tag/v1.0.0 ",
+		Author:      struct { Login string `json:"login"` }{Login: " octocat "},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created {
+		t.Fatal("expected event to be created")
+	}
+
+	events := listReleaseEvents(t, env.data)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	ev := events[0]
+	if ev.Title != "v1.0.0" {
+		t.Fatalf("expected Title to fall back to trimmed TagName 'v1.0.0', got %q", ev.Title)
+	}
+	if ev.Actor != "octocat" {
+		t.Fatalf("expected trimmed Actor 'octocat', got %q", ev.Actor)
+	}
+	if ev.HTMLURL != "https://github.com/octocat/Hello-World/releases/tag/v1.0.0" {
+		t.Fatalf("expected trimmed HTMLURL, got %q", ev.HTMLURL)
+	}
+	if ev.PayloadSummary["tag_name"] != "v1.0.0" {
+		t.Fatalf("expected trimmed payload tag_name, got %v", ev.PayloadSummary["tag_name"])
+	}
+
+	// 2. 测试 Name 和 TagName 均为空时的保底 Title
+	created2, err := env.poller.createReleaseEvent(ctx, "octocat/Hello-World", githubx.ReleaseItem{
+		ID:          1002,
+		TagName:     "  ",
+		Name:        "  ",
+		PublishedAt: now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created2 {
+		t.Fatal("expected second event to be created")
+	}
+	events2 := listReleaseEvents(t, env.data)
+	var ev2 store.Event
+	for _, e := range events2 {
+		if e.SubjectNumber != nil && *e.SubjectNumber == 1002 {
+			ev2 = e
+			break
+		}
+	}
+	if ev2.Title != "Release 1002" {
+		t.Fatalf("expected default Title 'Release 1002', got %q", ev2.Title)
 	}
 }
