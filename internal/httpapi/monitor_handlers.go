@@ -598,7 +598,3 @@ func (s *server) handleTriggerWorkItemAIReview(w http.ResponseWriter, r *http.Re
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "work_item_id": id, "head_sha": headSHA})
 }
-
-func listFilterFromRequest(r *http.Request) store.ListFilter {
-	return listFilterFromQuery(r.URL.Query())
-}

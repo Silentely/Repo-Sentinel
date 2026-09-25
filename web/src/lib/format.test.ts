@@ -157,7 +157,6 @@ describe("outboxErrorHint", () => {
     expect(outboxErrorHint("decrypt_secret")).toContain("密钥");
     expect(outboxErrorHint("database_unavailable")).toContain("数据库");
     expect(outboxErrorHint("channel_not_found")).toContain("通知渠道不存在");
-    expect(outboxErrorHint("missing_target")).toContain("目标地址");
   });
 
   it("未收录错误码返回空串，不占用展示空间", () => {

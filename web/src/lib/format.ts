@@ -287,8 +287,6 @@ export function outboxErrorHint(errorCode: string): string {
   switch (errorCode) {
     case "channel_not_found":
       return "通知渠道不存在或已被删除，该投递已进入死信状态。";
-    case "missing_target":
-      return "渠道未配置目标地址或 Chat ID，请在「渠道配置」中补充。";
     case "telegram_not_configured":
       return "Telegram 渠道缺少 Bot Token 或 Chat ID，请到「渠道配置」补全。";
     case "telegram_rate_limited":
