@@ -467,3 +467,25 @@ func TestOutboxCancelPendingByRepository(t *testing.T) {
 		t.Fatalf("其他仓库或已发送 outbox 不应改变: %+v", got)
 	}
 }
+
+func TestSplitFullName(t *testing.T) {
+	cases := []struct {
+		input     string
+		wantOwner string
+		wantRepo  string
+	}{
+		{"", "", ""},
+		{"owner", "", ""},
+		{"/repo", "", ""},
+		{"owner/", "", ""},
+		{"/", "", ""},
+		{"owner/repo", "owner", "repo"},
+		{"owner/repo/sub", "owner", "repo/sub"},
+	}
+	for _, tc := range cases {
+		owner, repo := SplitFullName(tc.input)
+		if owner != tc.wantOwner || repo != tc.wantRepo {
+			t.Errorf("SplitFullName(%q) = (%q, %q), want (%q, %q)", tc.input, owner, repo, tc.wantOwner, tc.wantRepo)
+		}
+	}
+}
