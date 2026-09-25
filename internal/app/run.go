@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -125,7 +124,7 @@ func (a *App) Run(ctx context.Context) error {
 		return runErr
 	}
 	if shutdownErr != nil && !errors.Is(shutdownErr, http.ErrServerClosed) {
-		return newPublicError("shutdown_failed", fmt.Sprintf("HTTP Server 未能在 %s 内关闭。", gracefulShutdownTimeout), shutdownErr)
+		return newPublicError("shutdown_failed", "HTTP Server 未能在 " + gracefulShutdownTimeout.String() + " 内关闭。", shutdownErr)
 	}
 	if closeErr != nil {
 		return newPublicError("database_unavailable", "关闭数据库资源失败。", closeErr)
