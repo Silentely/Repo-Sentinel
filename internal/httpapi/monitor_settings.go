@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -194,16 +193,22 @@ func validWeekdayName(s string) bool {
 
 // normalizeLocalTime 校验并归一化 HH:MM（允许 9:00，统一输出 09:00）。
 func normalizeLocalTime(s string) (string, bool) {
-	parts := strings.Split(s, ":")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	idx := strings.IndexByte(s, ':')
+	if idx <= 0 || idx == len(s)-1 {
 		return "", false
 	}
-	hh, err1 := strconv.Atoi(parts[0])
-	mm, err2 := strconv.Atoi(parts[1])
+	hh, err1 := strconv.Atoi(s[:idx])
+	mm, err2 := strconv.Atoi(s[idx+1:])
 	if err1 != nil || err2 != nil || hh < 0 || hh > 23 || mm < 0 || mm > 59 {
 		return "", false
 	}
-	return fmt.Sprintf("%02d:%02d", hh, mm), true
+	var buf [5]byte
+	buf[0] = byte('0' + hh/10)
+	buf[1] = byte('0' + hh%10)
+	buf[2] = ':'
+	buf[3] = byte('0' + mm/10)
+	buf[4] = byte('0' + mm%10)
+	return string(buf[:]), true
 }
 
 // coerceIntInRange 将 JSON 数值收敛为 [min, max] 内的整数。

@@ -3,7 +3,6 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -99,7 +98,7 @@ func (s *server) handleReplayWebhookDelivery(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	replayDeliveryID := fmt.Sprintf("%s-replay-%d", d.DeliveryID, time.Now().UnixNano())
+	replayDeliveryID := d.DeliveryID + "-replay-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	newRecord, err := s.dependencies.Store.WebhookDeliveries().Create(r.Context(), store.WebhookDelivery{
 		ID:                 ulid.Make().String(),
 		DeliveryID:         replayDeliveryID,

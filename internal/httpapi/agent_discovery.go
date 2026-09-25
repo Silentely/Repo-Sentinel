@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -438,7 +439,7 @@ func (s *server) writeSiteMarkdown(w http.ResponseWriter, r *http.Request) {
 	body := s.siteMarkdownDocument(r)
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Markdown-Tokens", fmt.Sprintf("%d", markdownTokenCount(body)))
+	w.Header().Set("X-Markdown-Tokens", strconv.Itoa(markdownTokenCount(body)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
 }

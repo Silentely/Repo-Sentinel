@@ -8,6 +8,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -378,7 +379,7 @@ func (s *server) mcpTools() []mcpTool {
 				if len(d.Payload) == 0 {
 					return nil, fmt.Errorf("payload_empty")
 				}
-				replayDeliveryID := fmt.Sprintf("%s-replay-%d", d.DeliveryID, time.Now().UnixNano())
+				replayDeliveryID := d.DeliveryID + "-replay-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 				newRecord, err := s.dependencies.Store.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
 					ID:                 ulid.Make().String(),
 					DeliveryID:         replayDeliveryID,
@@ -573,7 +574,7 @@ func (s *server) handleMCPToolCall(ctx context.Context, request mcpJSONRPCReques
 			"isError": false,
 		})
 	}
-	return mcpJSONError(request.ID, mcpInvalidParams, fmt.Sprintf("Unknown tool: %s", name))
+	return mcpJSONError(request.ID, mcpInvalidParams, "Unknown tool: "+name)
 }
 
 // mcpServerVersion 返回对外展示的版本：dev 构建的 BuildInfo.Version 为空时回退 "dev"，

@@ -3,7 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strconv"
 	"net/http"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
@@ -145,7 +145,7 @@ func apiErrorMessage(errorCode string) string {
 	case errorCodeEncryptionUnavailable:
 		return "加密主密钥不可用，无法保存敏感配置。"
 	case errorCodeExternalRepoLimit:
-		return fmt.Sprintf("外部公开仓库已达上限（%d 个）。", store.MaxExternalRepositories)
+		return "外部公开仓库已达上限（" + strconv.Itoa(store.MaxExternalRepositories) + " 个）。"
 	case errorCodeGitHubFieldLocked:
 		return "该字段已由环境变量设置，管理台不能覆盖；请修改部署配置后重启。"
 	case errorCodeGitHubAppNotConfigured:

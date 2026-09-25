@@ -102,6 +102,7 @@ A: `reconcileAllRunning` atomic 防重入。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T11:15:00Z | 优化 HTTP API 时间归一化与响应头/重放标识格式化：normalizeLocalTime 改用 IndexByte 与固定栈缓冲区组装时间串消除 Split 切片与 fmt 堆开销；X-Markdown-Tokens、重放投递 ID 与 MCP 异常文案采用原生拼接与 strconv，新增 BenchmarkNormalizeLocalTime（19.38 ns/op，1 alloc） |
 | 2026-09-25T09:50:00Z | 优化 normalizeUsername 前缀剥离逻辑：使用显式 HasPrefix 分支替代临时 []string 切片循环，消除切片堆分配 |
 | 2026-09-25T09:25:00Z | 优化 HTTP 查询参数解析性能：消除 handlers 对 r.URL.Query() 的多次重复解析与 map 堆分配；重构 listFilterFromQuery 与 queryTrimmed 共享已解析的 Values 集合 |
 | 2026-09-25T08:24:00Z | 优化 JSON 请求体解码性能：isJSONContentType 增加针对标准 application/json 与带参数 Content-Type 的零分配快速路径判定，避免每次写请求重复调用 mime.ParseMediaType 分配参数字典 |

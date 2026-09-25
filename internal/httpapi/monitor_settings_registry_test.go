@@ -82,3 +82,15 @@ func jsonEqual(a, b any) bool {
 	br, errB := json.Marshal(b)
 	return errA == nil && errB == nil && string(ar) == string(br)
 }
+
+func BenchmarkNormalizeLocalTime(b *testing.B) {
+	input := "8:30"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, ok := normalizeLocalTime(input)
+		if !ok || res != "08:30" {
+			b.Fatalf("normalizeLocalTime failed: %s", res)
+		}
+	}
+}
