@@ -78,6 +78,7 @@ A: 用于 Secure Cookie 判定（https → Secure）及对外链接语义。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T10:25:00Z | 优化配置校验错误组装：ValidationError.Error 与 ai.timeout 错误信息改用原生字符串拼接，消除 fmt.Sprintf 格式化与反射装箱开销，精简 fmt 依赖 |
 | 2026-09-16T00:00:00Z | 新增 code_review_enabled、code_review_comment_on_pr、failure_analysis_enabled 三个功能开关，支持环境变量、管理台与数据库三级配置源追踪 |
 | 2026-08-06T12:50:00Z | 新增 `oauth` 配置段（OAuthConfig：client_id 默认 reposentinel-agent、client_secret 经 REPOSENTINEL_OAUTH_CLIENT_SECRET 注入） |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

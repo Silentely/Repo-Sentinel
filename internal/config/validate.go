@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"fmt"
 	"net"
 	"net/url"
 	"strings"
@@ -28,9 +27,9 @@ func (e *ValidationError) Error() string {
 		return validationFailedCode
 	}
 	if e.Field == "" {
-		return fmt.Sprintf("%s: %s", validationFailedCode, e.Message)
+		return validationFailedCode + ": " + e.Message
 	}
-	return fmt.Sprintf("%s: %s: %s", validationFailedCode, e.Field, e.Message)
+	return validationFailedCode + ": " + e.Field + ": " + e.Message
 }
 
 // ErrorCode 返回供 API 与 CLI 映射使用的稳定错误码。
@@ -131,7 +130,7 @@ func (cfg Config) Validate() error {
 			return newValidationError("ai.api_key", "is required when ai.enabled is true")
 		}
 		if cfg.AI.Timeout < 0 || cfg.AI.Timeout > maxAITimeout {
-			return newValidationError("ai.timeout", fmt.Sprintf("must be between 0 and %s", maxAITimeout))
+			return newValidationError("ai.timeout", "must be between 0 and "+maxAITimeout.String())
 		}
 		// max_tokens 为 0 表示使用默认 800（客户端在使用点回退），仅拒绝负值。
 		if cfg.AI.MaxTokens < 0 {
