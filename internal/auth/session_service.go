@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"github.com/Silentely/Repo-Sentinel/internal/textutil"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
@@ -113,7 +113,7 @@ func (s *SessionService) Create(
 		ExpiresAt:  now.Add(s.ttl),
 		LastSeenAt: now,
 		IPAddress:  strings.TrimSpace(ipAddress),
-		UserAgent:  truncateUTF8Bytes(userAgent, maxUserAgentBytes),
+		UserAgent:  textutil.TruncateUTF8Bytes(userAgent, maxUserAgentBytes),
 	})
 	if err != nil {
 		return CreatedSession{}, err
@@ -202,19 +202,4 @@ func publicSession(session store.AdminSession) Session {
 		IPAddress:  session.IPAddress,
 		UserAgent:  session.UserAgent,
 	}
-}
-
-func truncateUTF8Bytes(value string, limit int) string {
-	if limit <= 0 {
-		return ""
-	}
-	value = strings.ToValidUTF8(value, "")
-	if len(value) <= limit {
-		return value
-	}
-	truncated := value[:limit]
-	for !utf8.ValidString(truncated) {
-		truncated = truncated[:len(truncated)-1]
-	}
-	return truncated
 }

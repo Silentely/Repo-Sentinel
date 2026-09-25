@@ -83,7 +83,9 @@ func issueRandomToken(random RandomReader) (rawToken, tokenHash string, err erro
 		return "", "", err
 	}
 	digest := sha256.Sum256(raw[:])
-	return base64.RawURLEncoding.EncodeToString(raw[:]), hex.EncodeToString(digest[:]), nil
+	var hexBuf [sha256.Size * 2]byte
+	hex.Encode(hexBuf[:], digest[:])
+	return base64.RawURLEncoding.EncodeToString(raw[:]), string(hexBuf[:]), nil
 }
 
 // hashEncodedToken 将 Base64 编码的令牌解码到栈内存并直接计算哈希，避免堆分配。
@@ -97,7 +99,9 @@ func hashEncodedToken(rawToken string) (string, error) {
 		return "", errors.New("token is invalid")
 	}
 	digest := sha256.Sum256(raw[:])
-	return hex.EncodeToString(digest[:]), nil
+	var hexBuf [sha256.Size * 2]byte
+	hex.Encode(hexBuf[:], digest[:])
+	return string(hexBuf[:]), nil
 }
 
 func decodeEncodedToken(rawToken string) ([]byte, error) {
