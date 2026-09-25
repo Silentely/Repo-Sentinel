@@ -105,9 +105,6 @@ func parseEnvelope(envelope string) (string, []byte, bool) {
 	if err != nil || len(payload) < minimumGCMPayloadSize || len(payload) > maxEnvelopePayloadSize {
 		return "", nil, false
 	}
-	if base64.RawURLEncoding.EncodeToString(payload) != payloadPart {
-		return "", nil, false
-	}
 	return keyID, payload, true
 }
 

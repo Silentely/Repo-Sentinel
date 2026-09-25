@@ -385,3 +385,40 @@ func requireKeyMismatch(t *testing.T, err error) {
 		t.Fatalf("错误文本不稳定: %q", err)
 	}
 }
+
+func BenchmarkEncryptDecrypt(b *testing.B) {
+	ring, err := NewKeyRing(testEncryptionConfig(testKey(0x11), nil))
+	if err != nil {
+		b.Fatal(err)
+	}
+	ctx := context.Background()
+	plaintext := []byte("secret_token_1234567890_abcdefghijklmnopqrstuvwxyz")
+	aad := []byte("record:test")
+
+	envelope, err := ring.Encrypt(ctx, plaintext, aad)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.Run("Encrypt", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, err := ring.Encrypt(ctx, plaintext, aad)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("Decrypt", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			res, err := ring.Decrypt(ctx, envelope, aad)
+			if err != nil || len(res.Plaintext) == 0 {
+				b.Fatal(err)
+			}
+		}
+	})
+}
