@@ -48,5 +48,6 @@ A: 来源更新时间旧于库内状态时丢弃写入，防止乱序 Webhook �
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T08:50:00Z | 优化事件指纹与资源标识生成开销：Fingerprint/StateHash 改用 io.WriteString 流式写入与栈缓冲区十六进制编码消除中间切片分配；ResourceIdentity 采用 strconv 消除 fmt.Sprintf 反射与装箱开销 |
 | 2026-09-23T00:00:00Z | PR 合并置位（`MarkMerged`）改用本次解析出的 `repo.ID`，不再解引用 `*res.Event.RepositoryID`：事件行的仓库关联并非置位标记的前提，指针解引用只带来空指针风险——一旦事件行缺 `repository_id`，一条正常的 PR 合并 webhook 会 panic 致整个处理失败；补事件行缺仓库关联时合并标记仍落定的回归（装饰存储注入 nil RepositoryID，先还原实现验证可捕获 panic） |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
