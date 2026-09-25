@@ -39,10 +39,9 @@ func (k KeyRing) Encrypt(ctx context.Context, plaintext, associatedData []byte) 
 		return "", errEncryptionFailed
 	}
 
-	ciphertext := k.current.aead.Seal(nil, nonce, plaintext, associatedData)
-	payload := make([]byte, 0, len(nonce)+len(ciphertext))
-	payload = append(payload, nonce...)
-	payload = append(payload, ciphertext...)
+	payload := make([]byte, nonceSize, nonceSize+len(plaintext)+k.current.aead.Overhead())
+	copy(payload, nonce)
+	payload = k.current.aead.Seal(payload, nonce, plaintext, associatedData)
 	return envelopeVersion + "." + k.current.id + "." + base64.RawURLEncoding.EncodeToString(payload), nil
 }
 
@@ -81,21 +80,35 @@ func parseEnvelope(envelope string) (string, []byte, bool) {
 	if len(envelope) > maxEnvelopeSize {
 		return "", nil, false
 	}
-	parts := strings.Split(envelope, ".")
-	if len(parts) != 3 || parts[0] != envelopeVersion || !validKeyID(parts[1]) || parts[2] == "" {
+	firstDot := strings.IndexByte(envelope, '.')
+	if firstDot == -1 {
 		return "", nil, false
 	}
-	if len(parts[2]) > base64.RawURLEncoding.EncodedLen(maxEnvelopePayloadSize) {
+	versionPart := envelope[:firstDot]
+	if versionPart != envelopeVersion {
 		return "", nil, false
 	}
-	payload, err := base64.RawURLEncoding.Strict().DecodeString(parts[2])
+	rest := envelope[firstDot+1:]
+	secondDot := strings.IndexByte(rest, '.')
+	if secondDot == -1 {
+		return "", nil, false
+	}
+	keyID := rest[:secondDot]
+	payloadPart := rest[secondDot+1:]
+	if !validKeyID(keyID) || payloadPart == "" {
+		return "", nil, false
+	}
+	if len(payloadPart) > base64.RawURLEncoding.EncodedLen(maxEnvelopePayloadSize) {
+		return "", nil, false
+	}
+	payload, err := base64.RawURLEncoding.Strict().DecodeString(payloadPart)
 	if err != nil || len(payload) < minimumGCMPayloadSize || len(payload) > maxEnvelopePayloadSize {
 		return "", nil, false
 	}
-	if base64.RawURLEncoding.EncodeToString(payload) != parts[2] {
+	if base64.RawURLEncoding.EncodeToString(payload) != payloadPart {
 		return "", nil, false
 	}
-	return parts[1], payload, true
+	return keyID, payload, true
 }
 
 func validKeyID(value string) bool {

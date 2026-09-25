@@ -96,6 +96,7 @@ A: 领域常量与共享判定放在 `store`（如 `RepoAllowsKind`、`IsFailure
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T09:35:00Z | 优化 cryptox 信封加解密开销：parseEnvelope 改用 IndexByte 切分字段消除 parts 切片堆分配；Encrypt 统一预分配单个连续切片直接由 AEAD.Seal 追加密文，消除冗余 make 与 copy 开销 |
 | 2026-09-25T09:12:00Z | 优化基础工具库计算开销：updatecheck.ParseSemver 消除切片与字符串堆分配并以数学计算解析数字；textutil.TruncateUTF8Bytes 采用 O(1) 回退至多 3 字节检查 utf8.RuneStart，消除循环全串校验开销 |
 | 2026-09-25T09:08:00Z | 优化 digest 定期报告渲染性能：buildReportBody 预分配 Builder 缓冲区并消除中间 fmt.Sprintf 与装箱开销；enqueue 幂等键简化为直接拼接 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
