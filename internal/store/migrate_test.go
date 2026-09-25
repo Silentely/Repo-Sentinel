@@ -34,3 +34,12 @@ func TestSQLiteLockNameDifferentURL(t *testing.T) {
 		seen[name] = true
 	}
 }
+
+func BenchmarkSQLiteLockName(b *testing.B) {
+	const url = "file:/data/reposentinel.db"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = sqliteLockName(url)
+	}
+}

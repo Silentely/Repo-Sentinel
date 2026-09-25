@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"time"
 
@@ -28,7 +27,9 @@ const (
 // 并行包会争用同一锁文件而误报迁移失败。
 func sqliteLockName(url string) string {
 	sum := sha256.Sum256([]byte(url))
-	return fmt.Sprintf("%s_%s", migrationLockName, hex.EncodeToString(sum[:8]))
+	var hexBuf [16]byte
+	hex.Encode(hexBuf[:], sum[:8])
+	return migrationLockName + "_" + string(hexBuf[:])
 }
 
 func applyMigrations(ctx context.Context, db *sql.DB, dialectName, dsn string) (err error) {

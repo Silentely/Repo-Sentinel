@@ -107,6 +107,7 @@ A: 只覆盖「写入时 `body_json` 已带 `kind=release` 与 `repository`」�
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T10:10:00Z | 优化 SQLite 迁移锁名生成：使用栈缓冲区 hex.Encode 编码哈希前缀并改用原生字符串拼接，消除 fmt.Sprintf 格式化与中间堆分配；新增基准测试 BenchmarkSQLiteLockName |
 | 2026-09-25T09:40:00Z | 优化 SplitFullName 边界与内存分配：改用 IndexByte 快速切分 owner 与 repo，消除 strings.SplitN 字符串切片堆分配；补齐表驱动单元测试 TestSplitFullName |
 | 2026-09-20T00:00:00Z | 存储侧热点查询收敛：①`notification_outbox` 新增冗余列 `repository_full_name` 与 `(status, repository_full_name)` 索引，unstar 取消未投递 Release 通知改单条批量 UPDATE（不再逐户 SELECT→UPDATE）；②仪表盘统计同表维度改分组聚合（work_items 按 kind、repositories 按 sync_status 各一次扫描），整页刷新 SQL 往返减少；③活跃/归档仓 ID 集合缓存随附 `id→full_name` 映射，各资源列表页解析仓库名复用同一份扫描结果；④PR 审查在途判定改前缀快速拒绝，审查结果幂等查询由两次解析收敛为单条按 itemID 直查。补记：冗余列仅覆盖 `body_json` 带 `repository` 的行（该键自 2026-09-18 起写入），旧形状行不再回查关联事件，取证与补救方案见 FAQ |
 | 2026-08-06T15:48:41Z | 新增 star 快照表、仓库 star/watch 能力开关（stars_enabled、watches_enabled）、feature.stars / feature.watches 全局开关及 star 快照读取与存储（含 SQLite/PostgreSQL 双轨迁移） |
