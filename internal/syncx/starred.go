@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"strconv"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -574,7 +574,7 @@ func (p *StarredReleasePoller) PollReleases(ctx context.Context) error {
 // 返回是否新建了事件：幂等命中（已存在）时返回 false,nil，
 // 供补拉循环区分「已处理过」与「新事件」，避免重复消耗单轮补发预算。
 func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName string, rel githubx.ReleaseItem) (bool, error) {
-	stateHash := fmt.Sprintf("id:%d", rel.ID)
+	stateHash := "id:" + strconv.FormatInt(rel.ID, 10)
 	fp := normalizer.Fingerprint(
 		"starred_releases", fullName, store.ReleaseKind,
 		normalizer.ResourceIdentity(store.ReleaseKind, rel.ID, 0),
@@ -591,7 +591,7 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 		title = tagName
 	}
 	if title == "" {
-		title = fmt.Sprintf("Release %d", rel.ID)
+		title = "Release " + strconv.FormatInt(rel.ID, 10)
 	}
 	notes := textutil.TruncateUTF8Bytes(rel.Body, maxReleaseNotesStored)
 	// 外部 star 仓不建 Repository 行（tracker 独立表），事件无法挂 RepositoryID；
@@ -644,11 +644,11 @@ func (p *StarredReleasePoller) installationToken(ctx context.Context, scene stri
 }
 
 func splitFullName(fullName string) (owner, name string) {
-	parts := strings.SplitN(fullName, "/", 2)
-	if len(parts) != 2 {
+	idx := strings.IndexByte(fullName, '/')
+	if idx == -1 {
 		return fullName, ""
 	}
-	return parts[0], parts[1]
+	return fullName[:idx], fullName[idx+1:]
 }
 
 func (p *StarredReleasePoller) debug(msg string, args ...any) {
