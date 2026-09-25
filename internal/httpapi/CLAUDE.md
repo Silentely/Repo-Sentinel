@@ -102,6 +102,7 @@ A: `reconcileAllRunning` atomic 防重入。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T09:50:00Z | 优化 normalizeUsername 前缀剥离逻辑：使用显式 HasPrefix 分支替代临时 []string 切片循环，消除切片堆分配 |
 | 2026-09-25T09:25:00Z | 优化 HTTP 查询参数解析性能：消除 handlers 对 r.URL.Query() 的多次重复解析与 map 堆分配；重构 listFilterFromQuery 与 queryTrimmed 共享已解析的 Values 集合 |
 | 2026-09-25T08:24:00Z | 优化 JSON 请求体解码性能：isJSONContentType 增加针对标准 application/json 与带参数 Content-Type 的零分配快速路径判定，避免每次写请求重复调用 mime.ParseMediaType 分配参数字典 |
 | 2026-09-25T07:31:00Z | 渠道配置与仓库激活审计留痕：在 `handleUpsertChannel`、`handleDeleteChannel`、`handleActivateRepository`、`handleUpdateRepositorySettings` 中补齐 `s.appendAudit` 审计调用，统一沉淀操作者、IP、目标类型与关键参数 |

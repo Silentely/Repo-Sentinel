@@ -43,8 +43,10 @@ type starredReleasesConfigPutRequest struct {
 func normalizeUsername(v string) string {
 	v = strings.TrimSpace(v)
 	v = strings.TrimPrefix(v, "@")
-	for _, prefix := range []string{"https://github.com/", "http://github.com/"} {
-		v = strings.TrimPrefix(v, prefix)
+	if strings.HasPrefix(v, "https://github.com/") {
+		v = strings.TrimPrefix(v, "https://github.com/")
+	} else if strings.HasPrefix(v, "http://github.com/") {
+		v = strings.TrimPrefix(v, "http://github.com/")
 	}
 	return strings.TrimSuffix(v, "/")
 }
