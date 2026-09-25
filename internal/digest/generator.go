@@ -8,6 +8,7 @@ import (
 	htmlpkg "html"
 	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -313,7 +314,7 @@ func (g *Generator) enqueue(
 		if !ch.Enabled || !ch.DigestEnabled {
 			continue
 		}
-		idem := fmt.Sprintf("%s|%s|%s", prefix, ch.ID, dateKey)
+		idem := prefix + "|" + ch.ID + "|" + dateKey
 		_, err := g.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
@@ -348,19 +349,25 @@ func (g *Generator) enqueue(
 // 让用户能判断报告新鲜度，避免把旧报告误认为当前时刻。
 func buildReportBody(title string, events []store.Event, period string, repoNames map[string]string, generatedAt time.Time) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("<b>%s</b>\n", htmlpkg.EscapeString(title)))
-	b.WriteString("────────────────\n")
+	b.Grow(1024)
+	b.WriteString("<b>")
+	b.WriteString(htmlpkg.EscapeString(title))
+	b.WriteString("</b>\n────────────────\n")
 
 	if len(events) == 0 {
 		// 空事件文案带上周期（过去 24 小时/7 天/30 天），避免三类报告共用一句含糊的「期间」。
 		// 用 📭 而非庆祝 emoji：无事发生不宜用庆祝语气。
-		b.WriteString(fmt.Sprintf("📭 %s无新事件\n", period))
+		b.WriteString("📭 ")
+		b.WriteString(period)
+		b.WriteString("无新事件\n")
 		appendReportFooter(&b, generatedAt)
 		return b.String()
 	}
 
-	b.WriteString(fmt.Sprintf("%s共 %d 条事件\n", period, len(events)))
-	b.WriteString("────────────────\n")
+	b.WriteString(period)
+	b.WriteString("共 ")
+	b.WriteString(strconv.Itoa(len(events)))
+	b.WriteString(" 条事件\n────────────────\n")
 
 	// 按 kind 分组计数
 	groups := make(map[string]int)
@@ -383,12 +390,16 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 		return sorted[i].kind < sorted[j].kind
 	})
 	for _, g := range sorted {
-		b.WriteString(fmt.Sprintf("%s %s × %d\n", rules.KindEmoji(g.kind), store.KindDisplayName(g.kind), g.count))
+		b.WriteString(rules.KindEmoji(g.kind))
+		b.WriteString(" ")
+		b.WriteString(store.KindDisplayName(g.kind))
+		b.WriteString(" × ")
+		b.WriteString(strconv.Itoa(g.count))
+		b.WriteString("\n")
 	}
 
 	// 最近活动预览（状态中文一眼可读，多仓用户靠仓库名区分归属；条数见 maxPreviewEvents）
-	b.WriteString("────────────────\n")
-	b.WriteString("最近活动：\n")
+	b.WriteString("────────────────\n最近活动：\n")
 	for i, ev := range events {
 		if i >= maxPreviewEvents {
 			break
@@ -402,33 +413,41 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 		}
 		numStr := ""
 		if ev.SubjectNumber != nil {
-			numStr = fmt.Sprintf("#%d", *ev.SubjectNumber)
+			numStr = "#" + strconv.FormatInt(*ev.SubjectNumber, 10)
 		}
 		// 标题来自 GitHub 用户输入，正文以 ParseMode=HTML 发送，必须转义，
 		// 否则 <、& 等字符会破坏消息或注入 HTML（与 renderMessage 保持一致）。
 		// 按段拼接避免「无仓库且无编号」时出现双空格。
 		var line strings.Builder
-		line.WriteString(fmt.Sprintf("• [%s]", status))
+		line.Grow(128)
+		line.WriteString("• [")
+		line.WriteString(status)
+		line.WriteString("]")
 		if repoPrefix != "" {
-			line.WriteString(" " + repoPrefix + numStr)
+			line.WriteString(" ")
+			line.WriteString(repoPrefix)
+			line.WriteString(numStr)
 		} else if numStr != "" {
-			line.WriteString(" " + numStr)
+			line.WriteString(" ")
+			line.WriteString(numStr)
 		}
-		line.WriteString(" " + htmlpkg.EscapeString(ev.Title))
-		b.WriteString(line.String() + "\n")
+		line.WriteString(" ")
+		line.WriteString(htmlpkg.EscapeString(ev.Title))
+		b.WriteString(line.String())
+		b.WriteString("\n")
 	}
 
 	appendReportFooter(&b, generatedAt)
 	return b.String()
 }
 
-// appendReportFooter 追加报告页脚：生成时间（UTC），与规则通知的「⏰ 时间」格式保持一致。
 func appendReportFooter(b *strings.Builder, generatedAt time.Time) {
 	if generatedAt.IsZero() {
 		return
 	}
-	b.WriteString("────────────────\n")
-	b.WriteString(fmt.Sprintf("⏰ 生成时间：%s\n", generatedAt.UTC().Format("2006-01-02 15:04 UTC")))
+	b.WriteString("────────────────\n⏰ 生成时间：")
+	b.WriteString(generatedAt.UTC().Format("2006-01-02 15:04 UTC"))
+	b.WriteString("\n")
 }
 
 // parseWeekday 将英文周名解析为 time.Weekday；非法返回 false。

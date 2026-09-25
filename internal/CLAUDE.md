@@ -96,4 +96,5 @@ A: 领域常量与共享判定放在 `store`（如 `RepoAllowsKind`、`IsFailure
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T09:08:00Z | 优化 digest 定期报告渲染性能：buildReportBody 预分配 Builder 缓冲区并消除中间 fmt.Sprintf 与装箱开销；enqueue 幂等键简化为直接拼接 |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
