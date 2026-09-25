@@ -53,6 +53,7 @@ A: Session 行删除（Revoke），非仅清 Cookie。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T10:55:00Z | 优化 TOTP 验证码计算与认证 URL 组装：calculateHOTP 采用栈数组与固定算术填充消除 fmt.Sprintf 反射格式化装箱与 digest 堆切片；ValidateTOTP 使用固定数组循环与定长字节常量时间比较消除切片分配；GenerateOTPAuthURL 改用原生拼接 |
 | 2026-09-25T09:16:00Z | 会话与令牌处理重构优化：SessionService.UserAgent 截断统一复用 textutil.TruncateUTF8Bytes 消除重复实现与全串循环扫描；hashEncodedToken 与 issueRandomToken 令牌哈希改用栈缓冲区十六进制编码消除堆分配 |
 | 2026-09-25T08:00:00Z | 鉴权安全与性能加固：①CSRF 校验改用栈分配固定数组与就地解码，消除全部堆分配（0 次内存分配），显著降低高频 API 写入鉴权的 GC 压力；②LoginLimiter 增加容量上限防护（maxLimiterEntries=10000），超出上限且未超时时主动清理或拒绝新 IP，防止海量恶意 IP 爆破导致内存耗尽（DoS 保护） |
 | 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |

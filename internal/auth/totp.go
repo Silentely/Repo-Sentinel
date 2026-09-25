@@ -38,7 +38,7 @@ func GenerateOTPAuthURL(username, secret, issuer string) string {
 	if cleanIssuer == "" {
 		cleanIssuer = "RepoSentinel"
 	}
-	label := fmt.Sprintf("%s:%s", cleanIssuer, strings.TrimSpace(username))
+	label := cleanIssuer + ":" + strings.TrimSpace(username)
 	params := url.Values{}
 	params.Set("secret", secret)
 	params.Set("issuer", cleanIssuer)
@@ -46,7 +46,7 @@ func GenerateOTPAuthURL(username, secret, issuer string) string {
 	params.Set("digits", strconv.Itoa(totpDigits))
 	params.Set("period", strconv.Itoa(totpPeriod))
 
-	return fmt.Sprintf("otpauth://totp/%s?%s", url.PathEscape(label), params.Encode())
+	return "otpauth://totp/" + url.PathEscape(label) + "?" + params.Encode()
 }
 
 func decodeBase32Secret(secret string) ([]byte, error) {
@@ -89,13 +89,16 @@ func ValidateTOTP(secret, passcode string, t time.Time) bool {
 	}
 
 	counter := t.Unix() / totpPeriod
+	var passBytes [totpDigits]byte
+	copy(passBytes[:], cleanPasscode)
+
 	// 校验当前周期、前一个周期和后一个周期
-	for _, offset := range []int64{0, -1, 1} {
+	for _, offset := range [...]int64{0, -1, 1} {
 		if counter+offset < 0 {
 			continue
 		}
-		expected := calculateHOTP(key, uint64(counter+offset))
-		if subtle.ConstantTimeCompare([]byte(cleanPasscode), []byte(expected)) == 1 {
+		expected := calculateHOTPBytes(key, uint64(counter+offset))
+		if subtle.ConstantTimeCompare(passBytes[:], expected[:]) == 1 {
 			return true
 		}
 	}
@@ -112,20 +115,34 @@ func GenerateTOTPCode(secret string, t time.Time) (string, error) {
 	if counter < 0 {
 		counter = 0
 	}
-	return calculateHOTP(key, uint64(counter)), nil
+	codeBytes := calculateHOTPBytes(key, uint64(counter))
+	return string(codeBytes[:]), nil
 }
 
-func calculateHOTP(key []byte, counter uint64) string {
+func calculateHOTPBytes(key []byte, counter uint64) [totpDigits]byte {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], counter)
 
 	mac := hmac.New(sha1.New, key)
 	mac.Write(buf[:])
-	digest := mac.Sum(nil)
+	var digestBuf [sha1.Size]byte
+	digest := mac.Sum(digestBuf[:0])
 
 	offset := digest[len(digest)-1] & 0x0f
 	code := binary.BigEndian.Uint32(digest[offset:offset+4]) & 0x7fffffff
 	code = code % 1000000
 
-	return fmt.Sprintf("%06d", code)
+	var res [totpDigits]byte
+	res[5] = byte('0' + code%10)
+	code /= 10
+	res[4] = byte('0' + code%10)
+	code /= 10
+	res[3] = byte('0' + code%10)
+	code /= 10
+	res[2] = byte('0' + code%10)
+	code /= 10
+	res[1] = byte('0' + code%10)
+	code /= 10
+	res[0] = byte('0' + code%10)
+	return res
 }

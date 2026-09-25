@@ -126,3 +126,23 @@ func TestTOTPSecretFormatRobustness(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkValidateTOTP(b *testing.B) {
+	secret, err := GenerateTOTPSecret()
+	if err != nil {
+		b.Fatal(err)
+	}
+	now := time.Unix(1700000000, 0)
+	code, err := GenerateTOTPCode(secret, now)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !ValidateTOTP(secret, code, now) {
+			b.Fatal("validate failed")
+		}
+	}
+}
