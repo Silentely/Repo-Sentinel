@@ -121,6 +121,19 @@ func (s *server) handleActivateRepository(w http.ResponseWriter, r *http.Request
 		s.writeMappedError(w, r, err)
 		return
 	}
+	if session, ok := sessionFromContext(r.Context()); ok && s.dependencies.Store != nil {
+		s.appendAudit(r.Context(), store.AuditLog{
+			ID:           ulid.Make().String(),
+			Action:       "repository.activate",
+			ActorType:    "admin",
+			ActorID:      session.AdminID,
+			TargetType:   "repository",
+			TargetID:     id,
+			MetadataJSON: []byte("{}"),
+			IPAddress:    remoteIPFromContext(r.Context()),
+			CreatedAt:    time.Now().UTC(),
+		})
+	}
 	writeJSON(w, http.StatusOK, repo)
 }
 
@@ -166,6 +179,19 @@ func (s *server) handleUpdateRepositorySettings(w http.ResponseWriter, r *http.R
 	if err := s.dependencies.Store.Repositories().UpdateSettings(r.Context(), id, body); err != nil {
 		s.writeMappedError(w, r, err)
 		return
+	}
+	if session, ok := sessionFromContext(r.Context()); ok && s.dependencies.Store != nil {
+		s.appendAudit(r.Context(), store.AuditLog{
+			ID:           ulid.Make().String(),
+			Action:       "repository.update_settings",
+			ActorType:    "admin",
+			ActorID:      session.AdminID,
+			TargetType:   "repository",
+			TargetID:     id,
+			MetadataJSON: []byte("{}"),
+			IPAddress:    remoteIPFromContext(r.Context()),
+			CreatedAt:    time.Now().UTC(),
+		})
 	}
 	repo, err := s.dependencies.Store.Repositories().Get(r.Context(), id)
 	if err != nil {

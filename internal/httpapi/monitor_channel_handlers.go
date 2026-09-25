@@ -150,6 +150,19 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 				"channel_type", channelType, "kept_channel_id", saved.ID, "error_code", "channel_disable_failed", "error", err.Error())
 		}
 	}
+	if session, ok := sessionFromContext(r.Context()); ok && s.dependencies.Store != nil {
+		s.appendAudit(r.Context(), store.AuditLog{
+			ID:           ulid.Make().String(),
+			Action:       "channel.upsert",
+			ActorType:    "admin",
+			ActorID:      session.AdminID,
+			TargetType:   "channel",
+			TargetID:     saved.ID,
+			MetadataJSON: []byte("{}"),
+			IPAddress:    remoteIPFromContext(r.Context()),
+			CreatedAt:    time.Now().UTC(),
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": saved.ID, "channel_type": saved.ChannelType, "enabled": saved.Enabled,
 		"target": saved.Target, "secret_configured": saved.SecretEnvelope != "",
@@ -242,6 +255,19 @@ func (s *server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 	if err := s.dependencies.Store.Channels().Delete(r.Context(), ch.ID); err != nil {
 		s.writeMappedError(w, r, err)
 		return
+	}
+	if session, ok := sessionFromContext(r.Context()); ok && s.dependencies.Store != nil {
+		s.appendAudit(r.Context(), store.AuditLog{
+			ID:           ulid.Make().String(),
+			Action:       "channel.delete",
+			ActorType:    "admin",
+			ActorID:      session.AdminID,
+			TargetType:   "channel",
+			TargetID:     ch.ID,
+			MetadataJSON: []byte("{}"),
+			IPAddress:    remoteIPFromContext(r.Context()),
+			CreatedAt:    time.Now().UTC(),
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "deleted", "channel_type": channelType})
 }

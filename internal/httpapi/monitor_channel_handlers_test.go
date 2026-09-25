@@ -53,4 +53,22 @@ func TestChannelHandlersLifecycle(t *testing.T) {
 	if err != store.ErrNotFound {
 		t.Fatalf("expected ErrNotFound after deletion, got %v", err)
 	}
+
+	// 验证审计日志记录了 channel.upsert 与 channel.delete
+	audits, err := fixture.store.Audits().List(t.Context(), 20, 0)
+	if err != nil {
+		t.Fatalf("list audits failed: %v", err)
+	}
+	var hasUpsert, hasDelete bool
+	for _, a := range audits {
+		if a.Action == "channel.upsert" {
+			hasUpsert = true
+		}
+		if a.Action == "channel.delete" {
+			hasDelete = true
+		}
+	}
+	if !hasUpsert || !hasDelete {
+		t.Fatalf("expected audit logs for channel.upsert and channel.delete, got: %+v", audits)
+	}
 }
