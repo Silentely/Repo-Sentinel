@@ -119,19 +119,28 @@ export function DashboardPage() {
   // 源数组同样入 memo：`repos.data?.items ?? []` 每次渲染都产出新引用，
   // 下游 useMemo 的依赖永不相等，派生缓存等于无效（每次渲染仍重建）。
   const repoItems = useMemo(() => repos.data?.items ?? [], [repos.data?.items]);
-  // 仓库与基线：排除已归档，避免归档仓继续占位；派生数据缓存避免每渲染重建。
-  const visibleRepos = useMemo(
-    () => repoItems.filter((r) => !r.is_archived && r.sync_status !== "archived"),
-    [repoItems],
-  );
-  const baselineRepos = useMemo(
-    () => visibleRepos.filter((r) => r.sync_status === "baseline_sync"),
-    [visibleRepos],
-  );
-  const repoNameMap = useMemo(
-    () => Object.fromEntries(repoItems.map((r) => [r.id, r.full_name || `${r.owner}/${r.name}`])),
-    [repoItems],
-  );
+  // 仓库与基线：单次循环划分 visible 与 baseline 集合，避免多重迭代与中间数组分配。
+  const { visibleRepos, baselineRepos } = useMemo(() => {
+    const visible: typeof repoItems = [];
+    const baseline: typeof repoItems = [];
+    for (const r of repoItems) {
+      if (!r.is_archived && r.sync_status !== "archived") {
+        visible.push(r);
+        if (r.sync_status === "baseline_sync") {
+          baseline.push(r);
+        }
+      }
+    }
+    return { visibleRepos: visible, baselineRepos: baseline };
+  }, [repoItems]);
+
+  const repoNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of repoItems) {
+      map[r.id] = r.full_name || `${r.owner}/${r.name}`;
+    }
+    return map;
+  }, [repoItems]);
 
   const eventItems = events.data?.items ?? [];
   const outboxItems = outbox.data?.items ?? [];
