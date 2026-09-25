@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	htmlpkg "html"
 	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
@@ -82,7 +82,7 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 		return nil
 	}
 
-	title := fmt.Sprintf("📊 每日摘要 %s", dateKey)
+	title := "📊 每日摘要 " + dateKey
 	body, aiUsed := g.reportBody(ctx, title, events, "过去 24 小时", now)
 	return g.enqueue(ctx, settingLastDigest, "digest", dateKey, title, body, map[string]any{
 		"digest": true, "date": dateKey, "count": len(events), "ai": aiUsed,
@@ -119,7 +119,7 @@ func (g *Generator) RunWeekly(ctx context.Context, now time.Time) error {
 		return nil
 	}
 
-	title := fmt.Sprintf("📊 每周报告 %s 起", dateKey)
+	title := "📊 每周报告 " + dateKey + " 起"
 	body, aiUsed := g.reportBody(ctx, title, events, "过去 7 天", now)
 	return g.enqueue(ctx, settingLastWeekly, "report|weekly", dateKey, title, body, map[string]any{
 		"report": "weekly", "period_start": dateKey, "count": len(events), "ai": aiUsed,
@@ -154,7 +154,7 @@ func (g *Generator) RunMonthly(ctx context.Context, now time.Time) error {
 		return nil
 	}
 
-	title := fmt.Sprintf("📊 每月报告 %s", dateKey)
+	title := "📊 每月报告 " + dateKey
 	body, aiUsed := g.reportBody(ctx, title, events, "过去 30 天", now)
 	return g.enqueue(ctx, settingLastMonthly, "report|monthly", dateKey, title, body, map[string]any{
 		"report": "monthly", "period": dateKey, "count": len(events), "ai": aiUsed,
@@ -171,9 +171,13 @@ func (g *Generator) sendWindow(ctx context.Context, now time.Time) (*time.Locati
 	}
 	localNow := now.In(loc)
 	sendAt := store.SettingString(ctx, g.Store.Settings(), settingLocalTime, "09:00")
-	var hour, minute int
-	if _, err := fmt.Sscanf(sendAt, "%d:%d", &hour, &minute); err != nil {
-		hour, minute = 9, 0
+	hour, minute := 9, 0
+	if hStr, mStr, ok := strings.Cut(sendAt, ":"); ok {
+		if h, err := strconv.Atoi(strings.TrimSpace(hStr)); err == nil && h >= 0 && h < 24 {
+			if m, err := strconv.Atoi(strings.TrimSpace(mStr)); err == nil && m >= 0 && m < 60 {
+				hour, minute = h, m
+			}
+		}
 	}
 	// 发送窗口 = 本地发送时刻起一小时：按时刻比较而非小时+分钟分段，
 	// 避免 sendAt 分钟越大窗口越逼近两小时（此前 09:30 会开放到 10:59）。
@@ -240,7 +244,7 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 	}
 	// 质量护栏：AI 输出过短或复读模板预览头（「最近活动：」）视为低质，
 	// 回退模板避免「AI 输出反而更差」；阈值保守，宁可多回退。
-	if len([]rune(summary)) < minSummaryRunes || strings.Contains(summary, "最近活动：") {
+	if utf8.RuneCountInString(summary) < minSummaryRunes || strings.Contains(summary, "最近活动：") {
 		if g.Logger != nil {
 			g.Logger.Warn("digest ai fallback",
 				"req_id", reqID, "title", title, "events", len(events),
@@ -252,7 +256,10 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 		g.Logger.Info("digest ai used", "req_id", reqID, "title", title, "events", len(events), "duration_ms", duration.Milliseconds())
 	}
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("<b>%s</b>\n", htmlpkg.EscapeString(title)))
+	b.Grow(len(title) + len(summary) + 64)
+	b.WriteString("<b>")
+	b.WriteString(htmlpkg.EscapeString(title))
+	b.WriteString("</b>\n")
 	b.WriteString("────────────────\n")
 	// AI 输出为模型生成文本，嵌入 HTML 正文前必须转义，避免破坏 parse_mode=HTML。
 	b.WriteString(htmlpkg.EscapeString(summary))
