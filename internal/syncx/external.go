@@ -221,6 +221,9 @@ func (p *ExternalPoller) PollAll(ctx context.Context) error {
 		if pollErr == nil {
 			return
 		}
+		if errors.Is(pollErr, context.Canceled) && ctx.Err() != nil {
+			return
+		}
 		if !githubx.IsRateLimited(pollErr) {
 			if p.Logger != nil {
 				p.Logger.Error("external poll failed", "repo", repo.FullName, "error_code", "external_poll_failed", "error", pollErr.Error())

@@ -165,3 +165,23 @@ func TestSchedulerTicksAllComponentsAndStops(t *testing.T) {
 		t.Fatalf("调度计数异常：reconcile=%d external=%d", reconcileRuns.Load(), externalPolls.Load())
 	}
 }
+
+func TestSchedulerContextCanceledOnShutdownNotLoggedAsError(t *testing.T) {
+	var logBuffer bytes.Buffer
+	s := &Scheduler{Logger: slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelDebug}))}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	s.runScheduledTask(ctx, "reconcile", "scheduled reconcile failed", "reconcile_failed", func(c context.Context) error {
+		return c.Err()
+	})
+
+	logs := logBuffer.String()
+	if strings.Contains(logs, `"level":"ERROR"`) {
+		t.Fatalf("正常优雅关停时的 context 取消不应输出 ERROR 日志，实际: %s", logs)
+	}
+	if !strings.Contains(logs, `"scheduled task stopped on shutdown"`) {
+		t.Fatalf("优雅关停应输出 DEBUG scheduled task stopped on shutdown，实际: %s", logs)
+	}
+}

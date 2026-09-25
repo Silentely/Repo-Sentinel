@@ -63,6 +63,12 @@ func (s *Scheduler) runScheduledTask(ctx context.Context, task, message, errorCo
 	err := run(taskCtx)
 	durationMs := time.Since(startedAt).Milliseconds()
 	if err != nil {
+		if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+			if s.Logger != nil {
+				s.Logger.Debug("scheduled task stopped on shutdown", "task", task)
+			}
+			return
+		}
 		if s.Logger != nil {
 			s.Logger.Error(
 				message,
