@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 
@@ -201,7 +201,11 @@ export function StarredReleasesPage() {
   });
 
   const counts = config.data?.counts;
-  const items = trackers.data?.items ?? [];
+  const items = useMemo(() => trackers.data?.items ?? [], [trackers.data?.items]);
+  const handleToggle = useCallback(
+    (id: string, state: "disabled" | "tracking") => setStateMut.mutate({ id, state }),
+    [setStateMut],
+  );
 
   return (
     <>
@@ -298,7 +302,12 @@ export function StarredReleasesPage() {
         ) : !trackers.isError ? (
           <ul className="plain-list" aria-label="Star Release 追踪列表">
             {items.map((it) => (
-              <TrackerRow key={it.id} item={it} busy={setStateMut.isPending && setStateMut.variables?.id === it.id} onToggle={(state) => setStateMut.mutate({ id: it.id, state })} />
+              <TrackerRow
+                key={it.id}
+                item={it}
+                busy={setStateMut.isPending && setStateMut.variables?.id === it.id}
+                onToggle={(state) => handleToggle(it.id, state)}
+              />
             ))}
           </ul>
         ) : null}
@@ -319,7 +328,15 @@ export function StarredReleasesPage() {
   );
 }
 
-export function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem; busy: boolean; onToggle: (state: "disabled" | "tracking") => void }) {
+export const TrackerRow = memo(function TrackerRow({
+  item,
+  busy,
+  onToggle,
+}: {
+  item: StarredTrackerItem;
+  busy: boolean;
+  onToggle: (state: "disabled" | "tracking") => void;
+}) {
   // busy 由父级 mutation 的 variables.id 判定：请求结束自动恢复，不会残留行级忙碌态。
   let published = "—";
   if (item.last_release_published_at) {
@@ -387,7 +404,7 @@ export function TrackerRow({ item, busy, onToggle }: { item: StarredTrackerItem;
       </span>
     </li>
   );
-}
+});
 
 // releaseURL 由 full_name 与最新 tag 拼 GitHub Release 跳转链接；无 tag（从未发布）时指向仓库 Releases 页。
 export function releaseURL(fullName: string, tag: string | undefined): string {

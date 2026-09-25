@@ -68,7 +68,7 @@ export function WebhookDeliveriesPage() {
     },
   });
 
-  const items = listQuery.data?.items ?? [];
+  const items = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items]);
   const total = listQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 20));
 

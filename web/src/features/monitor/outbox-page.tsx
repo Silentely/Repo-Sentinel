@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 
@@ -136,8 +136,8 @@ export function OutboxPage() {
   });
   const totalDead = statusFilter === "dead" ? (outbox.data?.total ?? 0) : (deadTotalQuery.data ?? 0);
 
-  const items = outbox.data?.items ?? [];
-  const deadCount = items.filter((it) => it.status === "dead").length;
+  const items = useMemo(() => outbox.data?.items ?? [], [outbox.data?.items]);
+  const deadCount = useMemo(() => items.filter((it) => it.status === "dead").length, [items]);
 
   function toggleDetail(item: OutboxItem) {
     setSelectedItem(selectedItem?.id === item.id ? null : item);
