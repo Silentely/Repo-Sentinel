@@ -74,6 +74,7 @@ A: 可以，将 BaseURL 指向 OpenAI 兼容网关即可。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-25T07:28:00Z | Diff 切片解析与优先级格式安全收口：在 `parseDiffChunks` 中预先规范化 Windows CRLF (`\r\n` / `\r` -> `\n`)，并在拼接各文件 Diff chunk 时严格保证换行分隔符，杜绝跨文件 diff 标头被粘滞在上一文件代码行尾的问题 |
 | 2026-09-23T00:00:00Z | 重试耗尽的错误文案追加尝试次数（`attempts=N`，`withAttemptCount` 保留原错误码与 Unwrap 链，`classifyCallError` 分类不变）：此前单次失败与连续 N 次失败返回同一句「ai: http 500: boom」，告警与降级文案无法区分上游是偶发抖动还是持续不可用；`Retries=0` 的单次失败不附加次数；补尝试次数标注与分类不受影响的回归 |
 | 2026-09-16T00:00:00Z | 新增 PR Diff AI 代码审查引擎：结构化审查报告与健康评分、严格 JSON 与空响应校验（空内容返回 ErrInvalidCodeReview、评分仅拒绝负数）、同一 PR 同一提交审查去重、结果先持久化再回写 PR 评论、Diff 启发式风险嗅探与评分安全截断、机器人 PR 自动跳过；新增 Actions 失败工作流 LLM 根因诊断（失败步骤上限 30 条）；手动触发审查管线异步入队（202 回执 + head SHA 幂等）并抽取自动/手动共用管线；release notes 截断改用 textutil.TruncateUTF8Bytes；AI 请求附 X-Request-ID |
 | 2026-08-10T13:00:00Z | 新增 `Client.ReleaseSummary`（star 仓库新 Release 中文总结，英文 notes 翻译摘要；notes 截断 8000 字符）与 `release_summary_enabled` 开关（默认 true，受 `enabled` 总开关约束），贯通 config/runtime/HTTP API/管理台表单 |

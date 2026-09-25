@@ -138,6 +138,8 @@ func getDiffPriority(path string, isNoise bool) int {
 }
 
 func parseDiffChunks(rawDiff string) []diffChunk {
+	rawDiff = strings.ReplaceAll(rawDiff, "\r\n", "\n")
+	rawDiff = strings.ReplaceAll(rawDiff, "\r", "\n")
 	if !strings.Contains(rawDiff, "diff --git ") && !strings.Contains(rawDiff, "--- ") {
 		if strings.TrimSpace(rawDiff) == "" {
 			return nil

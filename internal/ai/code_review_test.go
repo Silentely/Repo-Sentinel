@@ -337,3 +337,17 @@ func TestReviewPRRejectsEmptyResponse(t *testing.T) {
 		t.Fatalf("expected ErrInvalidCodeReview, got %v", err)
 	}
 }
+
+func TestCleanAndPrioritizeDiffCRLFAndSeparation(t *testing.T) {
+	crlfDiff := "diff --git a/a.go b/a.go\r\n--- a/a.go\r\n+++ b/a.go\r\n@@ -1 +1 @@\r\n-old\r\n+new\r\ndiff --git a/b.go b/b.go\r\n--- a/b.go\r\n+++ b/b.go\r\n@@ -1 +1 @@\r\n-foo\r\n+bar"
+	cleaned, truncated := cleanAndPrioritizeDiff(crlfDiff, 2000)
+	if truncated {
+		t.Fatal("should not be truncated")
+	}
+	if strings.Contains(cleaned, "\r") {
+		t.Fatal("cleaned diff should not contain carriage returns")
+	}
+	if !strings.Contains(cleaned, "\ndiff --git a/b.go b/b.go") {
+		t.Fatalf("expected second diff header to start on new line, got:\n%s", cleaned)
+	}
+}
