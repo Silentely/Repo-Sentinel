@@ -31,7 +31,7 @@ REPOSENTINEL_SETUP_ALLOW_REMOTE=true
 
 并确保 TLS、反向代理访问控制已就绪；完成后应立刻改回 `false`。
 
-成功 setup 会立即建立 Session。管理员已存在时 `GET /api/v1/setup/status` 返回 `required=false`，再次 `POST /api/v1/setup` 返回 `not_found`。
+成功设置后立即建立 Session。管理员已存在时 `GET /api/v1/setup/status` 返回 `required=false`，再次 `POST /api/v1/setup` 返回 `not_found`。
 
 ## 登录与 Cookie
 
@@ -72,14 +72,14 @@ UI 改密会保留当前 Session、撤销其他 Session。
   REPOSENTINEL_HTTP_TRUSTED_PROXIES="127.0.0.1,10.0.0.0/8,172.16.0.0/12"
   ```
 
-当且仅当前序 hop 属于受信任子网时，服务端从右向左回溯剥离受信任代理，解析出客户端的真实 IP。
+只有当直连来源本身属于受信任子网时，服务端才会从右向左回溯 `X-Forwarded-For`，剥离受信任代理，取第一个不属于受信任子网的地址作为客户端真实 IP；`X-Real-IP` 作为回退。
 
 ## 两步验证 (2FA / TOTP)
 
 RepoSentinel 支持基于 RFC 6238 标准的时间同步动态口令（TOTP）二步验证。
 
 ### 1. 开启两步验证
-1. 登录管理后台，进入「系统设置」页面；
+1. 登录管理后台，进入「设置」页面；
 2. 找到「两步验证 (2FA / TOTP)」设置卡片，点击「配置并开启两步验证」；
 3. 使用 Google Authenticator、1Password、Bitwarden 等验证器应用扫描或手动输入密钥，或点击「应用快速唤起绑定」；
 4. 输入验证器当前显示的 6 位动态验证码并确认，即可成功激活。
@@ -105,7 +105,7 @@ RepoSentinel 支持基于 RFC 6238 标准的时间同步动态口令（TOTP）�
 
 ## CLI 重置密码
 
-密码不能作为 argv 传入，必须 stdin：
+密码不能作为命令行参数传入，必须通过标准输入（stdin）提供：
 
 ```bash
 read -r -s ADMIN_PASSWORD

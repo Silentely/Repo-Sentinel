@@ -58,7 +58,7 @@ export default defineConfig({
       {
         property: "og:description",
         content:
-          "自托管 GitHub 仓库监控：Webhook、对账、安全告警与 Telegram 通知。",
+          "自托管 GitHub 仓库监控：Webhook、对账、安全告警与多渠道通知（Telegram、飞书、企业微信、钉钉、Discord、Bark、HTTP Webhook）。",
       },
     ],
     ["meta", { property: "og:url", content: siteUrl }],

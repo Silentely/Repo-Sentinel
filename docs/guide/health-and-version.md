@@ -15,7 +15,7 @@ curl -fsS http://127.0.0.1:8080/health/live
 curl -fsS http://127.0.0.1:8080/health/ready
 ```
 
-容器或编排的 Healthcheck 应使用 `/health/ready`。
+容器或编排平台的健康检查应使用 `/health/ready`。
 
 ## Prometheus `/metrics` 是什么？
 
@@ -51,7 +51,7 @@ GET /api/v1/system/build-info
 
 **无需认证**，仅返回 `{ "version": "x.y.z" }` 一个字段（示例值，以实例实际版本为准）。供登录页页脚等未认证场景展示真实构建版本；不含任何配置状态（需要完整版本信息请用上一条 `system/version`）。
 
-本地未注入 ldflags 时，CLI `version` 可能显示 `dev` / `unknown`，这是预期回退，不会被误判为正式发行版。
+本地构建未通过构建参数（ldflags）注入版本信息时，CLI `version` 可能显示 `dev` / `unknown`，这是预期回退，不会被误判为正式发行版。
 
 生产构建推荐：
 
@@ -60,12 +60,12 @@ OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
 .tmp/reposentinel version
 ```
 
-部署镜像推荐：`ghcr.io/silentely/repo-sentinel:latest`（或钉死 `vX.Y.Z`），见 [Docker 部署](/deploy/docker)。  
+部署镜像推荐：`ghcr.io/silentely/repo-sentinel:latest`（或固定为 `vX.Y.Z`），见 [Docker 部署](/deploy/docker)。  
 产品版本以仓库根目录 `VERSION` 为准；维护者发版见 [发布与镜像](/reference/release)。
 
 ## 更新检查
 
-管理后台「关于与版本」提供 **检查更新**：优先通过 `github.com/.../releases/latest` 的 302 Location 解析 tag（不占用 API 配额），失败再回退 API JSON；失败 soft-fail；成功结果进程内缓存约 6 小时。
+管理后台「关于与版本」提供 **检查更新**：优先通过 `github.com/.../releases/latest` 的 302 Location 解析 tag，不占用 API 配额。解析失败再回退到 API JSON。所有远程检查失败均优雅降级，不影响服务运行；成功结果进程内缓存约 6 小时。
 
 | 配置 | 说明 |
 |------|------|

@@ -85,7 +85,7 @@ npm install
 npm run docs:dev
 ```
 
-默认 <http://127.0.0.1:5174>。构建：
+默认监听 <http://127.0.0.1:5174>。构建：
 
 ```bash
 npm run docs:build

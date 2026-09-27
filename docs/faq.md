@@ -6,11 +6,11 @@
 
 需要先在 GitHub **Install** App（不是只在管理台保存凭据），并保证 Webhook 可达。`installation.created` 事件会写入 Installation 与仓库列表（状态为基线中）。
 
-若日志里已有 `event_type=installation` 且 `status=accepted`，但仪表盘仍无仓库：旧版本只解析了 `repositories_added`，未解析顶层 `repositories`。升级后打开 **GitHub App** 页点 **「从 GitHub 同步仓库」** 即可补拉；新安装事件会自动入库。详见 [Docker 部署 · GitHub App](/deploy/docker#4-github-app创建表单逐项)。
+若日志里已有 `event_type=installation` 且 `status=accepted`，但仪表盘仍无仓库：旧版本只解析了 `repositories_added`，未解析顶层 `repositories`。升级后打开 **GitHub App** 页点 **「从 GitHub 同步仓库」** 即可补拉；新安装事件会自动入库。详见 [Docker 部署 · GitHub App](/deploy/docker#_4-github-app-创建表单逐项)。
 
 ### 创建 GitHub App 时 Callback URL / OAuth 怎么填？
 
-**全部可跳过。** RepoSentinel 不用用户 OAuth：Callback URL 留空；不要勾选 Request user authorization during installation、Device Flow。必填的是 **Webhook Active + URL（`/webhooks/github`）+ Secret**，以及仓库只读权限与事件订阅。逐项说明见 [Docker 部署 · GitHub App](/deploy/docker#4-github-app创建表单逐项) 或管理台「GitHub App」页。
+**全部可跳过。** RepoSentinel 不用用户 OAuth：Callback URL 留空；不要勾选 Request user authorization during installation、Device Flow。必填的是 **Webhook Active + URL（`/webhooks/github`）+ Secret**，以及仓库只读权限与事件订阅。逐项说明见 [Docker 部署 · GitHub App](/deploy/docker#_4-github-app-创建表单逐项) 或管理台「GitHub App」页。
 
 ### App ID / 私钥 / Webhook Secret 能在网页里填吗？
 

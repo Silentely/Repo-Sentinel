@@ -57,7 +57,9 @@ printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --passwor
 ```bash
 reposentinel backup --output /path/to/backups/reposentinel-$(date -u +%Y%m%dT%H%M%SZ)
 # Compose 示例（仅 SQLite 可用；PostgreSQL 会因镜像内缺少 pg_dump 而失败）：
-# docker compose exec reposentinel /reposentinel backup --output /tmp/backup
+# 输出必须落在挂载的数据卷 /data 下；容器内 /tmp 不挂载卷，写在那里会在容器重建时丢失。
+docker compose exec reposentinel /reposentinel backup --output /data/reposentinel-backup.db
+docker compose cp reposentinel:/data/reposentinel-backup.db ./
 
 # 恢复必须在服务停止后执行：运行中进程持有旧库文件句柄，恢复不会对其生效。
 # restore 会先另存当前库（*.pre-restore-*），并自动清理 WAL/SHM 伴随文件；
@@ -97,11 +99,16 @@ docker run --rm -v "$PWD:/backup" postgres:17-alpine \
 
 ## 主密钥轮换
 
-1. 生成新 32 字节密钥  
-2. `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS=旧值`  
-3. `REPOSENTINEL_ENCRYPTION_KEY=新值`  
-4. 重启；确认解密与业务正常  
-5. 完成密文重加密后移除 PREVIOUS（若提供 `secrets reencrypt` 命令则用之）
+主密钥加密库内敏感凭据（通知渠道密钥、AI API Key、两步验证密钥等）。轮换要让新旧密钥短暂共存：旧密钥负责解密存量密文，新密钥负责之后写入的密文。
+
+1. 生成新的 32 字节密钥：`openssl rand -base64 32`
+2. 把旧值写入 `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS`，新值写入 `REPOSENTINEL_ENCRYPTION_KEY`
+3. 重启服务。启动时应用会用新密钥重写内部加密探针，探针随即由新密钥保护；渠道凭据仍由旧密钥加密，读取时自动回退到 `PREVIOUS` 解密
+4. 在管理台重新保存每一处加密凭据：通知渠道密钥、AI API Key、两步验证密钥。每次保存都会用新密钥重新加密该条数据
+
+**在全部凭据重新保存之前，不要移除 `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS`。** 当前没有批量重加密命令，移除后尚未重存的凭据将无法解密：通知渠道取不到密钥会投递失败，AI 配置读取报错，两步验证无法启用。解密回退不会输出日志，无法从服务端判断旧密文是否已全部清空，因此以「管理台已逐处重新保存」作为移除条件。
+
+`PREVIOUS` 必须填加密时实际使用的旧值；填错时启动会因内部探针无法解密而报 `encryption_key_mismatch`。
 
 ## 升级
 

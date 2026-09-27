@@ -16,7 +16,7 @@ ghcr.io/silentely/repo-sentinel:latest
 | `dev` 推送 | `dev`、`dev-<sha>` | 开发 / 预发（amd64） |
 | Git tag `v*` | `vX.Y.Z`、`latest` | 正式版（amd64 + arm64） |
 
-- 生产优先 `latest` 或钉死 `vX.Y.Z`
+- 生产优先 `latest` 或固定为 `vX.Y.Z`
 - 正式 tag 双架构 + QEMU，通常比 `main` 单架构更久
 - 工作流：[`.github/workflows/docker.yml`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/workflows/docker.yml)
 

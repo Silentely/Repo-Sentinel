@@ -35,8 +35,9 @@
 | GHCR 镜像 | 已交付 | `main`/`dev` 推送对应浮动标签；`v*` 推送 `vX.Y.Z` + `latest` |
 | Prometheus `/metrics` | 已交付 | 进程内计数 + 可选 Bearer；建议内网抓取 |
 | 历史数据保留清理 | 已交付 | settings 可配事件/Outbox/Delivery 保留天数；后台每日清理；0 表示禁用该类 |
-| PR AI 代码审查与预警 | 已交付 | Webhook 异步审计 PR Diff + 管理台手动触发/重新审查（202 入队 + 前端轮询结果）+ 复制报告；健康评分/安全风险/破坏性兼容/代码异味；高危风险联动 Outbox 多渠道预警；仓库删除级联清理审查数据（含 settings 缓存即时失效）；OpenAPI 与 MCP 工具支持 |
+| PR AI 代码审查与预警 | 已交付 | Webhook 异步审计 PR Diff + 管理台手动触发/重新审查（202 入队 + 前端轮询结果）+ 复制报告；健康评分/安全风险/破坏性兼容/代码异味；报告可回写为 PR 评论（`code_review_comment_on_pr`，默认关闭）；高危风险联动 Outbox 多渠道预警；仓库删除级联清理审查数据（含 settings 缓存即时失效）；OpenAPI 与 MCP 工具支持 |
 | Actions CI 失败智能诊断 | 已交付 | 提取失败 Workflow Run 的具体 Job/Step 失败信息（提取失败留 Warn 降级「未知步骤」），AI 自动提炼故障根本原因与修复建议附加于通知正文；独立 `failure_analysis_enabled` 开关；AI 异常或格式不符时平滑降级 |
+| Agent 只读访问 | 已交付 | OAuth 2.0 client_credentials 令牌、OpenAPI 3.1、MCP Streamable HTTP 只读工具与少量运维写工具、Agent Skills 索引、API 目录与 Markdown 协商 |
 
 ## 验证命令
 
@@ -48,12 +49,13 @@ pnpm --dir web test -- --run
 .tmp/reposentinel backup --output .tmp/backup.db
 ```
 
-## 已知边界（有意为之）
+## 已知限制
 
-1. 对账依赖 GitHub App 私钥与 Installation；未配置时对账接口返回不可用，Webhook 仍可用。  
+1. 对账依赖 GitHub App 私钥与 Installation；未配置时，对账接口返回不可用，但 Webhook 仍可使用。  
 2. 外部仓仅 Issues/PR（Issues API），不含 Actions/安全告警。  
 3. 每日摘要按 settings 时区与本地时刻的小时窗口触发，非精确到秒的 cron。  
 4. 通知聚合进程内合并为 best-effort；多副本靠 Outbox 幂等收敛，生产默认单实例更稳妥。  
 5. `restore` 后必须用匹配主密钥启动，否则加密渠道凭据失效。  
 6. 周报/月报与每日摘要共用渠道的「接收定期汇总」开关，暂不支持按报告类型分渠道订阅。  
 7. 智能值守功能默认关闭：未配置 `REPOSENTINEL_AI_API_KEY` 时不发起任何外部请求；AI 输出经 HTML 转义后嵌入通知，失败自动降级不影响投递。  
+8. 主密钥轮换没有批量重加密命令：`REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS` 仅用于解密存量密文，必须保留至所有凭据在管理台重新保存，提前移除会使未重存的凭据无法解密。详见 [运维手册 · 主密钥轮换](/reference/ops#主密钥轮换)。  
