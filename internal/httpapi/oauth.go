@@ -19,8 +19,11 @@ const (
 	oauthSigningAAD = "oauth:signing:v1"
 	// oauthTokenTTL 是访问令牌有效期，Agent 凭据为长期客户端，1 小时足够轮换。
 	oauthTokenTTL = time.Hour
-	// oauthAPIScope 是当前唯一支持的作用域：只读访问管理 API。
+	// oauthAPIScope 是当前唯一签发的作用域：只读访问管理 API。
 	oauthAPIScope = "read"
+	// oauthWriteAPIScope 是保留的写作用域：当前不签发，供未来显式授权的写客户端使用。
+	// 令牌端点仍只发 read；mutating 组据此拒绝仅持 read 的 Agent 令牌。
+	oauthWriteAPIScope = "write"
 )
 
 var (
@@ -188,12 +191,14 @@ func (s *server) handleOAuthJWKS(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// oauthValidateToken 校验 Bearer 令牌签名与声明，返回客户端标识。
+// oauthValidateToken 校验 Bearer 令牌签名与声明，返回客户端标识与已授权的作用域集合。
+// 作用域是令牌唯一的能力边界：只返回 Subject 会让 read 令牌携带全部写权限，
+// 因此必须在验签后解析 Scope，并由 mutating 组按路由强制。
 // expectedAudience 通常为站点 Origin + "/api/v1"；expectedIssuer 为站点 Origin。
-func (s *server) oauthValidateToken(tokenString, expectedAudience, expectedIssuer string) (string, error) {
+func (s *server) oauthValidateToken(tokenString, expectedAudience, expectedIssuer string) (string, map[string]bool, error) {
 	key, err := s.oauthSigningKey()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	parsed, err := jwt.ParseWithClaims(
 		tokenString,
@@ -205,13 +210,21 @@ func (s *server) oauthValidateToken(tokenString, expectedAudience, expectedIssue
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil || !parsed.Valid {
-		return "", errOAuthInvalidToken
+		return "", nil, errOAuthInvalidToken
 	}
 	claims, ok := parsed.Claims.(*oauthClaims)
 	if !ok || claims.Subject == "" {
-		return "", errOAuthInvalidToken
+		return "", nil, errOAuthInvalidToken
 	}
-	return claims.Subject, nil
+	scopes := make(map[string]bool, 2)
+	for _, scope := range strings.Fields(claims.Scope) {
+		scopes[scope] = true
+	}
+	// 未声明任何已知作用域的令牌一律拒绝：空 scope 不得被解释为「全部允许」。
+	if !scopes[oauthAPIScope] && !scopes[oauthWriteAPIScope] {
+		return "", nil, errOAuthInvalidToken
+	}
+	return claims.Subject, scopes, nil
 }
 
 // bearerToken 提取 Authorization: Bearer <token>（scheme 大小写不敏感，RFC 7235 允许 bearer）。
@@ -229,7 +242,24 @@ func bearerToken(r *http.Request) (string, bool) {
 // agentClientContextKey 携带 OAuth Bearer 认证通过的客户端标识。
 const agentClientContextKey contextKey = "agent_client_id"
 
+// agentScopesContextKey 携带该客户端已被授权的作用域集合。
+const agentScopesContextKey contextKey = "agent_scopes"
+
 func agentClientIDFromContext(ctx context.Context) (string, bool) {
 	value, ok := ctx.Value(agentClientContextKey).(string)
 	return value, ok && value != ""
+}
+
+// agentScopesFromContext 返回当前 Agent 主体已授权的作用域集合；非 Agent 主体返回 nil。
+func agentScopesFromContext(ctx context.Context) map[string]bool {
+	if _, ok := agentClientIDFromContext(ctx); !ok {
+		return nil
+	}
+	scopes, _ := ctx.Value(agentScopesContextKey).(map[string]bool)
+	return scopes
+}
+
+// agentHasWriteScope 判定当前 Agent 主体是否持有写作用域。
+func agentHasWriteScope(ctx context.Context) bool {
+	return agentScopesFromContext(ctx)[oauthWriteAPIScope]
 }

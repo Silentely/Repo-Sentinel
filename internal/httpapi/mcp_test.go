@@ -29,6 +29,21 @@ func mcpRequest(t *testing.T, fixture *httpTestFixture, token, body string) (int
 	return response.Code, payload
 }
 
+// mcpRequestWithCookies 以浏览器会话（Cookie）调用 MCP，用于覆盖写工具的会话路径。
+func mcpRequestWithCookies(t *testing.T, fixture *httpTestFixture, cookies []*http.Cookie, body string) (int, map[string]any) {
+	t.Helper()
+	response := fixture.requestWithContentType(
+		t, http.MethodPost, "/mcp", body, "application/json", "127.0.0.1:43002", cookies, nil,
+	)
+	var payload map[string]any
+	if response.Body.Len() > 0 {
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("MCP 响应不是合法 JSON: %v；响应=%s", err, response.Body.String())
+		}
+	}
+	return response.Code, payload
+}
+
 func mcpAccessToken(t *testing.T, fixture *httpTestFixture) string {
 	t.Helper()
 	payload := requestToken(t, fixture, "grant_type=client_credentials&client_id="+oauthTestClientID+
@@ -315,9 +330,16 @@ func TestMCPToolsListAndCallExtendedTools(t *testing.T) {
 			names[n] = true
 		}
 	}
-	for _, expected := range []string{"list_events", "get_star_trend", "list_starred_releases", "list_outbox", "get_work_item_ai_review", "trigger_work_item_ai_review"} {
+	// read 作用域令牌只应看到只读工具：向它广告注定被拒的写工具，只会把「调用失败」
+	// 变成客户端的默认体验（写工具的可见性由 TestMCPWriteToolsAllowedForBrowserSession 对照覆盖）。
+	for _, expected := range []string{"list_events", "get_star_trend", "list_starred_releases", "list_outbox", "get_work_item_ai_review"} {
 		if !names[expected] {
-			t.Fatalf("tools/list 缺少工具 %q", expected)
+			t.Fatalf("tools/list 缺少只读工具 %q", expected)
+		}
+	}
+	for _, hidden := range []string{"trigger_work_item_ai_review", "trigger_reconciliation", "retry_failed_outbox", "replay_webhook_delivery"} {
+		if names[hidden] {
+			t.Fatalf("read 令牌不应看到写工具 %q", hidden)
 		}
 	}
 
@@ -358,63 +380,115 @@ func TestMCPToolsListAndCallExtendedTools(t *testing.T) {
 	}
 }
 
-// TestMCPWriteTools 验证新加入的自动化运维写工具：trigger_reconciliation, retry_failed_outbox, replay_webhook_delivery。
-func TestMCPWriteTools(t *testing.T) {
+// TestMCPWriteToolsRejectedForReadScopeBearer 回归：MCP 写工具必须与 REST mutating 组
+// 同一作用域口径。/mcp 只经 authenticationMiddleware 认证、不在 mutating 组内，原实现
+// 对写工具无任何作用域校验，只读 Agent 令牌即可触发对账、重试死信与重放投递。
+func TestMCPWriteToolsRejectedForReadScopeBearer(t *testing.T) {
 	fixture := oauthFixture(t)
 	token := mcpAccessToken(t, fixture)
 	ctx := t.Context()
 
-	// 1. 验证 tools/list 包含这三个写工具
-	_, payload := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}`)
+	_, _ = fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
+		ID: "01JMCPDEAD0000000000000001", ChannelID: "ch-1",
+		Status: store.OutboxDead, Title: "Dead message",
+	})
+	d, _ := fixture.store.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
+		ID: "01JMCPWH000000000000000001", DeliveryID: "del-mcp-scope-01",
+		EventType: "push", RepositoryFullName: "test/mcp",
+		Status: store.DeliveryProcessed, Payload: []byte(`{"ref":"refs/heads/main"}`),
+	})
+
+	cases := []struct{ name, body string }{
+		{"retry_failed_outbox", `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"retry_failed_outbox","arguments":{}}}`},
+		{"replay_webhook_delivery", `{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"replay_webhook_delivery","arguments":{"id":"` + d.ID + `"}}}`},
+		{"trigger_reconciliation", `{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"trigger_reconciliation","arguments":{}}}`},
+	}
+	for _, tc := range cases {
+		status, payload := mcpRequest(t, fixture, token, tc.body)
+		if status != http.StatusOK {
+			t.Fatalf("%s 应返回 JSON-RPC 错误而非 HTTP %d", tc.name, status)
+		}
+		errObj, ok := payload["error"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s 应被 read 作用域拒绝，实际：%v", tc.name, payload)
+		}
+		msg, _ := errObj["message"].(string)
+		if !strings.Contains(msg, "read") {
+			t.Fatalf("%s 拒绝原因应说明作用域，实际：%s", tc.name, msg)
+		}
+		// 线上错误码必须与日志的 error_code 同一取值，排障时两侧可对照。
+		data, _ := errObj["data"].(map[string]any)
+		if code, _ := data["error_code"].(string); code != errorCodeForbidden {
+			t.Fatalf("%s 应带 error_code=%s，实际：%v", tc.name, errorCodeForbidden, errObj)
+		}
+	}
+
+	// 死信行不得被翻回 pending。
+	rows, _, err := fixture.store.Outbox().List(ctx, store.ListFilter{PerPage: 100})
+	if err != nil {
+		t.Fatalf("list outbox: %v", err)
+	}
+	for _, row := range rows {
+		if row.ID == "01JMCPDEAD0000000000000001" && row.Status != store.OutboxDead {
+			t.Fatalf("dead 行被 read 令牌翻转为 %q", row.Status)
+		}
+	}
+	// 投递行不得被重放。
+	if row, err := fixture.store.WebhookDeliveries().Get(ctx, d.ID); err != nil {
+		t.Fatalf("read delivery: %v", err)
+	} else if row.Status != store.DeliveryProcessed {
+		t.Fatalf("投递行被 read 令牌改为 %q", row.Status)
+	}
+}
+
+// TestMCPWriteToolsAllowedForBrowserSession 对照：浏览器会话仍可调用写工具
+// （原 TestMCPWriteTools 的覆盖由本测试接续）。
+func TestMCPWriteToolsAllowedForBrowserSession(t *testing.T) {
+	fixture := oauthFixture(t)
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	ctx := t.Context()
+
+	// tools/list 仍应暴露写工具。
+	_, payload := mcpRequestWithCookies(t, fixture, cookies, `{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}`)
 	result := payload["result"].(map[string]any)
-	tools := result["tools"].([]any)
 	names := map[string]bool{}
-	for _, raw := range tools {
-		tool := raw.(map[string]any)
-		name, _ := tool["name"].(string)
+	for _, raw := range result["tools"].([]any) {
+		name, _ := raw.(map[string]any)["name"].(string)
 		names[name] = true
 	}
 	for _, want := range []string{"trigger_reconciliation", "retry_failed_outbox", "replay_webhook_delivery"} {
 		if !names[want] {
-			t.Fatalf("tools/list missing write tool %q: %+v", want, names)
+			t.Fatalf("tools/list missing write tool %q", want)
 		}
 	}
 
-	// 2. 插入一条 dead outbox 记录并测试 retry_failed_outbox
 	_, _ = fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
-		ID:        "01JMCPDEAD0000000000000001",
-		ChannelID: "ch-1",
-		Status:    store.OutboxDead,
-		Title:     "Dead message",
+		ID: "01JMCPDEAD0000000000000002", ChannelID: "ch-1",
+		Status: store.OutboxDead, Title: "Dead message",
 	})
-	status, callResp := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"retry_failed_outbox","arguments":{}}}`)
+	d, _ := fixture.store.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
+		ID: "01JMCPWH000000000000000002", DeliveryID: "del-mcp-sess-01",
+		EventType: "push", RepositoryFullName: "test/mcp",
+		Status: store.DeliveryProcessed, Payload: []byte(`{"ref":"refs/heads/main"}`),
+	})
+
+	status, callResp := mcpRequestWithCookies(t, fixture, cookies,
+		`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"retry_failed_outbox","arguments":{}}}`)
 	if status != http.StatusOK {
 		t.Fatalf("call retry_failed_outbox status=%d", status)
 	}
-	callRes := callResp["result"].(map[string]any)
-	content := callRes["content"].([]any)
-	text, _ := content[0].(map[string]any)["text"].(string)
+	text := mcpResultText(t, callResp)
 	if !strings.Contains(text, "\"status\":\"queued\"") {
 		t.Fatalf("unexpected call result: %s", text)
 	}
 
-	// 3. 准备一条 webhook delivery 并调用 replay_webhook_delivery
-	d, _ := fixture.store.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
-		ID:                 "01JMCPWH000000000000000001",
-		DeliveryID:         "del-mcp-01",
-		EventType:          "push",
-		RepositoryFullName: "test/mcp",
-		Status:             store.DeliveryProcessed,
-		Payload:            []byte(`{"ref":"refs/heads/main"}`),
-	})
-	status, replayResp := mcpRequest(t, fixture, token, `{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"replay_webhook_delivery","arguments":{"id":"`+d.ID+`"}}}`)
+	status, replayResp := mcpRequestWithCookies(t, fixture, cookies,
+		`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"replay_webhook_delivery","arguments":{"id":"`+d.ID+`"}}}`)
 	if status != http.StatusOK {
 		t.Fatalf("call replay_webhook_delivery status=%d", status)
 	}
-	replayRes := replayResp["result"].(map[string]any)
-	replayContent := replayRes["content"].([]any)
-	replayText, _ := replayContent[0].(map[string]any)["text"].(string)
-	if !strings.Contains(replayText, "\"status\":\"replayed\"") {
+	if replayText := mcpResultText(t, replayResp); !strings.Contains(replayText, "\"status\":\"replayed\"") {
 		t.Fatalf("unexpected replay result: %s", replayText)
 	}
 }

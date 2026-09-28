@@ -163,16 +163,40 @@ func (s *server) authenticationMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
-		// 无 Session Cookie 时尝试 OAuth Bearer（Agent 只读访问）。
+		// 无 Session Cookie 时尝试 OAuth Bearer（Agent 访问；作用域决定可写范围）。
 		if token, ok := bearerToken(r); ok {
 			origin := s.siteOrigin(r)
-			if clientID, err := s.oauthValidateToken(token, origin+"/api/v1", origin); err == nil {
+			if clientID, scopes, err := s.oauthValidateToken(token, origin+"/api/v1", origin); err == nil {
 				ctx := context.WithValue(r.Context(), agentClientContextKey, clientID)
+				ctx = context.WithValue(ctx, agentScopesContextKey, scopes)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
 		}
 		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
+	})
+}
+
+// agentWriteScopeMiddleware 位于 mutating 组：Agent 令牌默认只签发 read 作用域，
+// 写操作必须由浏览器会话或显式授予 write 作用域的客户端完成。缺少该校验时，
+// 只读凭据即可取得删除仓库、改写系统设置/渠道/GitHub 与 AI 配置等全部管理写权。
+func (s *server) agentWriteScopeMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := agentClientIDFromContext(r.Context()); ok && !agentHasWriteScope(r.Context()) {
+			s.dependencies.Logger.Warn(
+				"agent write rejected by scope",
+				"request_id", requestIDFromContext(r.Context()),
+				"remote_ip", remoteIPFromContext(r.Context()),
+				"method", r.Method,
+				"path", r.URL.Path,
+				"error_code", errorCodeForbidden,
+			)
+			s.writeAPIError(w, r, http.StatusForbidden, errorCodeForbidden, map[string]any{
+				"message": "当前令牌仅有 read 作用域，写操作需浏览器会话或 write 作用域令牌。",
+			})
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

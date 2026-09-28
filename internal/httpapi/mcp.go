@@ -458,6 +458,16 @@ func mcpJSONError(requestID any, code int, message string) map[string]any {
 	}
 }
 
+// mcpJSONErrorWithCode 在 JSON-RPC error.data 里附上对外错误码（data 是协议预留的扩展位）。
+// 用途是让日志的 error_code 与客户端看到的错误码取同一取值：MCP 的数值码没有授权类
+// 语义（这里仍用 mcpInvalidParams 表示「请求不被接受」），只按数值码排障时，
+// 服务端日志的域错误码与线上响应无法对照。
+func mcpJSONErrorWithCode(requestID any, code int, message, errorCode string) map[string]any {
+	response := mcpJSONError(requestID, code, message)
+	response["error"].(map[string]any)["data"] = map[string]any{"error_code": errorCode}
+	return response
+}
+
 // mcpJSONResult 构造 JSON-RPC 成功响应体。
 func mcpJSONResult(requestID any, result any) map[string]any {
 	return map[string]any{
@@ -524,6 +534,10 @@ func (s *server) dispatchMCP(r *http.Request, request mcpJSONRPCRequest) map[str
 	case "tools/list":
 		tools := make([]any, 0, len(s.mcpTools()))
 		for _, tool := range s.mcpTools() {
+			// 按作用域过滤：read 令牌看不到写工具，避免广告注定被拒的调用。
+			if !mcpVisibleTool(r.Context(), tool.name) {
+				continue
+			}
 			tools = append(tools, map[string]any{
 				"name":        tool.name,
 				"description": tool.description,
@@ -538,11 +552,44 @@ func (s *server) dispatchMCP(r *http.Request, request mcpJSONRPCRequest) map[str
 	}
 }
 
+// mcpWriteTools 是会改变服务端状态的 MCP 工具：与 REST 的 mutating 组同等要求写作用域。
+// /mcp 只经 authenticationMiddleware 认证，不在 mutating 组内，故必须在此单独收口。
+// tools/list 同样据此过滤：向 read 令牌广告注定被拒的工具，只会把「调用失败」变成
+// 客户端的默认体验。
+var mcpWriteTools = map[string]bool{
+	"trigger_work_item_ai_review": true,
+	"trigger_reconciliation":      true,
+	"retry_failed_outbox":         true,
+	"replay_webhook_delivery":     true,
+}
+
+// mcpVisibleTool 判定当前主体是否应在 tools/list 中看到该工具；非 Agent 主体（浏览器会话）全部可见。
+func mcpVisibleTool(ctx context.Context, name string) bool {
+	if !mcpWriteTools[name] {
+		return true
+	}
+	if _, ok := agentClientIDFromContext(ctx); !ok {
+		return true
+	}
+	return agentHasWriteScope(ctx)
+}
+
 func (s *server) handleMCPToolCall(ctx context.Context, request mcpJSONRPCRequest) map[string]any {
 	name, _ := request.Params["name"].(string)
 	arguments, _ := request.Params["arguments"].(map[string]any)
 	if arguments == nil {
 		arguments = map[string]any{}
+	}
+	// 写工具与 REST mutating 组同一作用域口径：read 令牌不得触发状态变更。
+	if mcpWriteTools[name] {
+		if _, ok := agentClientIDFromContext(ctx); ok && !agentHasWriteScope(ctx) {
+			if s.dependencies.Logger != nil {
+				s.dependencies.Logger.Warn("mcp write tool rejected by scope",
+					"tool", name, "request_id", requestIDFromContext(ctx), "error_code", errorCodeForbidden)
+			}
+			return mcpJSONErrorWithCode(request.ID, mcpInvalidParams,
+				"当前令牌仅有 read 作用域，写工具需浏览器会话或 write 作用域令牌。", errorCodeForbidden)
+		}
 	}
 	for _, tool := range s.mcpTools() {
 		if tool.name != name {

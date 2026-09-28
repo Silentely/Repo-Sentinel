@@ -273,7 +273,6 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/dashboard", s.handleDashboard)
 			protected.Get("/stats/star-trend", s.handleStarTrend)
 			protected.Get("/repositories", s.handleListRepositories)
-			protected.Post("/repositories/external", s.handleAddExternalRepository)
 			protected.Get("/work-items", s.handleListWorkItems)
 			protected.Get("/work-items/{id}/ai-review", s.handleGetWorkItemAIReview)
 			protected.Get("/workflow-runs", s.handleListWorkflowRuns)
@@ -293,6 +292,8 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/stats/actions-insights", s.handleActionsInsights)
 			protected.Group(func(mutating chi.Router) {
 				mutating.Use(s.csrfMiddleware)
+				// Agent 令牌的能力边界在作用域层收口：read 令牌即使通过认证也不能进入写路由。
+				mutating.Use(s.agentWriteScopeMiddleware)
 				mutating.Post("/auth/logout", s.handleLogout)
 				mutating.Post("/auth/password", s.handleChangePassword)
 				mutating.Post("/admin/2fa/setup", s.handleSetup2FA)
@@ -306,6 +307,8 @@ func New(dependencies Dependencies) http.Handler {
 				// 批量重试失败投递（固定段优先于 {id} 参数段匹配）。
 				mutating.Post("/notifications/outbox/retry-dead", s.handleRetryAllOutboxDead)
 				mutating.Post("/repositories/{id}/activate", s.handleActivateRepository)
+				// 创建外部仓库同为状态变更，纳入 CSRF 与写作用域组。
+				mutating.Post("/repositories/external", s.handleAddExternalRepository)
 				mutating.Post("/repositories/{id}/reconcile", s.handleReconcileRepository)
 				mutating.Patch("/repositories/{id}/settings", s.handleUpdateRepositorySettings)
 				mutating.Delete("/repositories/{id}", s.handleDeleteRepository)
