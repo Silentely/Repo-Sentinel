@@ -99,7 +99,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	totpEnabled, _, err := auth.LoadTOTPConfig(r.Context(), s.dependencies.Store, s.dependencies.KeyRing)
 	if err != nil {
-		s.writeMappedError(w, r, err)
+		s.writeTOTPConfigUnreadable(w, r, "login", err)
 		return
 	}
 	if totpEnabled {
@@ -303,6 +303,23 @@ type login2FARequest struct {
 	Passcode string `json:"passcode"`
 }
 
+// writeTOTPConfigUnreadable 统一处理「2FA 配置存在但读不出来」：主密钥缺失、
+// 历史明文行（LoadTOTPConfig 已不接受）、信封损坏。
+// 登录的两个阶段共用同一口径：此前第一因子阶段把它交给 writeMappedError 退化成
+// 500 internal_error，第二因子阶段把它并在「用户名或密码错误」里，管理员看不到
+// 「用 CLI admin reset-2fa 或补齐主密钥」这条恢复路径。
+func (s *server) writeTOTPConfigUnreadable(w http.ResponseWriter, r *http.Request, stage string, err error) {
+	s.dependencies.Logger.Error(
+		"totp config unreadable",
+		"request_id", requestIDFromContext(r.Context()),
+		"remote_ip", remoteIPFromContext(r.Context()),
+		"stage", stage,
+		"error_code", errorCodeTOTPConfigUnreadable,
+		"error", err.Error(),
+	)
+	s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeTOTPConfigUnreadable, nil)
+}
+
 func (s *server) handleLogin2FA(w http.ResponseWriter, r *http.Request) {
 	var request login2FARequest
 	if !s.decodeRequestJSON(w, r, &request) {
@@ -312,6 +329,22 @@ func (s *server) handleLogin2FA(w http.ResponseWriter, r *http.Request) {
 	request.Passcode = strings.TrimSpace(request.Passcode)
 	remoteIP := remoteIPFromContext(r.Context())
 	requestID := requestIDFromContext(r.Context())
+
+	// 第二因子按独立令牌桶限流：原实现只按票据计尝试预算（每票 3 次），而票据可由
+	// 每次成功的第一因子登录免费重铸，分布式来源下没有账号级上界。
+	// 与 LoginLimiter 分桶是必须的——共用一份额度会让一次完整登录消耗两份额度，
+	// 单 IP 每分钟可完成的登录数凭空减半。
+	if !s.dependencies.TOTPLimiter.Allow(remoteIP) {
+		s.dependencies.Logger.Warn(
+			"login 2fa rate limited",
+			"request_id", requestID,
+			"remote_ip", remoteIP,
+			"error_code", errorCodeRateLimited,
+		)
+		w.Header().Set("Retry-After", loginRetryAfterSeconds)
+		s.writeAPIError(w, r, http.StatusTooManyRequests, errorCodeRateLimited, nil)
+		return
+	}
 
 	ticketMgr := s.getTOTPTickets()
 	ticket, ok := ticketMgr.GetTicket(request.Ticket, remoteIP)
@@ -323,7 +356,11 @@ func (s *server) handleLogin2FA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	totpEnabled, secret, err := auth.LoadTOTPConfig(r.Context(), s.dependencies.Store, s.dependencies.KeyRing)
-	if err != nil || !totpEnabled || secret == "" {
+	if err != nil {
+		s.writeTOTPConfigUnreadable(w, r, "login_2fa", err)
+		return
+	}
+	if !totpEnabled || secret == "" {
 		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeInvalidCredentials, nil)
 		return
 	}
@@ -432,6 +469,12 @@ func (s *server) handleEnable2FA(w http.ResponseWriter, r *http.Request) {
 	session, ok := sessionFromContext(r.Context())
 	if !ok {
 		s.writeAPIError(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
+		return
+	}
+	// 密钥环不可用时拒绝开启：与渠道/GitHub/AI 的秘密写入路径一致，不允许把
+	// 第二因子种子降级为明文落库。
+	if s.dependencies.KeyRing == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
 		return
 	}
 	if err := auth.SaveTOTPConfig(r.Context(), s.dependencies.Store, s.dependencies.KeyRing, true, req.Secret); err != nil {

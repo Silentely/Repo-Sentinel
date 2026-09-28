@@ -24,10 +24,12 @@ const (
 
 // StoredTOTPConfig 持久化在数据库中的 2FA 状态与信封加密密钥。
 type StoredTOTPConfig struct {
-	Enabled        bool      `json:"enabled"`
-	SecretEnvelope string    `json:"secret_envelope,omitempty"`
-	PlainSecret    string    `json:"plain_secret,omitempty"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	Enabled        bool   `json:"enabled"`
+	SecretEnvelope string `json:"secret_envelope,omitempty"`
+	// PlainSecret 仅为兼容历史降级写入而保留的反序列化字段：SaveTOTPConfig 不再写入，
+	// LoadTOTPConfig 不再接受，存量明文行会让 2FA 登录失败关闭（fail-closed）。
+	PlainSecret string    `json:"plain_secret,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // LoadTOTPConfig 从数据库读取 2FA 配置并解密 TOTP 密钥。
@@ -65,14 +67,15 @@ func LoadTOTPConfig(ctx context.Context, data store.Store, ring *cryptox.KeyRing
 		return true, string(decrypted.Plaintext), nil
 	}
 
-	if stored.PlainSecret != "" {
-		return true, stored.PlainSecret, nil
-	}
-
-	return false, "", fmt.Errorf("%w: enabled config has no secret", ErrInvalidTOTPConfig)
+	// 历史降级写入可能留下 plain_secret 明文行：不再接受，落到下方统一报错。
+	// 2FA 登录失败关闭，运维按文档用 admin reset-2fa 或补齐主密钥后重新开启。
+	return false, "", fmt.Errorf("%w: enabled config has no encrypted secret", ErrInvalidTOTPConfig)
 }
 
 // SaveTOTPConfig 加密 TOTP 密钥并保存到数据库。
+// 密钥环不可用时拒绝写入：与 githubx.EncryptSecret / ai.EncryptAPIKey / notify 渠道密钥
+// 一致，不允许把第二因子种子降级为明文落库——取得数据库读权限者可直接生成动态码，
+// 使 2FA 对已知口令者失效。
 func SaveTOTPConfig(ctx context.Context, data store.Store, ring *cryptox.KeyRing, enabled bool, secret string) error {
 	if data == nil {
 		return errors.New("store is not available")
@@ -85,15 +88,14 @@ func SaveTOTPConfig(ctx context.Context, data store.Store, ring *cryptox.KeyRing
 
 	cleanSecret := strings.TrimSpace(secret)
 	if enabled && cleanSecret != "" {
-		if ring != nil {
-			envelope, err := ring.Encrypt(ctx, []byte(cleanSecret), []byte(totpSecretAAD))
-			if err != nil {
-				return err
-			}
-			stored.SecretEnvelope = envelope
-		} else {
-			stored.PlainSecret = cleanSecret
+		if ring == nil {
+			return fmt.Errorf("%w: key ring unavailable", ErrInvalidTOTPConfig)
 		}
+		envelope, err := ring.Encrypt(ctx, []byte(cleanSecret), []byte(totpSecretAAD))
+		if err != nil {
+			return err
+		}
+		stored.SecretEnvelope = envelope
 	}
 
 	raw, err := json.Marshal(stored)
@@ -196,7 +198,14 @@ func (m *TOTPTicketManager) GetTicket(ticketID, remoteIP string) (*TOTPTicket, b
 		delete(m.tickets, ticketID)
 		return nil, false
 	}
-	if strings.TrimSpace(remoteIP) != "" && ticket.RemoteIP != "" && ticket.RemoteIP != strings.TrimSpace(remoteIP) {
+	// IP 绑定 fail-closed：任一侧为空即拒绝。原实现任一侧为空时整体跳过绑定，
+	// 与 setup 环回门、metrics 对同一取值的 fail-closed 判定不一致——空取值本就是
+	// 异常形态，此时放行等于在最需要绑定的路径上放弃绑定。
+	cleanIP := strings.TrimSpace(remoteIP)
+	if cleanIP == "" || ticket.RemoteIP == "" {
+		return nil, false
+	}
+	if ticket.RemoteIP != cleanIP {
 		return nil, false
 	}
 	return ticket, true

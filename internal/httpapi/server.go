@@ -61,14 +61,17 @@ type Dependencies struct {
 	SessionService *auth.SessionService
 	CSRF           auth.CSRFTokens
 	LoginLimiter   *auth.LoginLimiter
-	BuildInfo      buildinfo.Info
-	Ready          ReadyChecker
-	Logger         *slog.Logger
-	SchemaVersion  string
-	Frontend       fs.FS
-	KeyRing        *cryptox.KeyRing
-	Aggregator     *rules.Aggregator
-	Reconciler     *syncx.Reconciler
+	// TOTPLimiter 是第二因子（动态码）路径的独立令牌桶：与 LoginLimiter 分桶，
+	// 使一次完整登录仍只消耗第一因子的一份额度，同时给动态码尝试单独的上界。
+	TOTPLimiter   *auth.LoginLimiter
+	BuildInfo     buildinfo.Info
+	Ready         ReadyChecker
+	Logger        *slog.Logger
+	SchemaVersion string
+	Frontend      fs.FS
+	KeyRing       *cryptox.KeyRing
+	Aggregator    *rules.Aggregator
+	Reconciler    *syncx.Reconciler
 	// UpdateChecker 可选；关于页远程版本检查。
 	UpdateChecker *updatecheck.Checker
 	// GitHubRuntime 可选；管理台可编辑的 GitHub 配置（env 优先，DB 补缺）。
@@ -189,6 +192,9 @@ func New(dependencies Dependencies) http.Handler {
 	}
 	if dependencies.LoginLimiter == nil {
 		dependencies.LoginLimiter = auth.NewLoginLimiter(nil)
+	}
+	if dependencies.TOTPLimiter == nil {
+		dependencies.TOTPLimiter = auth.NewLoginLimiter(nil)
 	}
 	if strings.TrimSpace(dependencies.SchemaVersion) == "" {
 		dependencies.SchemaVersion = "unknown"

@@ -200,6 +200,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		SessionService: sessionService,
 		CSRF:           auth.NewCSRFTokens(nil),
 		LoginLimiter:   auth.NewLoginLimiter(nil),
+		TOTPLimiter:    auth.NewLoginLimiter(nil),
 		BuildInfo:      build,
 		Ready:          readiness,
 		Logger:         logger,
