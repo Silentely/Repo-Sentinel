@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/textutil"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -89,6 +90,7 @@ type ghMilestone struct {
 type ghIssue struct {
 	Number      int       `json:"number"`
 	Title       string    `json:"title"`
+	Body        string    `json:"body"`
 	State       string    `json:"state"`
 	HTMLURL     string    `json:"html_url"`
 	User        ghUser    `json:"user"`
@@ -105,6 +107,7 @@ type ghIssue struct {
 type ghPullRequest struct {
 	Number    int          `json:"number"`
 	Title     string       `json:"title"`
+	Body      string       `json:"body"`
 	State     string       `json:"state"`
 	HTMLURL   string       `json:"html_url"`
 	User      ghUser       `json:"user"`
@@ -531,7 +534,11 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 		SourceUpdatedAt: updatedAt,
 		StateHash:       hash,
 	}
-	return p.processWorkItem(ctx, repo, kind, item, env.Action)
+	var extra map[string]any
+	if trimmed := strings.TrimSpace(issue.Body); trimmed != "" {
+		extra = map[string]any{"body": textutil.TruncateUTF8Bytes(trimmed, textutil.MaxBodyTextBytes)}
+	}
+	return p.processWorkItem(ctx, repo, kind, item, env.Action, extra)
 }
 
 func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Result, error) {
@@ -564,7 +571,11 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 		SourceUpdatedAt: updatedAt,
 		StateHash:       hash,
 	}
-	res, err := p.processWorkItem(ctx, repo, store.WorkItemKindPR, item, env.Action)
+	var extra map[string]any
+	if trimmed := strings.TrimSpace(pr.Body); trimmed != "" {
+		extra = map[string]any{"body": textutil.TruncateUTF8Bytes(trimmed, textutil.MaxBodyTextBytes)}
+	}
+	res, err := p.processWorkItem(ctx, repo, store.WorkItemKindPR, item, env.Action, extra)
 	if err != nil {
 		return res, err
 	}
@@ -581,7 +592,7 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 
 // processWorkItem 处理 issue/PR 共用的落库与事件创建：
 // 能力门禁 → UpsertIfNewer → 指纹去重 → Event 落库。kind 由调用方按载荷形态判定。
-func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, kind string, item store.WorkItem, action string) (Result, error) {
+func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, kind string, item store.WorkItem, action string, extraPayload ...map[string]any) (Result, error) {
 	// 能力门禁：对应类型开关关闭或仓库已归档时不再采集（不更新数据、不创建事件）。
 	if ok, reason := p.ingestGate(ctx, repo, kind); !ok {
 		p.logSkip(repo, kind, reason)
@@ -602,14 +613,20 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 	}
 	num := int64(saved.Number)
 	srcUpdated := saved.SourceUpdatedAt
+	payloadSummary := map[string]any{
+		"state": saved.State, "draft": saved.Draft,
+		"labels": item.LabelsJSON, "assignees": item.AssigneesJSON, "milestone": item.Milestone,
+	}
+	if len(extraPayload) > 0 && extraPayload[0] != nil {
+		for k, v := range extraPayload[0] {
+			payloadSummary[k] = v
+		}
+	}
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(action),
 		RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
 		OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: saved.HTMLURL,
-		PayloadSummary: map[string]any{
-			"state": saved.State, "draft": saved.Draft,
-			"labels": item.LabelsJSON, "assignees": item.AssigneesJSON, "milestone": item.Milestone,
-		},
+		PayloadSummary:       payloadSummary,
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: item.StateHash,
 	}
 	created, err := p.Store.Events().Create(ctx, ev)
