@@ -65,6 +65,12 @@ func (r Runner) backupSQLite(dbURL, out string) error {
 	if _, err := db.Exec("VACUUM INTO ?", out); err != nil {
 		return fmt.Errorf("vacuum into failed: %w", err)
 	}
+	// 源库含 Argon2 口令哈希与信封加密的渠道密钥，备份产物不得比源库更宽：
+	// VACUUM INTO 由 SQLite VFS 以默认权限创建（通常 0644），操作员把源库加固为
+	// 0600 时会静默回落到全局可读。与同文件 copyFile 的 0600 保持一致。
+	if err := os.Chmod(out, 0o600); err != nil {
+		return fmt.Errorf("chmod backup failed: %w", err)
+	}
 	fmt.Fprintf(r.stdout, "backup=%s\n", out)
 	// 产物体积与耗时：0 字节损坏备份与正常备份此前输出相同格式，无法区分。
 	if info, err := os.Stat(out); err == nil {
