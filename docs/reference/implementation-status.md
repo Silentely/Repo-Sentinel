@@ -35,7 +35,8 @@
 | GHCR 镜像 | 已交付 | `main`/`dev` 推送对应浮动标签；`v*` 推送 `vX.Y.Z` + `latest` |
 | Prometheus `/metrics` | 已交付 | 进程内计数 + 可选 Bearer；建议内网抓取 |
 | 历史数据保留清理 | 已交付 | settings 可配事件/Outbox/Delivery 保留天数；后台每日清理；0 表示禁用该类 |
-| PR AI 代码审查与预警 | 已交付 | Webhook 异步审计 PR Diff + 管理台手动触发/重新审查（202 入队 + 前端轮询结果）+ 复制报告；健康评分/安全风险/破坏性兼容/代码异味；报告可回写为 PR 评论（`code_review_comment_on_pr`，默认关闭）；高危风险联动 Outbox 多渠道预警；仓库删除级联清理审查数据（含 settings 缓存即时失效）；OpenAPI 与 MCP 工具支持 |
+| PR AI 代码审查与预警 | 已交付 | Webhook 异步审计 PR Diff + 管理台手动触发/重新审查（202 入队 + 前端轮询结果）+ 复制报告；健康评分/安全风险/破坏性兼容/代码异味；维护者合并裁决（Ready to Merge / Needs Tests / Needs Manual Review / Block Risk，依安全风险、敏感资产与评分强制修正）与关键敏感资产嗅探（CI/CD 工作流、依赖锁定清单、数据库迁移、部署凭据配置）；报告可回写为 PR 评论（`code_review_comment_on_pr`，默认关闭）；高危风险联动 Outbox 多渠道预警；仓库删除级联清理审查数据（含 settings 缓存即时失效）；OpenAPI 与 MCP 工具支持 |
+| Issue 智能分诊与首响应 | 已交付 | 新 Issue 创建时 AI 判定类别（Bug Report / Feature Request / Question / Incomplete / Invalid）与优先级（P0 Blocker / P1 High / P2 Normal / P3 Low），审计排查要素缺失项并产出首响回复草稿；结果随新 Issue 通知正文附带并落库 `ai.issue_triage.<work_item_id>`，管理台可展开查看、立即/重新分诊、复制草稿与跳转回复；复用 `triage_enabled` 开关，AI 不可用时保持原通知正文；仓库删除级联清理分诊数据；OpenAPI 同步 `/api/v1/work-items/{id}/ai-triage` |
 | Actions CI 失败智能诊断 | 已交付 | 提取失败 Workflow Run 的具体 Job/Step 失败信息（提取失败留 Warn 降级「未知步骤」），AI 自动提炼故障根本原因与修复建议附加于通知正文；独立 `failure_analysis_enabled` 开关；AI 异常或格式不符时平滑降级 |
 | Agent 只读访问 | 已交付 | OAuth 2.0 client_credentials 令牌、OpenAPI 3.1、MCP Streamable HTTP 只读工具与少量运维写工具、Agent Skills 索引、API 目录与 Markdown 协商 |
 
