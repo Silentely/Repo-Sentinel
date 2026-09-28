@@ -987,11 +987,29 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 		"CodeReviewResult": stringProps(map[string]any{
 			"summary":         map[string]any{"type": "string"},
 			"score":           map[string]any{"type": "integer"},
+			"confidence":      map[string]any{"type": "integer"},
+			"category":        map[string]any{"type": "string"},
+			"merge_risk":      map[string]any{"type": "string"},
 			"security_risks":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			"breaking_risks":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			"code_smells":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"missing_tests":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"suggestions": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"title":          map[string]any{"type": "string"},
+						"file_path":      map[string]any{"type": "string"},
+						"description":    map[string]any{"type": "string"},
+						"suggested_code": map[string]any{"type": "string"},
+					},
+				},
+			},
 			"reviewed_at":     map[string]any{"type": "string", "format": "date-time"},
 			"commented_on_pr": map[string]any{"type": "boolean"},
+			"diff_truncated":  map[string]any{"type": "boolean"},
+			"head_sha":        map[string]any{"type": "string"},
 		}),
 		"WorkflowRun": stringProps(map[string]any{
 			"id":                   map[string]any{"type": "string"},

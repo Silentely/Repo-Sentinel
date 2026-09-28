@@ -351,3 +351,153 @@ func TestCleanAndPrioritizeDiffCRLFAndSeparation(t *testing.T) {
 		t.Fatalf("expected second diff header to start on new line, got:\n%s", cleaned)
 	}
 }
+
+func TestScanDiffHeuristicsPrototypePollutionAndTestAwareness(t *testing.T) {
+	// 模拟类似 PR #112 的场景：修改 edge 代理函数，加入原型污染黑名单，且未提供测试文件
+	diff := `diff --git a/netlify/edge-functions/bff-proxy.js b/netlify/edge-functions/bff-proxy.js
+--- a/netlify/edge-functions/bff-proxy.js
++++ b/netlify/edge-functions/bff-proxy.js
+@@ -1,3 +1,5 @@
++const dangerousKeys = ['__proto__', 'constructor', 'prototype'];
++if (Object.keys(body).some(k => dangerousKeys.includes(k))) throw new Error('invalid');`
+
+	report := scanDiffHeuristics(diff)
+	if !report.hasProdCode {
+		t.Errorf("expected hasProdCode to be true")
+	}
+	if report.hasTests {
+		t.Errorf("expected hasTests to be false")
+	}
+	if !report.hasEdgeOrProxy {
+		t.Errorf("expected hasEdgeOrProxy to be true for netlify/edge-functions/")
+	}
+
+	hasBlacklistHint := false
+	hasTestHint := false
+	hasEdgeHint := false
+	for _, h := range report.hints {
+		if strings.Contains(h, "原型污染") || strings.Contains(h, "黑名单") {
+			hasBlacklistHint = true
+		}
+		if strings.Contains(h, "测试覆盖警示") {
+			hasTestHint = true
+		}
+		if strings.Contains(h, "跨环境一致性提示") {
+			hasEdgeHint = true
+		}
+	}
+	if !hasBlacklistHint {
+		t.Errorf("expected prototype pollution blacklist hint, got %v", report.hints)
+	}
+	if !hasTestHint {
+		t.Errorf("expected test coverage warning hint, got %v", report.hints)
+	}
+	if !hasEdgeHint {
+		t.Errorf("expected edge/proxy environment hint, got %v", report.hints)
+	}
+}
+
+func TestApplyScoreAndRiskGuardsMetadataAndMissingTests(t *testing.T) {
+	res := &CodeReviewResult{
+		Summary:      "安全加固",
+		Score:        95,
+		Confidence:   0, // 未设置，应自动修正
+		Category:     "",
+		MergeRisk:    "",
+		MissingTests: []string{"缺少针对 __proto__ 键名的 400 校验测试用例"},
+	}
+	rep := heuristicReport{
+		hasProdCode: true,
+		hasTests:    false,
+	}
+
+	applyScoreAndRiskGuards(res, rep)
+
+	// 存在 MissingTests 时，高分 95 必须被保底拦截至 85
+	if res.Score != 85 {
+		t.Errorf("expected score capped to 85 when missing tests, got %d", res.Score)
+	}
+	// 生产代码无测试时置信度上限为 4
+	if res.Confidence > 4 || res.Confidence < 1 {
+		t.Errorf("expected confidence <= 4 and >= 1, got %d", res.Confidence)
+	}
+	// 合并风险应为 Low
+	if res.MergeRisk != "Low" {
+		t.Errorf("expected MergeRisk 'Low', got %s", res.MergeRisk)
+	}
+
+	// 测试 Diff 截断时置信度强制降至 <= 3
+	res.DiffTruncated = true
+	res.Confidence = 5
+	applyScoreAndRiskGuards(res, rep)
+	if res.Confidence > 3 {
+		t.Errorf("expected confidence capped to <= 3 when truncated, got %d", res.Confidence)
+	}
+
+	// 测试高危安全风险时合并风险升级为 High 或 Critical
+	resRisky := &CodeReviewResult{
+		Summary:       "发现漏洞",
+		Score:         30,
+		SecurityRisks: []string{"严重注入漏洞"},
+	}
+	applyScoreAndRiskGuards(resRisky, rep)
+	if resRisky.MergeRisk != "Critical" && resRisky.MergeRisk != "High" {
+		t.Errorf("expected MergeRisk High or Critical for security risks, got %s", resRisky.MergeRisk)
+	}
+}
+
+func TestFormatPRCommentRichStructureAndSuggestions(t *testing.T) {
+	res := &CodeReviewResult{
+		Summary:    "对网关代理进行安全加固",
+		Score:      85,
+		Confidence: 4,
+		Category:   "Security Fix",
+		MergeRisk:  "Low",
+		MissingTests: []string{
+			"缺少针对嵌套非法 prototype 属性时的拦截测试",
+		},
+		Suggestions: []ReviewSuggestion{
+			{
+				Title:         "建议改用字段白名单以防绕过",
+				FilePath:      "netlify/edge-functions/bff-proxy.js",
+				Description:   "黑名单防御容易被嵌套对象逃逸，建议按需白名单解构",
+				SuggestedCode: "```javascript\nconst allowed = new Set(['data', 'size']);\n```",
+			},
+		},
+	}
+
+	comment := FormatPRComment(res)
+
+	// 检查元数据表格
+	if !strings.Contains(comment, "| 代码健康评分 | 审查置信度 | 变更类型 | 合并风险 |") {
+		t.Errorf("comment missing metadata table header: %s", comment)
+	}
+	if !strings.Contains(comment, "4 / 5") {
+		t.Errorf("comment missing confidence score: %s", comment)
+	}
+	if !strings.Contains(comment, "Security Fix") {
+		t.Errorf("comment missing category: %s", comment)
+	}
+	if !strings.Contains(comment, "Low") {
+		t.Errorf("comment missing merge risk: %s", comment)
+	}
+
+	// 检查测试审计部分
+	if !strings.Contains(comment, "### 🧪 测试覆盖与回归审计") {
+		t.Errorf("comment missing missing-tests section: %s", comment)
+	}
+	if !strings.Contains(comment, "缺少针对嵌套非法 prototype 属性时的拦截测试") {
+		t.Errorf("comment missing specific test warning: %s", comment)
+	}
+
+	// 检查行动项与建议代码块
+	if !strings.Contains(comment, "### 🛠️ 建议采纳与重构示范") {
+		t.Errorf("comment missing suggestions section: %s", comment)
+	}
+	if !strings.Contains(comment, "建议改用字段白名单以防绕过") {
+		t.Errorf("comment missing suggestion title: %s", comment)
+	}
+	if !strings.Contains(comment, "```javascript") {
+		t.Errorf("comment missing suggestion code block: %s", comment)
+	}
+}

@@ -126,4 +126,49 @@ describe("AIReviewCard", () => {
     expect(screen.getByText("变更结构清晰")).toBeInTheDocument();
     view.unmount();
   });
+
+  it("渲染置信度、分类、合并风险徽章、缺失测试与重构建议代码块", async () => {
+    fetchMock.mockResolvedValue({
+      ...review,
+      reviewed_at: "2026-09-05T00:00:00Z",
+      confidence: 4,
+      category: "Security Fix",
+      merge_risk: "Low",
+      missing_tests: ["缺少嵌套原型污染 400 回归测试"],
+      suggestions: [
+        {
+          title: "改用白名单校验",
+          file_path: "proxy.ts",
+          description: "使用 Object.keys 校验白名单属性",
+          suggested_code: "const ALLOWED = ['a', 'b'];",
+        },
+      ],
+    });
+    const view = renderCard();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /AI 代码审查报告/ }));
+    });
+    expect(screen.getByText(/🎯 置信度 4\/5/)).toBeInTheDocument();
+    expect(screen.getByText(/🏷️ Security Fix/)).toBeInTheDocument();
+    expect(screen.getByText(/合并风险: Low/)).toBeInTheDocument();
+    expect(screen.getByText(/缺失测试用例与回归风险:/)).toBeInTheDocument();
+    expect(screen.getByText("缺少嵌套原型污染 400 回归测试")).toBeInTheDocument();
+    expect(screen.getByText(/建议 1: 改用白名单校验/)).toBeInTheDocument();
+    expect(screen.getByText("(proxy.ts)")).toBeInTheDocument();
+    expect(screen.getByText("使用 Object.keys 校验白名单属性")).toBeInTheDocument();
+    expect(screen.getByText("const ALLOWED = ['a', 'b'];")).toBeInTheDocument();
+
+    // 验证复制报告包含数据表格与重构建议
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /复制报告/ }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const writeTextMock = navigator.clipboard.writeText as unknown as { mock: { calls: string[][] } };
+    const copiedText = writeTextMock.mock.calls[writeTextMock.mock.calls.length - 1][0];
+    expect(copiedText).toContain("| 代码健康评分 | 审查置信度 | 变更类型 | 合并风险 |");
+    expect(copiedText).toContain("### 🛠️ 建议采纳与重构示范");
+    expect(copiedText).toContain("const ALLOWED = ['a', 'b'];");
+
+    view.unmount();
+  });
 });

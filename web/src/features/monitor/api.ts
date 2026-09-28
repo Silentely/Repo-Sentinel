@@ -769,12 +769,24 @@ export function actionsInsightsQueryOptions(repositoryID = "") {
   });
 }
 
+export interface ReviewSuggestion {
+  title: string;
+  file_path?: string;
+  description: string;
+  suggested_code?: string;
+}
+
 export interface CodeReviewResult {
   summary: string;
   score: number;
+  confidence?: number;
+  category?: string;
+  merge_risk?: string;
   security_risks: string[];
   breaking_risks: string[];
   code_smells: string[];
+  missing_tests?: string[];
+  suggestions?: ReviewSuggestion[];
   reviewed_at: string;
   commented_on_pr: boolean;
   diff_truncated: boolean;

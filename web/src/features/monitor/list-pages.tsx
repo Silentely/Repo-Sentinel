@@ -221,6 +221,32 @@ function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string
       : review.score < 80 || (review.breaking_risks && review.breaking_risks.length > 0)
       ? "🟡 需关注"
       : "🟢 健康";
+
+  const conf = review.confidence && review.confidence >= 1 && review.confidence <= 5
+    ? review.confidence
+    : (review.score >= 80 && !review.diff_truncated ? 5 : 4);
+
+  const category = review.category || "Code Change";
+  let categoryBadge = category;
+  if (categoryBadge.includes("Security")) categoryBadge = "🛡️ " + categoryBadge;
+  else if (categoryBadge.includes("Bug")) categoryBadge = "🐛 " + categoryBadge;
+  else if (categoryBadge.includes("Feature")) categoryBadge = "✨ " + categoryBadge;
+  else if (categoryBadge.includes("Spam")) categoryBadge = "🚫 " + categoryBadge;
+
+  const risk = review.merge_risk || (review.security_risks && review.security_risks.length > 0 ? "High" : review.score < 80 ? "Low" : "Minimal");
+  let riskBadge = risk;
+  switch (risk) {
+    case "Critical": riskBadge = "🔴 Critical"; break;
+    case "High": riskBadge = "🔴 High"; break;
+    case "Medium": riskBadge = "🟠 Medium"; break;
+    case "Low": riskBadge = "🟡 Low"; break;
+    case "Minimal": riskBadge = "🟢 Minimal"; break;
+  }
+
+  parts.push("| 代码健康评分 | 审查置信度 | 变更类型 | 合并风险 |");
+  parts.push("| :---: | :---: | :---: | :---: |");
+  parts.push(`| \`${review.score} / 100\` (${scoreBadge}) | \`${conf} / 5\` 🎯 | ${categoryBadge} | ${riskBadge} |\n`);
+
   parts.push(`**代码健康评分**: \`${review.score} / 100\` (${scoreBadge})\n`);
   if (item?.author) {
     const botTag = isBotAuthor(item.author) ? " [Bot]" : "";
@@ -233,13 +259,25 @@ function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string
     parts.push(`> **概要评估**: ${review.summary}\n`);
   }
   if (review.security_risks && review.security_risks.length > 0) {
-    parts.push(`\n**🛡️ 安全与凭证审计：**\n` + review.security_risks.map((r) => `- ⚠️ ${r}`).join("\n"));
+    parts.push(`\n### 🛡️ 安全与凭证审计\n` + review.security_risks.map((r) => `- ⚠️ ${r}`).join("\n"));
   }
   if (review.breaking_risks && review.breaking_risks.length > 0) {
-    parts.push(`\n**⚠️ 破坏性变更：**\n` + review.breaking_risks.map((b) => `- ⚠️ ${b}`).join("\n"));
+    parts.push(`\n### ⚠️ 破坏性与兼容性检查\n` + review.breaking_risks.map((b) => `- ⚠️ ${b}`).join("\n"));
+  }
+  if (review.missing_tests && review.missing_tests.length > 0) {
+    parts.push(`\n### 🧪 测试覆盖与回归审计\n` + review.missing_tests.map((t) => `- ⚠️ ${t}`).join("\n"));
   }
   if (review.code_smells && review.code_smells.length > 0) {
-    parts.push(`\n**💡 优化建议：**\n` + review.code_smells.map((s) => `- 💡 ${s}`).join("\n"));
+    parts.push(`\n### 💡 代码气味与优化建议\n` + review.code_smells.map((s) => `- 💡 ${s}`).join("\n"));
+  }
+  if (review.suggestions && review.suggestions.length > 0) {
+    parts.push(`\n### 🛠️ 建议采纳与重构示范\n` + review.suggestions.map((s, idx) => {
+      let text = `**建议 ${idx + 1}: ${s.title}**`;
+      if (s.file_path) text += ` (\`${s.file_path}\`)`;
+      if (s.description) text += `\n${s.description}`;
+      if (s.suggested_code) text += `\n\n${s.suggested_code.trim()}\n`;
+      return text;
+    }).join("\n\n"));
   }
   if (review.head_sha) {
     parts.push(`\n*Commit: ${review.head_sha}*`);
@@ -462,6 +500,44 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                   >
                     {review.score} / 100
                   </span>
+                  {review.confidence && (
+                    <span
+                      className="label"
+                      style={{ fontSize: "0.75rem", background: "rgba(59, 130, 246, 0.1)", color: "#3b82f6" }}
+                    >
+                      🎯 置信度 {review.confidence}/5
+                    </span>
+                  )}
+                  {review.category && (
+                    <span
+                      className="label"
+                      style={{ fontSize: "0.75rem", background: "rgba(107, 114, 128, 0.12)", color: "var(--color-text-secondary, #4b5563)" }}
+                    >
+                      🏷️ {review.category}
+                    </span>
+                  )}
+                  {review.merge_risk && (
+                    <span
+                      className="label"
+                      style={{
+                        fontSize: "0.75rem",
+                        background:
+                          review.merge_risk === "Critical" || review.merge_risk === "High"
+                            ? "rgba(239, 68, 68, 0.12)"
+                            : review.merge_risk === "Medium"
+                            ? "rgba(245, 158, 11, 0.12)"
+                            : "rgba(16, 185, 129, 0.12)",
+                        color:
+                          review.merge_risk === "Critical" || review.merge_risk === "High"
+                            ? "var(--color-danger, #ef4444)"
+                            : review.merge_risk === "Medium"
+                            ? "var(--color-warning, #f59e0b)"
+                            : "var(--color-success, #10b981)",
+                      }}
+                    >
+                      合并风险: {review.merge_risk}
+                    </span>
+                  )}
                   {hasSecurityRisks && (
                     <span
                       className="label"
@@ -545,8 +621,40 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
               {review.breaking_risks && review.breaking_risks.length > 0 && (
                 <ReviewRiskList label="⚠️ 破坏性兼容风险:" tone="warning" items={review.breaking_risks} />
               )}
+              {review.missing_tests && review.missing_tests.length > 0 && (
+                <ReviewRiskList label="🧪 缺失测试用例与回归风险:" tone="warning" items={review.missing_tests} />
+              )}
               {review.code_smells && review.code_smells.length > 0 && (
                 <ReviewRiskList label="💡 优化建议:" tone="muted" items={review.code_smells} />
+              )}
+              {review.suggestions && review.suggestions.length > 0 && (
+                <div style={{ marginTop: "0.75rem" }}>
+                  <strong style={{ color: "var(--color-text-primary, #111827)" }}>🛠️ 建议采纳与重构示范:</strong>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.35rem" }}>
+                    {review.suggestions.map((s, idx) => (
+                      <div
+                        key={`${idx}-${s.title}`}
+                        style={{
+                          padding: "0.5rem 0.75rem",
+                          background: "var(--bg-card-subtle, rgba(0,0,0,0.02))",
+                          border: "1px solid var(--border-default, #e5e7eb)",
+                          borderRadius: "4px",
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>
+                          建议 {idx + 1}: {s.title}
+                          {s.file_path && <span className="muted" style={{ fontWeight: 400, marginLeft: "0.4rem" }}>({s.file_path})</span>}
+                        </div>
+                        {s.description && <div style={{ marginTop: "0.25rem", color: "var(--color-text-secondary, #4b5563)" }}>{s.description}</div>}
+                        {s.suggested_code && (
+                          <pre style={{ marginTop: "0.4rem", padding: "0.5rem", borderRadius: "4px", background: "var(--bg-code, #f3f4f6)", overflowX: "auto", fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>
+                            <code>{s.suggested_code}</code>
+                          </pre>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
