@@ -183,7 +183,8 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 			w.handleFailure(ctx, item, err)
 			continue
 		}
-		if _, err := w.Store.Outbox().MarkSent(ctx, item.ID); err != nil {
+		transitioned, err := w.Store.Outbox().MarkSent(ctx, item.ID)
+		if err != nil {
 			// 标记失败会让条目下次 ClaimDue 被重新投递：记录日志便于排查重复通知来源。
 			if w.Logger != nil {
 				w.Logger.Error(
@@ -196,6 +197,20 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 				)
 			}
 			// 标记未落库不算投递成功，不触发 sent 指标。
+			continue
+		}
+		if !transitioned {
+			// 状态已被并发投递推进到终态：外部发送虽成功，但本条没有完成
+			// 数据库状态迁移，不重复记录成功日志或 sent 指标。
+			if w.Logger != nil {
+				w.Logger.Warn(
+					"outbox sent mark skipped",
+					"outbox_id", item.ID,
+					"channel_id", item.ChannelID,
+					"channel_type", channelType,
+					"error_code", "outbox_state_advanced",
+				)
+			}
 			continue
 		}
 		if w.Logger != nil {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -390,5 +391,40 @@ func TestOpenAPIJSON结构完整(t *testing.T) {
 	securitySchemes, ok := components["securitySchemes"].(map[string]any)
 	if !ok || securitySchemes["bearerAuth"] == nil {
 		t.Fatalf("缺少 bearerAuth 安全方案: %v", securitySchemes)
+	}
+}
+
+func TestDiscoveryResponsesVaryByForwardedProto(t *testing.T) {
+	s := &server{dependencies: Dependencies{}}
+	handlers := []struct {
+		name string
+		h    http.HandlerFunc
+	}{
+		{"sitemap", s.handleSitemapXML},
+		{"robots", s.handleRobotsTXT},
+		{"auth", s.handleAuthMD},
+		{"catalog", s.handleWellKnownAPICatalog},
+		{"oauth authorization", s.handleWellKnownOAuthAuthorizationServer},
+		{"oauth resource", s.handleWellKnownOAuthProtectedResource},
+		{"skills", s.handleWellKnownAgentSkillsIndex},
+		{"skill artifact", s.handleAgentSkillsArtifact},
+		{"mcp card", s.handleWellKnownMCPCard},
+		{"openapi", s.handleOpenAPIJSON},
+	}
+
+	for _, tc := range handlers {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "http://reposentinel.example/.well-known/test", nil)
+			req.Host = "reposentinel.example"
+			req.Header.Set("X-Forwarded-Proto", "https")
+			resp := httptest.NewRecorder()
+
+			tc.h(resp, req)
+
+			vary := resp.Header().Get("Vary")
+			if !strings.Contains(vary, "Host") || !strings.Contains(vary, "X-Forwarded-Proto") {
+				t.Fatalf("Vary=%q，应同时包含 Host 与 X-Forwarded-Proto", vary)
+			}
+		})
 	}
 }

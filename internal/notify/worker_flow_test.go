@@ -102,6 +102,56 @@ func TestWorkerTickDeliversOutbox(t *testing.T) {
 	}
 }
 
+// TestWorkerTickDoesNotCountLateSuccessAfterStateAdvance 验证并发投递中，
+// 外部发送成功但 Outbox 状态已被另一条在途任务推进时，不应重复记录成功指标。
+func TestWorkerTickDoesNotCountLateSuccessAfterStateAdvance(t *testing.T) {
+	st := openWorkerTestStore(t)
+	ring := newWorkerKeyRing(t)
+
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		<-releaseRequest
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	ch := seedWebhookChannel(t, st, ring, srv.URL)
+	itemID := ulid.Make().String()
+	if _, err := st.Outbox().Create(t.Context(), store.NotificationOutbox{
+		ID: itemID, ChannelID: ch.ID, IdempotencyKey: "idem|late-success",
+		Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
+		Title: "测试标题", BodyText: "测试内容", AttemptCount: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sentCount := 0
+	w := &Worker{
+		Store: st, KeyRing: ring, Client: srv.Client(), AAD: "reposentinel:notify-secret:v1",
+		OnSent: func() { sentCount++ },
+	}
+	done := make(chan struct{})
+	go func() {
+		w.tick(t.Context())
+		close(done)
+	}()
+	<-requestStarted
+
+	if transitioned, err := st.Outbox().MarkDead(t.Context(), itemID, "concurrent_dead"); err != nil {
+		t.Fatalf("并发推进 Outbox 状态失败: %v", err)
+	} else if !transitioned {
+		t.Fatal("并发推进 Outbox 状态应成功")
+	}
+	close(releaseRequest)
+	<-done
+
+	if sentCount != 0 {
+		t.Fatalf("迟到成功不应触发 OnSent，实际触发 %d 次", sentCount)
+	}
+}
+
 // TestWorkerTickDeliveryFailureRetries 验证投递失败时按阶梯重试而非死信。
 func TestWorkerTickDeliveryFailureRetries(t *testing.T) {
 	st := openWorkerTestStore(t)
