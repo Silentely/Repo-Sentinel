@@ -296,9 +296,31 @@ func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text, htmlURL,
 
 // sendTelegramDirect 发送 Telegram 消息，api 参数为完整 URL，便于测试时替换端点。
 // parseMode 为空时回退 HTML（既有正文均按 HTML 生成）。
+// formatTelegramExpandableBlocks 将正文中的 AI 分析/诊断/分诊段落包装为 Telegram 7.3+ 原生支持的可折叠长引用块。
+// 段落拆分复用 splitAISections，与其它渠道共用同一分隔符口径。
+func formatTelegramExpandableBlocks(text string) string {
+	prefix, sections := splitAISections(text)
+	if len(sections) == 0 {
+		return text
+	}
+	var sb strings.Builder
+	sb.WriteString(prefix)
+	for _, sec := range sections {
+		sb.WriteString("\n\n<blockquote expandable><b>🤖 " + sec[0] + "</b>")
+		if sec[1] != "" {
+			sb.WriteString("\n" + sec[1])
+		}
+		sb.WriteString("</blockquote>")
+	}
+	return sb.String()
+}
+
 func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, text, htmlURL, parseMode string) error {
 	if parseMode == "" {
 		parseMode = "HTML"
+	}
+	if parseMode == "HTML" {
+		text = formatTelegramExpandableBlocks(text)
 	}
 	text = truncateTelegramText(text)
 	payload := map[string]any{
