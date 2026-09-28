@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
 
 // aiConfigResponse 管理台 AI 配置视图：不返回密钥明文，仅返回已配置状态与来源。
@@ -307,6 +310,22 @@ func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
+	// 审计留痕：AI 配置含 API Key 与出站 BaseURL（决定 LLM 流量去向），
+	// 与渠道增删改、仓库激活、2FA 启停同样需要可回答「谁在何时改了什么」。
+	// 只记录字段名与是否涉及密钥，绝不记录密钥原文。
+	if session, ok := sessionFromContext(r.Context()); ok {
+		s.appendAudit(r.Context(), store.AuditLog{
+			ID:           ulid.Make().String(),
+			Action:       "ai.config_updated",
+			ActorType:    "admin",
+			ActorID:      session.AdminID,
+			TargetType:   "ai_config",
+			TargetID:     "ai.runtime_config",
+			MetadataJSON: aiConfigAuditMetadata(body),
+			IPAddress:    remoteIPFromContext(r.Context()),
+			CreatedAt:    time.Now().UTC(),
+		})
+	}
 
 	// 热更新：以 env 基线 + 最新 DB 值重建运行时（Clear 等操作需要覆盖而非仅补缺），
 	// 再物化客户端广播给 digest / rules。
@@ -326,6 +345,35 @@ func (s *server) handlePutAIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.handleGetAIConfig(w, r)
+}
+
+// aiConfigAuditMetadata 汇总本次 AI 配置写入涉及的字段名，供审计条目使用。
+// 只记录字段名与布尔标记，绝不记录密钥或 BaseURL 原文（可能内嵌凭据）。
+func aiConfigAuditMetadata(body aiConfigPutRequest) []byte {
+	fields := make([]string, 0, 12)
+	appendField := func(name string, set bool) {
+		if set {
+			fields = append(fields, name)
+		}
+	}
+	appendField("enabled", body.Enabled != nil)
+	appendField("base_url", body.BaseURL != nil)
+	appendField("model", body.Model != nil)
+	appendField("timeout_sec", body.TimeoutSec != nil)
+	appendField("max_tokens", body.MaxTokens != nil)
+	appendField("retries", body.Retries != nil)
+	appendField("digest_enabled", body.DigestEnabled != nil)
+	appendField("triage_enabled", body.TriageEnabled != nil)
+	appendField("release_summary_enabled", body.ReleaseSummaryEnabled != nil)
+	appendField("code_review_enabled", body.CodeReviewEnabled != nil)
+	appendField("code_review_comment_on_pr", body.CodeReviewCommentOnPR != nil)
+	appendField("failure_analysis_enabled", body.FailureAnalysisEnabled != nil)
+	appendField("api_key", body.APIKey != nil || body.ClearAPIKey)
+	raw, err := json.Marshal(map[string]any{"fields": fields})
+	if err != nil {
+		return []byte(`{}`)
+	}
+	return raw
 }
 
 // validAIBaseURL 校验 AI 端点：http(s) 且无 userinfo，且拦截云元数据与链路本地地址防范 SSRF。
