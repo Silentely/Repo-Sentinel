@@ -782,6 +782,8 @@ export interface CodeReviewResult {
   confidence?: number;
   category?: string;
   merge_risk?: string;
+  maintainer_verdict?: string;
+  sensitive_assets?: string[];
   security_risks: string[];
   breaking_risks: string[];
   code_smells: string[];

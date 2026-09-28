@@ -246,9 +246,12 @@ function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string
     case "Minimal": riskBadge = "🟢 Minimal"; break;
   }
 
-  parts.push("| 代码健康评分 | 审查置信度 | 变更类型 | 合并风险 |");
-  parts.push("| :---: | :---: | :---: | :---: |");
-  parts.push(`| \`${review.score} / 100\` (${scoreBadge}) | \`${conf} / 5\` 🎯 | ${categoryBadge} | ${riskBadge} |\n`);
+  const verdict = review.maintainer_verdict || deriveMaintainerVerdict(review);
+  const verdictBadgeText = verdictBadge(verdict);
+
+  parts.push("| 代码健康评分 | 审查置信度 | 变更类型 | 合并风险 | 维护者裁决 |");
+  parts.push("| :---: | :---: | :---: | :---: | :---: |");
+  parts.push(`| \`${review.score} / 100\` (${scoreBadge}) | \`${conf} / 5\` 🎯 | ${categoryBadge} | ${riskBadge} | ${verdictBadgeText} |\n`);
 
   parts.push(`**代码健康评分**: \`${review.score} / 100\` (${scoreBadge})\n`);
   if (item?.author) {
@@ -260,6 +263,9 @@ function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string
   }
   if (review.summary) {
     parts.push(`> **概要评估**: ${review.summary}\n`);
+  }
+  if (review.sensitive_assets && review.sensitive_assets.length > 0) {
+    parts.push(`\n### 🚨 哨兵关键资产变动预警\n` + review.sensitive_assets.map((a) => `- ${a}`).join("\n"));
   }
   if (review.security_risks && review.security_risks.length > 0) {
     parts.push(`\n### 🛡️ 安全与凭证审计\n` + review.security_risks.map((r) => `- ⚠️ ${r}`).join("\n"));
@@ -307,6 +313,49 @@ function ReviewRiskList({ label, tone, items }: { label: string; tone: "danger" 
       </ul>
     </div>
   );
+}
+
+/**
+ * 维护者合并裁决阶梯：与后端 deriveMaintainerVerdict 同一口径。
+ * 渲染与复制报告共用本函数，避免阈值在多处复制后漂移。
+ */
+export function deriveMaintainerVerdict(review: CodeReviewResult): string {
+  if ((review.security_risks?.length ?? 0) > 0 || review.score < 60 || review.merge_risk === "Critical") {
+    return "Block Risk";
+  }
+  if ((review.sensitive_assets?.length ?? 0) > 0) {
+    return "Needs Manual Review";
+  }
+  if ((review.missing_tests?.length ?? 0) > 0 || review.score < 80) {
+    return "Needs Tests";
+  }
+  return "Ready to Merge";
+}
+
+const VERDICT_BADGES: Record<string, string> = {
+  "Ready to Merge": "🟢 Ready to Merge",
+  "Needs Tests": "🟡 Needs Tests",
+  "Needs Manual Review": "🟠 Needs Manual Review",
+  "Block Risk": "🔴 Block Risk",
+};
+
+/** 裁决徽章文案；未知裁决原样回显，不吞掉服务端新增取值。 */
+export function verdictBadge(verdict: string): string {
+  return VERDICT_BADGES[verdict] ?? verdict;
+}
+
+const VERDICT_STYLE_DEFAULT = { background: "rgba(16, 185, 129, 0.12)", color: "var(--color-success, #10b981)" };
+
+const VERDICT_STYLES: Record<string, { background: string; color: string }> = {
+  "Ready to Merge": VERDICT_STYLE_DEFAULT,
+  "Needs Tests": { background: "rgba(245, 158, 11, 0.12)", color: "var(--color-warning, #f59e0b)" },
+  "Needs Manual Review": { background: "rgba(249, 115, 22, 0.12)", color: "var(--color-orange, #f97316)" },
+  "Block Risk": { background: "rgba(239, 68, 68, 0.12)", color: "var(--color-danger, #ef4444)" },
+};
+
+/** 裁决徽章配色；未知裁决回退为成功色，与徽章文案的回显策略一致。 */
+export function verdictStyle(verdict: string): { background: string; color: string } {
+  return VERDICT_STYLES[verdict] ?? VERDICT_STYLE_DEFAULT;
 }
 
 export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { workItemId: string; item?: WorkItem }) {
@@ -541,6 +590,14 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                       合并风险: {review.merge_risk}
                     </span>
                   )}
+                  {review.maintainer_verdict && (
+                    <span
+                      className="label"
+                      style={{ fontSize: "0.75rem", ...verdictStyle(review.maintainer_verdict) }}
+                    >
+                      裁决: {review.maintainer_verdict}
+                    </span>
+                  )}
                   {hasSecurityRisks && (
                     <span
                       className="label"
@@ -617,6 +674,9 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
               <p style={{ margin: "0.25rem 0 0.5rem" }}>{review.summary}</p>
               {review.diff_truncated && (
                 <p className="field-hint">Diff 超过审查输入上限，本报告仅覆盖前部变更。</p>
+              )}
+              {review.sensitive_assets && review.sensitive_assets.length > 0 && (
+                <ReviewRiskList label="🚨 哨兵关键资产变动预警:" tone="warning" items={review.sensitive_assets} />
               )}
               {review.security_risks && review.security_risks.length > 0 && (
                 <ReviewRiskList label="🛡️ 安全风险:" tone="danger" items={review.security_risks} />

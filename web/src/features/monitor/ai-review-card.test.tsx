@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AIReviewCard } from "./list-pages";
+import { AIReviewCard, deriveMaintainerVerdict, verdictBadge } from "./list-pages";
 import type { CodeReviewResult, TriggerAIReviewReceipt } from "./api";
 
 const review: CodeReviewResult = {
@@ -164,11 +164,79 @@ describe("AIReviewCard", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     const writeTextMock = navigator.clipboard.writeText as unknown as { mock: { calls: string[][] } };
-    const copiedText = writeTextMock.mock.calls[writeTextMock.mock.calls.length - 1][0];
+    const lastCall = writeTextMock.mock.calls[writeTextMock.mock.calls.length - 1];
+    const copiedText = lastCall?.[0] ?? "";
     expect(copiedText).toContain("| 代码健康评分 | 审查置信度 | 变更类型 | 合并风险 |");
     expect(copiedText).toContain("### 🛠️ 建议采纳与重构示范");
     expect(copiedText).toContain("const ALLOWED = ['a', 'b'];");
 
     view.unmount();
+  });
+
+  it("渲染维护者合并裁决与敏感资产预警清单", async () => {
+    fetchMock.mockResolvedValue({
+      ...review,
+      reviewed_at: "2026-09-06T00:00:00Z",
+      maintainer_verdict: "Needs Manual Review",
+      sensitive_assets: ["⚙️ .github/workflows/ci.yml（CI/CD 工作流变动）"],
+    });
+    const view = renderCard();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /AI 代码审查报告/ }));
+    });
+    expect(screen.getByText("裁决: Needs Manual Review")).toBeInTheDocument();
+    expect(screen.getByText(/🚨 哨兵关键资产变动预警:/)).toBeInTheDocument();
+    expect(screen.getByText("⚙️ .github/workflows/ci.yml（CI/CD 工作流变动）")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /复制报告/ }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const writeTextMock = navigator.clipboard.writeText as unknown as { mock: { calls: string[][] } };
+    const lastCall = writeTextMock.mock.calls[writeTextMock.mock.calls.length - 1];
+    const copiedText = lastCall?.[0] ?? "";
+    expect(copiedText).toContain("维护者裁决");
+    expect(copiedText).toContain("Needs Manual Review");
+    expect(copiedText).toContain("### 🚨 哨兵关键资产变动预警");
+    view.unmount();
+  });
+
+  it("存量报告缺裁决字段时仍按同一阶梯回退：Critical 合并风险判为 Block Risk", async () => {
+    // 早于裁决字段落库的报告只有 merge_risk，没有 maintainer_verdict。
+    // 回退阶梯此前漏判 Critical，会与后端 applyScoreAndRiskGuards 给出不同结论。
+    fetchMock.mockResolvedValue({ ...review, score: 88, merge_risk: "Critical" });
+    const view = renderCard();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /AI 代码审查报告/ }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /复制报告/ }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const writeTextMock = navigator.clipboard.writeText as unknown as { mock: { calls: string[][] } };
+    const copiedText = writeTextMock.mock.calls[writeTextMock.mock.calls.length - 1]?.[0] ?? "";
+    expect(copiedText).toContain("🔴 Block Risk");
+    view.unmount();
+  });
+});
+
+describe("deriveMaintainerVerdict", () => {
+  const base: CodeReviewResult = { ...review, score: 90 };
+
+  it("按阶梯自上而下判定且不可越级", () => {
+    expect(deriveMaintainerVerdict(base)).toBe("Ready to Merge");
+    expect(deriveMaintainerVerdict({ ...base, missing_tests: ["缺测试"] })).toBe("Needs Tests");
+    expect(deriveMaintainerVerdict({ ...base, score: 79 })).toBe("Needs Tests");
+    expect(deriveMaintainerVerdict({ ...base, sensitive_assets: ["⚙️ ci.yml"] })).toBe("Needs Manual Review");
+    // 敏感资产不能越过安全风险/低分/Critical 的更高阶梯
+    expect(deriveMaintainerVerdict({ ...base, sensitive_assets: ["⚙️ ci.yml"], merge_risk: "Critical" })).toBe("Block Risk");
+    expect(deriveMaintainerVerdict({ ...base, security_risks: ["后门"], score: 95 })).toBe("Block Risk");
+    expect(deriveMaintainerVerdict({ ...base, score: 59 })).toBe("Block Risk");
+  });
+
+  it("裁决徽章对已知取值加前缀，未知取值原样回显", () => {
+    expect(verdictBadge("Block Risk")).toBe("🔴 Block Risk");
+    expect(verdictBadge("Ready to Merge")).toBe("🟢 Ready to Merge");
+    expect(verdictBadge("Future Verdict")).toBe("Future Verdict");
   });
 });

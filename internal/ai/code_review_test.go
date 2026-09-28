@@ -501,3 +501,146 @@ func TestFormatPRCommentRichStructureAndSuggestions(t *testing.T) {
 		t.Errorf("comment missing suggestion code block: %s", comment)
 	}
 }
+
+func TestMaintainerVerdictAndSensitiveAssets(t *testing.T) {
+	diff := `diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -1 +1 @@
+-old
++new
+diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1 +1 @@
+-old
++new`
+
+	rep := scanDiffHeuristics(diff)
+	if len(rep.sensitiveAssets) != 2 {
+		t.Fatalf("expected 2 sensitive assets, got %d: %v", len(rep.sensitiveAssets), rep.sensitiveAssets)
+	}
+
+	res := &CodeReviewResult{
+		Summary: "更新 CI 与依赖",
+		Score:   90,
+	}
+	applyScoreAndRiskGuards(res, rep)
+
+	if res.MaintainerVerdict != "Needs Manual Review" {
+		t.Errorf("expected MaintainerVerdict Needs Manual Review, got %s", res.MaintainerVerdict)
+	}
+	if len(res.SensitiveAssets) != 2 {
+		t.Errorf("expected 2 sensitive assets in res, got %d", len(res.SensitiveAssets))
+	}
+
+	comment := FormatPRComment(res)
+	if !strings.Contains(comment, "维护者裁决") {
+		t.Errorf("expected comment to contain 维护者裁决, got: %s", comment)
+	}
+	if !strings.Contains(comment, "Needs Manual Review") {
+		t.Errorf("expected comment to contain Needs Manual Review, got: %s", comment)
+	}
+	if !strings.Contains(comment, "哨兵关键资产变动预警") {
+		t.Errorf("expected comment to contain 哨兵关键资产变动预警, got: %s", comment)
+	}
+}
+
+func TestSensitiveAssetDetectionAndMaintainerVerdictLadder(t *testing.T) {
+	// 1. CI/CD 工作流文件变更嗅探
+	diffCI := `diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml
+--- a/.github/workflows/deploy.yml
++++ b/.github/workflows/deploy.yml
+@@ -1 +1 @@
++name: deploy`
+	repCI := scanDiffHeuristics(diffCI)
+	if len(repCI.sensitiveAssets) == 0 {
+		t.Fatal("expected CI/CD workflow to be detected as sensitive asset")
+	}
+
+	// 2. 依赖锁定清单变更嗅探
+	diffLock := `diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1 +1 @@
++{"name": "foo"}`
+	repLock := scanDiffHeuristics(diffLock)
+	if len(repLock.sensitiveAssets) == 0 {
+		t.Fatal("expected package-lock.json to be detected as sensitive asset")
+	}
+
+	// 3. 裁决阶梯测试：当存在敏感资产时，即使模型返回 Ready to Merge，也必须强制修正为 Needs Manual Review
+	resSafeLooking := &CodeReviewResult{
+		Score:             95,
+		MaintainerVerdict: "Ready to Merge",
+	}
+	applyScoreAndRiskGuards(resSafeLooking, repCI)
+	if resSafeLooking.MaintainerVerdict != "Needs Manual Review" {
+		t.Fatalf("expected Needs Manual Review when sensitive assets modified, got %s", resSafeLooking.MaintainerVerdict)
+	}
+
+	// 4. 裁决阶梯测试：当出现安全漏洞时，即使存在敏感资产，也必须升至最高阶梯 Block Risk
+	resVulnerable := &CodeReviewResult{
+		Score:             40,
+		SecurityRisks:     []string{"恶意反弹 shell 脚本"},
+		MaintainerVerdict: "Needs Manual Review",
+	}
+	applyScoreAndRiskGuards(resVulnerable, repCI)
+	if resVulnerable.MaintainerVerdict != "Block Risk" {
+		t.Fatalf("expected Block Risk when security risk present, got %s", resVulnerable.MaintainerVerdict)
+	}
+
+	// 5. 格式化输出中验证徽章与敏感资产展示
+	comment := FormatPRComment(resSafeLooking)
+	if !strings.Contains(comment, "🟠 Needs Manual Review") {
+		t.Fatalf("expected comment to contain Needs Manual Review badge, got: %s", comment)
+	}
+	if !strings.Contains(comment, "🚨 哨兵关键资产变动预警") {
+		t.Fatalf("expected comment to contain sensitive asset section, got: %s", comment)
+	}
+}
+
+// TestDeriveMaintainerVerdictLadder 守护裁决阶梯的唯一实现：
+// FormatPRComment 的兜底分支与 applyScoreAndRiskGuards 必须共用 deriveMaintainerVerdict，
+// 否则缺裁决字段的存量报告会与写库时的结论分叉（此前兜底分支漏判 Critical 合并风险）。
+func TestDeriveMaintainerVerdictLadder(t *testing.T) {
+	base := func() *CodeReviewResult { return &CodeReviewResult{Score: 90} }
+
+	if got := deriveMaintainerVerdict(base()); got != "Ready to Merge" {
+		t.Errorf("干净高分报告应判 Ready to Merge，got %s", got)
+	}
+
+	tests := []struct {
+		name string
+		mod  func(*CodeReviewResult)
+		want string
+	}{
+		{"缺测试", func(r *CodeReviewResult) { r.MissingTests = []string{"缺用例"} }, "Needs Tests"},
+		{"低分", func(r *CodeReviewResult) { r.Score = 79 }, "Needs Tests"},
+		{"敏感资产", func(r *CodeReviewResult) { r.SensitiveAssets = []string{"⚙️ ci.yml"} }, "Needs Manual Review"},
+		{"Critical 合并风险", func(r *CodeReviewResult) { r.MergeRisk = "Critical" }, "Block Risk"},
+		{"安全风险", func(r *CodeReviewResult) { r.SecurityRisks = []string{"后门"} }, "Block Risk"},
+		{"极低分", func(r *CodeReviewResult) { r.Score = 59 }, "Block Risk"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			res := base()
+			tc.mod(res)
+			if got := deriveMaintainerVerdict(res); got != tc.want {
+				t.Errorf("deriveMaintainerVerdict = %s, want %s", got, tc.want)
+			}
+		})
+	}
+
+	// 敏感资产不得越级覆盖更高的安全阶梯
+	escalated := &CodeReviewResult{Score: 95, SensitiveAssets: []string{"⚙️ ci.yml"}, MergeRisk: "Critical"}
+	if got := deriveMaintainerVerdict(escalated); got != "Block Risk" {
+		t.Errorf("敏感资产叠加 Critical 应判 Block Risk，got %s", got)
+	}
+
+	// 缺裁决字段的存量报告：评论兜底必须与写库口径一致
+	legacy := &CodeReviewResult{Score: 88, MergeRisk: "Critical"}
+	if got := FormatPRComment(legacy); !strings.Contains(got, "🔴 Block Risk") {
+		t.Errorf("存量报告兜底应渲染 Block Risk 徽章，got: %s", got)
+	}
+}
