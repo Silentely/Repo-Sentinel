@@ -148,18 +148,28 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 			}
 		}
 	}
+	// 与对账同理：只改本轮负责的同步进度字段。写回前重新读取当前行——行已删除则放弃
+	// 写回（不得复活），并以当前行的值为基准，避免用开轮前读到的 repo 快照覆盖并发
+	// 归档/删除/开关变更。
+	current, err := p.Store.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) && p.Logger != nil {
+			p.Logger.Warn("external repo reload failed", "repo", repo.FullName, "error_code", "repo_reload_failed", "error", err.Error())
+		}
+		return nil
+	}
 	now := time.Now().UTC()
-	repo.LastSyncedAt = &now
+	current.LastSyncedAt = &now
 	if softFailed {
-		repo.LastSyncErrorCode = "external_partial"
+		current.LastSyncErrorCode = "external_partial"
 	} else {
-		repo.LastSyncErrorCode = ""
-		if isBaseline {
-			repo.SyncStatus = store.SyncStatusActive
-			repo.BaselineFinishedAt = &now
+		current.LastSyncErrorCode = ""
+		if isBaseline && current.SyncStatus == store.SyncStatusBaseline {
+			current.SyncStatus = store.SyncStatusActive
+			current.BaselineFinishedAt = &now
 		}
 	}
-	if _, err := p.Store.Repositories().Upsert(ctx, repo); err != nil && p.Logger != nil {
+	if _, err := p.Store.Repositories().Upsert(ctx, current); err != nil && p.Logger != nil {
 		// 状态推进失败会留下陈旧 sync_status，影响后续调度判断，必须留痕。
 		p.Logger.Warn("external repo sync status advance failed", "repo", repo.FullName, "error_code", "repo_upsert_failed", "error", err.Error())
 	}

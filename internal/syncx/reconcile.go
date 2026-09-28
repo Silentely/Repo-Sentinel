@@ -188,19 +188,39 @@ func (r *Reconciler) syncStarSnapshot(ctx context.Context, token string, repo st
 }
 
 // finalizeSyncState 推进单仓同步状态：写回同步时间/软失败标记/基线完成态与 issues 游标。
+// 只改本轮负责的同步进度字段：仓库行在开轮后被并发归档、删除或改开关是常态
+// （collapseArchived / repository.deleted / 设置页），因此写回前必须重新读取当前行——
+// 行已删除则放弃写回（不得复活），并以当前行的值为基准，避免用开轮前的旧快照
+// 覆盖掉并发写入的状态。
 func (r *Reconciler) finalizeSyncState(ctx context.Context, repo store.Repository, isBaseline, issuesSynced, softFailed bool) {
 	now := time.Now().UTC()
-	repo.LastSyncedAt = &now
+	current, err := r.Store.Repositories().Get(ctx, repo.ID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			// 仓库已被彻底删除（管理台 DELETE 或 repository.deleted）：不再写回，
+			// 否则 Upsert 的新建分支会以同一 ID 重建该行并让它重新进入活跃轮询。
+			if r.Logger != nil {
+				r.Logger.Debug("reconcile write-back skipped, repo deleted", "repo", repo.FullName)
+			}
+			return
+		}
+		if r.Logger != nil {
+			r.Logger.Warn("reconcile state reload failed", "repo", repo.FullName, "error_code", "repo_reload_failed", "error", err.Error())
+		}
+		return
+	}
+	current.LastSyncedAt = &now
 	// 部分失败不能静默抹平：记录痕迹供管理台提示权限不足。
-	repo.LastSyncErrorCode = ""
+	current.LastSyncErrorCode = ""
 	if softFailed {
-		repo.LastSyncErrorCode = "reconcile_partial"
+		current.LastSyncErrorCode = "reconcile_partial"
 	}
-	if isBaseline && !softFailed {
-		repo.SyncStatus = store.SyncStatusActive
-		repo.BaselineFinishedAt = &now
+	// 基线放行只在本轮起始状态仍是 baseline 时生效：并发归档/删除后的当前状态不得被推进。
+	if isBaseline && !softFailed && current.SyncStatus == store.SyncStatusBaseline {
+		current.SyncStatus = store.SyncStatusActive
+		current.BaselineFinishedAt = &now
 	}
-	if _, err := r.Store.Repositories().Upsert(ctx, repo); err != nil && r.Logger != nil {
+	if _, err := r.Store.Repositories().Upsert(ctx, current); err != nil && r.Logger != nil {
 		// 状态推进失败会留下陈旧 sync_status，影响后续调度判断，必须留痕。
 		r.Logger.Warn("repo sync status advance failed", "repo", repo.FullName, "error_code", "repo_upsert_failed", "error", err.Error())
 	}

@@ -96,6 +96,18 @@ func NormalizeRepository(ctx context.Context, s store.Store, gh repoSource, inst
 		if existing.IsArchived && !gh.GetArchived() {
 			in.IsArchived = true
 		}
+		// 类型不由 webhook 单方面改写：外部公开仓（匿名轮询）若因普通事件被改判为
+		// installation 而载荷又没有可解析的安装绑定，该行会退出匿名轮询却仍在
+		// resolveInstallationToken 处失败，sync_status 永远停在 baseline_sync——
+		// 与本次修复的静默失联同源。携带真实绑定时允许升级为 installation。
+		if in.Type != existing.Type && (in.InstallationID == nil || *in.InstallationID == "") {
+			if logger != nil {
+				logger.Warn("repository type preserved on webhook upsert",
+					"repo", in.FullName, "existing_type", existing.Type,
+					"payload_type", in.Type, "error_code", "repo_type_reclassify_skipped")
+			}
+			in.Type = existing.Type
+		}
 		// 已存在仓库保持状态，仅更新元数据
 		return s.Repositories().Upsert(ctx, in)
 	}
@@ -105,5 +117,16 @@ func NormalizeRepository(ctx context.Context, s store.Store, gh repoSource, inst
 
 	now := time.Now().UTC()
 	in.BaselineStartedAt = &now
+	// 安装绑定缺失留痕：新建的 installation 行若无 installation_id，将永远无法换取令牌
+	// （resolveInstallationToken 直接 missing_installation），sync_status 永远停在
+	// baseline_sync，其事件又被 baseline 抑制通知——平台静默失去对该仓库的可见性。
+	// 正常路径由 Processor.resolveInstallation 从信封补回绑定；走到这里说明载荷未携带
+	// installation 或本地尚未同步该安装，按 webhook 投递语义留痕而非阻断（投递行仍会被
+	// GitHub 重试，届时通常已能解析）。恢复手段：SyncInstallations 或重新授权。
+	if in.Type == store.RepositoryTypeInstallation &&
+		(in.InstallationID == nil || *in.InstallationID == "") && logger != nil {
+		logger.Warn("installation repository created without installation binding",
+			"repo", in.FullName, "error_code", "repo_missing_installation_binding")
+	}
 	return s.Repositories().Upsert(ctx, in)
 }

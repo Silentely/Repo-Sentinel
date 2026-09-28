@@ -203,6 +203,25 @@ func (p *Processor) ensureRepository(ctx context.Context, gh *ghRepository, inst
 	return NormalizeRepository(ctx, p.Store, gh, installationID, p.Logger)
 }
 
+// resolveInstallation 从事件信封的 installation.id 解析本地安装主键。
+// installation / installation_repositories 投递漏达时，仓库会首次由普通事件
+// （issues / pull_request / workflow_run / 安全告警 / star / watch）建立；
+// 若不回传该绑定，落库的 github_installation 行 installation_id 为 NULL，
+// 对账在 resolveInstallationToken 处即失败，sync_status 永远停在 baseline_sync，
+// 其事件又被 baseline 抑制通知——平台静默失去对该仓库的可见性。
+// 解析不到（信封缺失或本地尚未同步该安装）时返回 nil：Upsert 会保留既有绑定
+// 而非清空，store 层的安装绑定不变量负责拒绝真正无绑定的行。
+func (p *Processor) resolveInstallation(ctx context.Context, env envelope) *string {
+	if env.Installation == nil || p.Store == nil {
+		return nil
+	}
+	inst, err := p.Store.Installations().GetByInstallationID(ctx, env.Installation.ID)
+	if err != nil {
+		return nil
+	}
+	return &inst.ID
+}
+
 func (p *Processor) processInstallation(ctx context.Context, eventType string, env envelope, payload []byte) (Result, error) {
 	if env.Installation == nil {
 		return Result{}, fmt.Errorf("missing installation")
@@ -363,7 +382,7 @@ func (p *Processor) processStar(ctx context.Context, env envelope, deliveryID st
 	if env.Repository == nil {
 		return Result{}, fmt.Errorf("missing repository")
 	}
-	repo, err := p.ensureRepository(ctx, env.Repository, nil)
+	repo, err := p.ensureRepository(ctx, env.Repository, p.resolveInstallation(ctx, env))
 	if err != nil {
 		return Result{}, err
 	}
@@ -436,7 +455,7 @@ func (p *Processor) processWatch(ctx context.Context, env envelope, deliveryID s
 	if env.Repository == nil {
 		return Result{}, fmt.Errorf("missing repository")
 	}
-	repo, err := p.ensureRepository(ctx, env.Repository, nil)
+	repo, err := p.ensureRepository(ctx, env.Repository, p.resolveInstallation(ctx, env))
 	if err != nil {
 		return Result{}, err
 	}
@@ -487,7 +506,7 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 	if env.Issue.PullRequest != nil {
 		kind = store.WorkItemKindPR
 	}
-	repo, err := p.ensureRepository(ctx, env.Repository, nil)
+	repo, err := p.ensureRepository(ctx, env.Repository, p.resolveInstallation(ctx, env))
 	if err != nil {
 		return Result{}, err
 	}
@@ -519,7 +538,7 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 	if env.PullRequest == nil || env.Repository == nil {
 		return Result{}, fmt.Errorf("missing pull_request payload")
 	}
-	repo, err := p.ensureRepository(ctx, env.Repository, nil)
+	repo, err := p.ensureRepository(ctx, env.Repository, p.resolveInstallation(ctx, env))
 	if err != nil {
 		return Result{}, err
 	}
@@ -611,7 +630,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	if env.WorkflowRun.ID == 0 {
 		return Result{}, fmt.Errorf("missing workflow_run id")
 	}
-	repo, err := p.ensureRepository(ctx, env.Repository, nil)
+	repo, err := p.ensureRepository(ctx, env.Repository, p.resolveInstallation(ctx, env))
 	if err != nil {
 		return Result{}, fmt.Errorf("ensure repository: %w", err)
 	}
@@ -743,7 +762,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 	if env.Alert == nil || env.Repository == nil {
 		return Result{}, fmt.Errorf("missing alert payload")
 	}
-	repo, err := p.ensureRepository(ctx, env.Repository, nil)
+	repo, err := p.ensureRepository(ctx, env.Repository, p.resolveInstallation(ctx, env))
 	if err != nil {
 		return Result{}, err
 	}
