@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -126,6 +127,14 @@ func (s *repositoryStore) Upsert(ctx context.Context, in Repository) (Repository
 	now := time.Now().UTC()
 	existing, err := s.client.Repository.Query().Where(repository.FullNameEQ(in.FullName)).Only(ctx)
 	if err == nil {
+		// 类型降级守卫：安装仓改判为外部仓会退出安装对账并改走匿名轮询，私有仓随即被
+		// 404 钉成 unavailable 并永久跳过（ingestGate / RepoAllowsKind / ReconcileAll /
+		// PollAll 全部跳过），属于监控能力的静默丢失。采集方式由安装事件与设置页决定，
+		// 任何写路径都不得单方面改写它。
+		if in.Type != existing.Type && existing.Type == RepositoryTypeInstallation {
+			return Repository{}, fmt.Errorf(
+				"store: cannot reclassify installation repository %q as %s", existing.FullName, in.Type)
+		}
 		// 能力开关由 UpdateSettings 单独管理；Upsert 仅同步元数据，保留用户配置。
 		upd := s.client.Repository.UpdateOneID(existing.ID).
 			SetType(in.Type).

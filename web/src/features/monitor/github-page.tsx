@@ -63,9 +63,13 @@ export function GitHubPage() {
 
   const addExternal = useMutation({
     mutationFn: () => addExternalRepository(externalName.trim()),
-    onSuccess: async () => {
+    onSuccess: async (repo) => {
       setExternalName("");
-      setFormMessage("外部公开仓库已登记，将进入基线同步。");
+      setFormMessage(
+        repo.already_registered
+          ? "该仓库已在外部公开仓库列表中，同步状态未变动。"
+          : "外部公开仓库已登记，将进入基线同步。",
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["repositories"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),

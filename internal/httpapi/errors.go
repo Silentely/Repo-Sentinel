@@ -30,7 +30,9 @@ const (
 	errorCodeInvalidSignature       = "invalid_signature"
 	errorCodeReconcileUnavailable   = "reconcile_unavailable"
 	errorCodeEncryptionUnavailable  = "encryption_unavailable"
+	errorCodeTOTPConfigUnreadable   = "totp_config_unreadable"
 	errorCodeExternalRepoLimit      = "external_repo_limit"
+	errorCodeRepositoryTypeConflict = "repository_type_conflict"
 	errorCodeGitHubFieldLocked      = "github_field_locked"
 	errorCodeGitHubAppNotConfigured = "github_app_not_configured"
 	errorCodeGitHubNoInstallation   = "github_no_installation"
@@ -144,8 +146,12 @@ func apiErrorMessage(errorCode string) string {
 		return "服务当前不可用，请稍后重试。"
 	case errorCodeEncryptionUnavailable:
 		return "加密主密钥不可用，无法保存敏感配置。"
+	case errorCodeTOTPConfigUnreadable:
+		return "已启用的两步验证配置无法解密（主密钥缺失或为历史明文存储）。请在服务器上执行 CLI 命令 admin reset-2fa 后重新开启两步验证。"
 	case errorCodeExternalRepoLimit:
 		return "外部公开仓库已达上限（" + strconv.Itoa(store.MaxExternalRepositories) + " 个）。"
+	case errorCodeRepositoryTypeConflict:
+		return "该仓库已作为 GitHub App 安装仓库在监控中，无需登记为外部公开仓库。"
 	case errorCodeGitHubFieldLocked:
 		return "该字段已由环境变量设置，管理台不能覆盖；请修改部署配置后重启。"
 	case errorCodeGitHubAppNotConfigured:

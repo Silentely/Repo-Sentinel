@@ -477,8 +477,12 @@ export async function saveSystemSettings(body: SystemSettings): Promise<SystemSe
   });
 }
 
-export async function addExternalRepository(fullName: string): Promise<Repository> {
-  return apiRequest<Repository>("/api/v1/repositories/external", {
+export async function addExternalRepository(
+  fullName: string,
+): Promise<Repository & { already_registered?: boolean }> {
+  // 服务端对已登记的外部仓返回 200 + already_registered=true（不重置同步状态），
+  // 新建返回 201 且不带该字段；提示语据此区分，避免对未发生的事承诺基线同步。
+  return apiRequest<Repository & { already_registered?: boolean }>("/api/v1/repositories/external", {
     method: "POST",
     body: JSON.stringify({ full_name: fullName }),
   });

@@ -67,6 +67,14 @@ func (s *server) handleListRepositories(w http.ResponseWriter, r *http.Request) 
 	writeListResponse(w, items, page)
 }
 
+// externalRepositoryResponse 是「添加外部公开仓库」的统一响应体：内嵌仓库字段，
+// already_registered 仅在命中已有外部仓（幂等分支，HTTP 200）时为 true。
+// 该分支不进入基线同步，前端据此区分「已在列表中」与「新登记」两种提示。
+type externalRepositoryResponse struct {
+	store.Repository
+	AlreadyRegistered bool `json:"already_registered,omitempty"`
+}
+
 func (s *server) handleAddExternalRepository(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		FullName string `json:"full_name"`
@@ -78,6 +86,26 @@ func (s *server) handleAddExternalRepository(w http.ResponseWriter, r *http.Requ
 	parts := strings.Split(fullName, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "full_name"})
+		return
+	}
+	// 查重先于上限判定：已登记的仓库不该因为列表满而被拒，否则重复提交已存在的
+	// 外部仓会拿到 409 external_repo_limit，与幂等语义矛盾。
+	// 「添加外部公开仓库」只应把 App 未安装的公开仓纳入匿名轮询；对已是安装仓的
+	// full_name 直接覆写会把它改判为 external_public、重置同步状态并抹掉私有标记，
+	// 该行随即退出安装对账，私有仓再被匿名轮询 404 钉成 unavailable 而永久跳过。
+	if existing, err := s.dependencies.Store.Repositories().GetByFullName(r.Context(), fullName); err == nil {
+		if existing.Type == store.RepositoryTypeInstallation {
+			s.writeAPIError(w, r, http.StatusConflict, errorCodeRepositoryTypeConflict, map[string]any{
+				"field":         "full_name",
+				"existing_type": existing.Type,
+			})
+			return
+		}
+		// 已是外部仓：幂等返回既有行，不重复计数、不重置同步状态。
+		writeJSON(w, http.StatusOK, externalRepositoryResponse{Repository: existing, AlreadyRegistered: true})
+		return
+	} else if !errors.Is(err, store.ErrNotFound) {
+		s.writeMappedError(w, r, err)
 		return
 	}
 	count, err := s.dependencies.Store.Repositories().CountByType(r.Context(), store.RepositoryTypeExternal)
@@ -99,7 +127,7 @@ func (s *server) handleAddExternalRepository(w http.ResponseWriter, r *http.Requ
 		s.writeMappedError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, repo)
+	writeJSON(w, http.StatusCreated, externalRepositoryResponse{Repository: repo})
 }
 
 func (s *server) handleActivateRepository(w http.ResponseWriter, r *http.Request) {

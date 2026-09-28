@@ -671,7 +671,11 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				"summary":     "添加外部公开仓库",
 				"operationId": "addExternalRepository",
 				"security":    []any{authed},
-				"responses":   map[string]any{"201": jsonResponse("已添加", ref("Repository")), "409": errorResponse()},
+				"responses": map[string]any{
+					"201": jsonResponse("已添加", ref("Repository")),
+					"200": jsonResponse("该仓库已在外部公开仓库列表中（幂等，不重置同步状态，响应体含 already_registered: true）", ref("Repository")),
+					"409": errorResponse(),
+				},
 			},
 		},
 		"/api/v1/work-items": map[string]any{
