@@ -60,6 +60,7 @@ A: `app.Build` 设 `MaxPages: 3`，限制单次对账 API 消耗。
 
 | 时间戳 (UTC) | 变更摘要 |
 |---|---|
+| 2026-09-28T00:00:00Z | ①finalizeSyncState 与 PollOne 收尾前重新读取当前行：行已删除则放弃写回（不得复活），以当前行的值为基准只改本轮负责的同步进度字段，基线放行仅在本轮起始状态仍是 baseline 时生效。原实现把开轮前快照整体交给 Upsert，会抹平并发归档（collapseArchived / repository.archived / 设置页）并以同一 ID 重建已被 DeleteRepository 删掉的行；②reconcileAllBusy 的覆盖范围不变（仍只保护 ReconcileAll） |
 | 2026-09-25T10:45:00Z | 优化 SyncInstallations 本地仓库映射初始化：首页预分配 map 容量至 res.Total，消除多次扩容与 rehash 堆开销 |
 | 2026-09-25T09:20:00Z | 优化 StarredReleasePoller 字符串计算开销：splitFullName 改用 IndexByte 快速切分所有者与仓库名消除切片堆分配；createReleaseEvent 状态哈希与默认标题改用 strconv.FormatInt 消除反射格式化装箱 |
 | 2026-09-23T00:00:00Z | 归档收口重复实现收敛为 `collapseArchived`（`archived.go`）：对账 `ReconcileAll` 与外部轮询 `PollAll` 两条路径各自的 `UpdateSettings{IsArchived}` + `repo_state_update_failed` Warn 合并为单一辅助函数（`store`/`logger`/日志文案作参数），行为与日志内容不变 |

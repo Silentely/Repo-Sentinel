@@ -4,7 +4,42 @@
 
 ## [Unreleased]
 
+### Added
+
+- Agent 访问令牌的作用域收口为真实能力边界：`oauthValidateToken` 验签后解析 `Scope` 声明并把作用域集合写入请求上下文，未声明任何已知作用域（`read`/`write`）的令牌一律拒绝（空 scope 不再被解释为「全部允许」）；新增 `agentWriteScopeMiddleware` 挂在 mutating 组上，仅持 `read` 的 Agent 令牌对全部管理写路由返回 403 `forbidden`，MCP 写工具（`trigger_work_item_ai_review` / `trigger_reconciliation` / `retry_failed_outbox` / `replay_webhook_delivery`）经 `mcpWriteTools` 同一口径收口；`POST /repositories/external` 从 protected 组移入 mutating 组，使 CSRF 与写作用域成为一致的写边界
+- AI 配置写入补审计留痕（`ai.config_updated`）：记录本次涉及的字段名与是否涉及密钥，绝不记录密钥与 BaseURL 原文；此前 `PUT /api/v1/ai/config` 改API Key 与出站端点无任何审计记录，运维无法回答「谁把 LLM 流量指向了什么」
+- 「添加外部公开仓库」的幂等分支明确化：命中已有外部仓时返回 200 并在响应体带 `already_registered: true`（新建仍为 201 且不带该字段），前端据此提示「已在列表中、同步状态未变动」而不再对未发生的事承诺基线同步；OpenAPI 补该端点的 200 响应
+- MCP 写工具的作用域拒绝在 JSON-RPC `error.data.error_code` 回传 `forbidden`（与日志的 `error_code` 同一取值），`tools/list` 按作用域过滤：只持 `read` 的令牌不再看到注定被拒的写工具
+- 第二因子（动态码）改按独立令牌桶限流（`Dependencies.TOTPLimiter`，与第一因子分桶）：一次完整登录只消耗第一因子的一份额度，单 IP 每分钟可完成的登录数不再因新增的第二因子校验而减半
+
+### Fixed
+
+- 非 installation 类 webhook 首建的仓库行补齐 installation 绑定：`Processor.resolveInstallation` 从事件信封的 `installation.id` 解析本地安装主键并传给 `ensureRepository`（此前 `processStar`/`processWatch`/`processIssue`/`processPullRequest`/`processWorkflowRun`/`processSecurityAlert` 六处直接传 `nil`）；落库仍无绑定时 Warn 留痕 `repo_missing_installation_binding`。缺失绑定的行永远无法换取令牌（`resolveInstallationToken` 直接 `missing_installation`），`sync_status` 永远停在 `baseline_sync`，其事件又被 baseline 抑制通知——平台在毫无告警的情况下静默失去对该仓库的可见性且无自愈路径
+- 「添加外部公开仓库」不再静默改判已存在的安装仓：`handleAddExternalRepository` 落库前按 `full_name` 查重，安装仓返回 409 `repository_type_conflict` 并告知现有类型，已是外部仓则幂等返回既有行（不重复计入上限、不重置同步状态）；`repositoryStore.Upsert` 追加类型降级守卫，任何写路径都不得把 installation 行改为其它类型。原实现只填 7 个字段且不查重，而 Upsert 更新分支对 `type`/`sync_status`/`is_archived`/`is_private`/`default_branch` 无条件覆写，会把正在被安装令牌对账的私有仓改判为 `external_public`、重置同步状态并抹掉私有标记，该行随即退出安装对账，私有仓再被匿名轮询 404 钉成 `unavailable` 而永久跳过，接口却返回 201 不报错
+- 「添加外部公开仓库」的查重先于外部仓上限判定：顺序反了（先判上限）时，列表已满的情况下重复提交一个已登记的外部仓会拿到 409 `external_repo_limit`，与幂等语义矛盾
+- webhook 归一化不再静默改判既有仓库类型（`NormalizeRepository`）：载荷没有可解析的安装绑定时保留当前行的类型并 Warn 留痕 `repo_type_reclassify_skipped`，携带真实绑定才允许升级为 `installation`。原实现无条件写入 `installation`，使匿名轮询中的外部公开仓因普通事件被改判，却仍拿不到令牌，`sync_status` 永远停在 `baseline_sync`——与本次修复的静默失联同源，只是从反方向进入
+- 死信指标只在真的写入 dead 行时自增：`MarkSent`/`MarkRetry`/`MarkDead` 改为返回是否完成状态推进（守卫拒绝时返回 `false`），`markDead` 据此跳过 `OnDead`。原实现只按 error 判定，租约过期竞态下第二个 worker 的死信标记会被守卫拒绝却仍自增计数，排障时出现「死信计数有值但列表查不到」
+- 存量明文 2FA 种子给出可执行的错误：库内存在历史 `plain_secret` 行（或主密钥缺失、信封损坏）时，登录的两个阶段统一返回 503 `totp_config_unreadable`，文案指明补齐主密钥或执行 `reposentinel admin reset-2fa`。此前第一因子阶段退化成 500 `internal_error`，第二因子阶段并与「用户名或密码错误」共用 401，管理员输入正确动态码也只会看到凭据错误
+- 2FA 登录限流不再复用第一因子令牌桶：原实现让一次完整登录消耗两份额度，单 IP 每分钟可完成的登录数从 5 降到约 2.5，第 3 次完整登录即被 429 拦下
+- `resolveClientIP` 的 X-Real-IP 回退与 XFF 同口径：受信任对端给出的地址若本身落在受信任网段内同样不予采信（回退直连对端）。此前只加固了 XFF 分支，同一网段内的主机仍可用 `X-Real-IP: 127.0.0.1` 自选客户端身份
+- 在途对账/轮询不再用开轮前的仓库快照整体写回：`Reconciler.finalizeSyncState` 与 `ExternalPoller.PollOne` 收尾前重新读取当前行——行已删除则放弃写回（不得复活），并以当前行的值为基准只改本轮负责的同步进度字段，基线放行仅在本轮起始状态仍是 `baseline` 时生效。原实现把候选读取时的快照直接交给 Upsert，会抹平并发归档（留下「未归档 + active + 监控已关」的粘滞矛盾行）并以同一 ID 重建已被彻底删除的仓库行（`monitor_enabled` 取 schema 默认 true，仓库重新进入活跃轮询）
+- 启用 2FA 不再把 TOTP 种子以明文写入数据库：`SaveTOTPConfig` 在密钥环不可用时返回 `ErrInvalidTOTPConfig`，`LoadTOTPConfig` 不再接受 `plain_secret` 字段（存量明文行 fail-closed），`handleEnable2FA` 增加 `KeyRing == nil` 前置守卫返回 503 `encryption_unavailable`。原实现 `ring == nil` 时写 `plain_secret` 且读取侧无条件接受，使该状态可自洽运行——取得数据库读权限者即可生成动态码，把第二因子降级为已知量。停用 2FA 不涉及密钥材质，密钥环缺失时仍可执行
+- 渠道订阅列表显式清空不再被改写为「订阅全部」：`handleUpsertChannel` 的清洗结果切片按输入长度预分配，显式空数组落为非 nil 空切片。原实现 `var cleanedKinds []string` 在空数组时保持 nil，而 `AcceptsKind` 视 nil 为订阅全部——管理员在管理台取消全部勾选（前端发送 `event_kinds: []`，界面摘要显示「不接收实时通知」）并保存后，该渠道实际收到每一种事件，私有仓库的事件标题/仓库名/告警摘要被推到管理员明确限定为不接收的目标
+- 通知投递失败日志不再写出携带令牌的目标 URL：新增 `logSafeDeliveryError`，对 `*url.Error` 去除 userinfo/path/query/fragment 后只保留 `scheme://host` 与协议层原因（与 `internal/ai` 的 `redactURL` 同一意图并扩展到 path/query）。Discord/飞书/钉钉/企业微信的 Webhook 地址与 Bark 的 key 把可发布消息的凭据放在 URL 里，原样写日志会让持有日志读权限者凭该凭据向渠道推送任意消息（伪装告警、钓鱼）；定位所需信息由同一条日志的 outbox_id/channel_id/channel_type 承担
+
 ### Changed
+
+- Outbox 终态标记增加状态守卫：`MarkSent`/`MarkRetry`/`MarkDead` 只允许从在途状态（`pending`/`sending`）推进。原实现按 ID 无条件更新，租约过期导致的两份在途投递会让迟到的失败标记把已 `sent` 行改回 `pending` 再次投递，或让迟到的成功标记把 `dead` 行改成 `sent`；而同文件的 `RetryDead`/`RetryAllDead` 都带 `StatusEQ(OutboxDead)` 守卫，同类控制强弱不一致
+- `markDead` 写库失败时不再触发 `OnDead` 指标回调：未落库即不算死信，避免死信计数与列表不符
+- 第二因子登录路径施加与第一因子对称的按 IP 限流（`LoginLimiter.Allow` + 429 `rate_limited`）：原实现只按票据计尝试预算（每票 3 次），而票据可由每次成功的第一因子登录免费重铸，分布式来源下没有账号级上界
+- 2FA 票据 IP 绑定改 fail-closed：`GetTicket` 在 `remoteIP` 或 `ticket.RemoteIP` 任一侧为空时拒绝，与 setup 环回门、metrics 对同一取值的 fail-closed 判定一致（原实现任一侧为空时整体跳过绑定）
+- `resolveClientIP` 在 XFF 全部条目均为受信任地址时回退直连对端：原实现返回最左段，使受信任网段内的主机可自选客户端身份（如 `XFF: 10.9.9.9` 即被记为 10.9.9.9）
+- `isReservedHTTPPath` 改大小写归一：`/API/v1/dashboard` 这类变体此前会通过保留路径判定并拿到 200 index.html，与「客户端探测不误判服务正常」的意图不符
+- `joinWebhookURL` 对 `X-Forwarded-Proto` 归一化（按逗号取首段、大小写归一、只接受 http/https）：原样透传会得出 `javascript://host/path` 这类畸形值；显式配置的 `PublicBaseURL` 仍优先
+- MCP `get_star_trend` 的 `days` 按声明的 enum 收敛（提取 `mcpStarTrendDays`，白名单 7/30/90/0，越界或类型错误回退 30）：`inputSchema` 的 enum 原只是对外声明，服务端从不校验，调用方传入的任意整数会原样进入 store 的逐日聚合；同时修正「非数值回退 0 而 0 恰是合法枚举值」导致的 `{"days":"7"}` 静默变成「全部历史」
+- Agent 发现文档缓存策略补 `Vary: Host` 并加 `must-revalidate`：这些文档内嵌由请求推导的站点 origin，若前置共享缓存以路径为键而忽略 Host，一次伪造 Host 的抓取就会让后续调用方（含 AI Agent）拿到指向攻击者 origin 的 `token_endpoint` 与 API 基址
+- SQLite 备份产物权限收紧为 0600：`VACUUM INTO` 由 SQLite VFS 以默认权限创建（通常 0644），操作员把源库加固为 0600 时会静默回落到全局可读，而源库含 Argon2 口令哈希与信封加密的渠道密钥；与同文件 `copyFile` 的 0600 保持一致
+
 
 - 审计写入可见性收口：`admin.2fa_enabled` / `admin.2fa_disabled` / `repository.delete` / CLI 应急重置 2FA 四处此前以 `_, _ =` 丢弃审计落库错误，改为统一经 `server.appendAudit` 在失败时 Warn 留痕 `audit_append_failed`（带 action/target_type/target_id/error），主流程结论不变，但「谁在何时做了什么」在审计表缺失时仍可从日志定位
 - `/api/v1/stats/actions-insights` 分析窗口按 300 条样本取（`actionsInsightsSampleSize` 样本量、`workflowRunsPageSize` 页大小，每页按剩余样本量取、末页不足一页提前收尾）：此前注释写 300 条而实际只取第一页 100 条，成功率与耗时分位数依赖样本量，窗口过小让高频仓库的统计只剩几个小时；按剩余量取页后不再多取再截断
