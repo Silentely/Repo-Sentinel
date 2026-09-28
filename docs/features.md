@@ -32,7 +32,8 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | 运维 CLI | `doctor` / `backup` / `restore`、配置校验、密码重置 |
 | 容器部署 | GHCR 镜像（`latest` 随正式 tag）、Compose 拉取部署、健康检查与 `/metrics` |
 | 历史数据保留 | 事件 / 终态投递 / Webhook Delivery 可配置保留天数，后台定期清理（0 禁用） |
-| PR AI 代码审查 | PR 开启/更新异步 Diff 审查、健康评分、识别安全与破坏性风险；管理后台支持「立即审查/重新审查」（异步入队 + 自动轮询结果）与一键复制 Markdown 报告；高危风险自动联动 Outbox 发送多渠道安全预警；支持 GitHub 评论回写与 MCP 工具集成 |
+| PR AI 代码审查 | PR 开启/更新异步 Diff 审查、健康评分、识别安全与破坏性风险；支持敏感关键资产变动嗅探（CI/CD 工作流、依赖清单、DB 迁移、环境凭据）与维护者合并裁决指引（Ready to Merge / Needs Tests / Needs Manual Review / Block Risk）；管理后台支持「立即审查/重新审查」（异步入队 + 自动轮询结果）与一键复制 Markdown 报告；高危风险自动联动 Outbox 发送多渠道安全预警；支持 GitHub 评论回写与 MCP 工具集成 |
+| Issue 智能分诊与首响应 | 新 Issue 创建自动意图分类、优先级评估、排查要素完整度审计（复现步骤/环境/堆栈日志等缺失项提取），生成专业得体的维护者首响应草稿；管理后台支持查看、立即/重新分诊、一键复制建议首响应及跳转 GitHub 快速回复 |
 | Actions CI 失败智能诊断 | 捕获 Workflow 失败运行与具体失败 Job/Step，LLM 自动分析故障原因并生成修复建议附加于通知正文；独立开关（`failure_analysis_enabled`）与安全告警分诊互不影响，失败步骤输入有上限防超长输入 |
 
 ## 可持续增强

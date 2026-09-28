@@ -6,6 +6,10 @@
 
 ### Added
 
+- Issue 智能分诊与首响应建议：新 Issue 创建时完成意图分类（Bug Report / Feature Request / Question / Incomplete / Invalid）、优先级评估（P0 Blocker / P1 High / P2 Normal / P3 Low）、排查要素完整度审计（复现步骤、运行环境、版本号、错误堆栈等缺失项）并产出维护者可直接发出的首响回复草稿；结果随新 Issue 通知正文附带，同时落库 `ai.issue_triage.<work_item_id>` 供管理后台查看。新增 `GET /api/v1/work-items/{id}/ai-triage` 与 `POST`（异步入队，202）两个端点，后台卡片支持展开查看、立即/重新分诊、一键复制首响草稿与跳转 GitHub 回复。开关复用 `triage_enabled`；未启用、无订阅渠道或调用失败时保持原通知正文不变，AI 不可用绝不影响通知入库，分诊结果随仓库删除一并级联清理
+- PR 审查新增维护者合并裁决（`maintainer_verdict`）与关键敏感资产嗅探（`sensitive_assets`）：裁决按 Block Risk > Needs Manual Review > Needs Tests > Ready to Merge 的阶梯自上而下判定，存在安全风险、健康评分低于 60 或合并风险为 Critical 时一律落在 Block Risk，改动了 CI/CD 工作流、依赖锁定清单、数据库迁移或部署凭据配置时至少落在 Needs Manual Review；敏感资产逐条列出变动路径与对应风险提示，随 PR 评论与通知正文展示
+- Issue/PR 正文纳入采集：归一化落库时把正文写入事件载荷（按 `textutil.MaxBodyTextBytes` 统一截断），供智能分诊与人工排查引用。此前正文不回传，分诊只能凭标题判断意图
+
 - Agent 访问令牌的作用域收口为真实能力边界：`oauthValidateToken` 验签后解析 `Scope` 声明并把作用域集合写入请求上下文，未声明任何已知作用域（`read`/`write`）的令牌一律拒绝（空 scope 不再被解释为「全部允许」）；新增 `agentWriteScopeMiddleware` 挂在 mutating 组上，仅持 `read` 的 Agent 令牌对全部管理写路由返回 403 `forbidden`，MCP 写工具（`trigger_work_item_ai_review` / `trigger_reconciliation` / `retry_failed_outbox` / `replay_webhook_delivery`）经 `mcpWriteTools` 同一口径收口；`POST /repositories/external` 从 protected 组移入 mutating 组，使 CSRF 与写作用域成为一致的写边界
 - AI 配置写入补审计留痕（`ai.config_updated`）：记录本次涉及的字段名与是否涉及密钥，绝不记录密钥与 BaseURL 原文；此前 `PUT /api/v1/ai/config` 改API Key 与出站端点无任何审计记录，运维无法回答「谁把 LLM 流量指向了什么」
 - 「添加外部公开仓库」的幂等分支明确化：命中已有外部仓时返回 200 并在响应体带 `already_registered: true`（新建仍为 201 且不带该字段），前端据此提示「已在列表中、同步状态未变动」而不再对未发生的事承诺基线同步；OpenAPI 补该端点的 200 响应
@@ -13,6 +17,11 @@
 - 第二因子（动态码）改按独立令牌桶限流（`Dependencies.TOTPLimiter`，与第一因子分桶）：一次完整登录只消耗第一因子的一份额度，单 IP 每分钟可完成的登录数不再因新增的第二因子校验而减半
 
 ### Fixed
+
+- 通知主题色判定由裸子串匹配改为词级匹配：此前 `high` 会命中 `highlight(s)`/`high-level`，把普通通知渲染成最高危红色，削弱告警可信度；现按词边界匹配（连字符计入词内，使 `high-level` 视为一个整体词），并保留 `P1 High`、`Block Risk`、`high-risk` 等真实信号的判定
+- Issue 分诊正文上限与落库截断统一为 `textutil.MaxBodyTextBytes`：此前落库截断到 4000 字节而模型侧上限标称 6000，模型只会静默拿到被截断的副本，连「正文已截断」提示都触发不了
+- 事件载荷缺少正文时留痕 `body_not_captured`：手动触发与 webhook 触发两条分诊路径均记录，便于区分「作者未填写正文」与「事件创建时未采集正文」——此前两种情况都只是表现为空正文
+- 企业微信与钉钉的 AI 段落改渲染为完整引用块：此前只把分隔线替换成 `> 🤖`，段落正文裸露在引用之外，与 Telegram 的可折叠引用块表现不一致
 
 - 非 installation 类 webhook 首建的仓库行补齐 installation 绑定：`Processor.resolveInstallation` 从事件信封的 `installation.id` 解析本地安装主键并传给 `ensureRepository`（此前 `processStar`/`processWatch`/`processIssue`/`processPullRequest`/`processWorkflowRun`/`processSecurityAlert` 六处直接传 `nil`）；落库仍无绑定时 Warn 留痕 `repo_missing_installation_binding`。缺失绑定的行永远无法换取令牌（`resolveInstallationToken` 直接 `missing_installation`），`sync_status` 永远停在 `baseline_sync`，其事件又被 baseline 抑制通知——平台在毫无告警的情况下静默失去对该仓库的可见性且无自愈路径
 - 「添加外部公开仓库」不再静默改判已存在的安装仓：`handleAddExternalRepository` 落库前按 `full_name` 查重，安装仓返回 409 `repository_type_conflict` 并告知现有类型，已是外部仓则幂等返回既有行（不重复计入上限、不重置同步状态）；`repositoryStore.Upsert` 追加类型降级守卫，任何写路径都不得把 installation 行改为其它类型。原实现只填 7 个字段且不查重，而 Upsert 更新分支对 `type`/`sync_status`/`is_archived`/`is_private`/`default_branch` 无条件覆写，会把正在被安装令牌对账的私有仓改判为 `external_public`、重置同步状态并抹掉私有标记，该行随即退出安装对账，私有仓再被匿名轮询 404 钉成 `unavailable` 而永久跳过，接口却返回 201 不报错
@@ -29,6 +38,8 @@
 
 ### Changed
 
+- 通知渠道的 AI 段落渲染收敛到同一拆分逻辑：`splitAISections` 统一识别 `\n────────────────\n🤖 ` 标记并拆出「主体 + 段落列表」，飞书/Discord 主题色、Telegram 可折叠引用块、企业微信/钉钉引用块各按自身语法渲染；此前企业微信与钉钉各用两处 `ReplaceAll`、Telegram 自带 `Split`，三处各自维护分隔符字面量，新增 AI 段落类型时容易漏改某个渠道
+- 维护者裁决阶梯抽为单一函数：后端 `deriveMaintainerVerdict`、前端 `deriveMaintainerVerdict`/`verdictBadge`/`verdictStyle`，PR 评论、Web 卡片与复制报告共用同一口径。此前三处各自复写阈值，且 PR 评论的兜底分支漏判 Critical 合并风险，同一份报告可能给出两种裁决
 - Outbox 终态标记增加状态守卫：`MarkSent`/`MarkRetry`/`MarkDead` 只允许从在途状态（`pending`/`sending`）推进。原实现按 ID 无条件更新，租约过期导致的两份在途投递会让迟到的失败标记把已 `sent` 行改回 `pending` 再次投递，或让迟到的成功标记把 `dead` 行改成 `sent`；而同文件的 `RetryDead`/`RetryAllDead` 都带 `StatusEQ(OutboxDead)` 守卫，同类控制强弱不一致
 - `markDead` 写库失败时不再触发 `OnDead` 指标回调：未落库即不算死信，避免死信计数与列表不符
 - 第二因子登录路径施加与第一因子对称的按 IP 限流（`LoginLimiter.Allow` + 429 `rate_limited`）：原实现只按票据计尝试预算（每票 3 次），而票据可由每次成功的第一因子登录免费重铸，分布式来源下没有账号级上界

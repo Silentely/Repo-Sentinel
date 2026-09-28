@@ -176,7 +176,7 @@ openssl rand -hex 32
 
 ### 智能值守（可选）
 
-智能值守用于：每日简报 / 周报 / 月报正文生成（`digest_enabled`）、实时安全告警的影响分析与处理建议（`triage_enabled`）、star 仓库新 Release 更新速览（`release_summary_enabled`）、PR 智能代码审查与安全审计（`code_review_enabled`），以及 Actions 失败运行的 AI 归因诊断（`failure_analysis_enabled`，与分诊开关相互独立）。默认关闭；开启时须提供 API Key，支持任意 OpenAI 兼容端点（可接 Ollama 等本地模型）。
+智能值守用于：每日简报 / 周报 / 月报正文生成（`digest_enabled`）、实时安全告警与新 Issue 的影响分析、分诊和维护者首响应建议（`triage_enabled`）、star 仓库新 Release 更新速览（`release_summary_enabled`）、PR 智能代码审查与安全审计（`code_review_enabled`），以及 Actions 失败运行的 AI 归因诊断（`failure_analysis_enabled`，与分诊开关相互独立）。默认关闭；开启时须提供 API Key，支持任意 OpenAI 兼容端点（可接 Ollama 等本地模型）。
 
 | 变量 | 说明 |
 |------|------|
