@@ -1751,34 +1751,56 @@ func (s *outboxStore) ClaimDue(ctx context.Context, now time.Time, lockFor time.
 	return out, nil
 }
 
-func (s *outboxStore) MarkSent(ctx context.Context, id string) error {
-	now := time.Now().UTC()
-	return mapStoreError(s.client.NotificationOutbox.UpdateOneID(id).
-		SetStatus(OutboxSent).
-		ClearLockedUntil().
-		SetUpdatedAt(now).
-		Exec(ctx))
+// outboxTerminalGuard 是三个终态/重试标记共用的状态守卫谓词：只允许从在途状态
+// （pending / sending）推进。缺少该守卫时，租约过期导致的两份在途投递会让迟到的失败
+// 标记把已 sent 行改回 pending 再次投递，或让迟到的成功标记把 dead 行改成 sent。
+// 与 RetryDead / RetryAllDead 的 StatusEQ(OutboxDead) 守卫保持同一强弱。
+func (s *outboxStore) outboxTerminalGuard(id string) predicate.NotificationOutbox {
+	return notificationoutbox.And(
+		notificationoutbox.IDEQ(id),
+		notificationoutbox.StatusIn(OutboxPending, OutboxSending),
+	)
 }
 
-func (s *outboxStore) MarkRetry(ctx context.Context, id string, next time.Time, errorCode string) error {
-	now := time.Now().UTC()
-	return mapStoreError(s.client.NotificationOutbox.UpdateOneID(id).
-		SetStatus(OutboxPending).
-		SetNextAttemptAt(next.UTC()).
-		SetLastErrorCode(errorCode).
-		ClearLockedUntil().
-		SetUpdatedAt(now).
-		Exec(ctx))
+// outboxMarkTransition 执行带守卫的状态推进并回报是否真的写入了一行。
+// Save 返回受影响行数：守卫拒绝（行已被并发投递推进过）时为 0 且无错误，
+// 调用方必须能把它与「写入失败」区分开，否则会按已落库的口径记指标。
+func (s *outboxStore) outboxMarkTransition(ctx context.Context, id string, apply func(*entclient.NotificationOutboxUpdate)) (bool, error) {
+	update := s.client.NotificationOutbox.Update().Where(s.outboxTerminalGuard(id))
+	apply(update)
+	affected, err := update.Save(ctx)
+	if err != nil {
+		return false, mapStoreError(err)
+	}
+	return affected == 1, nil
 }
 
-func (s *outboxStore) MarkDead(ctx context.Context, id, errorCode string) error {
+func (s *outboxStore) MarkSent(ctx context.Context, id string) (bool, error) {
 	now := time.Now().UTC()
-	return mapStoreError(s.client.NotificationOutbox.UpdateOneID(id).
-		SetStatus(OutboxDead).
-		SetLastErrorCode(errorCode).
-		ClearLockedUntil().
-		SetUpdatedAt(now).
-		Exec(ctx))
+	return s.outboxMarkTransition(ctx, id, func(u *entclient.NotificationOutboxUpdate) {
+		u.SetStatus(OutboxSent).ClearLockedUntil().SetUpdatedAt(now)
+	})
+}
+
+func (s *outboxStore) MarkRetry(ctx context.Context, id string, next time.Time, errorCode string) (bool, error) {
+	now := time.Now().UTC()
+	return s.outboxMarkTransition(ctx, id, func(u *entclient.NotificationOutboxUpdate) {
+		u.SetStatus(OutboxPending).
+			SetNextAttemptAt(next.UTC()).
+			SetLastErrorCode(errorCode).
+			ClearLockedUntil().
+			SetUpdatedAt(now)
+	})
+}
+
+func (s *outboxStore) MarkDead(ctx context.Context, id, errorCode string) (bool, error) {
+	now := time.Now().UTC()
+	return s.outboxMarkTransition(ctx, id, func(u *entclient.NotificationOutboxUpdate) {
+		u.SetStatus(OutboxDead).
+			SetLastErrorCode(errorCode).
+			ClearLockedUntil().
+			SetUpdatedAt(now)
+	})
 }
 
 // CancelPendingByRepository 只取消 pending 状态的 Release 通知。

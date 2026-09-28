@@ -177,13 +177,13 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 					"attempt", item.AttemptCount,
 					// 与 outbox 行写入的 last_error_code 同源，便于按码聚合告警与对照排障文案。
 					"error_code", deliveryErrorCode(err),
-					"error", err.Error(),
+					"error", logSafeDeliveryError(err),
 				)
 			}
 			w.handleFailure(ctx, item, err)
 			continue
 		}
-		if err := w.Store.Outbox().MarkSent(ctx, item.ID); err != nil {
+		if _, err := w.Store.Outbox().MarkSent(ctx, item.ID); err != nil {
 			// 标记失败会让条目下次 ClaimDue 被重新投递：记录日志便于排查重复通知来源。
 			if w.Logger != nil {
 				w.Logger.Error(
@@ -417,7 +417,7 @@ func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbo
 			w.markDead(ctx, item.ID, code)
 			return
 		}
-		if err := w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(time.Duration(ra.seconds)*time.Second), code); err != nil && w.Logger != nil {
+		if _, err := w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(time.Duration(ra.seconds)*time.Second), code); err != nil && w.Logger != nil {
 			// 重试时间写失败会让条目停留 sending 直到锁超时，记日志便于排查。
 			w.Logger.Error("outbox retry mark failed", "outbox_id", item.ID, "error_code", "outbox_mark_failed", "error", err.Error())
 		}
@@ -434,16 +434,29 @@ func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbo
 	if idx >= len(defaultBackoff) {
 		idx = len(defaultBackoff) - 1
 	}
-	if err := w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(defaultBackoff[idx]), code); err != nil && w.Logger != nil {
+	if _, err := w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(defaultBackoff[idx]), code); err != nil && w.Logger != nil {
 		w.Logger.Error("outbox retry mark failed", "outbox_id", item.ID, "error_code", "outbox_mark_failed", "error", err.Error())
 	}
 }
 
 // markDead 将条目转入死信并触发指标回调。
+// 只有真的写入了 dead 行才触发 OnDead：写失败与守卫拒绝（行已被并发投递推进到终态）
+// 都没有落库，此时计指标会出现「死信计数有值但列表查不到」的矛盾。
 func (w *Worker) markDead(ctx context.Context, id, code string) {
-	if err := w.Store.Outbox().MarkDead(ctx, id, code); err != nil && w.Logger != nil {
+	transitioned, err := w.Store.Outbox().MarkDead(ctx, id, code)
+	if err != nil {
 		// 死信写失败会让条目无限重投：必须记录，便于人工介入。
-		w.Logger.Error("outbox dead mark failed", "outbox_id", id, "error_code", "outbox_mark_failed", "error", err.Error())
+		if w.Logger != nil {
+			w.Logger.Error("outbox dead mark failed", "outbox_id", id, "error_code", "outbox_mark_failed", "error", err.Error())
+		}
+		return
+	}
+	if !transitioned {
+		// 该行已由并发投递推进到终态（guard 拒绝），本条不再改变状态。
+		if w.Logger != nil {
+			w.Logger.Warn("outbox dead mark skipped", "outbox_id", id, "error_code", "outbox_state_advanced")
+		}
+		return
 	}
 	if w.OnDead != nil {
 		w.OnDead()
@@ -684,6 +697,28 @@ func parseRetryAfter(resp *http.Response) int {
 		return secs
 	}
 	return 0
+}
+
+// logSafeDeliveryError 去掉错误串中的目标 URL 凭据段。
+// Webhook URL（Discord/飞书/钉钉/企业微信/Bark）常把可发布消息的令牌放在 path 或
+// query，而 Go 的 *url.Error 又会原样带出完整 URL；直接写日志会把凭据落盘或送进
+// 日志聚合平台，持有日志读权限者可凭该凭据向渠道推送任意消息（伪装告警、钓鱼）。
+// 与 internal/ai 的 redactURL 同一意图，并扩展到 path/query。仅保留 scheme://host
+// 与协议层原因，定位所需信息由同一条日志的 outbox_id/channel_id/channel_type 承担。
+func logSafeDeliveryError(err error) string {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		if parsed, perr := url.Parse(urlErr.URL); perr == nil {
+			parsed.User = nil
+			parsed.RawQuery = ""
+			parsed.Path = ""
+			parsed.RawPath = ""
+			parsed.Fragment = ""
+			// url.URL.Redacted 已对 userinfo 打码；此处再显式置空确保 path/query 一并去除。
+			return fmt.Sprintf("%s %s: %v", urlErr.Op, parsed.Redacted(), urlErr.Err)
+		}
+	}
+	return err.Error()
 }
 
 func validateWebhookURL(raw string, allowPrivate bool) error {

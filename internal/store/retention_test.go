@@ -56,7 +56,7 @@ func TestCleanupRetentionDeletesExpiredHistory(t *testing.T) {
 	}
 
 	// 先单独验证 outbox 删除：创建后 MarkSent，再 DeleteTerminalOlderThan 用未来 cutoff 应删掉。
-	if err := data.Outbox().MarkSent(ctx, "ob-old-sent"); err != nil {
+	if _, err := data.Outbox().MarkSent(ctx, "ob-old-sent"); err != nil {
 		t.Fatalf("mark sent: %v", err)
 	}
 

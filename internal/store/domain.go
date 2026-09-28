@@ -689,9 +689,12 @@ type ChannelStore interface {
 type OutboxStore interface {
 	Create(context.Context, NotificationOutbox) (NotificationOutbox, error)
 	ClaimDue(context.Context, time.Time, time.Duration, int) ([]NotificationOutbox, error)
-	MarkSent(context.Context, string) error
-	MarkRetry(context.Context, string, time.Time, string) error
-	MarkDead(context.Context, string, string) error
+	// MarkSent / MarkRetry / MarkDead 都带在途状态守卫，返回值指示是否真的推进了状态：
+	// 守卫拒绝（行已被并发投递推进到终态）时返回 (false, nil)。调用方据此区分
+	// 「写入失败」与「无事可做」，避免把未落库的推进按已落库的口径记指标。
+	MarkSent(context.Context, string) (bool, error)
+	MarkRetry(context.Context, string, time.Time, string) (bool, error)
+	MarkDead(context.Context, string, string) (bool, error)
 	// CancelPendingByRepository 取消指定仓库尚未投递的 Release 通知，返回取消条数。
 	CancelPendingByRepository(context.Context, string) (int, error)
 	List(context.Context, ListFilter) ([]NotificationOutbox, PageResult, error)
