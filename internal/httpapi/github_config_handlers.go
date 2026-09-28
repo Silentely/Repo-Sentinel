@@ -261,8 +261,18 @@ func joinWebhookURL(publicBase, path string, r *http.Request) string {
 		if r.TLS != nil {
 			scheme = "https"
 		}
-		if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
-			scheme = proto
+		// X-Forwarded-Proto 归一化：按逗号取首段、大小写归一，且只接受 http/https。
+		// 原样透传会得出 javascript://host/path 这类畸形值（scheme 未被限定）。
+		if proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+			if idx := strings.IndexByte(proto, ','); idx >= 0 {
+				proto = strings.TrimSpace(proto[:idx])
+			}
+			switch strings.ToLower(proto) {
+			case "https":
+				scheme = "https"
+			case "http":
+				scheme = "http"
+			}
 		}
 		host := r.Host
 		if host != "" {

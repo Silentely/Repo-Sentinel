@@ -96,7 +96,9 @@ func safeSPAPath(requestURL *url.URL) (string, bool) {
 }
 
 func isReservedHTTPPath(name string) bool {
-	requestPath := "/" + name
+	// 大小写归一：/API/v1/dashboard 这类变体同样不得落入 SPA 兜底返回 200 HTML，
+	// 否则客户端探测会误判服务正常（与注释中「客户端探测不误判」的意图不符）。
+	requestPath := "/" + strings.ToLower(name)
 	// API 与机器端点一律不落入 SPA fallback：GET /mcp、/.well-known/xxx 等未注册路径
 	// 若返回 index.html 200，客户端探测会误判服务正常。
 	return requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") ||

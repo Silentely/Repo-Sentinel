@@ -364,20 +364,19 @@ func resolveClientIP(remoteAddr, xff, xRealIP string, trusted []*net.IPNet) stri
 				return parsed.String()
 			}
 		}
-		for _, part := range parts {
-			candidate := strings.TrimSpace(part)
-			parsed := net.ParseIP(candidate)
-			if parsed != nil {
-				return parsed.String()
-			}
-		}
+		// 全部条目均为受信任地址：没有任何非受信任地址可供采用。此时回退直连对端而非
+		// 返回最左段——后者让受信任网段内的主机可自选客户端身份（如 XFF: 10.9.9.9
+		// 即被记为 10.9.9.9），与 r.Host 一样不应采信请求方提供的值。
+		return fallback
 	}
 
 	if xRealIP != "" {
-		parsed := net.ParseIP(strings.TrimSpace(xRealIP))
-		if parsed != nil {
+		// 与 XFF 同一口径：受信任对端给出的地址若本身落在受信任网段内，无法与
+		// 「伪造自选身份」区分，此时同样回退直连对端而非采信该值。
+		if parsed := net.ParseIP(strings.TrimSpace(xRealIP)); parsed != nil && !isIPInSubnets(parsed, trusted) {
 			return parsed.String()
 		}
+		return fallback
 	}
 
 	return fallback

@@ -19,9 +19,13 @@ const agentDiscoveryLinkHeader = "</.well-known/api-catalog>; rel=\"api-catalog\
 	"</auth.md>; rel=\"service-doc\"; type=\"text/markdown\", " +
 	"</sitemap.xml>; rel=\"describedby\"; type=\"application/xml\""
 
-// discoveryCacheControl 是全部 Agent 发现文档的统一缓存策略（5 分钟）：
+// discoveryCacheControl 是全部 Agent 发现文档的统一缓存策略（5 分钟）。
 // 发现文档随部署配置变化，过长 TTL 会让配置变更迟迟不可见；此前 300/3600 两档混用无语义依据。
-const discoveryCacheControl = "public, max-age=300"
+// Vary: Host 必不可少：这些文档内嵌由请求推导的站点 origin（siteOrigin 在
+// PublicBaseURL 未配置时取 r.Host），若前置共享缓存以路径为键而忽略 Host，
+// 一次伪造 Host 的抓取就会让后续调用方（含 AI Agent）拿到指向攻击者 origin 的
+// token_endpoint 与 API 基址。
+const discoveryCacheControl = "public, max-age=300, must-revalidate"
 
 // spaCanonicalPaths 是管理台 SPA 的规范路由，须与 web/src/app/router.tsx 保持一致。
 var spaCanonicalPaths = []string{
@@ -86,6 +90,7 @@ func (s *server) handleSitemapXML(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.Header().Set("Cache-Control", discoveryCacheControl)
+	w.Header().Set("Vary", "Host")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(b.String()))
 }
@@ -106,6 +111,7 @@ Sitemap: %s/sitemap.xml
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", discoveryCacheControl)
+	w.Header().Set("Vary", "Host")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
 }
@@ -128,6 +134,7 @@ func (s *server) handleAuthMD(w http.ResponseWriter, r *http.Request) {
 	body := s.authMDDocument(r)
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.Header().Set("Cache-Control", discoveryCacheControl)
+	w.Header().Set("Vary", "Host")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
 }
@@ -213,6 +220,7 @@ func (s *server) handleWellKnownAPICatalog(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Content-Type", "application/linkset+json; charset=utf-8")
 	w.Header().Set("Cache-Control", discoveryCacheControl)
+	w.Header().Set("Vary", "Host")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
 }
@@ -221,6 +229,7 @@ func (s *server) handleWellKnownAPICatalog(w http.ResponseWriter, r *http.Reques
 func (s *server) handleWellKnownOAuthAuthorizationServer(w http.ResponseWriter, r *http.Request) {
 	origin := s.siteOrigin(r)
 	w.Header().Set("Cache-Control", discoveryCacheControl)
+	w.Header().Set("Vary", "Host")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"issuer":                                origin,
 		"authorization_endpoint":                origin + "/oauth/authorize",
@@ -238,6 +247,7 @@ func (s *server) handleWellKnownOAuthAuthorizationServer(w http.ResponseWriter, 
 func (s *server) handleWellKnownOAuthProtectedResource(w http.ResponseWriter, r *http.Request) {
 	origin := s.siteOrigin(r)
 	w.Header().Set("Cache-Control", discoveryCacheControl)
+	w.Header().Set("Vary", "Host")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"resource":                 origin + "/api/v1",
 		"authorization_servers":    []string{origin},
@@ -294,6 +304,7 @@ func (s *server) handleWellKnownAgentSkillsIndex(w http.ResponseWriter, r *http.
 	artifact := []byte(s.reposentinelAgentSkillMD(r))
 	digest := sha256.Sum256(artifact)
 	w.Header().Set("Cache-Control", discoveryCacheControl)
+	w.Header().Set("Vary", "Host")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
 		"skills": []any{
@@ -313,6 +324,7 @@ func (s *server) handleAgentSkillsArtifact(w http.ResponseWriter, r *http.Reques
 	body := s.reposentinelAgentSkillMD(r)
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.Header().Set("Cache-Control", discoveryCacheControl)
+	w.Header().Set("Vary", "Host")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
 }
@@ -323,6 +335,7 @@ func (s *server) handleWellKnownMCPCard(w http.ResponseWriter, r *http.Request) 
 	// dev 构建版本回退与 MCP initialize 同一来源。
 	version := mcpServerVersion(s.dependencies.BuildInfo.Version)
 	w.Header().Set("Cache-Control", discoveryCacheControl)
+	w.Header().Set("Vary", "Host")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
 		"name":    "io.reposentinel/admin",
@@ -1048,5 +1061,6 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 func (s *server) handleOpenAPIJSON(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/openapi+json; charset=utf-8")
 	w.Header().Set("Cache-Control", discoveryCacheControl)
+	w.Header().Set("Vary", "Host")
 	writeJSON(w, http.StatusOK, s.openAPISpec(r))
 }

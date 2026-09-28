@@ -61,8 +61,12 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	secret := strings.TrimSpace(body.Secret)
 
 	// 订阅类型白名单校验与修剪去重。
+	// 显式提供的列表必须落成非 nil 切片：空数组表示「不订阅实时通知」，
+	// 不能塌缩成 nil——AcceptsKind 视 nil 为订阅全部，那会让「全部取消勾选」
+	// 变成订阅所有类型，事件被推到管理员明确限定为不接收的目标。
 	var cleanedKinds []string
 	if body.EventKinds != nil {
+		cleanedKinds = make([]string, 0, len(*body.EventKinds))
 		seen := make(map[string]bool)
 		for _, k := range *body.EventKinds {
 			trimmed := strings.TrimSpace(k)

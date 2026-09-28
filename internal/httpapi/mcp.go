@@ -182,8 +182,7 @@ func (s *server) mcpTools() []mcpTool {
 				},
 			},
 			execute: func(ctx context.Context, args map[string]any) (any, error) {
-				days := mcpIntArg(args, "days")
-				return s.dependencies.Store.StarTrend(ctx, days)
+				return s.dependencies.Store.StarTrend(ctx, mcpStarTrendDays(args))
 			},
 		},
 		{
@@ -428,6 +427,27 @@ func mcpIntArg(args map[string]any, key string) int {
 		}
 	}
 	return 0
+}
+
+// mcpStarTrendDays 收敛 get_star_trend 的 days 参数。
+// inputSchema 的 enum 只是对外声明，服务端必须自行收敛：与 REST
+// /api/v1/stats/star-trend 同一白名单，越界/缺失值回退 30。
+// 缺少该收敛时，调用方传入的任意整数会原样进入 store 的逐日聚合，
+// 与已声明的契约不一致。
+func mcpStarTrendDays(args map[string]any) int {
+	// 先判类型：mcpIntArg 对非数值回退 0，而 0 恰是合法枚举值（全部历史）。
+	// 不区分会把 {"days":"7"} 这类类型错误静默变成「全部历史」而非回退默认值。
+	switch args["days"].(type) {
+	case float64, int, int64, json.Number:
+	default:
+		return 30
+	}
+	switch days := mcpIntArg(args, "days"); days {
+	case 7, 30, 90, 0:
+		return days
+	default:
+		return 30
+	}
 }
 
 func mcpStringArg(args map[string]any, key string) string {
