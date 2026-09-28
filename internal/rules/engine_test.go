@@ -1045,3 +1045,68 @@ func TestIdempotencyKeyComputation(t *testing.T) {
 		t.Fatalf("expected idempotencyKey to be %s, got %s", expected, got)
 	}
 }
+
+func TestIssueAnalysis(t *testing.T) {
+	ev := &store.Event{
+		ID:     "ev-issue-1",
+		Kind:   store.WorkItemKindIssue,
+		Action: "opened",
+		Title:  "Login crash on safari",
+		Actor:  "alice",
+		PayloadSummary: map[string]any{
+			"body": "App crashes when clicking login on Safari 17",
+		},
+	}
+	subscribed := []store.NotificationChannel{{ID: "ch-1", Enabled: true, EventKinds: []string{store.WorkItemKindIssue}}}
+
+	t.Run("Issue打开返回分诊与首响建议", func(t *testing.T) {
+		aiResp := `{"choices":[{"message":{"content":"{\"category\":\"Bug Report\",\"priority\":\"P1 High\",\"summary\":\"Safari 17 下登录崩溃\",\"missing_details\":[\"控制台报错\"],\"suggested_reply\":\"感谢反馈！能否提供控制台报错日志？\",\"confidence\":5}"}}]}`
+		e := &Engine{AI: aiStub(t, aiResp)}
+		got := e.issueAnalysis(t.Context(), ev, "acme/web", subscribed)
+		if !strings.Contains(got, "🐛 类别：Bug Report") {
+			t.Fatalf("期望包含 Bug Report 类别，实际: %q", got)
+		}
+		if !strings.Contains(got, "建议首响回复") {
+			t.Fatalf("期望包含建议首响回复，实际: %q", got)
+		}
+	})
+
+	t.Run("非打开动作返回空", func(t *testing.T) {
+		closedEv := &store.Event{Kind: store.WorkItemKindIssue, Action: "closed"}
+		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"ignored"}}]}`)}
+		if got := e.issueAnalysis(t.Context(), closedEv, "acme/web", subscribed); got != "" {
+			t.Fatalf("非 opened 事件不应分诊，实际: %q", got)
+		}
+	})
+}
+
+func TestEvaluateWithIssueTriage(t *testing.T) {
+	data := openEngineStore(t)
+	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg",
+		Enabled: true, Target: "1", EventKinds: []string{store.WorkItemKindIssue},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	aiResp := `{"choices":[{"message":{"content":"{\"category\":\"Bug Report\",\"priority\":\"P1 High\",\"summary\":\"登录异常\",\"missing_details\":[],\"suggested_reply\":\"已收到，正在排查\",\"confidence\":5}"}}]}`
+	e := &Engine{Store: data, AI: aiStub(t, aiResp)}
+
+	res := normalizer.Result{Event: &store.Event{
+		Kind: store.WorkItemKindIssue, Action: "opened", Title: "登录报错", Actor: "bob",
+		PayloadSummary: map[string]any{"body": "无法登录"},
+	}}
+	if err := e.Evaluate(t.Context(), res, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("应生成 1 条通知，got %d", len(items))
+	}
+	if !strings.Contains(items[0].BodyText, "🤖 Issue 智能分析与回复建议") {
+		t.Fatalf("正文应包含 Issue 智能分析与回复建议，实际: %s", items[0].BodyText)
+	}
+}

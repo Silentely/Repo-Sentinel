@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -625,4 +626,132 @@ func (s *server) handleTriggerWorkItemAIReview(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "work_item_id": id, "head_sha": headSHA})
+}
+
+// handleGetWorkItemAITriage 获取指定 Issue 工作项的 AI 分诊与首响应建议结果。
+func (s *server) handleGetWorkItemAITriage(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+		return
+	}
+
+	settingKey := "ai.issue_triage." + id
+	setting, err := s.dependencies.Store.Settings().Get(r.Context(), settingKey)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, map[string]any{"message": "triage not found for this issue"})
+			return
+		}
+		s.writeMappedError(w, r, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(setting.ValueJSON)
+}
+
+// handleTriggerWorkItemAITriage 手动触发或重新运行指定 Issue 的 AI 智能分诊与首响应建议。
+func (s *server) handleTriggerWorkItemAITriage(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, nil)
+		return
+	}
+	if s.dependencies.Store == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, map[string]any{"message": "store unavailable"})
+		return
+	}
+
+	item, err := s.dependencies.Store.WorkItems().Get(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, map[string]any{"message": "work item not found"})
+			return
+		}
+		s.writeMappedError(w, r, err)
+		return
+	}
+	if item.Kind != store.WorkItemKindIssue {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": "work item is not an issue"})
+		return
+	}
+	if s.dependencies.AI == nil || !s.dependencies.AI.IsIssueTriageEnabled() {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeAITriageNotEnabled, nil)
+		return
+	}
+	if _, loaded := s.triageInFlight.LoadOrStore(id, struct{}{}); loaded {
+		s.writeAPIError(w, r, http.StatusConflict, errorCodeAITriageInProgress, nil)
+		return
+	}
+	s.safeGo("issue_triage", func() {
+		defer s.triageInFlight.Delete(id)
+		if err := s.runWorkItemAITriage(id); err != nil && s.dependencies.Logger != nil {
+			s.dependencies.Logger.Warn("issue triage failed", "work_item_id", id, "error_code", "issue_triage_failed", "error", err.Error())
+		}
+	})
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "work_item_id": id})
+}
+
+func (s *server) runWorkItemAITriage(id string) error {
+	ctx := s.dependencies.Background
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	item, err := s.dependencies.Store.WorkItems().Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	repoRec, err := s.dependencies.Store.Repositories().Get(ctx, item.RepositoryID)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.dependencies.AI.EffectiveTimeout())
+	defer cancel()
+
+	// 正文取自该 Issue 最新事件载荷中的副本（归一化时按 textutil.MaxBodyTextBytes 截断）。
+	// 键缺失说明该事件创建时未采集正文（历史数据或作者未填写），留痕以便区分「无正文」与「正文为空」。
+	subjectNumber := int64(item.Number)
+	events, _, err := s.dependencies.Store.Events().List(ctx, store.ListFilter{
+		RepositoryID:  item.RepositoryID,
+		Kind:          store.WorkItemKindIssue,
+		SubjectNumber: &subjectNumber,
+		Page:          1,
+		PerPage:       1,
+	})
+	if err != nil {
+		return fmt.Errorf("load issue event: %w", err)
+	}
+
+	var bodyText string
+	for _, ev := range events {
+		if body, ok := ev.PayloadSummary["body"].(string); ok {
+			bodyText = body
+		} else if s.dependencies.Logger != nil {
+			s.dependencies.Logger.Warn("issue triage body not captured in event payload",
+				"work_item_id", id, "event_id", ev.ID, "reason", "body_not_captured")
+		}
+		break
+	}
+
+	res, err := s.dependencies.AI.TriageIssue(ctx, repoRec.FullName, item.Title, item.Author, bodyText)
+	if err != nil {
+		return fmt.Errorf("triage issue: %w", err)
+	}
+
+	raw, err := json.Marshal(res)
+	if err != nil {
+		return fmt.Errorf("marshal triage result: %w", err)
+	}
+	if _, err := s.dependencies.Store.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        ulid.Make().String(),
+		Key:       "ai.issue_triage." + item.ID,
+		ValueJSON: raw,
+		UpdatedAt: time.Now().UTC(),
+		UpdatedBy: "issue_triage",
+	}); err != nil {
+		return fmt.Errorf("persist triage result: %w", err)
+	}
+	return nil
 }

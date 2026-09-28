@@ -100,6 +100,11 @@ func TestDeleteRepositoryCascade(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert other review setting: %v", err)
 	}
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: "set-triage-1", Key: "ai.issue_triage.wi-1", ValueJSON: []byte(`{"category":"Bug Report"}`),
+	}); err != nil {
+		t.Fatalf("upsert issue triage setting: %v", err)
+	}
 	// 预热缓存：先读取将要级联删除的设置键，使其进入进程内 settings 缓存，
 	// 回归守护「删除后缓存必须同步失效，而非等待 TTL 过期」。
 	if _, err := data.Settings().Get(ctx, "ai.pr_review.wi-1"); err != nil {
@@ -136,6 +141,9 @@ func TestDeleteRepositoryCascade(t *testing.T) {
 	}
 	if _, err := data.Settings().Get(ctx, "ai.pr_review.wi-1"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("pr review setting 应已随仓库删除，got err=%v", err)
+	}
+	if _, err := data.Settings().Get(ctx, "ai.issue_triage.wi-1"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("issue triage setting 应已随仓库删除，got err=%v", err)
 	}
 	if _, err := data.Settings().Get(ctx, "ai.pr_review.other-pr"); err != nil {
 		t.Fatalf("other pr review setting 应保留，got err=%v", err)

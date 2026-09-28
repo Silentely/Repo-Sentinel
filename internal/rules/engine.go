@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	htmlpkg "html"
 	"io"
@@ -83,6 +84,10 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	// Actions 失败归因诊断：构建失败时附带 AI 智能归因与排查建议；失败保持原文，不阻塞入库。
 	if diagnosis := e.workflowFailureAnalysis(ctx, res.Event, repoFullName, channels); diagnosis != "" {
 		body = body + "\n────────────────\n🤖 故障诊断\n" + htmlpkg.EscapeString(diagnosis)
+	}
+	// Issue 智能分析与首响建议：新 Issue 附带分类、要素完整度与维护者回复建议
+	if issueTriage := e.issueAnalysis(ctx, res.Event, repoFullName, channels); issueTriage != "" {
+		body = body + "\n────────────────\n🤖 Issue 智能分析与回复建议\n" + htmlpkg.EscapeString(issueTriage)
 	}
 	for _, ch := range channels {
 		// 渠道未订阅该事件类型时跳过。
@@ -404,6 +409,77 @@ func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, r
 		e.Logger.Info("workflow failure ai used", "req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
 	}
 	return diagnosis
+}
+
+// issueAnalysis 生成新创建 Issue 的 AI 智能分诊与首响回复建议；未启用、非新 Issue、无订阅频道或调用失败时返回空串。
+func (e *Engine) issueAnalysis(ctx context.Context, ev *store.Event, repo string, channels []store.NotificationChannel) string {
+	if ev.Kind != store.WorkItemKindIssue || ev.Action != "opened" {
+		return ""
+	}
+	skip := func(reason string) string {
+		if e.Logger != nil {
+			e.Logger.Info("issue triage ai skipped", "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "reason", reason)
+		}
+		return ""
+	}
+	if e.AI == nil || !e.AI.IsIssueTriageEnabled() {
+		return skip("issue_triage_not_enabled")
+	}
+	if !hasSubscribedChannel(channels, ev.Kind) {
+		return skip("no_subscribed_channel")
+	}
+
+	parentCtx := ctx
+	ctx, reqID := ai.EnsureRequestID(parentCtx)
+	aiCtx, cancel := context.WithTimeout(ctx, e.AI.EffectiveTimeout())
+	defer cancel()
+	start := time.Now()
+
+	// 正文为归一化时写入事件载荷的副本（已按 textutil.MaxBodyTextBytes 截断）。
+	// 键缺失表示该事件创建时未采集正文，留痕以便区分「无正文」与「正文为空」。
+	bodyText := store.PayloadString(ev.PayloadSummary, "body")
+	if _, ok := ev.PayloadSummary["body"]; !ok && e.Logger != nil {
+		e.Logger.Warn("issue triage body not captured in event payload",
+			"req_id", reqID, "event_id", ev.ID, "reason", "body_not_captured")
+	}
+	res, err := e.AI.TriageIssue(aiCtx, repo, ev.Title, ev.Actor, bodyText)
+	duration := time.Since(start)
+	if err != nil || res == nil {
+		if e.Logger != nil {
+			reason := "empty_analysis"
+			if err != nil {
+				reason = "ai_error"
+			}
+			attrs := []any{"req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds(), "reason", reason}
+			if err != nil {
+				attrs = append(attrs, "error", err.Error())
+			}
+			e.Logger.Warn("issue triage ai fallback", attrs...)
+		}
+		return ""
+	}
+	if e.Logger != nil {
+		e.Logger.Info("issue triage ai used", "req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
+	}
+	// 将分诊结果持久化，供 Web 界面查看与首响应建议复制
+	if e.Store != nil && ev.RepositoryID != nil && ev.SubjectNumber != nil {
+		if wi, err := e.Store.WorkItems().GetByRepoNumber(parentCtx, *ev.RepositoryID, int(*ev.SubjectNumber)); err == nil && wi.ID != "" {
+			if raw, err := json.Marshal(res); err == nil {
+				if _, err := e.Store.Settings().Upsert(parentCtx, store.SystemSetting{
+					ID:        ulid.Make().String(),
+					Key:       "ai.issue_triage." + wi.ID,
+					ValueJSON: raw,
+					UpdatedAt: time.Now().UTC(),
+					UpdatedBy: "issue_triage",
+				}); err != nil && e.Logger != nil {
+					e.Logger.Warn("issue triage result persist failed",
+						"req_id", reqID, "event_id", ev.ID, "work_item_id", wi.ID,
+						"error_code", "issue_triage_persist_failed", "error", err.Error())
+				}
+			}
+		}
+	}
+	return ai.FormatIssueTriage(res)
 }
 
 // isSecurityAlertKind 判定事件是否为安全告警类型（分诊仅针对告警）。

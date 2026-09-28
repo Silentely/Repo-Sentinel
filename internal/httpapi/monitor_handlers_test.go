@@ -1130,3 +1130,112 @@ func TestTriggerWorkItemAIReviewQueued(t *testing.T) {
 		t.Fatal("expected LLM review to be invoked")
 	}
 }
+
+func TestGetWorkItemAITriage(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	ctx := t.Context()
+
+	// 1. 未生成分诊时返回 404
+	resp404 := fixture.request(t, http.MethodGet, "/api/v1/work-items/issue-not-found/ai-triage", "", "127.0.0.1:45011", cookies, nil)
+	if resp404.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp404.Code)
+	}
+
+	// 2. 存入分诊结果后返回 200
+	triagePayload := `{"category":"Bug Report","priority":"P1 High","summary":"登录失效","missing_details":["复现步骤"],"suggested_reply":"请补充复现环境","confidence":4}`
+	_, err := fixture.store.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        "s-triage-1",
+		Key:       "ai.issue_triage.issue-101",
+		ValueJSON: []byte(triagePayload),
+		UpdatedAt: time.Now().UTC(),
+		UpdatedBy: "test",
+	})
+	if err != nil {
+		t.Fatalf("upsert setting: %v", err)
+	}
+
+	resp200 := fixture.request(t, http.MethodGet, "/api/v1/work-items/issue-101/ai-triage", "", "127.0.0.1:45012", cookies, nil)
+	if resp200.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp200.Code, resp200.Body.String())
+	}
+	if !strings.Contains(resp200.Body.String(), "Bug Report") || !strings.Contains(resp200.Body.String(), "P1 High") {
+		t.Fatalf("unexpected body: %s", resp200.Body.String())
+	}
+}
+
+func TestTriggerWorkItemAITriage(t *testing.T) {
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"category\":\"Bug Report\",\"priority\":\"P0 Blocker\",\"summary\":\"服务无法启动\",\"missing_details\":[],\"suggested_reply\":\"建议查看端口占用\",\"confidence\":5}"}}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(stub.Close)
+
+	aiClient := &ai.Client{
+		Enabled: true, BaseURL: stub.URL, Model: "mock-model", APIKey: "mock-key",
+		TriageEnabled: true,
+	}
+	fixture := newHTTPTestFixture(t, httpTestOptions{aiClient: aiClient})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	extraHeaders := map[string]string{CSRFHeaderName: csrf.Value}
+	ctx := t.Context()
+	now := time.Now().UTC()
+
+	// 1. 目标不存在 -> 404
+	resp404 := fixture.request(t, http.MethodPost, "/api/v1/work-items/issue-not-found/ai-triage", "{}", "127.0.0.1:45013", cookies, extraHeaders)
+	if resp404.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp404.Code)
+	}
+
+	repo, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-triage-test", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "owner", Name: "repo", FullName: "owner/repo",
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+
+	// 2. 目标不是 Issue（如 PR） -> 400
+	pr, _, _ := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-pr-for-triage", RepositoryID: repo.ID, Number: 1, Kind: store.WorkItemKindPR, State: "open",
+		Title: "pr", Author: "alice", SourceUpdatedAt: now, StateHash: "h1",
+	}, nil)
+	resp400 := fixture.request(t, http.MethodPost, "/api/v1/work-items/"+pr.ID+"/ai-triage", "{}", "127.0.0.1:45014", cookies, extraHeaders)
+	if resp400.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", resp400.Code, resp400.Body.String())
+	}
+
+	// 3. 正常触发 Issue 分诊 -> 202 异步入队
+	issue, _, _ := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-issue-for-triage", RepositoryID: repo.ID, Number: 2, Kind: store.WorkItemKindIssue, State: "open",
+		Title: "启动闪退", Author: "bob", SourceUpdatedAt: now, StateHash: "h2",
+	}, nil)
+	resp202 := fixture.request(t, http.MethodPost, "/api/v1/work-items/"+issue.ID+"/ai-triage", "{}", "127.0.0.1:45015", cookies, extraHeaders)
+	if resp202.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", resp202.Code, resp202.Body.String())
+	}
+	if !strings.Contains(resp202.Body.String(), "queued") {
+		t.Fatalf("unexpected response: %s", resp202.Body.String())
+	}
+
+	// 4. 后台完成后 GET 可以拿到刚才存入的分诊数据
+	var getResp *httptest.ResponseRecorder
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		getResp = fixture.request(t, http.MethodGet, "/api/v1/work-items/"+issue.ID+"/ai-triage", "", "127.0.0.1:45016", cookies, nil)
+		if getResp.Code == http.StatusOK {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if getResp == nil || getResp.Code != http.StatusOK || !strings.Contains(getResp.Body.String(), "P0 Blocker") {
+		t.Fatalf("expected stored triage to be retrievable, got %v", getResp)
+	}
+}

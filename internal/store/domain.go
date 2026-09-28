@@ -520,10 +520,11 @@ type ListFilter struct {
 	Page    int
 	PerPage int
 	// 可选筛选
-	RepositoryID string
-	Kind         string
-	State        string
-	Status       string
+	RepositoryID  string
+	Kind          string
+	SubjectNumber *int64
+	State         string
+	Status        string
 	// ChannelIDs 限定 Outbox 的渠道集合（SQL 层过滤，保证分页与 total 正确）。
 	ChannelIDs []string
 	// ReviewDecision 按 PR 审核结论过滤（approved / changes_requested）。

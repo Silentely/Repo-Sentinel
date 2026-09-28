@@ -818,3 +818,36 @@ export async function triggerWorkItemAIReview(workItemId: string): Promise<Trigg
     body: JSON.stringify({}),
   });
 }
+
+export interface IssueTriageResult {
+  category: string;
+  priority: string;
+  summary: string;
+  missing_details?: string[];
+  suggested_reply: string;
+  confidence: number;
+  triaged_at: string;
+}
+
+export async function fetchWorkItemAITriage(workItemId: string): Promise<IssueTriageResult | null> {
+  try {
+    return await apiRequest<IssueTriageResult>(`/api/v1/work-items/${encodeURIComponent(workItemId)}/ai-triage`);
+  } catch (err) {
+    if ((err as { status?: number } | null)?.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export interface TriggerAITriageReceipt {
+  status: string;
+  work_item_id: string;
+}
+
+export async function triggerWorkItemAITriage(workItemId: string): Promise<TriggerAITriageReceipt> {
+  return await apiRequest<TriggerAITriageReceipt>(`/api/v1/work-items/${encodeURIComponent(workItemId)}/ai-triage`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}

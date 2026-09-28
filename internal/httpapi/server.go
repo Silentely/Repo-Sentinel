@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -96,6 +97,8 @@ type server struct {
 	webhookSvc *webhooksvc.Service
 	// reconcileAllRunning 防止全量对账并发触发（对账会大量调用 GitHub API 并写库）。
 	reconcileAllRunning atomic.Bool
+	// triageInFlight 防止同一 Issue 重复消耗 AI 配额。
+	triageInFlight sync.Map
 	// webhookSem 控制 webhook 后台处理并发；容量见 webhookProcessConcurrency。
 	webhookSem chan struct{}
 	// loginSem 控制 Argon2id 认证并发计算上限，防止 CPU 耗尽。
@@ -281,6 +284,7 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/repositories", s.handleListRepositories)
 			protected.Get("/work-items", s.handleListWorkItems)
 			protected.Get("/work-items/{id}/ai-review", s.handleGetWorkItemAIReview)
+			protected.Get("/work-items/{id}/ai-triage", s.handleGetWorkItemAITriage)
 			protected.Get("/workflow-runs", s.handleListWorkflowRuns)
 			protected.Get("/security-alerts", s.handleListSecurityAlerts)
 			protected.Get("/events", s.handleListEvents)
@@ -319,6 +323,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Patch("/repositories/{id}/settings", s.handleUpdateRepositorySettings)
 				mutating.Delete("/repositories/{id}", s.handleDeleteRepository)
 				mutating.Post("/work-items/{id}/ai-review", s.handleTriggerWorkItemAIReview)
+				mutating.Post("/work-items/{id}/ai-triage", s.handleTriggerWorkItemAITriage)
 				mutating.Patch("/work-items/{id}/ignored", s.handleSetWorkItemIgnored)
 				mutating.Patch("/workflow-runs/{id}/ignored", s.handleSetWorkflowRunIgnored)
 				mutating.Patch("/security-alerts/{id}/ignored", s.handleSetSecurityAlertIgnored)

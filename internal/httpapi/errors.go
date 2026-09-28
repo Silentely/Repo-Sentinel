@@ -41,6 +41,8 @@ const (
 	errorCodeAIReloadFailed         = "ai_runtime_reload_failed"
 	errorCodeAIReviewNotEnabled     = "ai_review_not_enabled"
 	errorCodeAIReviewInProgress     = "ai_review_in_progress"
+	errorCodeAITriageNotEnabled     = "ai_triage_not_enabled"
+	errorCodeAITriageInProgress     = "ai_triage_in_progress"
 	errorCodeMethodNotAllowed       = "method_not_allowed"
 
 	// loginRetryAfterSeconds 登录限流响应的 Retry-After 秒数。
@@ -168,6 +170,10 @@ func apiErrorMessage(errorCode string) string {
 		return "AI 代码审查未启用，请先在设置中开启智能值守的代码审查能力并配置 API Key。"
 	case errorCodeAIReviewInProgress:
 		return "该 PR 已有审查任务在进行中，请稍后展开 AI 审查报告查看结果。"
+	case errorCodeAITriageNotEnabled:
+		return "AI Issue 分诊能力未启用，请先在设置中开启智能分诊能力并配置 API Key。"
+	case errorCodeAITriageInProgress:
+		return "该 Issue 已有分诊任务正在进行中，请稍后查看分诊结果。"
 	case errorCodeMethodNotAllowed:
 		return "当前请求方法不受支持。"
 	default:

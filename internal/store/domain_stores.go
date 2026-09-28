@@ -333,9 +333,10 @@ func (s *repositoryStore) DeleteRepository(ctx context.Context, id string) error
 	}
 	var reviewKeys []string
 	if len(workItemIDs) > 0 {
-		reviewKeys = make([]string, 0, len(workItemIDs))
+		reviewKeys = make([]string, 0, len(workItemIDs)*2)
 		for _, wid := range workItemIDs {
 			reviewKeys = append(reviewKeys, "ai.pr_review."+wid)
+			reviewKeys = append(reviewKeys, "ai.issue_triage."+wid)
 		}
 		if _, err := tx.SystemSetting.Delete().Where(systemsetting.KeyIn(reviewKeys...)).Exec(ctx); err != nil {
 			return mapStoreError(err)
@@ -1361,6 +1362,9 @@ func (s *eventStore) List(ctx context.Context, f ListFilter) ([]Event, PageResul
 	}
 	if f.Kind != "" {
 		q = q.Where(event.KindEQ(f.Kind))
+	}
+	if f.SubjectNumber != nil {
+		q = q.Where(event.SubjectNumberEQ(*f.SubjectNumber))
 	}
 	total, err := q.Clone().Count(ctx)
 	if err != nil {

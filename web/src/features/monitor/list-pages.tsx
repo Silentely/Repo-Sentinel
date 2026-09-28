@@ -34,6 +34,9 @@ import {
   fetchWorkItemAIReview,
   triggerWorkItemAIReview,
   type CodeReviewResult,
+  fetchWorkItemAITriage,
+  triggerWorkItemAITriage,
+  type IssueTriageResult,
 } from "./api";
 import {
   ClearFiltersButton,
@@ -664,6 +667,252 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
   );
 });
 
+export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item }: { workItemId: string; item?: WorkItem }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [triggering, setTriggering] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [triage, setTriage] = useState<IssueTriageResult | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const copiedTimerRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (copiedTimerRef.current !== undefined) window.clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
+
+  const toggle = async () => {
+    if (!open && triage === undefined) {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetchWorkItemAITriage(workItemId);
+        setTriage(res);
+      } catch {
+        setError("分诊数据加载失败，请稍后重试。");
+      } finally {
+        setLoading(false);
+      }
+    }
+    setOpen((prev) => !prev);
+  };
+
+  const handleTrigger = async () => {
+    setTriggering(true);
+    setError(null);
+    try {
+      await triggerWorkItemAITriage(workItemId);
+      for (let waited = 0; waited <= 90_000; waited += 2_000) {
+        await new Promise((resolve) => setTimeout(resolve, waited === 0 ? 1_000 : 2_000));
+        if (!mountedRef.current) return;
+        const latest = await fetchWorkItemAITriage(workItemId);
+        if (latest) {
+          setTriage(latest);
+          if (!open) setOpen(true);
+          return;
+        }
+      }
+      setError("分诊任务仍在进行中，请稍后重新展开查看结果。");
+    } catch (err) {
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : "触发 AI 分诊失败，请稍后重试。");
+      }
+    } finally {
+      if (mountedRef.current) {
+        setTriggering(false);
+      }
+    }
+  };
+
+  const handleCopyReply = async () => {
+    if (!triage?.suggested_reply) return;
+    try {
+      await navigator.clipboard.writeText(triage.suggested_reply);
+      setCopied(true);
+      if (copiedTimerRef.current !== undefined) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = undefined;
+        setCopied(false);
+      }, 2000);
+    } catch {
+      // 剪贴板异常降级
+    }
+  };
+
+  const getPriorityStyle = (priority: string) => {
+    if (priority.includes("P0") || priority.toLowerCase().includes("blocker")) {
+      return { background: "rgba(239, 68, 68, 0.12)", color: "var(--color-danger, #ef4444)" };
+    }
+    if (priority.includes("P1") || priority.toLowerCase().includes("high")) {
+      return { background: "rgba(245, 158, 11, 0.12)", color: "var(--color-warning, #f59e0b)" };
+    }
+    if (priority.includes("P2") || priority.toLowerCase().includes("normal")) {
+      return { background: "rgba(59, 130, 246, 0.12)", color: "var(--color-primary, #3b82f6)" };
+    }
+    return { background: "rgba(107, 114, 128, 0.12)", color: "var(--color-text-secondary, #6b7280)" };
+  };
+
+  return (
+    <div className="ai-triage-wrapper" style={{ marginTop: "0.5rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          className="quiet-button quiet-button--compact"
+          onClick={toggle}
+          aria-expanded={open}
+          style={{ fontSize: "0.8rem", padding: "0.15rem 0.5rem", borderRadius: "4px" }}
+        >
+          🤖 AI Issue 分诊与首响应 {loading ? "…" : open ? "▲" : "▼"}
+        </button>
+        {triage && (
+          <>
+            <span
+              style={{
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                padding: "0.1rem 0.4rem",
+                borderRadius: "4px",
+                ...getPriorityStyle(triage.priority),
+              }}
+            >
+              {triage.priority}
+            </span>
+            <span
+              style={{
+                fontSize: "0.75rem",
+                padding: "0.1rem 0.4rem",
+                borderRadius: "4px",
+                background: "var(--bg-card-subtle, rgba(0,0,0,0.04))",
+                color: "var(--color-text-secondary, #4b5563)",
+                border: "1px solid var(--border-default, #e5e7eb)",
+              }}
+            >
+              {triage.category}
+            </span>
+          </>
+        )}
+      </div>
+      {open && (
+        <div
+          style={{
+            marginTop: "0.4rem",
+            padding: "0.6rem 0.75rem",
+            background: "var(--bg-card, #ffffff)",
+            border: "1px solid var(--border-default, #e5e7eb)",
+            borderRadius: "6px",
+            fontSize: "0.85rem",
+            lineHeight: 1.5,
+          }}
+        >
+          {loading && <p className="muted" style={{ margin: 0 }}>正在拉取 AI 分诊数据…</p>}
+          {error && (
+            <p style={{ margin: 0, color: "var(--color-danger, #ef4444)" }}>{error}</p>
+          )}
+          {!loading && !error && triage === null && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
+              <span className="muted">该 Issue 暂无 AI 智能分诊结果。</span>
+              <button
+                type="button"
+                className="quiet-button quiet-button--compact"
+                onClick={handleTrigger}
+                disabled={triggering}
+                style={{ fontSize: "0.75rem" }}
+              >
+                {triggering ? "正在分诊…" : "🚀 立即分诊"}
+              </button>
+            </div>
+          )}
+          {!loading && !error && triage && (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span className="muted" style={{ fontSize: "0.75rem" }}>
+                    分诊时间: {new Date(triage.triaged_at).toLocaleString()}
+                  </span>
+                  <span className="muted" style={{ fontSize: "0.75rem" }}>
+                    · 置信度: {triage.confidence}/5
+                  </span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <button
+                    type="button"
+                    className="quiet-button quiet-button--compact"
+                    onClick={handleCopyReply}
+                    style={{ fontSize: "0.75rem" }}
+                  >
+                    {copied ? "✓ 已复制回复" : "📋 复制建议首响应"}
+                  </button>
+                  <button
+                    type="button"
+                    className="quiet-button quiet-button--compact"
+                    onClick={handleTrigger}
+                    disabled={triggering}
+                    style={{ fontSize: "0.75rem" }}
+                  >
+                    {triggering ? "正在分诊…" : "🔄 重新分诊"}
+                  </button>
+                  {item?.html_url && (
+                    <a
+                      href={item.html_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="quiet-button quiet-button--compact"
+                      style={{ fontSize: "0.75rem", textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+                    >
+                      ↗ 前往回复
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginTop: "0.4rem", color: "var(--color-text-primary, #111827)" }}>
+                <strong>🎯 诉求摘要: </strong>
+                <span>{triage.summary}</span>
+              </div>
+
+              {triage.missing_details && triage.missing_details.length > 0 && (
+                <div style={{ marginTop: "0.4rem" }}>
+                  <ReviewRiskList label="⚠️ 缺失排查要素 (待提问者补充):" tone="warning" items={triage.missing_details} />
+                </div>
+              )}
+
+              {triage.suggested_reply && (
+                <div style={{ marginTop: "0.6rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                    <strong style={{ fontSize: "0.8rem", color: "var(--color-text-primary, #111827)" }}>
+                      💬 建议维护者首响应草稿 (可一键复制直接回复):
+                    </strong>
+                  </div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: "0.5rem 0.65rem",
+                      borderRadius: "4px",
+                      background: "var(--bg-code, #f9fafb)",
+                      border: "1px solid var(--border-default, #e5e7eb)",
+                      overflowX: "auto",
+                      fontSize: "0.8rem",
+                      whiteSpace: "pre-wrap",
+                      fontFamily: "inherit",
+                      color: "var(--color-text-primary, #1f2937)",
+                    }}
+                  >
+                    {triage.suggested_reply}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 function WorkItemsList({ kind, title, description }: { kind: string; title: string; description: string }) {
   const { active: activeRepos } = useActiveRepos();
   // 筛选条件同步到 URL（?state=&repo=&ignored=&review=&check=）：刷新/复制链接后保留。
@@ -851,6 +1100,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                     )}
                   </div>
                   {kind === "pull_request" && <AIReviewCard workItemId={it.id} item={it} />}
+                  {kind === "issue" && <IssueTriageCard workItemId={it.id} item={it} />}
                   <ItemActions
                     htmlUrl={it.html_url}
                     ignored={it.ignored || ignoredMode === "ignored"}
