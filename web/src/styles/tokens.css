@@ -1,42 +1,93 @@
 :root {
   color-scheme: light;
-  --bg-canvas: oklch(0.965 0.014 65);
-  --bg-surface: oklch(0.988 0.009 65);
-  --bg-muted: oklch(0.935 0.018 65);
-  --border-subtle: oklch(0.865 0.024 58);
-  --text-primary: oklch(0.25 0.028 48);
-  --text-secondary: oklch(0.43 0.03 50);
-  --text-muted: oklch(0.57 0.028 55);
-  --accent: oklch(0.56 0.12 42);
-  --accent-fg: oklch(0.985 0.012 65);
-  --danger: oklch(0.58 0.18 28);
-  --warning: oklch(0.69 0.15 70);
-  --success: oklch(0.58 0.13 145);
-  --info: oklch(0.59 0.12 235);
-  --severity-critical: oklch(0.54 0.19 28);
-  --severity-high: oklch(0.64 0.17 53);
-  --severity-medium: oklch(0.69 0.15 80);
-  --severity-low: oklch(0.59 0.12 235);
+  /* 画布与表面：复古奶油暖纸质感 */
+  --bg-canvas: #f4eedb;
+  --bg-surface: #fffdf5;
+  --bg-muted: #ece3ca;
+  --bg-panel-warm: #f7e6a7;
+  --bg-panel-warm-light: #fdf5d6;
+
+  /* 墨水描边与硬阴影 */
+  --ink: #17140f;
+  --border-subtle: #17140f;
+  --border-muted: #796f5c;
+  --shadow-neo: #211c14;
+
+  /* 文字系统 */
+  --text-primary: #17140f;
+  --text-secondary: #4a4336;
+  --text-muted: #796f5c;
+
+  /* 品牌强调（橙红 CTA 物理按键） */
+  --accent: #ff5722;
+  --accent-hover: #ff7043;
+  --accent-fg: #ffffff;
+
+  /* 状态强调色（温和马卡龙/丝网印刷质感，高对比度可读） */
+  --success: #15803d;
+  --success-bg: #bfe7c7;
+  --success-fg: #0d4a22;
+
+  --warning: #b45309;
+  --warning-bg: #fae17d;
+  --warning-fg: #5f2a03;
+
+  --danger: #b91c1c;
+  --danger-bg: #fca5a5;
+  --danger-fg: #600808;
+
+  --info: #0369a1;
+  --info-bg: #bae6fd;
+  --info-fg: #072a40;
+
+  /* 严重级别（与上方语义体系对齐） */
+  --severity-critical: #b91c1c;
+  --severity-high: #ea580c;
+  --severity-medium: #d97706;
+  --severity-low: #0284c7;
 }
 
 .dark {
   color-scheme: dark;
-  --bg-canvas: oklch(0.205 0.018 48);
-  --bg-surface: oklch(0.245 0.021 48);
-  --bg-muted: oklch(0.285 0.024 48);
-  --border-subtle: oklch(0.385 0.026 48);
-  --text-primary: oklch(0.92 0.017 70);
-  --text-secondary: oklch(0.75 0.022 65);
-  --text-muted: oklch(0.59 0.022 60);
-  /* 暗色下强调色略提亮，保证侧栏选中与主按钮文字可读 */
-  --accent: oklch(0.74 0.13 43);
-  --accent-fg: oklch(0.16 0.02 45);
-  --danger: oklch(0.7 0.16 28);
-  --warning: oklch(0.78 0.14 78);
-  --success: oklch(0.7 0.13 145);
-  --info: oklch(0.72 0.12 235);
-  --severity-critical: oklch(0.7 0.16 28);
-  --severity-high: oklch(0.76 0.14 53);
-  --severity-medium: oklch(0.78 0.13 80);
-  --severity-low: oklch(0.72 0.12 235);
+  /* 炭黑底色与终端暗卡片（复古街机终端 Cyberdeck 风格） */
+  --bg-canvas: #131211;
+  --bg-surface: #1e1c19;
+  --bg-muted: #282520;
+  --bg-panel-warm: #2c2515;
+  --bg-panel-warm-light: #231f13;
+
+  /* 终端边框与深黑硬阴影 */
+  --ink: #f2ede4;
+  --border-subtle: #595347;
+  --border-muted: #3d382f;
+  --shadow-neo: #000000;
+
+  --text-primary: #f5f0e6;
+  --text-secondary: #c4bcab;
+  --text-muted: #8f8573;
+
+  --accent: #ff6838;
+  --accent-hover: #ff855f;
+  --accent-fg: #131211;
+
+  --success: #4ade80;
+  --success-bg: #143820;
+  --success-fg: #bbf7d0;
+
+  --warning: #fbbf24;
+  --warning-bg: #3a2d08;
+  --warning-fg: #fef08a;
+
+  --danger: #f87171;
+  --danger-bg: #3c1414;
+  --danger-fg: #fecaca;
+
+  --info: #38bdf8;
+  --info-bg: #0c2d42;
+  --info-fg: #bae6fd;
+
+  --severity-critical: #f87171;
+  --severity-high: #fb923c;
+  --severity-medium: #fbbf24;
+  --severity-low: #38bdf8;
 }

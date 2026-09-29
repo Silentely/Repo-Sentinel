@@ -121,28 +121,29 @@ export const StarTrendChart = memo(function StarTrendChart({
           >
             <XAxis
               dataKey="date"
-              tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
+              tick={{ fill: "var(--text-secondary)", fontSize: 12, fontFamily: "ui-monospace, monospace", fontWeight: 600 }}
               stroke="var(--border-subtle)"
               minTickGap={28}
               tickFormatter={formatTick}
             />
             <YAxis
               width={44}
-              tick={{ fill: "var(--text-secondary)", fontSize: 12 }}
+              tick={{ fill: "var(--text-secondary)", fontSize: 12, fontFamily: "ui-monospace, monospace", fontWeight: 600 }}
               stroke="var(--border-subtle)"
               allowDecimals={false}
               domain={yDomain}
             />
             <Tooltip
-              // 深色主题下 recharts 默认白底/黑字刺眼：跟随设计令牌渲染。
               contentStyle={{
                 background: "var(--bg-surface)",
-                border: "1px solid var(--border-subtle)",
-                borderRadius: "8px",
+                border: "2px solid var(--border-subtle)",
+                borderRadius: "10px",
+                boxShadow: "3px 3px 0 var(--shadow-neo)",
                 color: "var(--text-primary)",
                 fontSize: "12px",
+                fontWeight: "700",
               }}
-              labelStyle={{ color: "var(--text-secondary)" }}
+              labelStyle={{ color: "var(--text-secondary)", fontWeight: "600" }}
               labelFormatter={(label) => `日期：${label}`}
               formatter={(value, _name, item) => {
                 const delta = (item?.payload as { delta?: number | null } | undefined)?.delta ?? null;
@@ -153,9 +154,10 @@ export const StarTrendChart = memo(function StarTrendChart({
               type="monotone"
               dataKey="total"
               name="Star 总数"
-              stroke="var(--accent, #4f6ef2)"
-              strokeWidth={2}
-              dot={false}
+              stroke="var(--accent)"
+              strokeWidth={3}
+              dot={{ r: 3, stroke: "var(--border-subtle)", strokeWidth: 1.5, fill: "var(--bg-surface)" }}
+              activeDot={{ r: 5, stroke: "var(--border-subtle)", strokeWidth: 2, fill: "var(--accent)" }}
             />
           </LineChart>
         </ResponsiveContainer>
