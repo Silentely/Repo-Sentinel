@@ -42,7 +42,7 @@ RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。�
 
 ## 界面预览
 
-RepoSentinel 采用独特的 **Retro Neo-Brutalism（复古新粗野主义）** 视觉设计语言：奶油纸张底色、粗黑墨水描边、零模糊实体硬阴影、大圆角卡片与胶囊按键，让严肃的自动化值守平台拥有如物理仪表盘般的亲和度与极佳的阅读质感。
+#### 仪表盘
 
 <p align="center">
   <img src="docs/public/images/dashboard-preview.png" alt="RepoSentinel 仪表盘预览" width="100%">
@@ -120,7 +120,7 @@ RepoSentinel 采用独特的 **Retro Neo-Brutalism（复古新粗野主义）** 
 - 或：Go 1.26+、Node.js 24+、pnpm 10.34.5（源码构建）
 - 一个 GitHub App（接收 Webhook）与可选的 Telegram Bot
 
-### Docker Compose（推荐：拉取 GHCR，无需本地构建）
+### Docker Compose
 
 ```bash
 cp .env.example .env
