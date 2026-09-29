@@ -344,13 +344,13 @@ export function verdictBadge(verdict: string): string {
   return VERDICT_BADGES[verdict] ?? verdict;
 }
 
-const VERDICT_STYLE_DEFAULT = { background: "rgba(16, 185, 129, 0.12)", color: "var(--color-success, #10b981)" };
+const VERDICT_STYLE_DEFAULT = { background: "var(--success-bg)", color: "var(--success-fg)" };
 
 const VERDICT_STYLES: Record<string, { background: string; color: string }> = {
   "Ready to Merge": VERDICT_STYLE_DEFAULT,
-  "Needs Tests": { background: "rgba(245, 158, 11, 0.12)", color: "var(--color-warning, #f59e0b)" },
-  "Needs Manual Review": { background: "rgba(249, 115, 22, 0.12)", color: "var(--color-orange, #f97316)" },
-  "Block Risk": { background: "rgba(239, 68, 68, 0.12)", color: "var(--color-danger, #ef4444)" },
+  "Needs Tests": { background: "var(--warning-bg)", color: "var(--warning-fg)" },
+  "Needs Manual Review": { background: "var(--bg-panel-warm)", color: "var(--ink)" },
+  "Block Risk": { background: "var(--danger-bg)", color: "var(--danger-fg)" },
 };
 
 /** 裁决徽章配色；未知裁决回退为成功色，与徽章文案的回显策略一致。 */
@@ -449,7 +449,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
           className="quiet-button quiet-button--compact"
           onClick={toggle}
           aria-expanded={open}
-          style={{ fontSize: "0.8rem", padding: "0.15rem 0.5rem", borderRadius: "4px" }}
+          style={{ fontSize: "0.8rem" }}
         >
           🤖 AI 代码审查报告 {loading ? "…" : open ? "▲" : "▼"}
         </button>
@@ -457,21 +457,22 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
           <span
             style={{
               fontSize: "0.75rem",
-              fontWeight: 600,
-              padding: "0.1rem 0.4rem",
-              borderRadius: "4px",
+              fontWeight: 700,
+              padding: "0.15rem 0.55rem",
+              borderRadius: "9999px",
+              border: "1.5px solid var(--border-subtle)",
               background:
                 hasSecurityRisks || review.score < 60
-                  ? "rgba(239, 68, 68, 0.12)"
+                  ? "var(--danger-bg)"
                   : review.score >= 80
-                  ? "rgba(16, 185, 129, 0.12)"
-                  : "rgba(245, 158, 11, 0.12)",
+                  ? "var(--success-bg)"
+                  : "var(--warning-bg)",
               color:
                 hasSecurityRisks || review.score < 60
-                  ? "var(--color-danger, #ef4444)"
+                  ? "var(--danger-fg)"
                   : review.score >= 80
-                  ? "var(--color-success, #10b981)"
-                  : "var(--color-warning, #f59e0b)",
+                  ? "var(--success-fg)"
+                  : "var(--warning-fg)",
             }}
           >
             {hasSecurityRisks ? "⚠️ " : ""}
@@ -698,10 +699,11 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                       <div
                         key={`${idx}-${s.title}`}
                         style={{
-                          padding: "0.5rem 0.75rem",
-                          background: "var(--bg-card-subtle, rgba(0,0,0,0.02))",
-                          border: "1px solid var(--border-default, #e5e7eb)",
-                          borderRadius: "4px",
+                          padding: "0.65rem 0.85rem",
+                          background: "var(--bg-panel-warm-light)",
+                          border: "1.5px solid var(--border-subtle)",
+                          borderRadius: "10px",
+                          boxShadow: "1.5px 1.5px 0 var(--shadow-neo)",
                         }}
                       >
                         <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>
@@ -710,7 +712,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                         </div>
                         {s.description && <div style={{ marginTop: "0.25rem", color: "var(--color-text-secondary, #4b5563)" }}>{s.description}</div>}
                         {s.suggested_code && (
-                          <pre style={{ marginTop: "0.4rem", padding: "0.5rem", borderRadius: "4px", background: "var(--bg-code, #f3f4f6)", overflowX: "auto", fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>
+                          <pre style={{ marginTop: "0.4rem", padding: "0.6rem", borderRadius: "8px", border: "1.5px solid var(--border-subtle)", background: "var(--bg-surface)", overflowX: "auto", fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>
                             <code>{s.suggested_code}</code>
                           </pre>
                         )}

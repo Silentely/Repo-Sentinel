@@ -145,14 +145,14 @@ export function TwoFactorCard() {
         )}
 
         {!isEnabled && setupData && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "0.5rem", padding: "1rem", background: "var(--surface-sunken, rgba(0,0,0,0.03))", borderRadius: "8px" }}>
+          <div className="callout" style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "0.75rem" }}>
             <h3 style={{ fontSize: "1rem", fontWeight: 600 }}>第 1 步：在验证器中绑定密钥</h3>
             <p className="field-hint" style={{ margin: 0 }}>
               在身份验证器应用中选择「手动添加账号」，并输入以下密钥；或者在支持协议的应用中点击快捷导入：
             </p>
 
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <code style={{ fontSize: "1.1rem", letterSpacing: "2px", fontWeight: "bold", padding: "0.3rem 0.6rem", background: "var(--surface-raised, #fff)", borderRadius: "4px", border: "1px solid var(--border-subtle, #ddd)" }}>
+              <code style={{ fontSize: "1.1rem", letterSpacing: "2px", fontWeight: "bold", padding: "0.4rem 0.8rem", background: "var(--bg-surface)", borderRadius: "8px", border: "2px solid var(--border-subtle)", boxShadow: "2px 2px 0 var(--shadow-neo)" }}>
                 {setupData.secret}
               </code>
               <button
@@ -183,7 +183,7 @@ export function TwoFactorCard() {
                 autoComplete="one-time-code"
                 maxLength={6}
                 placeholder="000000"
-                style={{ letterSpacing: "0.2em", textAlign: "center", fontWeight: 600, fontSize: "1.1rem" }}
+                style={{ letterSpacing: "0.2em", textAlign: "center", fontWeight: 700, fontSize: "1.1rem", minHeight: "42px", borderRadius: "12px", border: "2px solid var(--border-subtle)", boxShadow: "2px 2px 0 var(--shadow-neo)", background: "var(--bg-surface)" }}
                 value={verifyCode}
                 onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 onKeyDown={(e) => {
@@ -235,7 +235,7 @@ export function TwoFactorCard() {
         )}
 
         {isEnabled && isDisabling && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "1rem", background: "var(--surface-sunken, rgba(0,0,0,0.03))", borderRadius: "8px" }}>
+          <div className="callout" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "0.75rem" }}>
             <p style={{ margin: 0, fontWeight: 500 }}>
               关闭两步验证需核验当前管理员密码：
             </p>
@@ -244,6 +244,7 @@ export function TwoFactorCard() {
                 size={24}
                 type="password"
                 placeholder="请输入当前管理员密码"
+                style={{ minHeight: "42px", borderRadius: "12px", border: "2px solid var(--border-subtle)", boxShadow: "2px 2px 0 var(--shadow-neo)", background: "var(--bg-surface)", padding: "0 12px" }}
                 value={disablePassword}
                 onChange={(e) => setDisablePassword(e.target.value)}
                 onKeyDown={(e) => {

@@ -178,18 +178,20 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
-  background: color-mix(in oklch, var(--bg-surface) 80%, transparent);
-  transition: color 0.15s ease, border-color 0.15s ease;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  color: var(--text-primary);
+  border: 2px solid var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: 2px 2px 0 var(--shadow-neo);
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
 }
 
 .auth-shell__github:hover {
-  color: var(--text-primary);
-  border-color: var(--border);
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--shadow-neo);
+  background: var(--bg-panel-warm-light);
 }
 
 .auth-card {
@@ -227,10 +229,11 @@ button:disabled {
   width: 46px;
   height: 46px;
   place-items: center;
-  border: 1px solid color-mix(in oklch, var(--accent) 30%, var(--border-subtle));
-  border-radius: 13px;
-  color: var(--accent);
-  background: color-mix(in oklch, var(--accent) 10%, var(--bg-surface));
+  border: 2px solid var(--border-subtle);
+  border-radius: 14px;
+  color: var(--ink);
+  background: var(--bg-panel-warm);
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
 }
 
 .eyebrow {
@@ -1403,9 +1406,9 @@ a.status-item--link:focus-visible {
     width: min(300px, 84vw);
     padding: max(24px, env(safe-area-inset-top)) 18px
       max(28px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
-    border-right: 1px solid var(--border-subtle);
+    border-right: 2.5px solid var(--border-subtle);
     background: var(--bg-surface);
-    box-shadow: 24px 0 56px color-mix(in oklch, var(--text-primary) 16%, transparent);
+    box-shadow: 6px 0 0 var(--shadow-neo);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     transform: translateX(-110%);
@@ -1526,18 +1529,24 @@ a.status-item--link:focus-visible {
     min-width: 44px;
     min-height: 44px;
     padding: 0;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    color: var(--text-secondary);
+    border: 2px solid var(--border-subtle);
+    border-radius: 12px;
+    color: var(--text-primary);
     background: var(--bg-surface);
+    box-shadow: 2px 2px 0 var(--shadow-neo);
     cursor: pointer;
-    transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+    transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
   }
 
   .app-topbar__menu:hover {
-    border-color: color-mix(in oklch, var(--accent) 46%, var(--border-subtle));
-    color: var(--accent);
-    background: color-mix(in oklch, var(--accent) 8%, var(--bg-surface));
+    background: var(--bg-panel-warm-light);
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0 var(--shadow-neo);
+  }
+
+  .app-topbar__menu:active {
+    transform: translate(2px, 2px);
+    box-shadow: 0 0 0 var(--shadow-neo);
   }
 
   .app-topbar__actions {
@@ -1903,11 +1912,16 @@ a.status-item--link:focus-visible {
 }
 
 .success-banner {
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1.15rem;
   border-radius: 12px;
-  color: var(--success);
-  background: color-mix(in oklch, var(--success) 12%, var(--bg-surface));
-  border: 1px solid color-mix(in oklch, var(--success) 32%, var(--border-subtle));
+  color: var(--success-fg);
+  background: var(--success-bg);
+  border: 2px solid var(--border-subtle);
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 /* 兼容旧 event-list：长标题截断，动作靠右 */
@@ -1926,51 +1940,59 @@ a.status-item--link:focus-visible {
 }
 
 .about-banner {
-  margin-bottom: 1rem;
-  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  padding: 0.85rem 1.15rem;
   border-radius: 12px;
-  font-size: 0.875rem;
+  border: 2px solid var(--border-subtle);
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+  font-size: 0.88rem;
   display: grid;
   gap: 0.35rem;
 }
 
 .about-banner a {
   color: inherit;
-  font-weight: 600;
+  font-weight: 700;
   text-underline-offset: 2px;
 }
 
 .about-banner--update {
-  border: 1px solid color-mix(in oklch, var(--info) 40%, transparent);
-  background: color-mix(in oklch, var(--info) 12%, transparent);
+  border: 2px solid var(--border-subtle);
+  background: var(--info-bg);
+  color: var(--info-fg);
 }
 
 .about-banner--latest {
-  border: 1px solid color-mix(in oklch, var(--success) 40%, transparent);
-  background: color-mix(in oklch, var(--success) 12%, transparent);
+  border: 2px solid var(--border-subtle);
+  background: var(--success-bg);
+  color: var(--success-fg);
 }
 
 .about-banner--error {
-  border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
-  background: color-mix(in oklch, var(--warning) 12%, transparent);
+  border: 2px solid var(--border-subtle);
+  background: var(--warning-bg);
+  color: var(--warning-fg);
 }
 
 .about-banner--info {
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-muted);
+  border: 2px solid var(--border-subtle);
+  background: var(--bg-panel-warm-light);
+  color: var(--ink);
 }
 
 .meta-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
+  gap: 12px;
   margin: 0;
 }
 
 .meta-grid > div {
   padding: 12px 14px;
-  border-radius: var(--radius-control);
-  background: var(--bg-muted);
+  border: 2px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  box-shadow: 2px 2px 0 var(--shadow-neo);
 }
 
 .meta-grid dt {
@@ -2010,9 +2032,10 @@ a.status-item--link:focus-visible {
   gap: 12px;
   align-items: flex-start;
   padding: 12px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-  background: var(--bg-muted);
+  border: 2px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  box-shadow: 2px 2px 0 var(--shadow-neo);
 }
 
 .status-checklist li svg {
@@ -2052,9 +2075,10 @@ a.status-item--link:focus-visible {
   display: grid;
   gap: 4px;
   padding: 14px 14px 14px 52px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-  background: var(--bg-muted);
+  border: 2px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  box-shadow: 2px 2px 0 var(--shadow-neo);
   position: relative;
   counter-increment: guide-step;
 }
@@ -2068,6 +2092,8 @@ a.status-item--link:focus-visible {
   height: 26px;
   place-items: center;
   border-radius: 999px;
+  border: 1.5px solid var(--border-subtle);
+  box-shadow: 1px 1px 0 var(--shadow-neo);
   color: var(--accent-fg);
   background: var(--accent);
   content: counter(guide-step);
@@ -2265,9 +2291,10 @@ a.status-item--link:focus-visible {
   display: grid;
   gap: 4px;
   padding: 12px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-  background: var(--bg-muted);
+  border: 2px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  box-shadow: 2px 2px 0 var(--shadow-neo);
 }
 
 .field-map dt {
@@ -2489,13 +2516,13 @@ a.status-item--link:focus-visible {
 .ignored-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0 7px;
-  border-radius: 999px;
-  font-size: 0.7rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--text-secondary);
-  background: color-mix(in oklch, var(--text-muted) 18%, var(--bg-muted));
-  border: 1px solid var(--border-subtle);
+  background: var(--bg-muted);
+  border: 1.5px solid var(--border-subtle);
 }
 
 /* ── 加载指示器 ── */
@@ -2565,8 +2592,10 @@ a.status-item--link:focus-visible {
 /* ── 折叠面板 ── */
 
 .collapse-section {
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
+  border: 2px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+  background: var(--bg-surface);
   padding: 0;
 }
 
@@ -2574,18 +2603,18 @@ a.status-item--link:focus-visible {
   padding: 0.65rem 1rem;
   cursor: pointer;
   font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--text-secondary);
+  font-weight: 700;
+  color: var(--text-primary);
   user-select: none;
 }
 
 .collapse-section summary:hover {
-  color: var(--text-primary);
-  background: var(--bg-muted);
+  color: var(--accent);
+  background: var(--bg-panel-warm-light);
 }
 
 .collapse-section[open] summary {
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 2px solid var(--border-subtle);
 }
 
 .collapse-body {
@@ -2798,21 +2827,21 @@ a.status-item--link:focus-visible {
 }
 
 .review-approved {
-  color: var(--success);
-  background: color-mix(in oklch, var(--success) 14%, transparent);
-  border: 1px solid color-mix(in oklch, var(--success) 30%, transparent);
+  color: var(--success-fg);
+  background: var(--success-bg);
+  border: 1.5px solid var(--border-subtle);
 }
 
 .review-changes_requested {
-  color: var(--danger);
-  background: color-mix(in oklch, var(--danger) 14%, transparent);
-  border: 1px solid color-mix(in oklch, var(--danger) 30%, transparent);
+  color: var(--danger-fg);
+  background: var(--danger-bg);
+  border: 1.5px solid var(--border-subtle);
 }
 
 .review-pending {
-  color: var(--warning);
-  background: color-mix(in oklch, var(--warning) 14%, transparent);
-  border: 1px solid color-mix(in oklch, var(--warning) 30%, transparent);
+  color: var(--warning-fg);
+  background: var(--warning-bg);
+  border: 1.5px solid var(--border-subtle);
 }
 
 .reviewers {
@@ -2825,27 +2854,27 @@ a.status-item--link:focus-visible {
   align-items: center;
   gap: 0.35rem;
   padding: 0.2rem 0.6rem;
-  border-radius: 999px;
+  border-radius: 9999px;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .check-success {
-  color: var(--success);
-  background: color-mix(in oklch, var(--success) 14%, transparent);
-  border: 1px solid color-mix(in oklch, var(--success) 30%, transparent);
+  color: var(--success-fg);
+  background: var(--success-bg);
+  border: 1.5px solid var(--border-subtle);
 }
 
 .check-failure {
-  color: var(--danger);
-  background: color-mix(in oklch, var(--danger) 14%, transparent);
-  border: 1px solid color-mix(in oklch, var(--danger) 30%, transparent);
+  color: var(--danger-fg);
+  background: var(--danger-bg);
+  border: 1.5px solid var(--border-subtle);
 }
 
 .check-pending {
-  color: var(--warning);
-  background: color-mix(in oklch, var(--warning) 14%, transparent);
-  border: 1px solid color-mix(in oklch, var(--warning) 30%, transparent);
+  color: var(--warning-fg);
+  background: var(--warning-bg);
+  border: 1.5px solid var(--border-subtle);
 }
 
 /* ── 事件类型样式 ── */
@@ -3032,6 +3061,32 @@ a.status-item--link:focus-visible {
   animation: drawer-fade-in 0.15s ease;
 }
 
+.inspector-dialog {
+  width: min(52rem, 94vw);
+  max-height: 90vh;
+  background: var(--bg-surface);
+  border: 2.5px solid var(--border-subtle);
+  border-radius: 18px;
+  box-shadow: 6px 6px 0 var(--shadow-neo);
+  padding: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  animation: dialog-pop-in 0.16s ease;
+}
+
+.inspector-payload-pre {
+  background: var(--bg-panel-warm-light);
+  border: 2px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 2px 2px 0 var(--shadow-neo);
+  padding: 12px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+  overflow-x: auto;
+  max-height: 400px;
+}
+
 .confirm-dialog {
   width: min(26rem, 92vw);
   background: var(--bg-surface);
@@ -3092,7 +3147,7 @@ a.status-item--link:focus-visible {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 2px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -3247,10 +3302,11 @@ a.status-item--link:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.55rem;
+  padding: 0.65rem 0.85rem;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 12px;
   background: var(--bg-surface);
+  box-shadow: 2px 2px 0 var(--shadow-neo);
 }
 
 .tracker-row__main {

@@ -320,18 +320,7 @@ export function WebhookDeliveriesPage() {
                   </button>
                 </div>
 
-                <pre
-                  style={{
-                    backgroundColor: "var(--color-surface-sunken, #f6f8fa)",
-                    padding: "12px",
-                    borderRadius: "6px",
-                    fontSize: "12px",
-                    fontFamily: "monospace",
-                    overflowX: "auto",
-                    maxHeight: "400px",
-                    border: "1px solid var(--color-border, #d0d7de)",
-                  }}
-                >
+                <pre className="inspector-payload-pre">
                   {detailQuery.data.payload_json
                     ? JSON.stringify(detailQuery.data.payload_json, null, 2)
                     : detailQuery.data.payload_raw || "（空载荷）"}
