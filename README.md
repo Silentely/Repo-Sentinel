@@ -40,6 +40,38 @@ RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。�
 
 ---
 
+## 界面预览
+
+RepoSentinel 采用独特的 **Retro Neo-Brutalism（复古新粗野主义）** 视觉设计语言：奶油纸张底色、粗黑墨水描边、零模糊实体硬阴影、大圆角卡片与胶囊按键，让严肃的自动化值守平台拥有如物理仪表盘般的亲和度与极佳的阅读质感。
+
+<p align="center">
+  <img src="docs/public/images/dashboard-preview.png" alt="RepoSentinel 仪表盘预览" width="100%">
+</p>
+
+<details>
+<summary><b>展开查看更多界面截图（仓库管理、系统设置、登录）</b></summary>
+
+<br>
+
+#### 仓库管理与外部公开仓监控
+<p align="center">
+  <img src="docs/public/images/repos-preview.png" alt="仓库管理预览" width="100%">
+</p>
+
+#### 智能值守、AI 审查与系统偏好
+<p align="center">
+  <img src="docs/public/images/settings-preview.png" alt="系统设置预览" width="100%">
+</p>
+
+#### 管理员登录与安全认证
+<p align="center">
+  <img src="docs/public/images/login-preview.png" alt="登录页面预览" width="85%">
+</p>
+
+</details>
+
+---
+
 ## 功能概览
 
 | 模块 | 能力 |

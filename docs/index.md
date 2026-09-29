@@ -27,7 +27,7 @@ hero:
 features:
   - icon: 📡
     title: 实时 Webhook
-    details: Issue、PR、Actions 与三类安全告警即时入库；Delivery 幂等，乱序不回滚。
+    details: Issue、PR、Actions 与三类安全告警及时入库；Delivery 幂等，乱序不回滚。
   - icon: 🛡️
     title: 基线与可靠落库
     details: 新安装仓库先建快照基线，避免历史通知洪流；指纹去重与陈旧写入保护。
@@ -44,3 +44,28 @@ features:
     title: 容器友好
     details: 多阶段镜像与 Compose 样例；默认 SQLite 卷持久化。
 ---
+
+## 界面展示
+
+RepoSentinel 控制台采用独特的 **Retro Neo-Brutalism（复古新粗野主义）** 视觉设计语言：奶油纸张底色、粗黑墨水描边、零模糊硬阴影与胶囊型状态徽标，兼顾复古仪表盘的趣味与生产级控制台的高可读性。
+
+### 监控控制台与核心仪表盘
+::: tip 监控总览
+仪表盘集中展示跨仓库核心 KPI 指标、Star 增长曲线、关键健康状态与近期重要事件流。
+:::
+
+![仪表盘预览](/images/dashboard-preview.png)
+
+### 仓库列表与外部公开仓监控
+::: tip 仓库管理
+支持对自有组织仓库与外部关键开源依赖仓进行分级管理、增量同步与基线健康检查。
+:::
+
+![仓库列表预览](/images/repos-preview.png)
+
+### 智能值守配置与系统安全
+::: tip 灵活配置
+可自定义 LLM 审查提示词、通知聚合策略、双因素认证（2FA）及多渠道推送矩阵。
+:::
+
+![系统设置预览](/images/settings-preview.png)
