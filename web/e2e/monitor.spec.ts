@@ -80,3 +80,30 @@ test("投递记录筛选为空时空态提供「清除筛选」并可点击", as
   await clear.click();
   await expect(page).toHaveURL(/\/notifications\/outbox$/);
 });
+
+test("设置页 AI 自动打标开关保存后刷新回读一致（ai.auto_label_enabled round-trip）", async ({ page }) => {
+  await ensureAuthenticated(page);
+  await page.goto("/settings");
+
+  const autoLabel = page.getByRole("checkbox", { name: /Issue AI 智能白名单打标/ });
+  await expect(autoLabel).toBeVisible({ timeout: 15_000 });
+  const initiallyChecked = await autoLabel.isChecked();
+  try {
+    if (!initiallyChecked) {
+      await autoLabel.click();
+    }
+    await expect(autoLabel).toBeChecked();
+    await page.getByRole("button", { name: "保存偏好" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "已保存" }).first()).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole("checkbox", { name: /Issue AI 智能白名单打标/ })).toBeChecked();
+  } finally {
+    await page.reload();
+    const restore = page.getByRole("checkbox", { name: /Issue AI 智能白名单打标/ });
+    if ((await restore.isChecked()) !== initiallyChecked) {
+      await restore.click();
+      await page.getByRole("button", { name: "保存偏好" }).click().catch(() => {});
+    }
+  }
+});

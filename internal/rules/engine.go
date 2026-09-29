@@ -478,8 +478,71 @@ func (e *Engine) issueAnalysis(ctx context.Context, ev *store.Event, repo string
 				}
 			}
 		}
+		e.maybeAutoLabelIssue(parentCtx, repo, int(*ev.SubjectNumber), res)
 	}
 	return ai.FormatIssueTriage(res)
+}
+
+func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, issueNumber int, res *ai.IssueTriageResult) {
+	if e.Store == nil || e.GitHub == nil || res == nil {
+		return
+	}
+	setting, err := e.Store.Settings().Get(ctx, "ai.auto_label_enabled")
+	if err != nil {
+		return
+	}
+	var enabled bool
+	if err := json.Unmarshal(setting.ValueJSON, &enabled); err != nil || !enabled {
+		return
+	}
+
+	labels := githubx.FilterAndMapLabels([]string{res.Category})
+	if !githubx.ShouldAutoLabelIssue(res.Category, labels) {
+		return
+	}
+
+	idempotencyKey := "github_label:" + repoFullName + ":" + strconv.Itoa(issueNumber) + ":" + res.Category
+	if _, err := e.Store.Settings().Get(ctx, idempotencyKey); err == nil {
+		return
+	}
+
+	_, _ = e.Store.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        ulid.Make().String(),
+		Key:       idempotencyKey,
+		ValueJSON: json.RawMessage(`{"status":"applied"}`),
+		UpdatedAt: time.Now().UTC(),
+		UpdatedBy: "auto_label",
+	})
+
+	parts := strings.SplitN(repoFullName, "/", 2)
+	if len(parts) != 2 {
+		return
+	}
+	owner, repo := parts[0], parts[1]
+
+	var token string
+	if repoRec, err := e.Store.Repositories().GetByFullName(ctx, repoFullName); err == nil && repoRec.InstallationID != nil {
+		if instID, perr := strconv.ParseInt(*repoRec.InstallationID, 10, 64); perr == nil && instID > 0 {
+			if tok, tokErr := e.GitHub.InstallationToken(ctx, instID); tokErr == nil {
+				token = tok
+			}
+		}
+	}
+
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		err := e.GitHub.AddIssueLabels(bgCtx, token, owner, repo, issueNumber, labels)
+		if err != nil && e.Logger != nil {
+			e.Logger.Warn("async issue auto-label failed",
+				"repo", repoFullName,
+				"issue", issueNumber,
+				"labels", labels,
+				"error", err.Error(),
+			)
+		}
+	}()
 }
 
 // isSecurityAlertKind 判定事件是否为安全告警类型（分诊仅针对告警）。

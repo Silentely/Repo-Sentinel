@@ -51,6 +51,7 @@ interface SettingsFormState {
   featureAlerts: boolean;
   featureStars: boolean;
   featureWatches: boolean;
+  aiAutoLabel: boolean;
 }
 
 // 定期报告发送日枚举（与后端 report.weekly_day 一致）。
@@ -87,6 +88,7 @@ function formFromSettings(data: SystemSettings | undefined): SettingsFormState {
     featureAlerts: data?.["feature.security_alerts"] !== false,
     featureStars: data?.["feature.stars"] !== false,
     featureWatches: data?.["feature.watches"] !== false,
+    aiAutoLabel: Boolean(data?.["ai.auto_label_enabled"]),
   };
 }
 
@@ -107,6 +109,7 @@ function prefsBody(form: SettingsFormState): SystemSettings {
     "retention.events_days": form.retentionEventsDays,
     "retention.outbox_days": form.retentionOutboxDays,
     "retention.webhook_deliveries_days": form.retentionDeliveriesDays,
+    "ai.auto_label_enabled": form.aiAutoLabel,
   };
 }
 
@@ -528,6 +531,7 @@ export function SettingsPage() {
         </div>
         <p className="field-hint">超频：在超频窗口内通知条数达到阈值时合并为摘要，避免刷屏。Closed/Dismissed 列表默认只显示最近指定数量条目。保留天数 0 表示禁用该类清理。</p>
         <label className="check-row"><input type="checkbox" checked={form.digestEmpty} onChange={(e) => set("digestEmpty", e.target.checked)} /><span>无事件时仍发送空摘要</span></label>
+        <label className="check-row"><input type="checkbox" checked={form.aiAutoLabel} onChange={(e) => set("aiAutoLabel", e.target.checked)} /><span>Issue AI 智能白名单打标（分诊有效时自动同步 GitHub 标签）</span></label>
         <div className="report-schedule">
           <label className="check-row"><input type="checkbox" checked={form.reportWeekly} onChange={(e) => set("reportWeekly", e.target.checked)} /><span>启用每周报告</span></label>
           {form.reportWeekly ? (

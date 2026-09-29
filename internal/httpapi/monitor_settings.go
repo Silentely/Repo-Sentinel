@@ -36,6 +36,7 @@ var settingSpecs = func() []settingSpec {
 		{key: "retention.events_days", def: defaults.EventsDays, validate: intRangeSetting(0, 3650, "保留天数须为 0–3650 的整数（0 表示禁用该类清理）。")},
 		{key: "retention.outbox_days", def: defaults.OutboxDays, validate: intRangeSetting(0, 3650, "保留天数须为 0–3650 的整数（0 表示禁用该类清理）。")},
 		{key: "retention.webhook_deliveries_days", def: defaults.WebhookDeliveriesDays, validate: intRangeSetting(0, 3650, "保留天数须为 0–3650 的整数（0 表示禁用该类清理）。")},
+		{key: "ai.auto_label_enabled", def: false, validate: boolSetting(boolMsg)},
 		{key: "feature.issues", def: true, validate: boolSetting(boolMsg)},
 		{key: "feature.pull_requests", def: true, validate: boolSetting(boolMsg)},
 		{key: "feature.actions", def: true, validate: boolSetting(boolMsg)},
