@@ -50,6 +50,10 @@ var (
 	themeSuccessKeywords = []string{
 		"success", "succeeded", "passed", "ready to merge", "fixed", "resolved",
 	}
+
+	themeCriticalChinese = []string{"严重", "高危", "失败", "阻断"}
+	themeWarningChinese  = []string{"警告", "中危", "需人工审查", "需测试"}
+	themeSuccessChinese  = []string{"成功", "通过", "可合并", "已修复"}
 )
 
 // containsAnyWord 判定文本（已小写）是否包含任一**完整单词**关键词。
@@ -114,17 +118,28 @@ func determineMessageTheme(title, body string) (feishuColor string, discordColor
 	if containsAnyRune(title, "✅", "🟢", "🟣") {
 		return "turquoise", 0x10B981
 	}
-	lower := strings.ToLower(title + " " + body)
-	if containsAnyWord(lower, themeCriticalKeywords) {
+	combined := title + " " + body
+	lower := strings.ToLower(combined)
+	if containsAnyWord(lower, themeCriticalKeywords) || containsAnySubstr(combined, themeCriticalChinese) {
 		return "carmine", 0xEF4444
 	}
-	if containsAnyWord(lower, themeWarningKeywords) {
+	if containsAnyWord(lower, themeWarningKeywords) || containsAnySubstr(combined, themeWarningChinese) {
 		return "orange", 0xF59E0B
 	}
-	if containsAnyWord(lower, themeSuccessKeywords) {
+	if containsAnyWord(lower, themeSuccessKeywords) || containsAnySubstr(combined, themeSuccessChinese) {
 		return "turquoise", 0x10B981
 	}
 	return "blue", 0x3B82F6
+}
+
+// containsAnySubstr 判定文本是否包含任一子串（如中文状态短语）。
+func containsAnySubstr(text string, substrs []string) bool {
+	for _, s := range substrs {
+		if strings.Contains(text, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // containsAnyRune 判定文本是否包含任一字面量标记（emoji/符号）。

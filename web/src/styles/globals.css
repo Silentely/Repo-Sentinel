@@ -538,26 +538,28 @@ a.primary-button {
   background: color-mix(in oklch, var(--accent) 10%, var(--bg-muted));
 }
 
-/* 选中态：浅底 + 强调色文字，避免实心强调色上字看不清 */
+/* 选中态：复古新粗野主义高亮块，实体墨水描边与微物理阴影 */
 .app-nav a[aria-current="page"] {
-  color: var(--accent);
-  background: color-mix(in oklch, var(--accent) 16%, var(--bg-surface));
-  font-weight: 700;
-  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--ink);
+  background: var(--bg-panel-warm);
+  font-weight: 750;
+  border: 2px solid var(--border-subtle);
+  box-shadow: 2px 2px 0 var(--shadow-neo);
+  transform: translate(-1px, -1px);
 }
 
 .app-nav a[aria-current="page"]:hover {
-  color: var(--accent);
-  background: color-mix(in oklch, var(--accent) 20%, var(--bg-surface));
+  color: var(--ink);
+  background: var(--bg-panel-warm);
 }
 
-/* 侧边栏导航徽章：高对比数字，避免被父级 span 半透明规则污染 */
+/* 侧边栏导航徽章：1.5px 粗黑边框胶囊徽章，丝网印刷实体色彩 */
 .nav-badge {
   margin-left: auto;
   min-width: 20px;
   height: 20px;
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: 9999px;
   font-size: 0.72rem;
   font-weight: 800;
   display: inline-flex;
@@ -568,31 +570,32 @@ a.primary-button {
   line-height: 1;
   opacity: 1;
   letter-spacing: 0;
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent) 35%, transparent);
+  border: 1.5px solid var(--border-subtle);
+  box-shadow: 1px 1px 0 var(--shadow-neo);
 }
 
 .nav-badge--info {
-  color: var(--info);
-  background: color-mix(in oklch, var(--info) 15%, var(--bg-surface));
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--info) 30%, transparent);
+  color: var(--info-fg);
+  background: var(--info-bg);
+  border: 1.5px solid var(--border-subtle);
 }
 
 .nav-badge--success {
-  color: var(--success);
-  background: color-mix(in oklch, var(--success) 15%, var(--bg-surface));
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--success) 30%, transparent);
+  color: var(--success-fg);
+  background: var(--success-bg);
+  border: 1.5px solid var(--border-subtle);
 }
 
 .nav-badge--warning {
-  color: var(--warning);
-  background: color-mix(in oklch, var(--warning) 15%, var(--bg-surface));
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--warning) 30%, transparent);
+  color: var(--warning-fg);
+  background: var(--warning-bg);
+  border: 1.5px solid var(--border-subtle);
 }
 
 .nav-badge--danger {
-  color: var(--danger);
-  background: color-mix(in oklch, var(--danger) 15%, var(--bg-surface));
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--danger) 30%, transparent);
+  color: var(--danger-fg);
+  background: var(--danger-bg);
+  border: 1.5px solid var(--border-subtle);
 }
 
 .app-main {
@@ -2549,29 +2552,29 @@ a.status-item--link:focus-visible {
 
 .mt-md { margin-top: 0.75rem; }
 
-/* ── 事件状态颜色（令牌化：--state-* 提供 light/dark 双档） ── */
+/* ── 事件状态颜色（实体令色 + 1.5px 墨水描边） ── */
 
 .state-open,
-.state-reopened { background: color-mix(in oklch, var(--state-open) 18%, var(--bg-surface)); color: var(--state-open); }
-.state-closed { background: color-mix(in oklch, var(--state-closed) 16%, var(--bg-surface)); color: var(--state-closed); }
+.state-reopened { background: var(--success-bg); color: var(--success-fg); border: 1.5px solid var(--border-subtle); }
+.state-closed { background: var(--bg-muted); color: var(--text-secondary); border: 1.5px solid var(--border-subtle); }
 .state-completed,
-.state-merged { background: color-mix(in oklch, var(--state-merged) 14%, var(--bg-surface)); color: var(--state-merged); }
-.state-success { background: color-mix(in oklch, var(--state-closed) 16%, var(--bg-surface)); color: var(--state-closed); }
+.state-merged { background: var(--bg-panel-warm); color: var(--ink); border: 1.5px solid var(--border-subtle); }
+.state-success { background: var(--success-bg); color: var(--success-fg); border: 1.5px solid var(--border-subtle); }
 .state-failure,
 .state-cancelled,
-.state-timed_out { background: color-mix(in oklch, var(--state-failure) 14%, var(--bg-surface)); color: var(--state-failure); }
+.state-timed_out { background: var(--danger-bg); color: var(--danger-fg); border: 1.5px solid var(--border-subtle); }
 .state-dismissed,
 .state-resolved,
 .state-skipped,
 .state-auto_dismissed,
-.state-withdrawn { background: color-mix(in oklch, var(--state-muted) 14%, var(--bg-surface)); color: var(--state-muted); }
+.state-withdrawn { background: var(--bg-muted); color: var(--text-muted); border: 1.5px solid var(--border-subtle); }
 /* 安全告警终态：已修复与关闭/成功同色（绿色），与「已忽略」类灰色取消态区分。 */
-.state-fixed { background: color-mix(in oklch, var(--state-closed) 16%, var(--bg-surface)); color: var(--state-closed); }
-.state-action_required { background: color-mix(in oklch, var(--state-open) 14%, var(--bg-surface)); color: var(--state-open); }
+.state-fixed { background: var(--success-bg); color: var(--success-fg); border: 1.5px solid var(--border-subtle); }
+.state-action_required { background: var(--warning-bg); color: var(--warning-fg); border: 1.5px solid var(--border-subtle); }
 .state-in_progress,
 .state-queued,
 .state-pending,
-.state-waiting { background: color-mix(in oklch, var(--state-info) 14%, var(--bg-surface)); color: var(--state-info); }
+.state-waiting { background: var(--info-bg); color: var(--info-fg); border: 1.5px solid var(--border-subtle); }
 
 .event-repo {
   display: inline-block;
@@ -2877,21 +2880,21 @@ a.status-item--link:focus-visible {
   border: 1.5px solid var(--border-subtle);
 }
 
-/* ── 事件类型样式 ── */
+/* ── 事件类型样式（实体令色 + 1.5px 墨水描边） ── */
 
-.kind-issue { background: color-mix(in oklch, var(--kind-issue) 14%, var(--bg-surface)); color: var(--kind-issue); }
-.kind-pull_request { background: color-mix(in oklch, var(--kind-pull_request) 14%, var(--bg-surface)); color: var(--kind-pull_request); }
-.kind-workflow_run { background: color-mix(in oklch, var(--kind-workflow_run) 14%, var(--bg-surface)); color: var(--kind-workflow_run); }
-.kind-dependabot { background: color-mix(in oklch, var(--kind-dependabot) 14%, var(--bg-surface)); color: var(--kind-dependabot); }
-.kind-code_scanning { background: color-mix(in oklch, var(--kind-code_scanning) 14%, var(--bg-surface)); color: var(--kind-code_scanning); }
-.kind-secret_scanning { background: color-mix(in oklch, var(--kind-secret_scanning) 14%, var(--bg-surface)); color: var(--kind-secret_scanning); }
-.kind-release { background: color-mix(in oklch, var(--kind-release) 14%, var(--bg-surface)); color: var(--kind-release); }
-.kind-star { background: color-mix(in oklch, var(--kind-star) 14%, var(--bg-surface)); color: var(--kind-star); }
-.kind-watch { background: color-mix(in oklch, var(--kind-watch) 14%, var(--bg-surface)); color: var(--kind-watch); }
+.kind-issue { background: var(--bg-surface); color: var(--text-primary); border: 1.5px solid var(--border-subtle); }
+.kind-pull_request { background: var(--bg-panel-warm-light); color: var(--ink); border: 1.5px solid var(--border-subtle); }
+.kind-workflow_run { background: var(--info-bg); color: var(--info-fg); border: 1.5px solid var(--border-subtle); }
+.kind-dependabot { background: var(--warning-bg); color: var(--warning-fg); border: 1.5px solid var(--border-subtle); }
+.kind-code_scanning { background: var(--warning-bg); color: var(--warning-fg); border: 1.5px solid var(--border-subtle); }
+.kind-secret_scanning { background: var(--danger-bg); color: var(--danger-fg); border: 1.5px solid var(--border-subtle); }
+.kind-release { background: var(--success-bg); color: var(--success-fg); border: 1.5px solid var(--border-subtle); }
+.kind-star { background: var(--bg-panel-warm); color: var(--ink); border: 1.5px solid var(--border-subtle); }
+.kind-watch { background: var(--bg-muted); color: var(--text-secondary); border: 1.5px solid var(--border-subtle); }
 
 .event-action {
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 650;
   color: var(--text-secondary);
 }
 
@@ -2903,24 +2906,26 @@ a.status-item--link:focus-visible {
 }
 
 .severity {
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  border: 1.5px solid var(--border-subtle);
+  box-shadow: 1px 1px 0 var(--shadow-neo);
 }
 
-.severity-critical { color: var(--severity-critical); background: color-mix(in oklch, var(--severity-critical) 14%, transparent); }
+.severity-critical { color: var(--danger-fg); background: var(--danger-bg); }
 .severity-high,
-.severity-error { color: var(--severity-high); background: color-mix(in oklch, var(--severity-high) 14%, transparent); }
+.severity-error { color: var(--danger-fg); background: var(--danger-bg); }
 .severity-medium,
-.severity-warning { color: var(--severity-medium); background: color-mix(in oklch, var(--severity-medium) 14%, transparent); }
+.severity-warning { color: var(--warning-fg); background: var(--warning-bg); }
 .severity-low,
-.severity-note { color: var(--severity-low); background: color-mix(in oklch, var(--severity-low) 14%, transparent); }
+.severity-note { color: var(--info-fg); background: var(--info-bg); }
 
-.status-pending { background: color-mix(in oklch, var(--info) 14%, var(--bg-surface)); color: var(--info); }
-.status-sending { background: color-mix(in oklch, var(--warning) 14%, var(--bg-surface)); color: var(--warning); }
-.status-sent { background: color-mix(in oklch, var(--success) 14%, var(--bg-surface)); color: var(--success); }
-.status-dead { background: color-mix(in oklch, var(--danger) 14%, var(--bg-surface)); color: var(--danger); }
+.status-pending { background: var(--info-bg); color: var(--info-fg); border: 1.5px solid var(--border-subtle); }
+.status-sending { background: var(--warning-bg); color: var(--warning-fg); border: 1.5px solid var(--border-subtle); }
+.status-sent { background: var(--success-bg); color: var(--success-fg); border: 1.5px solid var(--border-subtle); }
+.status-dead { background: var(--danger-bg); color: var(--danger-fg); border: 1.5px solid var(--border-subtle); }
 
 .error-code {
   font-size: 0.75rem;

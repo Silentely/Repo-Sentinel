@@ -279,6 +279,11 @@ func TestDetermineMessageThemeWordBoundaries(t *testing.T) {
 		{title: "merge risk", body: "high-risk change touching auth", wantFeishu: "carmine", wantDiscord: 0xEF4444},
 		{title: "Review done", body: "maintainer verdict: Block Risk", wantFeishu: "carmine", wantDiscord: 0xEF4444},
 		{title: "Dependabot medium alert", body: "moderate severity", wantFeishu: "orange", wantDiscord: 0xF59E0B},
+		// 中文状态词条支持
+		{title: "安全扫描预警", body: "发现高危漏洞需立即修复", wantFeishu: "carmine", wantDiscord: 0xEF4444},
+		{title: "PR 审查建议", body: "维护者裁决：阻断风险", wantFeishu: "carmine", wantDiscord: 0xEF4444},
+		{title: "每日汇总报告", body: "所有健康检查均已通过且成功", wantFeishu: "turquoise", wantDiscord: 0x10B981},
+		{title: "Issue 报告", body: "发现中危配置需要关注，包含警告", wantFeishu: "orange", wantDiscord: 0xF59E0B},
 	}
 
 	for _, tc := range tests {
