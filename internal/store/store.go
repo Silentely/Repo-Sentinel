@@ -70,6 +70,8 @@ type Store interface {
 	Outbox() OutboxStore
 	Cursors() CursorStore
 	Dashboard(context.Context) (DashboardStats, error)
+	// PingQuick 快速探测底层数据库连通性（建议带短超时 1~2s），避免常规探测长时间挂起。
+	PingQuick(context.Context) error
 	// StarTrend 汇总活跃监控仓的 star 快照为按日总趋势；days<=0 表示全部。
 	StarTrend(context.Context, int) ([]StarTrendPoint, error)
 	// CleanupRetention 按策略删除过期事件、终态 Outbox 与旧 Webhook Delivery。
@@ -119,5 +121,6 @@ type SettingsStore interface {
 type AuditStore interface {
 	Append(context.Context, AuditLog) (AuditLog, error)
 	List(context.Context, int, int) ([]AuditLog, error)
+	ListCursor(context.Context, time.Time, string, int) ([]AuditLog, error)
 	Get(context.Context, string) (AuditLog, error)
 }

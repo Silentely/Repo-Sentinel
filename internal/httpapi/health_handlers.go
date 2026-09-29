@@ -23,5 +23,17 @@ func (s *server) handleReady(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
 		return
 	}
+	if s.dependencies.Store != nil {
+		if err := s.dependencies.Store.PingQuick(r.Context()); err != nil {
+			if s.dependencies.Logger != nil {
+				s.dependencies.Logger.Warn("ready check store ping failed",
+					"request_id", requestIDFromContext(r.Context()),
+					"error_code", "db_not_ready",
+					"error", err.Error())
+			}
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }

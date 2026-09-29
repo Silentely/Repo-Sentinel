@@ -21,6 +21,7 @@ const databasePingTimeout = 5 * time.Second
 
 type storeImpl struct {
 	client  *entclient.Client
+	pingFn  func(context.Context) error
 	closeFn func() error
 	// settingsCache 由全部 Settings() 调用共享，保证 webhook/scheduler/http 各 goroutine 读到一致缓存。
 	settingsCache *settingsCache
@@ -56,7 +57,7 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (Store, error) {
 	}
 
 	driver := entsql.OpenDB(entDialect, db)
-	return newStore(entclient.NewClient(entclient.Driver(driver)), db.Close), nil
+	return newStore(entclient.NewClient(entclient.Driver(driver)), db.PingContext, db.Close), nil
 }
 
 func openDatabase(cfg config.DatabaseConfig) (*sql.DB, string, string, error) {
@@ -188,9 +189,10 @@ func sqliteDSN(rawURL string) string {
 	}, "&")
 }
 
-func newStore(client *entclient.Client, closeFn func() error) *storeImpl {
+func newStore(client *entclient.Client, pingFn func(context.Context) error, closeFn func() error) *storeImpl {
 	return &storeImpl{
 		client:         client,
+		pingFn:         pingFn,
 		closeFn:        closeFn,
 		settingsCache:  newSettingsCache(settingsCacheTTL),
 		channelsCache:  newTTLValueCache[[]NotificationChannel](settingsCacheTTL),
@@ -239,4 +241,13 @@ func (s *storeImpl) Channels() ChannelStore {
 }
 func (s *storeImpl) Outbox() OutboxStore  { return &outboxStore{client: s.client} }
 func (s *storeImpl) Cursors() CursorStore { return &cursorStore{client: s.client} }
+func (s *storeImpl) PingQuick(ctx context.Context) error {
+	if s.pingFn == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+	return s.pingFn(ctx)
+}
+
 func (s *storeImpl) Close() error         { return s.closeFn() }
