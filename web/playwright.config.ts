@@ -17,6 +17,7 @@ function serverCommand(name: string, port: number): string {
     "REPOSENTINEL_DATABASE_MAX_IDLE_CONNS=1 ",
     "REPOSENTINEL_LOG_FORMAT=json ",
     "REPOSENTINEL_LOG_LEVEL=error ",
+    "REPOSENTINEL_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff ",
     'REPOSENTINEL_DATABASE_URL="file:$e2e_dir/reposentinel.db" ',
     "exec go run -tags production ./cmd/reposentinel serve'",
   ].join("");

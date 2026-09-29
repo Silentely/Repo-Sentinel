@@ -101,9 +101,10 @@ func isReservedHTTPPath(name string) bool {
 	requestPath := "/" + strings.ToLower(name)
 	// API 与机器端点一律不落入 SPA fallback：GET /mcp、/.well-known/xxx 等未注册路径
 	// 若返回 index.html 200，客户端探测会误判服务正常。
+	// 注意：/webhooks/github 为 GitHub Webhook 入站，而 /webhooks 为前端检查页面路由，不得将 /webhooks 整体拦截。
 	return requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") ||
 		requestPath == "/health" || strings.HasPrefix(requestPath, "/health/") ||
-		requestPath == "/webhooks" || strings.HasPrefix(requestPath, "/webhooks/") ||
+		requestPath == "/webhooks/github" || strings.HasPrefix(requestPath, "/webhooks/github/") ||
 		requestPath == "/metrics" ||
 		requestPath == "/mcp" || strings.HasPrefix(requestPath, "/mcp/") ||
 		requestPath == "/oauth" || strings.HasPrefix(requestPath, "/oauth/") ||

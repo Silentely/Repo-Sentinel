@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -8,6 +9,50 @@ import path from "node:path";
  */
 export const adminUsername = "Repo Admin";
 export const adminPassword = "安全管理员密码一二三四五六";
+
+/**
+ * 解码 Base32 编码字符串为 Buffer
+ */
+function base32Decode(base32: string): Buffer {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const cleaned = base32.toUpperCase().replace(/=+$/, "").replace(/\s+/g, "");
+  let bits = 0;
+  let value = 0;
+  const bytes: number[] = [];
+
+  for (let i = 0; i < cleaned.length; i++) {
+    const idx = alphabet.indexOf(cleaned[i]);
+    if (idx === -1) continue;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(bytes);
+}
+
+/**
+ * 基于 RFC 6238 标准生成 6 位 TOTP 动态口令
+ */
+export function generateTOTP(secret: string, timeStep = 30): string {
+  const key = base32Decode(secret);
+  const epoch = Math.floor(Date.now() / 1000);
+  const counter = Math.floor(epoch / timeStep);
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64BE(BigInt(counter));
+
+  const hmac = crypto.createHmac("sha1", key).update(buf).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const code =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+
+  return (code % 1000000).toString().padStart(6, "0");
+}
 
 /**
  * 进入应用：按当前实例状态完成首次设置或登录，最终停在仪表盘。
@@ -50,32 +95,29 @@ export async function ensureAuthenticated(page: Page) {
     }
   }).toPass({ timeout: 15_000 });
 
-  if (page.url().endsWith("/setup")) {
-    await page.getByRole("textbox", { name: "用户名" }).fill(adminUsername);
+  if (await setupHeading.isVisible()) {
+    await page.getByLabel("用户名").fill(adminUsername);
     await page.getByLabel("密码", { exact: true }).fill(adminPassword);
     await page.getByLabel("确认密码").fill(adminPassword);
     await page.getByRole("button", { name: "创建管理员" }).click();
-    // 冷启动（双实例+懒加载 chunk）下登录后跳转可能超过默认 5s，放宽避免时序性 flaky。
-    await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
   } else {
-    await page.getByRole("textbox", { name: "用户名" }).fill(adminUsername);
-    await page.getByLabel("密码", { exact: true }).fill(adminPassword);
-    // 冷启动下首次提交可能慢到超过单次断言窗口：以 toPass 重试整个提交动作
-    //（重复提交登录幂等，会话覆盖写），彻底消除时序性 flaky。
-    await expect(async () => {
-      await loginButton.click();
-      await expect(page).toHaveURL(/\/$/, { timeout: 5_000 });
-    }).toPass({ timeout: 30_000 });
+    await page.getByLabel("用户名").fill(adminUsername);
+    await page.getByLabel("密码").fill(adminPassword);
+    await loginButton.click();
   }
 
-  // 持久化会话供后续用例复用（见函数头注释的限流约束）。
+  await expect(page.getByRole("heading", { name: "现在是否健康，今天发生了什么。" })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  const cookies = await page.context().cookies();
   fs.mkdirSync(path.dirname(stateFile), { recursive: true });
-  await page.context().storageState({ path: stateFile });
+  fs.writeFileSync(stateFile, JSON.stringify({ cookies }, null, 2));
 }
 
-/** 从持久化文件恢复会话 Cookie 到当前上下文；文件不存在或无效返回 false。 */
+type CookieParam = Parameters<Page["context"]["addCookies"]>[0];
+
 function restoreSession(page: Page, stateFile: string): boolean {
-  type CookieParam = Parameters<ReturnType<Page["context"]>["addCookies"]>[0];
   if (!fs.existsSync(stateFile)) {
     return false;
   }

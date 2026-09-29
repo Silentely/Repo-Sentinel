@@ -128,7 +128,8 @@ function ChannelForm({
       await onSaved();
     },
     onError: (err) => {
-      onFail(toApiError(err).message || (err instanceof Error ? err.message : "保存失败"));
+      const msg = err instanceof Error && err.message ? err.message : toApiError(err).message;
+      onFail(msg || "保存失败");
     },
   });
 
