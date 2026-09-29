@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -614,6 +615,10 @@ func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem, known *W
 		if in.SourceUpdatedAt.Equal(existing.SourceUpdatedAt) && in.StateHash == existing.StateHash {
 			return existing, false, nil
 		}
+		// 状态机校验：已处于 closed 终态的工作项，若入参试图将其重置为 open，但其更新时间未严格晚于 existing.SourceUpdatedAt，则拒绝状态倒流。
+		if existing.State == "closed" && in.State == "open" && !in.SourceUpdatedAt.After(existing.SourceUpdatedAt) {
+			return existing, false, nil
+		}
 		entity, err := s.client.WorkItem.UpdateOneID(existing.ID).
 			SetKind(in.Kind).
 			SetState(in.State).
@@ -776,6 +781,27 @@ func (s *workItemStore) SetIgnored(ctx context.Context, id string, ignored bool)
 }
 
 // MarkMerged 仅置位 merged；GitHub 语义上已合并 PR 不会回退，允许重复调用。
+func (s *workItemStore) BatchUpsert(ctx context.Context, items []WorkItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+	const chunkSize = 200
+	for i := 0; i < len(items); i += chunkSize {
+		end := i + chunkSize
+		if end > len(items) {
+		end = len(items)
+		}
+		chunk := items[i:end]
+		for _, item := range chunk {
+			if _, _, err := s.UpsertIfNewer(ctx, item, nil); err != nil {
+				return err
+			}
+		}
+		runtime.Gosched()
+	}
+	return nil
+}
+
 func (s *workItemStore) MarkMerged(ctx context.Context, repoID string, number int) error {
 	_, err := s.client.WorkItem.Update().
 		Where(workitem.RepositoryIDEQ(repoID), workitem.NumberEQ(number)).

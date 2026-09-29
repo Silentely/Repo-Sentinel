@@ -227,4 +227,55 @@ export function useIgnoreMutation(
   return { mutation, busyId, errorMessage };
 }
 
+/** 批量操作浮动栏 */
+export function BatchActionBar({
+  selectedCount,
+  onClear,
+  onBatchIgnore,
+  isPending,
+}: {
+  selectedCount: number;
+  onClear: () => void;
+  onBatchIgnore: () => void;
+  isPending?: boolean;
+}) {
+  if (selectedCount === 0) return null;
+  return (
+    <div
+      className="batch-action-bar"
+      role="region"
+      aria-label="批量操作栏"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0.5rem 1rem",
+        background: "var(--card-bg, #1a1a24)",
+        border: "1px solid var(--border-color, #2d2d3d)",
+        borderRadius: "0.5rem",
+        marginBottom: "0.75rem",
+      }}
+    >
+      <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>已选择 {selectedCount} 项</span>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <button
+          type="button"
+          className="quiet-button quiet-button--compact"
+          onClick={onBatchIgnore}
+          disabled={isPending}
+        >
+          {isPending ? "处理中…" : "批量忽略"}
+        </button>
+        <button
+          type="button"
+          className="quiet-button quiet-button--compact"
+          onClick={onClear}
+        >
+          取消选择
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export { ListShell, ListSkeleton };

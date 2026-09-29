@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -345,6 +346,48 @@ func setResourceIgnored[T any](
 
 func (s *server) handleSetWorkItemIgnored(w http.ResponseWriter, r *http.Request) {
 	setResourceIgnored(s, w, r, s.dependencies.Store.WorkItems().SetIgnored, s.dependencies.Store.WorkItems().Get)
+}
+
+type batchIgnoredBody struct {
+	IDs     []string `json:"ids"`
+	Ignored bool     `json:"ignored"`
+}
+
+func (s *server) handleBatchSetWorkItemIgnored(w http.ResponseWriter, r *http.Request) {
+	var body batchIgnoredBody
+	if !s.decodeRequestJSON(w, r, &body) {
+		return
+	}
+	if len(body.IDs) == 0 || len(body.IDs) > 100 {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "ids", "limit": 100})
+		return
+	}
+
+	updatedCount := 0
+	ctx := r.Context()
+	const chunkSize = 25
+	for i := 0; i < len(body.IDs); i += chunkSize {
+		end := i + chunkSize
+		if end > len(body.IDs) {
+			end = len(body.IDs)
+		}
+		chunk := body.IDs[i:end]
+		for _, id := range chunk {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			if err := s.dependencies.Store.WorkItems().SetIgnored(ctx, id, body.Ignored); err == nil {
+				updatedCount++
+			}
+		}
+		runtime.Gosched()
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"updated_count": updatedCount,
+		"ignored":       body.Ignored,
+	})
 }
 
 func (s *server) handleSetWorkflowRunIgnored(w http.ResponseWriter, r *http.Request) {

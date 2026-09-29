@@ -37,6 +37,7 @@ import {
   fetchWorkItemAITriage,
   triggerWorkItemAITriage,
   type IssueTriageResult,
+  batchSetWorkItemIgnored,
 } from "./api";
 import {
   ClearFiltersButton,
@@ -48,6 +49,7 @@ import {
   StateFilterButtons,
   useActiveRepos,
   useIgnoreMutation,
+  BatchActionBar,
   type IgnoredMode,
 } from "./list-shared";
 
@@ -999,6 +1001,20 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
     },
   });
 
+  const queryClient = useQueryClient();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchError, setBatchError] = useState<string | null>(null);
+
+  const batchIgnoreMutation = useMutation({
+    mutationFn: (ids: string[]) => batchSetWorkItemIgnored(ids, ignoredMode !== "ignored"),
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["work-items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (err) => setBatchError(toApiError(err).message || "批量操作失败"),
+  });
+
   const { mutation: ignoreMutation, busyId, errorMessage } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
   // 仓库/审核/检查筛选激活时，空态需区分「筛选后为空」与「真的没有」。
   const filtersActive = repoId !== "" || reviewFilter !== "" || checkFilter !== "";
@@ -1051,6 +1067,13 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
         ) : null}
       </div>
       {errorMessage ? <ErrorAlert title="忽略操作失败" message={errorMessage} /> : null}
+      {batchError ? <ErrorAlert title="批量操作失败" message={batchError} /> : null}
+      <BatchActionBar
+        selectedCount={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        onBatchIgnore={() => batchIgnoreMutation.mutate(Array.from(selectedIds))}
+        isPending={batchIgnoreMutation.isPending}
+      />
       <EventListBody
         query={q}
         items={items}
@@ -1093,6 +1116,21 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
             return (
               <li key={it.id}>
                   <div className="pr-header">
+                    <label style={{ display: "inline-flex", alignItems: "center", cursor: "pointer", marginRight: "0.25rem" }}>
+                      <input
+                        type="checkbox"
+                        aria-label={`选择 #${num}`}
+                        checked={selectedIds.has(it.id)}
+                        onChange={(e) => {
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(it.id);
+                            else next.delete(it.id);
+                            return next;
+                          });
+                        }}
+                      />
+                    </label>
                     <span className={`event-kind state-${it.state || "open"}`}>{workItemStateLabel(it.state)}</span>
                     {it.draft && <span className="draft-badge">Draft</span>}
                     {it.merged && <span className="merged-badge">Merged</span>}

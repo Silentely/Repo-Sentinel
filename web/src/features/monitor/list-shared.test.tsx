@@ -8,7 +8,7 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children }: { to: string; children?: ReactNode }) => <a href={to}>{children}</a>,
 }));
 
-import { ClearFiltersButton, FeatureGuard } from "./list-shared";
+import { BatchActionBar, ClearFiltersButton, FeatureGuard } from "./list-shared";
 
 function renderGuard() {
   const queryClient = new QueryClient({
@@ -49,5 +49,53 @@ describe("ClearFiltersButton", () => {
     render(<ClearFiltersButton onClick={fn} />);
     const btn = screen.getByRole("button", { name: "清除当前所有筛选条件" });
     expect(btn).toBeInTheDocument();
+  });
+});
+
+describe("BatchActionBar", () => {
+  it("selectedCount 为 0 时不渲染", () => {
+    const { container } = render(
+      <BatchActionBar
+        selectedCount={0}
+        onClear={vi.fn()}
+        onBatchIgnore={vi.fn()}
+      />
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("渲染已选数量并响应点击", () => {
+    const onClear = vi.fn();
+    const onBatchIgnore = vi.fn();
+    render(
+      <BatchActionBar
+        selectedCount={3}
+        onClear={onClear}
+        onBatchIgnore={onBatchIgnore}
+      />
+    );
+
+    expect(screen.getByText("已选择 3 项")).toBeInTheDocument();
+    const ignoreBtn = screen.getByRole("button", { name: "批量忽略" });
+    const clearBtn = screen.getByRole("button", { name: "取消选择" });
+
+    ignoreBtn.click();
+    expect(onBatchIgnore).toHaveBeenCalledTimes(1);
+
+    clearBtn.click();
+    expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("isPending 为 true 时禁用按钮并显示加载文案", () => {
+    render(
+      <BatchActionBar
+        selectedCount={2}
+        onClear={vi.fn()}
+        onBatchIgnore={vi.fn()}
+        isPending={true}
+      />
+    );
+    const ignoreBtn = screen.getByRole("button", { name: "处理中…" });
+    expect(ignoreBtn).toBeDisabled();
   });
 });

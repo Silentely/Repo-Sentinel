@@ -139,7 +139,8 @@ export const dashboardQueryOptions = queryOptions({
   queryKey: ["dashboard"] as const,
   queryFn: () => apiRequest<DashboardStats>("/api/v1/dashboard"),
   staleTime: 15_000,
-  refetchInterval: 30_000,
+  refetchInterval: 90_000,
+  refetchOnWindowFocus: true,
 });
 
 export const repositoriesQueryOptions = queryOptions({
@@ -179,7 +180,8 @@ export const eventsQueryOptions = (perPage = 30) =>
     queryKey: ["events", perPage] as const,
     queryFn: () => apiRequest<Page<MonitorEvent>>(`/api/v1/events?per_page=${perPage}`),
     staleTime: 15_000,
-    refetchInterval: 30_000,
+    refetchInterval: 90_000,
+    refetchOnWindowFocus: true,
   });
 
 /** Outbox 轮询节拍：有待投递/投递中条目时 15s 跟进，空闲（含首次加载前）降为 60s。 */
@@ -307,6 +309,14 @@ export async function setWorkItemIgnored(id: string, ignored: boolean): Promise<
   });
 }
 
+/** 批量设置 Issue/PR 本地忽略标记。 */
+export async function batchSetWorkItemIgnored(ids: string[], ignored: boolean): Promise<{ updated_count: number }> {
+  return apiRequest<{ updated_count: number }>("/api/v1/work-items/batch-ignore", {
+    method: "POST",
+    body: JSON.stringify({ ids, ignored }),
+  });
+}
+
 /** 设置 Workflow Run 本地忽略标记。 */
 export async function setWorkflowRunIgnored(id: string, ignored: boolean): Promise<void> {
   await apiRequest(`/api/v1/workflow-runs/${id}/ignored`, {
@@ -424,6 +434,7 @@ export interface SystemSettings {
   "retention.events_days"?: number;
   "retention.outbox_days"?: number;
   "retention.webhook_deliveries_days"?: number;
+  "ai.auto_label_enabled"?: boolean;
   "feature.issues"?: boolean;
   "feature.pull_requests"?: boolean;
   "feature.actions"?: boolean;
