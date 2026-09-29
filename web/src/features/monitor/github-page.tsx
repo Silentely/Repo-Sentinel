@@ -173,11 +173,11 @@ export function GitHubPage() {
             <span>Client ID {cfg?.client_id_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
             <input size={24} value={clientID} disabled={cfg?.client_id_locked} onChange={(e) => setClientID(e.target.value)} placeholder="Iv1.xxxxxxxx" autoComplete="off" />
           </label>
-          <label className="field--plain">
+          <label className="field--plain field--wide">
             <span>Public Base URL {cfg?.public_base_url_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
             <input size={30} value={publicBaseURL} disabled={cfg?.public_base_url_locked} onChange={(e) => setPublicBaseURL(e.target.value)} placeholder="https://monitor.example.com" autoComplete="off" />
           </label>
-          <label className="field--plain">
+          <label className="field--plain field--wide">
             <span>Webhook Secret {cfg?.webhook_secret_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>
             <input size={32} type="password" value={webhookSecret} disabled={cfg?.webhook_secret_locked} onChange={(e) => setWebhookSecret(e.target.value)} placeholder={cfg?.webhook_secret_configured ? "已配置 · 留空保留" : "与 GitHub App Secret 相同"} autoComplete="off" />
           </label>

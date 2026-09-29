@@ -234,7 +234,7 @@ export function StarredReleasesPage() {
         </label>
 
         <div className="form-grid">
-          <label className="field--plain">
+          <label className="field--plain field--wide">
             <span>GitHub 用户名</span>
             <input size={24} value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="octocat（可粘贴 github.com/xxx 链接）" />
           </label>
@@ -280,7 +280,7 @@ export function StarredReleasesPage() {
         </div>
 
         {counts ? (
-          <p className="field-hint" role="status">
+          <p className="field-hint status-summary-badge" role="status">
             状态概览：追踪中 {counts.tracking ?? 0} ｜ 无 Release {counts.inactive ?? 0} ｜ 已停用 {counts.disabled ?? 0} ｜ 不可用 {counts.unavailable ?? 0}
           </p>
         ) : null}

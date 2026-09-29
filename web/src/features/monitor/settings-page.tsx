@@ -581,7 +581,7 @@ export function SettingsPage() {
           <span>启用智能值守（{aiConfig.data?.api_key_configured ? "API Key 已配置" : "API Key 未配置"}）</span>
         </label>
         <div className="form-grid">
-          <label className="field--plain"><span>API Base URL</span><input size={30} value={aiForm.baseURL} disabled={aiConfig.data?.base_url_locked} onChange={(e) => setAI("baseURL", e.target.value)} placeholder="https://api.openai.com/v1" /></label>
+          <label className="field--plain field--wide"><span>API Base URL</span><input size={30} value={aiForm.baseURL} disabled={aiConfig.data?.base_url_locked} onChange={(e) => setAI("baseURL", e.target.value)} placeholder="https://api.openai.com/v1" /></label>
           <label className="field--plain">
             <span>模型</span>
             <input size={16} value={aiForm.model} disabled={aiConfig.data?.model_locked} onChange={(e) => setAI("model", e.target.value)} placeholder="gpt-4o-mini" />
@@ -598,7 +598,7 @@ export function SettingsPage() {
             <span>输出 token 上限</span>
             <NumberField min={100} max={8000} integer value={aiForm.maxTokens} disabled={aiConfig.data?.max_tokens_locked} onChange={(v) => setAI("maxTokens", v)} />
           </label>
-          <label className="field--plain">
+          <label className="field--plain field--wide">
             <span>API Key（留空保持不变）</span>
             <input size={32} type="password" autoComplete="off" value={aiForm.apiKey} disabled={aiConfig.data?.api_key_locked} onChange={(e) => setAI("apiKey", e.target.value)} placeholder={aiConfig.data?.api_key_configured ? "••••••••（已配置）" : "sk-…"} />
           </label>
