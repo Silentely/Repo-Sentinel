@@ -232,11 +232,13 @@ export function BatchActionBar({
   selectedCount,
   onClear,
   onBatchIgnore,
+  actionLabel,
   isPending,
 }: {
   selectedCount: number;
   onClear: () => void;
   onBatchIgnore: () => void;
+  actionLabel?: string;
   isPending?: boolean;
 }) {
   if (selectedCount === 0) return null;
@@ -264,7 +266,7 @@ export function BatchActionBar({
           onClick={onBatchIgnore}
           disabled={isPending}
         >
-          {isPending ? "处理中…" : "批量忽略"}
+          {isPending ? "处理中…" : actionLabel ?? "批量忽略"}
         </button>
         <button
           type="button"

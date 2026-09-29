@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
@@ -49,6 +50,14 @@ func TestFilterAndMapLabels(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFilterAndMapLabels_UsesIssueTriageCategories(t *testing.T) {
+	got := githubx.FilterAndMapLabels([]string{"Bug Report", "Feature Request"})
+	want := []string{"sentinel:bug", "sentinel:enhancement"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("mapped labels = %#v, want %#v", got, want)
 	}
 }
 

@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
@@ -25,6 +28,52 @@ type ChatOpsActionData struct {
 	ExpiresAt  time.Time `json:"expires_at"`
 	Consumed   bool      `json:"consumed,omitempty"`
 	ConsumedAt time.Time `json:"consumed_at,omitempty"`
+}
+
+// ChatOpsActionExecutor 执行已经完成校验与消费的 ChatOps 动作。
+type ChatOpsActionExecutor interface {
+	Execute(context.Context, ChatOpsActionData) error
+}
+
+var chatOpsConsumeMu sync.Mutex
+
+// GitHubChatOpsExecutor 执行当前支持的 GitHub ChatOps 动作。
+type GitHubChatOpsExecutor struct {
+	Store  store.Store
+	Client *githubx.AppClient
+}
+
+func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActionData) error {
+	if e == nil || e.Store == nil || e.Client == nil {
+		return errors.New("chatops executor unavailable")
+	}
+	if action.Action != "workflow_rerun" {
+		return fmt.Errorf("unsupported chatops action: %s", action.Action)
+	}
+	runID, err := strconv.ParseInt(strings.TrimSpace(action.RunID), 10, 64)
+	if err != nil || runID <= 0 {
+		return errors.New("invalid workflow run id")
+	}
+	repo, err := e.Store.Repositories().Get(ctx, action.RepoID)
+	if err != nil {
+		return fmt.Errorf("load repository: %w", err)
+	}
+	parts := strings.SplitN(repo.FullName, "/", 2)
+	if len(parts) != 2 {
+		return errors.New("invalid repository full name")
+	}
+	var token string
+	if repo.InstallationID != nil {
+		installationID, parseErr := strconv.ParseInt(*repo.InstallationID, 10, 64)
+		if parseErr != nil || installationID <= 0 {
+			return errors.New("invalid installation id")
+		}
+		token, err = e.Client.InstallationToken(ctx, installationID)
+		if err != nil {
+			return fmt.Errorf("load installation token: %w", err)
+		}
+	}
+	return e.Client.RerunWorkflow(ctx, token, parts[0], parts[1], runID)
 }
 
 // CreateChatOpsToken stores a single-use action token with a specified TTL.
@@ -66,8 +115,20 @@ func ConsumeChatOpsToken(ctx context.Context, st store.Store, tokenID string) (*
 	}
 	key := "chatops_token:" + tokenID
 	var data ChatOpsActionData
+	// 先竞争唯一 claim 键，数据库唯一约束保证跨进程也只有一个消费者成功。
+	chatOpsConsumeMu.Lock()
+	defer chatOpsConsumeMu.Unlock()
 
 	err := st.WithTx(ctx, func(tx store.Store) error {
+		if _, err := tx.Settings().Create(ctx, store.SystemSetting{
+			ID: ulid.Make().String(), Key: "chatops_claim:" + tokenID,
+			ValueJSON: json.RawMessage(`{"claimed":true}`), UpdatedAt: time.Now().UTC(),
+		}); err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				return errors.New("token already consumed")
+			}
+			return err
+		}
 		setting, err := tx.Settings().Get(ctx, key)
 		if err != nil {
 			return fmt.Errorf("token not found or invalid: %w", err)
@@ -100,6 +161,34 @@ func ConsumeChatOpsToken(ctx context.Context, st store.Store, tokenID string) (*
 		return nil, err
 	}
 	return &data, nil
+}
+
+// ReleaseChatOpsToken 仅用于动作执行失败时释放已领取的 Token，允许安全重试。
+func ReleaseChatOpsToken(ctx context.Context, st store.Store, tokenID string) error {
+	if st == nil {
+		return errors.New("store not available")
+	}
+	return st.WithTx(ctx, func(tx store.Store) error {
+		if err := tx.Settings().Delete(ctx, "chatops_claim:"+tokenID); err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+		setting, err := tx.Settings().Get(ctx, "chatops_token:"+tokenID)
+		if err != nil {
+			return err
+		}
+		var data ChatOpsActionData
+		if err := json.Unmarshal(setting.ValueJSON, &data); err != nil {
+			return err
+		}
+		data.Consumed = false
+		data.ConsumedAt = time.Time{}
+		raw, err := json.Marshal(data)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Settings().Upsert(ctx, store.SystemSetting{Key: setting.Key, ValueJSON: raw, UpdatedAt: time.Now().UTC()})
+		return err
+	})
 }
 
 // handleTelegramChatOpsCallback handles Telegram webhook callback queries.
@@ -162,18 +251,21 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "ignored", "reason": err.Error()})
 		return
 	}
-
-	// Dispatch async execution
-	s.safeGo("chatops_telegram", func() {
-		if s.dependencies.Logger != nil {
-			s.dependencies.Logger.Info("telegram chatops action triggered",
-				"action", action.Action,
-				"repo_id", action.RepoID,
-				"run_id", action.RunID,
-				"actor", update.CallbackQuery.From.Username,
-			)
-		}
-	})
+	if action.ActorID != "" && strconv.FormatInt(update.CallbackQuery.From.ID, 10) != action.ActorID {
+		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "chatops_actor_forbidden"})
+		return
+	}
+	if s.chatOpsExecutor == nil {
+		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatops_unavailable"})
+		return
+	}
+	if err := s.chatOpsExecutor.Execute(r.Context(), *action); err != nil {
+		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "chatops_action_failed"})
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -250,17 +342,33 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 		})
 		return
 	}
-
-	// Dispatch async execution
-	s.safeGo("chatops_feishu", func() {
-		if s.dependencies.Logger != nil {
-			s.dependencies.Logger.Info("feishu chatops action triggered",
-				"action", action.Action,
-				"repo_id", action.RepoID,
-				"run_id", action.RunID,
-			)
+	if action.ActorID != "" {
+		actorID := ""
+		if raw, ok := body["open_id"].(string); ok {
+			actorID = raw
 		}
-	})
+		if operator, ok := body["operator"].(map[string]any); ok {
+			if raw, ok := operator["open_id"].(string); ok {
+				actorID = raw
+			}
+		}
+		if actorID != "" && actorID != action.ActorID {
+			_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "chatops_actor_forbidden"})
+			return
+		}
+	}
+
+	if s.chatOpsExecutor == nil {
+		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatops_unavailable"})
+		return
+	}
+	if err := s.chatOpsExecutor.Execute(r.Context(), *action); err != nil {
+		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "chatops_action_failed"})
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"toast": map[string]string{

@@ -14,15 +14,17 @@ import (
 
 // AllowedSentinelLabels maps normalized category names to canonical GitHub issue labels.
 var AllowedSentinelLabels = map[string]string{
-	"bug":           "sentinel:bug",
-	"enhancement":   "sentinel:enhancement",
-	"feature":       "sentinel:feature",
-	"question":      "sentinel:question",
-	"documentation": "sentinel:documentation",
-	"help wanted":   "sentinel:help-wanted",
-	"help-wanted":   "sentinel:help-wanted",
-	"performance":   "sentinel:performance",
-	"security":      "sentinel:security",
+	"bug":             "sentinel:bug",
+	"bug report":      "sentinel:bug",
+	"enhancement":     "sentinel:enhancement",
+	"feature":         "sentinel:feature",
+	"feature request": "sentinel:enhancement",
+	"question":        "sentinel:question",
+	"documentation":   "sentinel:documentation",
+	"help wanted":     "sentinel:help-wanted",
+	"help-wanted":     "sentinel:help-wanted",
+	"performance":     "sentinel:performance",
+	"security":        "sentinel:security",
 }
 
 // ErrLabelNotFound indicates GitHub returned 422 Unprocessable Entity (e.g. label does not exist).
@@ -115,5 +117,33 @@ func (c *AppClient) AddIssueLabels(ctx context.Context, token, owner, repo strin
 		return statusError(resp.StatusCode, body)
 	}
 
+	return nil
+}
+
+// RerunWorkflow requests GitHub to rerun a workflow run.
+func (c *AppClient) RerunWorkflow(ctx context.Context, token, owner, repo string, runID int64) error {
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/rerun", owner, repo, runID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL()+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", githubClientUA)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
+	}
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return statusError(resp.StatusCode, body)
+	}
 	return nil
 }

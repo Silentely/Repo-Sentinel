@@ -88,7 +88,8 @@ type Dependencies struct {
 	// WebhookService 可选；由 App 持有时可在关闭前等待异步 PR 审查任务排空。
 	WebhookService *webhooksvc.Service
 	// SSEHub 可选；用于实时事件推流（若未传则在 New 中自动创建）。
-	SSEHub *SSEHub
+	SSEHub          *SSEHub
+	ChatOpsExecutor ChatOpsActionExecutor
 }
 
 type server struct {
@@ -104,9 +105,10 @@ type server struct {
 	// webhookSem 控制 webhook 后台处理并发；容量见 webhookProcessConcurrency。
 	webhookSem chan struct{}
 	// loginSem 控制 Argon2id 认证并发计算上限，防止 CPU 耗尽。
-	loginSem    chan struct{}
-	totpTickets *auth.TOTPTicketManager
-	sseHub      *SSEHub
+	loginSem        chan struct{}
+	totpTickets     *auth.TOTPTicketManager
+	sseHub          *SSEHub
+	chatOpsExecutor ChatOpsActionExecutor
 }
 
 // safeGo 以后台 goroutine 执行 fn；panic 只记录日志，不拖垮整个进程。
@@ -232,14 +234,18 @@ func New(dependencies Dependencies) http.Handler {
 		sseHub = NewSSEHub(dependencies.Logger)
 	}
 	s := &server{
-		dependencies:   dependencies,
-		secureCookies:  usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
-		trustedProxies: parseTrustedSubnets(dependencies.Config.HTTP.TrustedProxies),
-		webhookSem:     make(chan struct{}, webhookProcessConcurrency),
-		loginSem:       make(chan struct{}, 3),
-		totpTickets:    auth.NewTOTPTicketManager(3 * time.Minute),
-		webhookSvc:     webhookService,
-		sseHub:         sseHub,
+		dependencies:    dependencies,
+		secureCookies:   usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
+		trustedProxies:  parseTrustedSubnets(dependencies.Config.HTTP.TrustedProxies),
+		webhookSem:      make(chan struct{}, webhookProcessConcurrency),
+		loginSem:        make(chan struct{}, 3),
+		totpTickets:     auth.NewTOTPTicketManager(3 * time.Minute),
+		webhookSvc:      webhookService,
+		sseHub:          sseHub,
+		chatOpsExecutor: dependencies.ChatOpsExecutor,
+	}
+	if s.chatOpsExecutor == nil && dependencies.GitHubRuntime != nil {
+		s.chatOpsExecutor = &GitHubChatOpsExecutor{Store: dependencies.Store, Client: dependencies.GitHubRuntime.Client}
 	}
 	// 若运行时 Public Base URL 来自管理台，启动后仍以当前快照为准（见 cookiesSecure）。
 	router := chi.NewRouter()

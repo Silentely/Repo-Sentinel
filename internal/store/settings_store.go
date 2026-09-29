@@ -30,6 +30,29 @@ func (s *settingsStore) Get(ctx context.Context, key string) (SystemSetting, err
 	return row, nil
 }
 
+func (s *settingsStore) Create(ctx context.Context, input SystemSetting) (SystemSetting, error) {
+	entity, err := s.client.SystemSetting.Create().
+		SetID(input.ID).
+		SetKey(input.Key).
+		SetValueJSON(cloneJSON(input.ValueJSON)).
+		SetUpdatedAt(input.UpdatedAt.UTC()).
+		SetUpdatedBy(input.UpdatedBy).
+		Save(ctx)
+	if err != nil {
+		if entclient.IsConstraintError(err) {
+			return SystemSetting{}, ErrConflict
+		}
+		return SystemSetting{}, mapStoreError(err)
+	}
+	s.cache.Invalidate(input.Key)
+	return settingFromEntity(entity), nil
+}
+
+func (s *settingsStore) Delete(ctx context.Context, key string) error {
+	_, err := s.client.SystemSetting.Delete().Where(systemsetting.KeyEQ(key)).Exec(ctx)
+	return mapStoreError(err)
+}
+
 // GetMany 批量读取设置：先取缓存命中键，缺失键单次查库并回填缓存。
 // 相比逐个 Get 可减少设置页渲染（handleGetSettings）的多次往返；回填后
 // webhook 热路径对同键的 Get 直接命中缓存，不再重复落库。

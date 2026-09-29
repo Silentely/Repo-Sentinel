@@ -183,6 +183,21 @@ describe("SSEManager circuit breaker & lifecycle", () => {
     manager.stop();
   });
 
+  it("allows a visibility recovery after the circuit breaker trips", () => {
+    const queryClient = new QueryClient();
+    const manager = new SSEManager(queryClient, { maxRetries: 1 });
+
+    manager.start();
+    mockEventSourceInstances[0]!.onerror?.(new Event("error"));
+    expect(mockEventSourceInstances).toHaveLength(1);
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(mockEventSourceInstances).toHaveLength(2);
+    manager.stop();
+  });
+
   it("dispatches incoming events to debounced invalidator", () => {
     const queryClient = new QueryClient();
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();

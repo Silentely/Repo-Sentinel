@@ -506,43 +506,37 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 		return
 	}
 
-	_, _ = e.Store.Settings().Upsert(ctx, store.SystemSetting{
-		ID:        ulid.Make().String(),
-		Key:       idempotencyKey,
-		ValueJSON: json.RawMessage(`{"status":"applied"}`),
-		UpdatedAt: time.Now().UTC(),
-		UpdatedBy: "auto_label",
-	})
-
 	parts := strings.SplitN(repoFullName, "/", 2)
 	if len(parts) != 2 {
 		return
 	}
 	owner, repo := parts[0], parts[1]
 
-	var token string
-	if repoRec, err := e.Store.Repositories().GetByFullName(ctx, repoFullName); err == nil && repoRec.InstallationID != nil {
-		if instID, perr := strconv.ParseInt(*repoRec.InstallationID, 10, 64); perr == nil && instID > 0 {
-			if tok, tokErr := e.GitHub.InstallationToken(ctx, instID); tokErr == nil {
-				token = tok
-			}
-		}
+	repoRec, err := e.Store.Repositories().GetByFullName(ctx, repoFullName)
+	if err != nil || repoRec.InstallationID == nil {
+		return
+	}
+	instID, err := strconv.ParseInt(*repoRec.InstallationID, 10, 64)
+	if err != nil || instID <= 0 {
+		return
+	}
+	token, err := e.GitHub.InstallationToken(ctx, instID)
+	if err != nil || token == "" {
+		return
 	}
 
-	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-
-		err := e.GitHub.AddIssueLabels(bgCtx, token, owner, repo, issueNumber, labels)
-		if err != nil && e.Logger != nil {
-			e.Logger.Warn("async issue auto-label failed",
-				"repo", repoFullName,
-				"issue", issueNumber,
-				"labels", labels,
-				"error", err.Error(),
-			)
+	bgCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := e.GitHub.AddIssueLabels(bgCtx, token, owner, repo, issueNumber, labels); err != nil {
+		if e.Logger != nil {
+			e.Logger.Warn("issue auto-label failed", "repo", repoFullName, "issue", issueNumber, "labels", labels, "error", err.Error())
 		}
-	}()
+		return
+	}
+	_, _ = e.Store.Settings().Upsert(ctx, store.SystemSetting{
+		ID: ulid.Make().String(), Key: idempotencyKey,
+		ValueJSON: json.RawMessage(`{"status":"applied"}`), UpdatedAt: time.Now().UTC(), UpdatedBy: "auto_label",
+	})
 }
 
 // isSecurityAlertKind 判定事件是否为安全告警类型（分诊仅针对告警）。

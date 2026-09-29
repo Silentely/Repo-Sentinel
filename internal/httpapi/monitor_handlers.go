@@ -362,25 +362,45 @@ func (s *server) handleBatchSetWorkItemIgnored(w http.ResponseWriter, r *http.Re
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "ids", "limit": 100})
 		return
 	}
+	ids := make([]string, 0, len(body.IDs))
+	seen := make(map[string]struct{}, len(body.IDs))
+	for _, rawID := range body.IDs {
+		id := strings.TrimSpace(rawID)
+		if id == "" {
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "ids"})
+			return
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
 
 	updatedCount := 0
 	ctx := r.Context()
 	const chunkSize = 25
-	for i := 0; i < len(body.IDs); i += chunkSize {
+	for i := 0; i < len(ids); i += chunkSize {
 		end := i + chunkSize
-		if end > len(body.IDs) {
-			end = len(body.IDs)
+		if end > len(ids) {
+			end = len(ids)
 		}
-		chunk := body.IDs[i:end]
-		for _, id := range chunk {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
+		chunk := ids[i:end]
+		chunkUpdated := 0
+		err := s.dependencies.Store.WithTx(ctx, func(tx store.Store) error {
+			for _, id := range chunk {
+				if err := tx.WorkItems().SetIgnored(ctx, id, body.Ignored); err != nil {
+					return err
+				}
+				chunkUpdated++
 			}
-			if err := s.dependencies.Store.WorkItems().SetIgnored(ctx, id, body.Ignored); err == nil {
-				updatedCount++
-			}
+			return nil
+		})
+		if err != nil {
+			s.writeMappedError(w, r, err)
+			return
 		}
+		updatedCount += chunkUpdated
 		runtime.Gosched()
 	}
 

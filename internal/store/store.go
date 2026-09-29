@@ -112,6 +112,9 @@ type SessionStore interface {
 // SettingsStore 管理唯一键系统设置。
 type SettingsStore interface {
 	Get(context.Context, string) (SystemSetting, error)
+	// Create 仅创建新设置键；已存在时返回 ErrConflict，用于需要一次性竞争的状态迁移。
+	Create(context.Context, SystemSetting) (SystemSetting, error)
+	Delete(context.Context, string) error
 	// GetMany 批量读取设置：仅返回存在的键，缺失的键不返回也不报错。
 	GetMany(context.Context, ...string) ([]SystemSetting, error)
 	Upsert(context.Context, SystemSetting) (SystemSetting, error)

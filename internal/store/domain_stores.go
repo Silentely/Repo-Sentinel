@@ -789,7 +789,7 @@ func (s *workItemStore) BatchUpsert(ctx context.Context, items []WorkItem) error
 	for i := 0; i < len(items); i += chunkSize {
 		end := i + chunkSize
 		if end > len(items) {
-		end = len(items)
+			end = len(items)
 		}
 		chunk := items[i:end]
 		for _, item := range chunk {

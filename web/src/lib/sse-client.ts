@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 export interface SSEEventPayload {
@@ -13,6 +13,7 @@ export interface SSEEventPayload {
 export interface DebouncedInvalidator {
   schedule: (topic: string) => void;
   flush: () => void;
+  cancel: () => void;
 }
 
 export interface SSEManagerOptions {
@@ -75,7 +76,13 @@ export function createDebouncedInvalidator(
     }
   };
 
-  return { schedule, flush };
+  const cancel = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    pendingDomains.clear();
+  };
+
+  return { schedule, flush, cancel };
 }
 
 /**
@@ -121,7 +128,8 @@ export class SSEManager {
           this.queryClient.invalidateQueries({ refetchType: "active" });
 
           // Re-establish connection if dropped and circuit breaker not tripped
-          if (!this.isStopped && !this.isCircuitBroken && (!this.es || this.es.readyState === 2)) {
+          if (!this.isStopped && (!this.es || this.es.readyState === 2)) {
+            this.isCircuitBroken = false;
             this.retryCount = 0;
             this.connect();
           }
@@ -145,6 +153,7 @@ export class SSEManager {
       document.removeEventListener("visibilitychange", this.visibilityHandler);
       this.visibilityHandler = null;
     }
+    this.invalidator.cancel();
   }
 
   public getRetryCount(): number {
@@ -187,7 +196,7 @@ export class SSEManager {
         }, delay);
       };
 
-      const handleEvent = (topic: string) => (e: MessageEvent) => {
+      const handleEvent = (topic: string) => () => {
         try {
           this.invalidator.schedule(topic);
         } catch {
@@ -210,15 +219,13 @@ export class SSEManager {
  */
 export function useLiveEventStream(options?: SSEManagerOptions): void {
   const queryClient = useQueryClient();
-  const optionsRef = useRef(options);
-  optionsRef.current = options;
 
   useEffect(() => {
-    const manager = new SSEManager(queryClient, optionsRef.current);
+    const manager = new SSEManager(queryClient, options);
     manager.start();
 
     return () => {
       manager.stop();
     };
-  }, [queryClient]);
+  }, [queryClient, options]);
 }

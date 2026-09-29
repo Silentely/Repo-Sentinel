@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,18 @@ import (
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
+
+type recordingChatOpsExecutor struct {
+	action ChatOpsActionData
+	calls  int
+	err    error
+}
+
+func (e *recordingChatOpsExecutor) Execute(_ context.Context, action ChatOpsActionData) error {
+	e.action = action
+	e.calls++
+	return e.err
+}
 
 func TestChatOps_Telegram_SecretTokenVerification(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
@@ -136,5 +149,48 @@ func TestChatOps_ActionToken_AntiReplay(t *testing.T) {
 	_, err = ConsumeChatOpsToken(t.Context(), fixture.store, tokenID)
 	if err == nil {
 		t.Fatal("expected second consumption to fail with replay error, got nil")
+	}
+}
+
+func TestChatOps_ActionToken_ConcurrentConsumptionAllowsOnlyOneWinner(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	tokenID, err := CreateChatOpsToken(t.Context(), fixture.store, "workflow_rerun", "repo-1", "123456", "user-1", 10*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	results := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		go func() {
+			_, err := ConsumeChatOpsToken(t.Context(), fixture.store, tokenID)
+			results <- err
+		}()
+	}
+
+	winners := 0
+	for i := 0; i < 8; i++ {
+		if <-results == nil {
+			winners++
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("expected exactly one token consumer, got %d", winners)
+	}
+}
+
+func TestChatOps_ActionToken_ReleaseAllowsRetry(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	tokenID, err := CreateChatOpsToken(t.Context(), fixture.store, "workflow_rerun", "repo-1", "123456", "user-1", 10*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConsumeChatOpsToken(t.Context(), fixture.store, tokenID); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReleaseChatOpsToken(t.Context(), fixture.store, tokenID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConsumeChatOpsToken(t.Context(), fixture.store, tokenID); err != nil {
+		t.Fatalf("released token should be retryable: %v", err)
 	}
 }

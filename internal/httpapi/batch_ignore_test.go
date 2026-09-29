@@ -90,3 +90,17 @@ func TestBatchSetWorkItemIgnored(t *testing.T) {
 		t.Fatalf("expected wi-batch-1 ignored=false, got err=%v, ignored=%v", err, it1.Ignored)
 	}
 }
+
+func TestBatchSetWorkItemIgnored_ReturnsErrorForMissingID(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	req := fixture.request(t, http.MethodPost, "/api/v1/work-items/batch-ignore",
+		`{"ids":["missing-work-item"],"ignored":true}`, "127.0.0.1:45005", cookies,
+		map[string]string{CSRFHeaderName: csrf.Value})
+	if req.Code != http.StatusNotFound {
+		t.Fatalf("expected missing ID to return 404, got %d: %s", req.Code, req.Body.String())
+	}
+}

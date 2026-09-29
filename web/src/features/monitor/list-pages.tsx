@@ -1072,6 +1072,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
         selectedCount={selectedIds.size}
         onClear={() => setSelectedIds(new Set())}
         onBatchIgnore={() => batchIgnoreMutation.mutate(Array.from(selectedIds))}
+        actionLabel={ignoredMode === "ignored" ? "批量取消忽略" : "批量忽略"}
         isPending={batchIgnoreMutation.isPending}
       />
       <EventListBody
