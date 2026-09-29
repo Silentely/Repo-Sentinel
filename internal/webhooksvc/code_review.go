@@ -326,6 +326,9 @@ func (s *Service) persistPRReview(ctx context.Context, req prReviewRequest, res 
 	}); err != nil {
 		return fmt.Errorf("persist review result: %w", err)
 	}
+	if s.OnBroadcast != nil && req.itemID != "" {
+		s.OnBroadcast("ai_review.changed", "work_item", req.itemID)
+	}
 	return nil
 }
 

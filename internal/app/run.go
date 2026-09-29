@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math/rand"
 	"net"
 	"net/http"
 	"time"
@@ -53,6 +54,18 @@ func (a *App) Run(ctx context.Context) error {
 			Logger:  a.logger,
 			OnSent:  httpapi.MetricsIncOutboxSent,
 			OnDead:  httpapi.MetricsIncOutboxDead,
+			OnStateChange: func(id, status string) {
+				if a.sseHub != nil {
+					a.sseHub.Broadcast(httpapi.SSEEvent{
+						ID:         ulid.Make().String(),
+						Topic:      "outbox.changed",
+						Version:    1,
+						OccurredAt: time.Now().UTC(),
+						Resource:   "outbox",
+						ResourceID: id,
+					})
+				}
+			},
 		}).Run(workerCtx, 5*time.Second)
 	}()
 	schedDone := make(chan struct{})
@@ -60,6 +73,38 @@ func (a *App) Run(ctx context.Context) error {
 		defer close(schedDone)
 		if a.scheduler != nil {
 			a.scheduler.Run(workerCtx)
+		}
+	}()
+	maintDone := make(chan struct{})
+	go func() {
+		defer close(maintDone)
+		if a.databaseDriver != "sqlite" || a.databaseURL == "" {
+			return
+		}
+		maintDB, err := store.OpenMaintenanceDB(a.databaseURL)
+		if err != nil {
+			if a.logger != nil {
+				a.logger.Warn("sqlite maintenance db open failed", "error", err.Error())
+			}
+			return
+		}
+		defer maintDB.Close()
+
+		jitter := time.Duration(rand.Intn(30)) * time.Minute
+		timer := time.NewTimer(jitter)
+		defer timer.Stop()
+
+		for {
+			select {
+			case <-workerCtx.Done():
+				return
+			case <-timer.C:
+				if err := store.RunMaintenanceTask(workerCtx, maintDB); err != nil && a.logger != nil {
+					a.logger.Warn("sqlite maintenance run failed", "error", err.Error())
+				}
+				nextDuration := 24*time.Hour + time.Duration(rand.Intn(30))*time.Minute
+				timer.Reset(nextDuration)
+			}
 		}
 	}()
 
@@ -75,6 +120,7 @@ func (a *App) Run(ctx context.Context) error {
 		<-retentionDone
 		<-notifyDone
 		<-schedDone
+		<-maintDone
 		_ = a.Close()
 		return newPublicError("http_server_failed", "HTTP Server 监听失败。", err)
 	}
@@ -118,6 +164,7 @@ func (a *App) Run(ctx context.Context) error {
 	<-retentionDone
 	<-notifyDone
 	<-schedDone
+	<-maintDone
 	closeErr := a.Close()
 
 	if runErr != nil {

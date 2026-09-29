@@ -188,9 +188,20 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		Logger:   logger,
 	}
 
+	sseHub := httpapi.NewSSEHub(logger)
 	webhookService := &webhooksvc.Service{
 		Store: data, Logger: logger, Evaluator: aggregator, GitHub: ghClient,
 		AI: aiClient, Background: workerCtx, OnFailed: httpapi.MetricsIncWebhookFailed,
+		OnBroadcast: func(topic, resource, resourceID string) {
+			sseHub.Broadcast(httpapi.SSEEvent{
+				ID:         ulid.Make().String(),
+				Topic:      topic,
+				Version:    1,
+				OccurredAt: time.Now().UTC(),
+				Resource:   resource,
+				ResourceID: resourceID,
+			})
+		},
 	}
 	handler := httpapi.New(httpapi.Dependencies{
 		Config:         cfg,
@@ -216,6 +227,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		AIRuntime:      aiRuntime,
 		StarredPoller:  starred,
 		WebhookService: webhookService,
+		SSEHub:         sseHub,
 	})
 	if err := bootstrapNotifyChannels(ctx, logger, data, keyRing, cfg); err != nil {
 		return nil, err
@@ -233,8 +245,10 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		cleanupInterval: defaultCleanupInterval,
 		scheduler:       scheduler,
 		webhookService:  webhookService,
+		sseHub:          sseHub,
 		httpAddr:        cfg.HTTP.Addr,
 		databaseDriver:  cfg.Database.Driver,
+		databaseURL:     cfg.Database.URL,
 	}
 	workerOwned = false
 	return built, nil

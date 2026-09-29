@@ -73,6 +73,8 @@ type Worker struct {
 	// OnSent / OnDead 可选指标回调，避免 notify 包依赖 httpapi。
 	OnSent func()
 	OnDead func()
+	// OnStateChange 可选状态迁移回调，用于实时推流 outbox.changed。
+	OnStateChange func(id, status string)
 }
 
 // Run 循环领取并发送。
@@ -225,6 +227,9 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 		}
 		if w.OnSent != nil {
 			w.OnSent()
+		}
+		if w.OnStateChange != nil {
+			w.OnStateChange(item.ID, "sent")
 		}
 	}
 }
@@ -497,6 +502,9 @@ func (w *Worker) markDead(ctx context.Context, id, code string) {
 	}
 	if w.OnDead != nil {
 		w.OnDead()
+	}
+	if w.OnStateChange != nil {
+		w.OnStateChange(id, "dead")
 	}
 }
 

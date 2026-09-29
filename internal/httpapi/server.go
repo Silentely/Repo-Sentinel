@@ -87,6 +87,8 @@ type Dependencies struct {
 	StarredPoller *syncx.StarredReleasePoller
 	// WebhookService 可选；由 App 持有时可在关闭前等待异步 PR 审查任务排空。
 	WebhookService *webhooksvc.Service
+	// SSEHub 可选；用于实时事件推流（若未传则在 New 中自动创建）。
+	SSEHub *SSEHub
 }
 
 type server struct {
@@ -104,6 +106,7 @@ type server struct {
 	// loginSem 控制 Argon2id 认证并发计算上限，防止 CPU 耗尽。
 	loginSem    chan struct{}
 	totpTickets *auth.TOTPTicketManager
+	sseHub      *SSEHub
 }
 
 // safeGo 以后台 goroutine 执行 fn；panic 只记录日志，不拖垮整个进程。
@@ -122,6 +125,10 @@ func (s *server) safeGo(name string, fn func()) {
 		}()
 		fn()
 	}()
+}
+
+func (s *server) SSEHub() *SSEHub {
+	return s.sseHub
 }
 
 func (s *server) getTOTPTickets() *auth.TOTPTicketManager {
@@ -220,6 +227,10 @@ func New(dependencies Dependencies) http.Handler {
 			OnFailed:   MetricsIncWebhookFailed,
 		}
 	}
+	sseHub := dependencies.SSEHub
+	if sseHub == nil {
+		sseHub = NewSSEHub(dependencies.Logger)
+	}
 	s := &server{
 		dependencies:   dependencies,
 		secureCookies:  usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),
@@ -228,6 +239,7 @@ func New(dependencies Dependencies) http.Handler {
 		loginSem:       make(chan struct{}, 3),
 		totpTickets:    auth.NewTOTPTicketManager(3 * time.Minute),
 		webhookSvc:     webhookService,
+		sseHub:         sseHub,
 	}
 	// 若运行时 Public Base URL 来自管理台，启动后仍以当前快照为准（见 cookiesSecure）。
 	router := chi.NewRouter()
@@ -244,6 +256,8 @@ func New(dependencies Dependencies) http.Handler {
 		router.Get("/metrics", s.handleMetrics)
 	}
 	router.Post(githubx.WebhookPath, s.handleGitHubWebhook)
+	router.Post("/chatops/telegram/callback", s.handleTelegramChatOpsCallback)
+	router.Post("/chatops/feishu/callback", s.handleFeishuChatOpsCallback)
 
 	// Agent 发现端点（RFC 8288 / 9727 / 9728 / 8414、sitemap、MCP、Auth.md）。
 	router.Group(func(disco chi.Router) {
@@ -278,6 +292,7 @@ func New(dependencies Dependencies) http.Handler {
 			// Store 统一守卫：未装配时受保护路由一律 503，避免各 handler 遗漏 nil 检查。
 			protected.Use(s.storeGuardMiddleware)
 			protected.Get("/auth/session", s.handleSession)
+			protected.Get("/events/stream", s.handleEventStream)
 			protected.Get("/system/version", s.handleVersion)
 			protected.Get("/dashboard", s.handleDashboard)
 			protected.Get("/stats/star-trend", s.handleStarTrend)
@@ -325,6 +340,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/work-items/{id}/ai-review", s.handleTriggerWorkItemAIReview)
 				mutating.Post("/work-items/{id}/ai-triage", s.handleTriggerWorkItemAITriage)
 				mutating.Patch("/work-items/{id}/ignored", s.handleSetWorkItemIgnored)
+				mutating.Post("/work-items/batch-ignore", s.handleBatchSetWorkItemIgnored)
 				mutating.Patch("/workflow-runs/{id}/ignored", s.handleSetWorkflowRunIgnored)
 				mutating.Patch("/security-alerts/{id}/ignored", s.handleSetSecurityAlertIgnored)
 				mutating.Post("/sync/reconcile", s.handleReconcileAll)
@@ -350,7 +366,7 @@ func New(dependencies Dependencies) http.Handler {
 	// 客户端按方法探测时被误导）。已知 POST-only 端点补 Allow 提示（RFC 9110 §15.5.6）。
 	router.MethodNotAllowed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/mcp", "/oauth/token", "/webhooks/github":
+		case "/mcp", "/oauth/token", "/webhooks/github", "/chatops/telegram/callback", "/chatops/feishu/callback":
 			w.Header().Set("Allow", http.MethodPost)
 		}
 		s.writeAPIError(w, r, http.StatusMethodNotAllowed, errorCodeMethodNotAllowed, nil)

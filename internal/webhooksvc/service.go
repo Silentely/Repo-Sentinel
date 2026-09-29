@@ -1,5 +1,5 @@
 // Package webhooksvc 承载 GitHub Webhook 的业务管线：
-// 验签后的载荷 → 规范化 → 实时通知决策 → WebhookDelivery 状态机。
+// 验签后的负载 → 规范化 → 实时通知决策 → WebhookDelivery 状态机。
 // 从 httpapi 抽出，使 HTTP 层只负责请求/响应适配，不再编排领域流程。
 package webhooksvc
 
@@ -20,7 +20,7 @@ type Evaluator interface {
 	Evaluate(ctx context.Context, res normalizer.Result, repoFullName string) error
 }
 
-// Service 处理验签后的 Webhook 载荷并更新投递状态。
+// Service 处理验签后的 Webhook 负载并更新投递状态。
 type Service struct {
 	Store  store.Store
 	Logger *slog.Logger
@@ -35,6 +35,8 @@ type Service struct {
 	// OnFailed 可选指标回调：规范化或规则评估失败时触发（与 notify 的 OnSent 同模式，
 	// 避免 webhooksvc 反向依赖 httpapi）。
 	OnFailed func()
+	// OnBroadcast 可选广播回调：Webhook 成功入库或状态流转时触发实时推流。
+	OnBroadcast func(topic, resource, resourceID string)
 	// SlowThreshold 慢处理判定阈值；<=0 时用默认 slowWebhookThreshold。
 	SlowThreshold time.Duration
 	// reviews 跟踪在途审查任务：同头互斥与停机排空（见 reviewTracker）。
@@ -76,35 +78,27 @@ func (s *Service) MarkFailed(rowID, deliveryID, eventType, errorCode string) {
 
 // markFailed 统一处理失败分支：标记投递失败（带语义化错误码）、记录失败指标回调。
 // 标记失败会让行残留 accepted/中间态，影响状态机与重放判断，必须留痕。
-// deliveryID/eventType 与 logError 对齐：排障按 GitHub delivery_id 检索时不致漏掉该条 Warn。
+// deliveryID/eventType 与 logError 对齐：排查按 GitHub delivery_id 检索时不致漏掉该条 Warn。
 func (s *Service) markFailed(rowID, deliveryID, eventType, errorCode string) {
-	markCtx, cancel := s.markContext()
-	defer cancel()
+	markCtx, markCancel := s.markContext()
+	defer markCancel()
 	if err := s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, errorCode); err != nil && s.Logger != nil {
-		s.Logger.Warn("webhook mark failed error",
-			"delivery_row_id", rowID,
-			"delivery_id", deliveryID,
-			"event_type", eventType,
-			"error_code", "mark_failed",
-			"error", err.Error())
+		s.Logger.Warn("webhook mark failed status error",
+			"delivery_id", deliveryID, "event_type", eventType, "error", err.Error(), "error_code", "webhook_mark_failed_status_error")
 	}
 	if s.OnFailed != nil {
 		s.OnFailed()
 	}
 }
 
-// markContext 为单次状态标记建立独立预算：脱离 Background 取消（关闭期间不残留 accepted 行），
-// 且从「标记时刻」起算 5s——处理耗时可长达 processBudget，若在 Process 入口建预算，
-// AI 分诊等慢处理会让标记必然 deadline exceeded（行残留 accepted 被重放、重复投递）。
+// markContext 为终态标记（MarkProcessed / MarkFailed）派生独立的短超时 context。
+// 即使传入的 ctx（Background 生命周期）正在优雅关闭（已 cancel），状态机终态收敛依然必须尽力落库；
+// 但又不能无限期挂死（数据库断连时），因此用 context.WithoutCancel 脱离原 context 取消链，并绑定 5 秒兜底超时。
 func (s *Service) markContext() (context.Context, context.CancelFunc) {
-	base := s.Background
-	if base == nil {
-		base = context.Background()
-	}
-	return context.WithTimeout(context.WithoutCancel(base), 5*time.Second)
+	return context.WithTimeout(context.WithoutCancel(s.baseContext()), 5*time.Second)
 }
 
-// slowThreshold 返回慢处理阈值；实例未设置时用默认值。
+// slowThreshold 返回慢处理判定阈值；配置 <=0 时回退默认值。
 func (s *Service) slowThreshold() time.Duration {
 	if s.SlowThreshold > 0 {
 		return s.SlowThreshold
@@ -112,8 +106,8 @@ func (s *Service) slowThreshold() time.Duration {
 	return slowWebhookThreshold
 }
 
-// Process 执行规范化 → 通知 → 状态机标记的完整管线。
-// 与 HTTP 请求解耦：行状态标记使用不受取消影响的 context，保证关闭期间不残留 accepted 行。
+// Process 驱动单条 webhook 的处理管线：规范化 → 规则评估 → 状态推进。
+// 必须在独立的 context（通常是 Background 生命周期）下运行，且已占用并发槽位。
 func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	ctx := s.Background
 	if ctx == nil {
@@ -154,6 +148,9 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	}
 	if res.Repository != nil {
 		repoName = res.Repository.FullName
+	}
+	if res.Event != nil && s.OnBroadcast != nil {
+		s.OnBroadcast("events.created", "event", res.Event.ID)
 	}
 	s.maybeTriggerAICodeReview(res, body)
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
+	"github.com/Silentely/Repo-Sentinel/internal/httpapi"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/Silentely/Repo-Sentinel/internal/webhooksvc"
@@ -59,9 +60,11 @@ type App struct {
 	workerCancel    context.CancelFunc
 	scheduler       *syncx.Scheduler
 	webhookService  *webhooksvc.Service
+	sseHub          *httpapi.SSEHub
 	// 就绪日志与监听地址/驱动：Build 记录，Run 在监听成功后才输出 ready。
 	httpAddr       string
 	databaseDriver string
+	databaseURL    string
 	closeOnce      sync.Once
 	closeErr       error
 }
@@ -77,6 +80,9 @@ func (a *App) Close() error {
 		}
 		if a.workerCancel != nil {
 			a.workerCancel()
+		}
+		if a.sseHub != nil {
+			_ = a.sseHub.Close()
 		}
 		if a.webhookService != nil {
 			// 先拒绝登记新审查任务，再等待在途任务排空：排空期间启动的新任务

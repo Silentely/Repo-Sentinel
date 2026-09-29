@@ -29,6 +29,7 @@ import {
   type AuthenticationResponse,
 } from "../features/auth/api";
 import { dashboardQueryOptions, settingsQueryOptions } from "../features/monitor/api";
+import { useLiveEventStream } from "../lib/sse-client";
 import { useModalLayer } from "../lib/use-modal-layer";
 
 export interface RootLayoutProps {
@@ -59,6 +60,7 @@ export function pageTitleFor(pathname: string): string {
 }
 
 export function RootLayout({ session }: RootLayoutProps) {
+  useLiveEventStream();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [loggingOut, setLoggingOut] = useState(false);

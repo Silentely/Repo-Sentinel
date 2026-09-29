@@ -105,6 +105,7 @@ func isReservedHTTPPath(name string) bool {
 	return requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") ||
 		requestPath == "/health" || strings.HasPrefix(requestPath, "/health/") ||
 		requestPath == "/webhooks/github" || strings.HasPrefix(requestPath, "/webhooks/github/") ||
+		requestPath == "/chatops" || strings.HasPrefix(requestPath, "/chatops/") ||
 		requestPath == "/metrics" ||
 		requestPath == "/mcp" || strings.HasPrefix(requestPath, "/mcp/") ||
 		requestPath == "/oauth" || strings.HasPrefix(requestPath, "/oauth/") ||
