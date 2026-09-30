@@ -237,12 +237,19 @@ func (a *App) runRetentionCleanup(ctx context.Context) {
 			}
 			return
 		}
+		// 临时设置行（ChatOps 令牌/领取标记、自动打标回执）按各自规则过期，
+		// 不受保留策略影响，始终随同一节拍清理。
+		transientDeleted, transientErr := a.data.CleanupTransientSettings(ctx, time.Now().UTC())
+		if transientErr != nil && a.logger != nil {
+			a.logger.Warn("transient settings cleanup failed", "error_code", "database_unavailable", "error", transientErr.Error())
+		}
 		if a.logger != nil && (result.EventsDeleted > 0 || result.OutboxDeleted > 0 || result.WebhookDeliveriesDeleted > 0) {
 			a.logger.Info(
 				"retention cleanup completed",
 				"events_deleted", result.EventsDeleted,
 				"outbox_deleted", result.OutboxDeleted,
 				"webhook_deliveries_deleted", result.WebhookDeliveriesDeleted,
+				"transient_settings_deleted", transientDeleted,
 				"events_days", policy.EventsDays,
 				"outbox_days", policy.OutboxDays,
 				"webhook_deliveries_days", policy.WebhookDeliveriesDays,
@@ -254,6 +261,7 @@ func (a *App) runRetentionCleanup(ctx context.Context) {
 				"events_deleted", result.EventsDeleted,
 				"outbox_deleted", result.OutboxDeleted,
 				"webhook_deliveries_deleted", result.WebhookDeliveriesDeleted,
+				"transient_settings_deleted", transientDeleted,
 				"events_days", policy.EventsDays,
 				"outbox_days", policy.OutboxDays,
 				"webhook_deliveries_days", policy.WebhookDeliveriesDays,

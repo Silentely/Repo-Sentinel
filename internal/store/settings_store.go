@@ -50,7 +50,12 @@ func (s *settingsStore) Create(ctx context.Context, input SystemSetting) (System
 
 func (s *settingsStore) Delete(ctx context.Context, key string) error {
 	_, err := s.client.SystemSetting.Delete().Where(systemsetting.KeyEQ(key)).Exec(ctx)
-	return mapStoreError(err)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	// 与 Create/Upsert 一致失效缓存：否则删除后同键 Get 仍命中旧值。
+	s.cache.Invalidate(key)
+	return nil
 }
 
 // GetMany 批量读取设置：先取缓存命中键，缺失键单次查库并回填缓存。

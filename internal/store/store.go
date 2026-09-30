@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 )
 
@@ -76,8 +77,39 @@ type Store interface {
 	StarTrend(context.Context, int) ([]StarTrendPoint, error)
 	// CleanupRetention 按策略删除过期事件、终态 Outbox 与旧 Webhook Delivery。
 	CleanupRetention(context.Context, RetentionPolicy, time.Time) (CleanupResult, error)
+	// CleanupTransientSettings 清理可再生的临时设置行（ChatOps 令牌/领取标记、自动打标回执），
+	// 返回删除行数。这些行只为短期幂等或一次性消费存在，长期残留会让 settings 表无界增长。
+	CleanupTransientSettings(context.Context, time.Time) (int, error)
 	WithTx(context.Context, func(Store) error) error
 	Close() error
+}
+
+// ChatOps 交互令牌的 settings 键。令牌由按钮回调一次性消费，
+// 领取标记（claim）用于保证同一令牌只有一个消费者成功。
+// store 的过期清理与 httpapi 的读写共用这两个构造函数，避免键格式分叉。
+const (
+	chatOpsTokenKeyPrefix = "chatops_token:"
+	chatOpsClaimKeyPrefix = "chatops_claim:"
+	// chatOpsClaimRetention 领取标记的保留时长：令牌 TTL 上限 15 分钟，
+	// 取 1 小时留出执行与排障余量，避免误删仍在执行中的动作标记。
+	chatOpsClaimRetention = time.Hour
+
+	autoLabelReceiptKeyPrefix = "github_label:"
+	// autoLabelReceiptRetention 自动打标回执的保留时长。回执只用于短期幂等：
+	// 过期后如重新分诊会重复调用一次加标签接口（GitHub 侧幂等，无害），
+	// 但不清理会让 settings 表随打标过的 Issue 数无界增长。
+	autoLabelReceiptRetention = 90 * 24 * time.Hour
+)
+
+// ChatOpsTokenKey 返回交互令牌的 settings 键。
+func ChatOpsTokenKey(id string) string { return chatOpsTokenKeyPrefix + id }
+
+// ChatOpsClaimKey 返回令牌领取标记的 settings 键。
+func ChatOpsClaimKey(id string) string { return chatOpsClaimKeyPrefix + id }
+
+// AutoLabelReceiptKey 返回自动打标回执的 settings 键：同一 (仓库, Issue, 分类) 只打一次。
+func AutoLabelReceiptKey(repoFullName string, issueNumber int, category string) string {
+	return autoLabelReceiptKeyPrefix + repoFullName + ":" + strconv.Itoa(issueNumber) + ":" + category
 }
 
 // AdminStore 管理唯一管理员账号。

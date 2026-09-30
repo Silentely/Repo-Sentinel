@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime"
@@ -2061,6 +2062,87 @@ func (s *storeImpl) CleanupRetention(ctx context.Context, policy RetentionPolicy
 		result.WebhookDeliveriesDeleted = n
 	}
 	return result, nil
+}
+
+// cleanupExpiredChatOps 删除过期的 ChatOps 交互令牌与其领取标记，返回删除行数。
+// 令牌自身带 expires_at（写在 ValueJSON 内），无法在 SQL 层比较，故按键前缀取回后在
+// Go 侧判定；领取标记无独立过期字段，按 updated_at 早于 chatOpsClaimRetention 兜底清理。
+// 不清理会让 settings 表随每次按钮交互无界增长。
+func (s *storeImpl) cleanupExpiredChatOps(ctx context.Context, now time.Time) (int, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	deleted := 0
+
+	tokens, err := s.client.SystemSetting.Query().
+		Where(systemsetting.KeyHasPrefix(chatOpsTokenKeyPrefix)).
+		Select(systemsetting.FieldKey, systemsetting.FieldValueJSON).
+		All(ctx)
+	if err != nil {
+		return deleted, mapStoreError(err)
+	}
+	expiredKeys := make([]string, 0, len(tokens))
+	for _, entity := range tokens {
+		var data struct {
+			ExpiresAt time.Time `json:"expires_at"`
+		}
+		// 解析失败的令牌无法判定过期时间，按已失效处理并清除，避免残留不可用行。
+		if err := json.Unmarshal(entity.ValueJSON, &data); err != nil || data.ExpiresAt.IsZero() ||
+			!now.Before(data.ExpiresAt.UTC()) {
+			expiredKeys = append(expiredKeys, entity.Key)
+		}
+	}
+
+	staleClaims, err := s.client.SystemSetting.Delete().
+		Where(systemsetting.UpdatedAtLT(now.Add(-chatOpsClaimRetention)),
+			systemsetting.KeyHasPrefix(chatOpsClaimKeyPrefix)).
+		Exec(ctx)
+	if err != nil {
+		return deleted, mapStoreError(err)
+	}
+	deleted += staleClaims
+	if len(expiredKeys) > 0 {
+		n, err := s.client.SystemSetting.Delete().
+			Where(systemsetting.KeyIn(expiredKeys...)).
+			Exec(ctx)
+		if err != nil {
+			return deleted, mapStoreError(err)
+		}
+		deleted += n
+		for _, key := range expiredKeys {
+			s.settingsCache.Invalidate(key)
+		}
+	}
+	return deleted, nil
+}
+
+// CleanupTransientSettings 清理可再生的一次性临时设置行，返回删除行数。
+// 以下三类行只为短期幂等或一次性消费而存在，长期残留会让 settings 表无界增长：
+//   - ChatOps 交互令牌（按自身 expires_at 判定过期）；
+//   - 令牌领取标记（按 updated_at 早于保留窗口判定）；
+//   - 自动打标回执（按 updated_at 早于 autoLabelReceiptRetention 判定）。
+func (s *storeImpl) CleanupTransientSettings(ctx context.Context, now time.Time) (int, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+
+	chatOpsDeleted, err := s.cleanupExpiredChatOps(ctx, now)
+	if err != nil {
+		return chatOpsDeleted, err
+	}
+
+	autoLabelDeleted, err := s.client.SystemSetting.Delete().
+		Where(systemsetting.UpdatedAtLT(now.Add(-autoLabelReceiptRetention)),
+			systemsetting.KeyHasPrefix(autoLabelReceiptKeyPrefix)).
+		Exec(ctx)
+	if err != nil {
+		return chatOpsDeleted, mapStoreError(err)
+	}
+	return chatOpsDeleted + autoLabelDeleted, nil
 }
 
 // Dashboard 聚合统计。结果按 dashboardCacheTTL 短缓存：统计容忍秒级陈旧

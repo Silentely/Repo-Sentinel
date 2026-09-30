@@ -169,3 +169,85 @@ func TestDeleteTerminalOlderThanOnlyTerminalStatuses(t *testing.T) {
 		}
 	}
 }
+
+// TestCleanupTransientSettings_ChatOps 过期的 ChatOps 令牌与陈旧领取标记被清理，
+// 未过期令牌、新领取标记与无关设置键必须保留。
+func TestCleanupTransientSettings_ChatOps(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC()
+
+	// 未过期令牌：保留
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        "s-chatops-alive",
+		Key:       store.ChatOpsTokenKey("alive"),
+		ValueJSON: []byte(`{"expires_at":"` + now.Add(time.Hour).Format(time.RFC3339) + `"}`),
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed alive token: %v", err)
+	}
+	// 已过期令牌：清理
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        "s-chatops-dead",
+		Key:       store.ChatOpsTokenKey("dead"),
+		ValueJSON: []byte(`{"expires_at":"` + now.Add(-time.Minute).Format(time.RFC3339) + `"}`),
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed expired token: %v", err)
+	}
+	// 解析失败的令牌：按失效处理并清理
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        "s-chatops-corrupt",
+		Key:       store.ChatOpsTokenKey("corrupt"),
+		ValueJSON: []byte(`{"not_a_time_field":true}`),
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed corrupt token: %v", err)
+	}
+	// 过期领取标记（updated_at 早于 1 小时保留窗口）：清理
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        "s-chatops-stale-claim",
+		Key:       store.ChatOpsClaimKey("stale-claim"),
+		ValueJSON: []byte(`{"claimed":true}`),
+		UpdatedAt: now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatalf("seed stale claim: %v", err)
+	}
+	// 新领取标记：保留
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        "s-chatops-fresh-claim",
+		Key:       store.ChatOpsClaimKey("fresh-claim"),
+		ValueJSON: []byte(`{"claimed":true}`),
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed fresh claim: %v", err)
+	}
+	// 无关设置键：不得触碰
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        "s-feature-issues",
+		Key:       "feature.issues",
+		ValueJSON: []byte(`true`),
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed unrelated key: %v", err)
+	}
+
+	deleted, err := data.CleanupTransientSettings(ctx, now)
+	if err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if deleted != 3 {
+		t.Fatalf("expected 3 deletions (expired + corrupt + stale claim), got %d", deleted)
+	}
+
+	for _, key := range []string{store.ChatOpsTokenKey("alive"), store.ChatOpsClaimKey("fresh-claim"), "feature.issues"} {
+		if _, err := data.Settings().Get(ctx, key); err != nil {
+			t.Fatalf("键 %s 不应被清理: %v", key, err)
+		}
+	}
+	for _, key := range []string{store.ChatOpsTokenKey("dead"), store.ChatOpsTokenKey("corrupt"), store.ChatOpsClaimKey("stale-claim")} {
+		if _, err := data.Settings().Get(ctx, key); err == nil {
+			t.Fatalf("键 %s 应已被清理", key)
+		}
+	}
+}
