@@ -37,9 +37,9 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | Actions CI 失败智能诊断 | 捕获 Workflow 失败运行与具体失败 Job/Step，LLM 自动分析故障原因并生成修复建议附加于通知正文；独立开关（`failure_analysis_enabled`）与安全告警分诊互不影响，失败步骤输入有上限防超长输入 |
 | 实时 SSE 推流与前端防抖 | 服务端轻量广播总线（`/api/v1/events/stream`），前端 150ms 窗口防抖合并，局部失效 TanStack Query 缓存，内置指数退避重连与熔断降级 |
 | SQLite 维护解耦与探针隔离 | 独立单连接短超时（1000ms）带抖动执行 `PRAGMA wal_checkpoint(PASSIVE)` 与 `optimize`；`/health/ready` 接入 1.5s 隔离探针，高负载下就绪检测不挂死 |
-| ChatOps 回调与防重放 Token | 支持 Telegram 与飞书按钮交互回调；基于 128 位 ULID 事务原子单次消费 Action Token，Telegram 紧凑化适配，多层级安全验签 |
-| AI Issue 自动打标防御 | 基于白名单映射规范化标签（`sentinel:*`），严苛过滤垃圾分类；GitHub API 422 容错与系统级设置开关 `ai.auto_label_enabled` |
-| 工作项分块流转与防倒流守卫 | 200 条分块事务与让渡防 SQLite 锁饥饿；closed 终态防陈旧消息倒流；提供批量忽略端点与前端 BatchActionBar 悬浮操作栏 |
+| ChatOps 回调与防重放 Token | 支持 Telegram 与飞书按钮交互回调；基于 128 位 ULID 事务原子单次消费 Action Token（唯一约束保证跨进程仅一个消费者），Telegram 紧凑化适配，多层级安全验签；令牌与领取标记随保留清理节拍按 TTL 清除 |
+| AI Issue 自动打标防御 | 基于白名单映射规范化标签（`sentinel:*`），严苛过滤垃圾分类；GitHub API 422 容错与系统级设置开关 `ai.auto_label_enabled`；打标回执键原子竞争防并发重复打标，失败即释放可重试，回执 90 天后随临时设置清理 |
+| 工作项批量忽略与防倒流守卫 | 单事务批量更新忽略标记（上限 100 条，任一 ID 缺失整体回滚并返回 404）；closed 终态防陈旧消息倒流；前端 BatchActionBar 悬浮操作栏 |
 | 复合游标审计检索与写入期脱敏 | `(created_at, id)` 复合游标消除深分页扫描开销；审计写入期深度递归脱敏机密凭据（password/token/secret/api_key） |
 
 ## 可持续增强
