@@ -4,6 +4,15 @@ import { ensureAuthenticated } from "./helpers";
 
 test.skip(({ isMobile }) => isMobile, "截图仅在桌面端生成");
 
+// 文档截图是发布素材而非回归断言：默认跳过，普通 e2e 运行不得改写仓库内的跟踪文件
+// （浏览器重新编码会带来字节级差异，令工作区出现"怎么会变了"的噪声）。
+// 需要重做 docs/public/images 下的界面截图时显式执行：
+//   REPOSENTINEL_UPDATE_DOC_SCREENSHOTS=1 pnpm e2e
+test.skip(
+  () => process.env.REPOSENTINEL_UPDATE_DOC_SCREENSHOTS !== "1",
+  "仅在显式设置 REPOSENTINEL_UPDATE_DOC_SCREENSHOTS=1 时更新文档截图",
+);
+
 test("生成文档界面截图 (Retro Neo-Brutalism Screenshots)", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
 

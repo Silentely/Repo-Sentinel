@@ -26,6 +26,12 @@ pnpm --dir web install
 pnpm --dir web typecheck
 pnpm --dir web test --run
 
+# 端到端（真实服务 + 浏览器；运行结束后自清理临时库目录，不改动任何跟踪文件）
+pnpm --dir web e2e
+
+# 重做文档界面截图（唯一会改写 docs/public/images 的入口，需显式开启）
+REPOSENTINEL_UPDATE_DOC_SCREENSHOTS=1 pnpm --dir web e2e
+
 # 生产嵌入构建（可选）
 pnpm --dir web build
 OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
