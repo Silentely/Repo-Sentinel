@@ -116,4 +116,33 @@ test.describe("工作项批量操作与实时事件流", () => {
     const req = await sseRequestPromise;
     expect(req.url()).toContain("/api/v1/events/stream");
   });
+
+  test("SSE 长连接在真实浏览器中可读到首字节（防 flush 链回归）", async ({ page }) => {
+    await ensureAuthenticated(page);
+
+    // 真实服务端 + 完整中间件链（chi Compress / accessLog / recovery）：
+    // 曾经因包装层缺失 Flush 导致连接建立但永不产出字节，这里直接断言首块可达。
+    const firstChunk = await page.evaluate(async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8_000);
+      try {
+        const res = await fetch("/api/v1/events/stream", {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (res.status !== 200) return `status:${res.status}`;
+        const reader = res.body?.getReader();
+        if (!reader) return "no-body";
+        const { value } = await reader.read();
+        reader.cancel().catch(() => {});
+        return new TextDecoder().decode(value ?? new Uint8Array());
+      } catch (err) {
+        return `error:${String(err)}`;
+      } finally {
+        clearTimeout(timeout);
+      }
+    });
+
+    expect(firstChunk).toContain(": ok");
+  });
 });

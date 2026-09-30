@@ -1,15 +1,21 @@
 package httpapi
 
 import (
-	"net/http"
+	"bufio"
+	"net"
 	"net/http/httptest"
 
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Silentely/Repo-Sentinel/internal/config"
 )
 
 func TestSSEHub_SubscribeAndUnsubscribe(t *testing.T) {
@@ -275,33 +281,84 @@ func TestSSEHub_ConcurrentBroadcastAndChurn(t *testing.T) {
 	wg.Wait()
 }
 
-func TestSSEHub_HTTPStream_Connection(t *testing.T) {
+// TestSSEHub_HTTPStream_EndToEnd 走真实路由与完整中间件链（含 chi Compress 与
+// accessLog/recovery 包装层），验证 SSE 首字节与广播事件确实送达客户端。
+// 历史上该链路曾因包装层缺失 Flush 被静默吞掉（客户端零字节），此测试防止回归。
+func TestSSEHub_HTTPStream_EndToEnd(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
-
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-
 	fixture.bootstrapAdmin(t)
 	cookies := fixture.login(t, httpTestPassword)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/events/stream", nil)
-	req.Header.Set("Accept-Encoding", "gzip, deflate")
+
+	hub := NewSSEHub(slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := New(Dependencies{
+		Config:         config.Config{HTTP: config.HTTPConfig{PublicBaseURL: "https://reposentinel.example"}},
+		Store:          fixture.store,
+		AdminService:   fixture.adminService,
+		SessionService: fixture.sessionService,
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		SSEHub:         hub,
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	addr := strings.TrimPrefix(srv.URL, "http://")
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial server: %v", err)
+	}
+	defer conn.Close()
+
+	var cookieHeader []string
 	for _, c := range cookies {
-		req.AddCookie(c)
+		cookieHeader = append(cookieHeader, c.Name+"="+c.Value)
+	}
+	_, _ = fmt.Fprintf(conn, "GET /api/v1/events/stream HTTP/1.1\r\nHost: %s\r\nCookie: %s\r\nAccept: text/event-stream\r\n\r\n",
+		addr, strings.Join(cookieHeader, "; "))
+
+	reader := bufio.NewReader(conn)
+	// 首字节必须在超时内到达：任一包装层吞掉 flush 时会在此超时。
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var head strings.Builder
+	for !strings.Contains(head.String(), ": ok") {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("SSE 首字节未在超时内送达（flush 链失效？）: %v", err)
+		}
+		head.WriteString(line)
+	}
+	if !strings.HasPrefix(head.String(), "HTTP/1.1 200 OK") {
+		t.Fatalf("意外响应头: %q", head.String())
+	}
+	if !strings.Contains(head.String(), "Content-Type: text/event-stream") {
+		t.Fatalf("响应 Content-Type 异常: %q", head.String())
 	}
 
-	w := httptest.NewRecorder()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		fixture.handler.ServeHTTP(w, req)
-	}()
-
-	select {
-	case <-time.After(500 * time.Millisecond):
-		cancel()
-	case <-done:
+	// 广播事件必须能到达客户端。
+	hub.Broadcast(SSEEvent{
+		ID:         "evt-e2e-1",
+		Topic:      "events.created",
+		Version:    1,
+		OccurredAt: time.Now().UTC(),
+		Resource:   "event",
+		ResourceID: "row-1",
+	})
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var payload strings.Builder
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		payload.WriteString(line)
+		// 事件帧为 id/event/data + 结尾空行：读到 event 行即已覆盖帧内关键字段。
+		if strings.Contains(payload.String(), "event: events.created") {
+			break
+		}
 	}
-	<-done
-
-	t.Logf("Response code: %d, body: %q, headers: %v", w.Code, w.Body.String(), w.Header())
+	if !strings.Contains(payload.String(), "evt-e2e-1") {
+		t.Fatalf("广播事件未送达客户端，实际=%q", payload.String())
+	}
+	if !strings.Contains(payload.String(), "event: events.created") {
+		t.Fatalf("缺少事件名行，实际=%q", payload.String())
+	}
 }

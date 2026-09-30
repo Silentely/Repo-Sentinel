@@ -145,6 +145,33 @@ func (t *responseWriteTracker) Unwrap() http.ResponseWriter {
 	return t.ResponseWriter
 }
 
+// Flush 沿 Unwrap 链透传底层 Flusher。该方法是必需的：chi 的 Compress 包装层会对
+// 紧邻的下一层直接做 http.Flusher 断言（不经过 Unwrap），本类型缺失时断言失败并
+// 静默丢弃 flush，SSE 等流式响应在客户端表现为零字节。
+func (t *responseWriteTracker) Flush() {
+	flushThrough(t.ResponseWriter)
+}
+
+// flushThrough 沿 Unwrap 链寻找可用 Flusher 并 flush；链上无 Flusher 时静默忽略。
+// 用逐层断言而非单层断言，避免中间包装类型未实现 Flush 时丢失 flush（见上）。
+func flushThrough(w http.ResponseWriter) {
+	for h := w; h != nil; {
+		if f, ok := h.(http.Flusher); ok {
+			f.Flush()
+			return
+		}
+		unwrapper, ok := h.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return
+		}
+		next := unwrapper.Unwrap()
+		if next == h {
+			return
+		}
+		h = next
+	}
+}
+
 func (s *server) authenticationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 优先 Session Cookie（管理台）。
@@ -292,11 +319,9 @@ func (w *statusResponseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
-// Flush 透传底层 Flusher（流式响应场景），无 Flusher 时静默忽略。
+// Flush 沿 Unwrap 链透传底层 Flusher（流式响应场景），无 Flusher 时静默忽略。
 func (w *statusResponseWriter) Flush() {
-	if f, ok := w.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
+	flushThrough(w.ResponseWriter)
 }
 
 func parseTrustedSubnets(subnets []string) []*net.IPNet {
