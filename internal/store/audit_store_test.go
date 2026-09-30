@@ -3,10 +3,10 @@ package store_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"time"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )

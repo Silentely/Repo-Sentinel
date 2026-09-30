@@ -250,4 +250,4 @@ func (s *storeImpl) PingQuick(ctx context.Context) error {
 	return s.pingFn(ctx)
 }
 
-func (s *storeImpl) Close() error         { return s.closeFn() }
+func (s *storeImpl) Close() error { return s.closeFn() }
