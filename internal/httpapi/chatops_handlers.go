@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
@@ -34,8 +33,6 @@ type ChatOpsActionData struct {
 type ChatOpsActionExecutor interface {
 	Execute(context.Context, ChatOpsActionData) error
 }
-
-var chatOpsConsumeMu sync.Mutex
 
 // GitHubChatOpsExecutor 执行当前支持的 GitHub ChatOps 动作。
 type GitHubChatOpsExecutor struct {
@@ -98,7 +95,7 @@ func CreateChatOpsToken(ctx context.Context, st store.Store, action, repoID, run
 		return "", err
 	}
 	_, err = st.Settings().Upsert(ctx, store.SystemSetting{
-		Key:       "chatops_token:" + id,
+		Key:       store.ChatOpsTokenKey(id),
 		ValueJSON: raw,
 		UpdatedAt: time.Now().UTC(),
 	})
@@ -113,15 +110,13 @@ func ConsumeChatOpsToken(ctx context.Context, st store.Store, tokenID string) (*
 	if st == nil {
 		return nil, errors.New("store not available")
 	}
-	key := "chatops_token:" + tokenID
+	key := store.ChatOpsTokenKey(tokenID)
 	var data ChatOpsActionData
-	// 先竞争唯一 claim 键，数据库唯一约束保证跨进程也只有一个消费者成功。
-	chatOpsConsumeMu.Lock()
-	defer chatOpsConsumeMu.Unlock()
-
+	// 先竞争唯一 claim 键：唯一约束是唯一的互斥来源，进程内与跨进程同样只有一个消费者成功。
+	// 此处不再加进程内互斥，避免把不同用户/不同令牌的回调消费串行化。
 	err := st.WithTx(ctx, func(tx store.Store) error {
 		if _, err := tx.Settings().Create(ctx, store.SystemSetting{
-			ID: ulid.Make().String(), Key: "chatops_claim:" + tokenID,
+			ID: ulid.Make().String(), Key: store.ChatOpsClaimKey(tokenID),
 			ValueJSON: json.RawMessage(`{"claimed":true}`), UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			if errors.Is(err, store.ErrConflict) {
@@ -169,10 +164,10 @@ func ReleaseChatOpsToken(ctx context.Context, st store.Store, tokenID string) er
 		return errors.New("store not available")
 	}
 	return st.WithTx(ctx, func(tx store.Store) error {
-		if err := tx.Settings().Delete(ctx, "chatops_claim:"+tokenID); err != nil && !errors.Is(err, store.ErrNotFound) {
+		if err := tx.Settings().Delete(ctx, store.ChatOpsClaimKey(tokenID)); err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
-		setting, err := tx.Settings().Get(ctx, "chatops_token:"+tokenID)
+		setting, err := tx.Settings().Get(ctx, store.ChatOpsTokenKey(tokenID))
 		if err != nil {
 			return err
 		}
