@@ -113,6 +113,18 @@ func TestReleaseAnalysis(t *testing.T) {
 			t.Fatalf("AI 失败应返回空，实际: %q", got)
 		}
 	})
+	t.Run("过滤思维链思考标签", func(t *testing.T) {
+		client := aiStub(t, `{"choices":[{"message":{"content":"<think>思考要点...</think>\n- 要点一\n- 要点二"}}]}`)
+		client.ReleaseSummaryEnabled = true
+		e := &Engine{AI: client}
+		got := e.releaseAnalysis(t.Context(), ev, "o/r", subscribed)
+		if strings.Contains(got, "<think>") || strings.Contains(got, "思考要点") {
+			t.Fatalf("不应包含思维链标签或思考内容，实际: %q", got)
+		}
+		if !strings.Contains(got, "要点一") {
+			t.Fatalf("期望包含总结正文，实际: %q", got)
+		}
+	})
 	t.Run("非 release 事件返回空", func(t *testing.T) {
 		client := aiStub(t, `{"choices":[{"message":{"content":"x"}}]}`)
 		client.ReleaseSummaryEnabled = true

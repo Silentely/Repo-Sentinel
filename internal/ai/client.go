@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -625,10 +626,14 @@ func (c *Client) doAttempt(ctx context.Context, s *Client, payload []byte, endpo
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return "", 0, 0, &callError{code: "bad_response", err: fmt.Errorf("ai: decode response: %w", err)}
 	}
-	if len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
+	if len(out.Choices) == 0 {
 		return "", 0, 0, &callError{code: "empty_response", err: errors.New("ai: empty response")}
 	}
-	return truncateOutput(strings.TrimSpace(out.Choices[0].Message.Content)), out.Usage.PromptTokens, out.Usage.CompletionTokens, nil
+	cleaned := strings.TrimSpace(stripThinkingTags(out.Choices[0].Message.Content))
+	if cleaned == "" {
+		return "", 0, 0, &callError{code: "empty_response", err: errors.New("ai: empty response")}
+	}
+	return truncateOutput(cleaned), out.Usage.PromptTokens, out.Usage.CompletionTokens, nil
 }
 
 // AI 响应体大小上限：防御异常大响应消耗内存；错误明细单独使用更小的上限。
@@ -664,6 +669,30 @@ func errorDetail(resp *http.Response) string {
 		detail += "…（响应体已截断）"
 	}
 	return detail
+}
+
+var (
+	closedThinkingRegexps = []*regexp.Regexp{
+		regexp.MustCompile(`(?is)<\s*think[^>]*>.*?<\s*/\s*think\s*>`),
+		regexp.MustCompile(`(?is)<\s*thought[^>]*>.*?<\s*/\s*thought\s*>`),
+		regexp.MustCompile(`(?is)<\s*reasoning[^>]*>.*?<\s*/\s*reasoning\s*>`),
+	}
+	unclosedThinkingRegexps = []*regexp.Regexp{
+		regexp.MustCompile(`(?is)<\s*(?:think|thought|reasoning)[^>]*>.*$`),
+	}
+)
+
+// stripThinkingTags 移除推理大模型（如 DeepSeek-R1、QwQ 等）在正文中输出的思维链（CoT）标签及思考内容。
+// 涵盖完整闭合的 <think>...</think>、<thought>...</thought>、<reasoning>...</reasoning> 标签，
+// 以及因 max_tokens 截断导致的未闭合标签，避免思考过程泄露到通知或 PR 评论等业务正文中。
+func stripThinkingTags(content string) string {
+	for _, re := range closedThinkingRegexps {
+		content = re.ReplaceAllString(content, "")
+	}
+	for _, re := range unclosedThinkingRegexps {
+		content = re.ReplaceAllString(content, "")
+	}
+	return content
 }
 
 // maxOutputRunes AI 输出截断上限：Telegram 单条消息上限 4096 字符，

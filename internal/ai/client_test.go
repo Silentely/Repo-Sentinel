@@ -798,7 +798,7 @@ func TestCompleteRetriesExhausted(t *testing.T) {
 
 // TestCompleteRetriesExhaustedAnnotatesAttempts 守护：重试耗尽的错误必须带上尝试次数，
 // 且错误码分类不受影响——单次失败与连续 N 次失败在告警/降级文案里必须可区分，
-// 排障时才看得出上游是偶发抖动还是持续不可用。
+// 排障时才看得出上游是「偶发抖动」还是「持续不可用」。
 func TestCompleteRetriesExhaustedAnnotatesAttempts(t *testing.T) {
 	old := retryDelay
 	retryDelay = time.Millisecond
@@ -919,5 +919,127 @@ func TestAISSRFBlocked(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "ai_target_blocked") {
 		t.Fatalf("期望包含 ai_target_blocked，实际错误: %v", err)
+	}
+}
+
+// TestStripThinkingTags 验证思维链标签清洗：完整标签、大小写、带属性、未闭合标签截断及纯思考内容。
+func TestStripThinkingTags(t *testing.T) {
+	t.Run("普通文本无变动", func(t *testing.T) {
+		raw := "- 改用 Apple 官方平台目录\n- 修复部分 App 报错"
+		if got := stripThinkingTags(raw); got != raw {
+			t.Fatalf("普通文本不应被修改，实际: %q", got)
+		}
+	})
+
+	t.Run("用户真实问题案例完整剥离", func(t *testing.T) {
+		raw := `<think>The user wants me to summarize a GitHub release note in Simplified Chinese. The release note is already in Chinese, so I'll just summarize it into bullet points following the requirements.
+Let me identify the key points:
+1. Use Apple official catalog instead of product page version fields
+2. Fix "Empty Apple redownload response" issue
+3. Update Apple Store auth flow with native endpoints, persistent SAP signing sessions, multi-endpoint fallback
+4. Free apps not yet acquired can be acquired and load historical versions
+5. Improved re-authentication and 2FA flow after session expiry
+No breaking changes mentioned, no upgrade notes specifically.
+Let me format this as bullet points.</think>
+- 改用 Apple 官方平台目录确认 App 当前版本，不再依赖产品页中可能缺失的版本字段
+- 修复部分 App 显示「Empty Apple redownload response」而无法继续的问题
+- 更新 Apple Store 认证流程，支持原生认证端点、持久 SAP 签名会话与多端点回退
+- 尚未获取的免费 App 可在确认后完成获取，并继续载入历史版本
+- 改进账户会话过期后的重新认证与双重认证流程`
+
+		got := strings.TrimSpace(stripThinkingTags(raw))
+		if strings.Contains(got, "<think>") || strings.Contains(got, "</think>") || strings.Contains(got, "The user wants me") {
+			t.Fatalf("输出中不应残留思考内容，实际: %q", got)
+		}
+		if !strings.HasPrefix(got, "- 改用 Apple 官方平台目录确认") {
+			t.Fatalf("期望以正文第一行开头，实际: %q", got)
+		}
+	})
+
+	t.Run("多种标签与大小写及属性", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			input string
+			want  string
+		}{
+			{
+				name:  "大写 THINK",
+				input: "<THINK>pondering</THINK>正文内容",
+				want:  "正文内容",
+			},
+			{
+				name:  "带属性的标签",
+				input: `<think class="reasoning" id="1">思考细节</think>正文内容`,
+				want:  "正文内容",
+			},
+			{
+				name:  "thought 标签",
+				input: "<thought>internal thought</thought>正文内容",
+				want:  "正文内容",
+			},
+			{
+				name:  "reasoning 标签",
+				input: "<reasoning>reasoning step</reasoning>正文内容",
+				want:  "正文内容",
+			},
+			{
+				name:  "多个思考块",
+				input: "<think>part 1</think>正文一<think>part 2</think>正文二",
+				want:  "正文一正文二",
+			},
+			{
+				name:  "未闭合标签截断兜底",
+				input: "正文头部<think>因 token 上限未闭合的思考...",
+				want:  "正文头部",
+			},
+			{
+				name:  "仅有思考内容",
+				input: "<think>全部都是思考</think>",
+				want:  "",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if got := stripThinkingTags(tt.input); got != tt.want {
+					t.Fatalf("stripThinkingTags(%q) = %q, want %q", tt.input, got, tt.want)
+				}
+			})
+		}
+	})
+}
+
+// TestCompleteStripsThinkingTags 验证 Complete 调用端到端过滤思维链内容。
+func TestCompleteStripsThinkingTags(t *testing.T) {
+	respBody := `{"choices":[{"message":{"content":"<think>analyzing...</think>\n- 要点1\n- 要点2"}}]}`
+	srv := captureServer(t, http.StatusOK, respBody, nil)
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true}
+
+	got, err := c.Complete(t.Context(), "sys", "usr")
+	if err != nil {
+		t.Fatalf("Complete 应成功，实际错误: %v", err)
+	}
+	if strings.Contains(got, "<think>") || strings.Contains(got, "analyzing") {
+		t.Fatalf("Complete 返回不应包含思考内容，实际: %q", got)
+	}
+	if got != "- 要点1\n- 要点2" {
+		t.Fatalf("期望完整提取纯净总结，实际: %q", got)
+	}
+}
+
+// TestCompleteOnlyThinkingTagsTreatedAsEmpty 验证当输出全为思考内容被剥离为空时，按 empty_response 错误处理。
+func TestCompleteOnlyThinkingTagsTreatedAsEmpty(t *testing.T) {
+	respBody := `{"choices":[{"message":{"content":"<think>only thinking process without final answer</think>"}}]}`
+	srv := captureServer(t, http.StatusOK, respBody, nil)
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, APIKey: "k", Enabled: true, Retries: 0}
+
+	_, err := c.Complete(t.Context(), "sys", "usr")
+	if err == nil {
+		t.Fatal("全部为思考内容被剥离为空时，应当报错 empty_response")
+	}
+	if !strings.Contains(err.Error(), "empty response") {
+		t.Fatalf("期望 empty response 错误，实际: %v", err)
 	}
 }
