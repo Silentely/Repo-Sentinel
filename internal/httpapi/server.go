@@ -129,10 +129,6 @@ func (s *server) safeGo(name string, fn func()) {
 	}()
 }
 
-func (s *server) SSEHub() *SSEHub {
-	return s.sseHub
-}
-
 func (s *server) getTOTPTickets() *auth.TOTPTicketManager {
 	if s == nil {
 		return auth.NewTOTPTicketManager(3 * time.Minute)

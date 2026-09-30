@@ -177,17 +177,17 @@ func (s *server) broadcastResource(topic, resource string, resourceIDs ...string
 // handleEventStream handles GET /api/v1/events/stream.
 func (s *server) handleEventStream(w http.ResponseWriter, r *http.Request) {
 	if s.sseHub == nil {
-		http.Error(w, `{"error":"sse hub not available"}`, http.StatusServiceUnavailable)
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
 
 	ch, clientID, err := s.sseHub.Subscribe()
 	if err != nil {
 		if errors.Is(err, ErrMaxClientsExceeded) {
-			http.Error(w, `{"error":"too many subscribers"}`, http.StatusServiceUnavailable)
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, map[string]any{"reason": "max_clients"})
 			return
 		}
-		http.Error(w, `{"error":"failed to subscribe to stream"}`, http.StatusInternalServerError)
+		s.writeAPIError(w, r, http.StatusInternalServerError, errorCodeInternal, nil)
 		return
 	}
 	defer s.sseHub.Unsubscribe(clientID)

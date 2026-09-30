@@ -78,6 +78,23 @@ func TestMetricsEndpointExposesOutboxQueueDepth(t *testing.T) {
 	}
 }
 
+// TestMetricsEndpointExposesSSEState 指标端点应暴露 SSE 在线订阅数与丢弃计数：
+// 行始终存在（含 0 值），使实时推流健康可监控（丢弃 = 慢客户端背压）。
+func TestMetricsEndpointExposesSSEState(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{metricsEnabled: true})
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "reposentinel_sse_clients") ||
+		!strings.Contains(body, "reposentinel_sse_dropped_total") {
+		t.Fatalf("期望包含 SSE 指标行，body=%s", body)
+	}
+}
+
 // TestShouldLogMetricsAccess 守护 /metrics 访问日志的按 IP 采样：
 // 同一 IP 在采样窗口内只记一条、窗口外放行、达到跟踪上限后整体重置。
 func TestShouldLogMetricsAccess(t *testing.T) {
