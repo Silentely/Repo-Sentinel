@@ -197,6 +197,27 @@ diff --git a/docs/0123456789abcdef0123.md b/docs/0123456789abcdef0123.md
 	}
 }
 
+func TestUnifiedDiffNewFileUsesAddedPath(t *testing.T) {
+	diff := `--- /dev/null
++++ b/.github/workflows/new-check.yml
+@@ -0,0 +1,2 @@
++name: New check
++on: pull_request`
+
+	chunks := parseDiffChunks(diff)
+	if len(chunks) != 1 {
+		t.Fatalf("expected one diff chunk, got %d", len(chunks))
+	}
+	if chunks[0].filePath != ".github/workflows/new-check.yml" {
+		t.Fatalf("expected added file path, got %q", chunks[0].filePath)
+	}
+
+	report := scanDiffHeuristics(diff)
+	if len(report.sensitiveAssets) != 1 {
+		t.Fatalf("expected new workflow to be detected as sensitive, got %v", report.sensitiveAssets)
+	}
+}
+
 func TestScanDiffHeuristicsSafePRTarget(t *testing.T) {
 	diff := `diff --git a/.github/workflows/pr.yml b/.github/workflows/pr.yml
 --- a/.github/workflows/pr.yml

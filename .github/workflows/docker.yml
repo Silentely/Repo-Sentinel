@@ -35,12 +35,11 @@ on:
       - "go.sum"
       - "VERSION"
       - "Makefile"
+      - ".github/workflows/docker.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
-  actions: write  # cleanup-old-runs 删除本工作流历史运行记录
 
 concurrency:
   group: docker-build-${{ github.ref }}
@@ -48,6 +47,8 @@ concurrency:
 
 jobs:
   test:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # 与 deployments/test/postgres.compose.yml 凭据保持一致；
@@ -131,6 +132,9 @@ jobs:
           retention-days: 7
 
   build-and-push:
+    permissions:
+      contents: read
+      packages: write
     needs: [test]
     if: >
       github.event_name == 'workflow_dispatch' ||
@@ -245,7 +249,10 @@ jobs:
   cleanup-old-runs:
     name: Cleanup old workflow runs
     needs: [test, build-and-push]
-    if: always()
+    if: always() && github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      actions: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

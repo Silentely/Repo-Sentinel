@@ -144,6 +144,23 @@ func extractFilePathFromDiffHeader(header string) string {
 	return ""
 }
 
+// extractFilePathFromDiffHeaders 兼容纯 unified diff 的新增文件格式：
+// 旧文件头为 /dev/null 时，真实路径位于紧随其后的 +++ b/path 文件头。
+func extractFilePathFromDiffHeaders(oldHeader, newHeader string) string {
+	path := extractFilePathFromDiffHeader(oldHeader)
+	if path != "/dev/null" {
+		return path
+	}
+
+	newHeader = strings.TrimSpace(newHeader)
+	if strings.HasPrefix(newHeader, "+++ ") {
+		path = strings.TrimPrefix(newHeader, "+++ ")
+		path = strings.TrimPrefix(path, "b/")
+		return strings.TrimSpace(path)
+	}
+	return path
+}
+
 // classifySensitiveAsset 嗅探敏感关键资产变更（工作流/依赖锁定/DB迁移/密钥配置）。
 func classifySensitiveAsset(path string) string {
 	clean := filepath.ToSlash(strings.ToLower(strings.TrimSpace(path)))
@@ -265,13 +282,14 @@ func parseDiffChunks(rawDiff string) []diffChunk {
 	var chunks []diffChunk
 	var currentLines []string
 	var currentHeader string
+	var currentNewHeader string
 
 	flush := func() {
 		if len(currentLines) == 0 {
 			return
 		}
 		content := strings.Join(currentLines, "\n")
-		filePath := extractFilePathFromDiffHeader(currentHeader)
+		filePath := extractFilePathFromDiffHeaders(currentHeader, currentNewHeader)
 		isNoise := isNoiseFile(filePath) || strings.Contains(content, "Binary files ") || strings.Contains(content, "GIT binary patch")
 		if isNoise {
 			adds, dels := 0, 0
@@ -293,12 +311,16 @@ func parseDiffChunks(rawDiff string) []diffChunk {
 		})
 		currentLines = nil
 		currentHeader = ""
+		currentNewHeader = ""
 	}
 
 	for _, line := range lines {
 		if strings.HasPrefix(line, "diff --git ") || (currentHeader == "" && strings.HasPrefix(line, "--- ")) {
 			flush()
 			currentHeader = line
+			currentNewHeader = ""
+		} else if strings.HasPrefix(line, "+++ ") && strings.HasPrefix(currentHeader, "--- ") {
+			currentNewHeader = line
 		}
 		currentLines = append(currentLines, line)
 	}
@@ -380,6 +402,7 @@ func scanDiffHeuristics(diff string) heuristicReport {
 
 	var currentFilePath string
 	var currentAdds, currentDels int
+	var currentNewHeader string
 
 	flushFile := func() {
 		if currentFilePath == "" {
@@ -446,7 +469,20 @@ func scanDiffHeuristics(diff string) heuristicReport {
 			flushFile()
 			currentHeader = line
 			currentFilePath = extractFilePathFromDiffHeader(line)
+			currentNewHeader = ""
 			inWorkflow = strings.Contains(line, ".github/workflows/") || strings.Contains(currentFilePath, ".github/workflows/")
+			if match := suspiciousDocFileRegex.FindStringSubmatch(currentFilePath); len(match) > 1 {
+				docName := match[0]
+				if !seenSpamDocs[docName] {
+					seenSpamDocs[docName] = true
+					rep.flaggedSpamDocs = append(rep.flaggedSpamDocs, docName)
+				}
+			}
+		}
+		if strings.HasPrefix(line, "+++") && strings.HasPrefix(currentHeader, "--- ") {
+			currentNewHeader = line
+			currentFilePath = extractFilePathFromDiffHeaders(currentHeader, currentNewHeader)
+			inWorkflow = strings.Contains(currentFilePath, ".github/workflows/")
 			if match := suspiciousDocFileRegex.FindStringSubmatch(currentFilePath); len(match) > 1 {
 				docName := match[0]
 				if !seenSpamDocs[docName] {
