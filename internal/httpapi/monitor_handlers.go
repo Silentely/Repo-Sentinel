@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -316,12 +315,15 @@ type ignoredBody struct {
 }
 
 // setResourceIgnored 统一处理本地忽略标记：解析 body → SetIgnored → 回读实体。
+// setResourceIgnored 统一处理本地忽略标记：解析 body → SetIgnored → 回读实体。
+// onSuccess 可选：写库成功后回调（用于 SSE 广播，让其他标签页实时刷新），nil 表示不广播。
 func setResourceIgnored[T any](
 	s *server,
 	w http.ResponseWriter,
 	r *http.Request,
 	setFn func(ctx context.Context, id string, ignored bool) error,
 	getFn func(ctx context.Context, id string) (T, error),
+	onSuccess func(id string),
 ) {
 	id := strings.TrimSpace(chi.URLParam(r, "id"))
 	if id == "" {
@@ -336,6 +338,9 @@ func setResourceIgnored[T any](
 		s.writeMappedError(w, r, err)
 		return
 	}
+	if onSuccess != nil {
+		onSuccess(id)
+	}
 	item, err := getFn(r.Context(), id)
 	if err != nil {
 		s.writeMappedError(w, r, err)
@@ -345,7 +350,8 @@ func setResourceIgnored[T any](
 }
 
 func (s *server) handleSetWorkItemIgnored(w http.ResponseWriter, r *http.Request) {
-	setResourceIgnored(s, w, r, s.dependencies.Store.WorkItems().SetIgnored, s.dependencies.Store.WorkItems().Get)
+	setResourceIgnored(s, w, r, s.dependencies.Store.WorkItems().SetIgnored, s.dependencies.Store.WorkItems().Get,
+		func(id string) { s.broadcastResource("work_items.changed", "work_item", id) })
 }
 
 type batchIgnoredBody struct {
@@ -377,45 +383,35 @@ func (s *server) handleBatchSetWorkItemIgnored(w http.ResponseWriter, r *http.Re
 		ids = append(ids, id)
 	}
 
-	updatedCount := 0
+	// 单事务原子更新：任一 ID 不存在则整体回滚并返回 404，避免分块提交导致的
+	// 「部分已忽略 + 响应报错」不一致状态。去重后上限 100 条，事务规模可控。
 	ctx := r.Context()
-	const chunkSize = 25
-	for i := 0; i < len(ids); i += chunkSize {
-		end := i + chunkSize
-		if end > len(ids) {
-			end = len(ids)
-		}
-		chunk := ids[i:end]
-		chunkUpdated := 0
-		err := s.dependencies.Store.WithTx(ctx, func(tx store.Store) error {
-			for _, id := range chunk {
-				if err := tx.WorkItems().SetIgnored(ctx, id, body.Ignored); err != nil {
-					return err
-				}
-				chunkUpdated++
+	err := s.dependencies.Store.WithTx(ctx, func(tx store.Store) error {
+		for _, id := range ids {
+			if err := tx.WorkItems().SetIgnored(ctx, id, body.Ignored); err != nil {
+				return err
 			}
-			return nil
-		})
-		if err != nil {
-			s.writeMappedError(w, r, err)
-			return
 		}
-		updatedCount += chunkUpdated
-		runtime.Gosched()
+		return nil
+	})
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
 	}
+	s.broadcastResource("work_items.changed", "work_item", ids...)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"updated_count": updatedCount,
+		"updated_count": len(ids),
 		"ignored":       body.Ignored,
 	})
 }
 
 func (s *server) handleSetWorkflowRunIgnored(w http.ResponseWriter, r *http.Request) {
-	setResourceIgnored(s, w, r, s.dependencies.Store.WorkflowRuns().SetIgnored, s.dependencies.Store.WorkflowRuns().Get)
+	setResourceIgnored(s, w, r, s.dependencies.Store.WorkflowRuns().SetIgnored, s.dependencies.Store.WorkflowRuns().Get, nil)
 }
 
 func (s *server) handleSetSecurityAlertIgnored(w http.ResponseWriter, r *http.Request) {
-	setResourceIgnored(s, w, r, s.dependencies.Store.SecurityAlerts().SetIgnored, s.dependencies.Store.SecurityAlerts().Get)
+	setResourceIgnored(s, w, r, s.dependencies.Store.SecurityAlerts().SetIgnored, s.dependencies.Store.SecurityAlerts().Get, nil)
 }
 
 // getIntSetting 读取整数设置，失败时返回默认值（语义与 store.SettingInt 一致）。

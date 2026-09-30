@@ -96,11 +96,43 @@ func TestBatchSetWorkItemIgnored_ReturnsErrorForMissingID(t *testing.T) {
 	fixture.bootstrapAdmin(t)
 	cookies := fixture.login(t, httpTestPassword)
 	csrf := cookieByName(t, cookies, CSRFCookieName)
+	ctx := t.Context()
 
+	repo, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID:             "repo-batch-missing",
+		FullName:       "org/batch-missing",
+		MonitorEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+	_, _, err = fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID:              "wi-batch-present",
+		RepositoryID:    repo.ID,
+		Number:          1,
+		Kind:            store.WorkItemKindIssue,
+		State:           "open",
+		Title:           "Present issue",
+		Author:          "dev",
+		SourceUpdatedAt: time.Now().UTC(),
+		StateHash:       "hash-present",
+	}, nil)
+	if err != nil {
+		t.Fatalf("upsert item: %v", err)
+	}
+
+	// 合法 ID 与缺失 ID 混在同一请求：整体回滚，合法行的忽略标记不得改变。
 	req := fixture.request(t, http.MethodPost, "/api/v1/work-items/batch-ignore",
-		`{"ids":["missing-work-item"],"ignored":true}`, "127.0.0.1:45005", cookies,
+		`{"ids":["wi-batch-present","missing-work-item"],"ignored":true}`, "127.0.0.1:45005", cookies,
 		map[string]string{CSRFHeaderName: csrf.Value})
 	if req.Code != http.StatusNotFound {
 		t.Fatalf("expected missing ID to return 404, got %d: %s", req.Code, req.Body.String())
+	}
+	item, err := fixture.store.WorkItems().Get(ctx, "wi-batch-present")
+	if err != nil {
+		t.Fatalf("get item: %v", err)
+	}
+	if item.Ignored {
+		t.Fatal("批量忽略必须整体回滚：存在缺失 ID 时不得写入任何一行")
 	}
 }

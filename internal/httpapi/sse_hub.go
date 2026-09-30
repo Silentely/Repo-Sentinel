@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/oklog/ulid/v2"
 )
 
 const (
@@ -151,6 +153,25 @@ func generateClientID() string {
 		return fmt.Sprintf("sub-%d", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(b)
+}
+
+// broadcastResource 向 SSE 订阅者广播资源变更事件；未装配 hub 时静默忽略。
+// 资源变更接口（忽略标记、批量操作等）在写库成功后调用，让其他标签页局部失效缓存。
+func (s *server) broadcastResource(topic, resource string, resourceIDs ...string) {
+	if s.sseHub == nil {
+		return
+	}
+	occurredAt := time.Now().UTC()
+	for _, id := range resourceIDs {
+		s.sseHub.Broadcast(SSEEvent{
+			ID:         ulid.Make().String(),
+			Topic:      topic,
+			Version:    1,
+			OccurredAt: occurredAt,
+			Resource:   resource,
+			ResourceID: id,
+		})
+	}
 }
 
 // handleEventStream handles GET /api/v1/events/stream.

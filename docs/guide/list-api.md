@@ -17,18 +17,18 @@
 
 ## POST /api/v1/work-items/batch-ignore
 
-批量更新工作项（Issue / PR）的本地忽略状态，避免逐条 PATCH 导致网络往返。服务端按 25 条分块执行原子更新并在块间让渡 CPU，单次请求上限 100 条。
+批量更新工作项（Issue / PR）的本地忽略状态，避免逐条 PATCH 导致网络往返。服务端在单个事务内完成全部更新，单次请求上限 100 条（ID 去重后计数）。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `ids` | `string[]` | 待更新的工作项 ID 列表（长度 1–100） |
 | `ignored` | `boolean` | `true` 为忽略，`false` 为取消忽略 |
 
-响应 `{ "updated_count": <更新条数>, "ignored": <布尔值> }`。需管理员 Session 与 CSRF。
+响应 `{ "updated_count": <更新条数>, "ignored": <布尔值> }`。任一 ID 不存在时整体回滚并返回 404，不会出现「部分已更新」的中间状态。写入成功后通过 SSE 广播 `work_items.changed`。需管理员 Session 与 CSRF。
 
 ## GET /api/v1/events/stream
 
-Server-Sent Events (SSE) 实时长连接端点。当 Webhook 入库、通知状态流转或 AI 审查完成时向前端广播最新资源变更事件，客户端自动防抖合并（150ms 窗口）并按需局部失效缓存。每 15 秒发送心跳保活 ping，支持 1024 个并发连接，单客户端配备 64 条消息背压隔离。需管理员 Session。
+Server-Sent Events (SSE) 实时长连接端点。当 Webhook 入库、通知状态流转、AI 审查完成或工作项忽略状态变更时向前端广播最新资源变更事件，客户端自动防抖合并（150ms 窗口）并按需局部失效缓存。每 15 秒发送心跳保活 ping，支持 1024 个并发连接，单客户端配备 64 条消息背压隔离。需管理员 Session。
 
 ## GET /api/v1/notifications/outbox
 
