@@ -77,17 +77,13 @@ func (c *AppClient) AddIssueLabels(ctx context.Context, token, owner, repo strin
 		return nil
 	}
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", owner, repo, number)
-	fullURL := path
-	if strings.HasPrefix(path, "/") {
-		fullURL = c.baseURL() + path
-	}
 
 	bodyData, err := json.Marshal(map[string][]string{"labels": labels})
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(bodyData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL()+path, bytes.NewReader(bodyData))
 	if err != nil {
 		return err
 	}
