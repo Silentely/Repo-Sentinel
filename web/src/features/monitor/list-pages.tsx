@@ -1005,6 +1005,12 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchError, setBatchError] = useState<string | null>(null);
 
+  // 切换筛选/状态/类型时清空勾选：否则旧选中项（可能已不在当前结果集）会被一并提交。
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setBatchError(null);
+  }, [kind, state, repoId, ignoredMode, reviewFilter, checkFilter]);
+
   const batchIgnoreMutation = useMutation({
     mutationFn: (ids: string[]) => batchSetWorkItemIgnored(ids, ignoredMode !== "ignored"),
     onSuccess: () => {

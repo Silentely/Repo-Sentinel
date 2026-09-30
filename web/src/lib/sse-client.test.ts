@@ -63,6 +63,19 @@ describe("createDebouncedInvalidator", () => {
     expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["outbox"]))).toBe(true);
     expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["dashboard"]))).toBe(true);
   });
+
+  it("routes work_items.changed to the work-items query key", () => {
+    const queryClient = new QueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+
+    const invalidator = createDebouncedInvalidator(queryClient, 150);
+    invalidator.schedule("work_items.changed");
+    vi.advanceTimersByTime(160);
+
+    const calls = invalidateSpy.mock.calls;
+    expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["work-items"]))).toBe(true);
+    expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["dashboard"]))).toBe(true);
+  });
 });
 
 describe("SSEManager circuit breaker & lifecycle", () => {

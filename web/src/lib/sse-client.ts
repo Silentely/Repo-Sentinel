@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 export interface SSEEventPayload {
@@ -66,6 +66,9 @@ export function createDebouncedInvalidator(
       case "ai_review.changed":
         pendingDomains.add("work-items");
         pendingDomains.add("pull-requests");
+        break;
+      case "work_items.changed":
+        pendingDomains.add("work-items");
         break;
       default:
         break;
@@ -207,6 +210,7 @@ export class SSEManager {
       es.addEventListener("events.created", handleEvent("events.created"));
       es.addEventListener("outbox.changed", handleEvent("outbox.changed"));
       es.addEventListener("ai_review.changed", handleEvent("ai_review.changed"));
+      es.addEventListener("work_items.changed", handleEvent("work_items.changed"));
     } catch {
       // EventSource instantiation error
     }
@@ -216,16 +220,35 @@ export class SSEManager {
 /**
  * React hook that connects to the server SSE event stream and automatically
  * invalidates TanStack Query caches with debouncing when events arrive.
+ *
+ * 依赖只取原始值：options 若按内联对象传入，把对象放进依赖数组会导致每次渲染重连。
+ * onCircuitBreak 走 ref，既保持最新实现又不触发重连。
  */
 export function useLiveEventStream(options?: SSEManagerOptions): void {
   const queryClient = useQueryClient();
+  // onCircuitBreak 走 ref 保持最新实现；options 对象本身不进依赖数组，
+  // 避免调用方传内联对象时每次渲染都重连。
+  const optionsRef = useRef(options);
+
+  const url = options?.url ?? "/api/v1/events/stream";
+  const maxRetries = options?.maxRetries ?? 4;
+  const debounceMs = options?.debounceMs ?? 150;
 
   useEffect(() => {
-    const manager = new SSEManager(queryClient, options);
+    optionsRef.current = options;
+  });
+
+  useEffect(() => {
+    const manager = new SSEManager(queryClient, {
+      url,
+      maxRetries,
+      debounceMs,
+      onCircuitBreak: () => optionsRef.current?.onCircuitBreak?.(),
+    });
     manager.start();
 
     return () => {
       manager.stop();
     };
-  }, [queryClient, options]);
+  }, [queryClient, url, maxRetries, debounceMs]);
 }
