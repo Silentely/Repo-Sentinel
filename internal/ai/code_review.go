@@ -325,7 +325,6 @@ func cleanAndPrioritizeDiff(rawDiff string, maxChars int) (string, bool) {
 			remain := maxChars - sb.Len()
 			if remain > 200 {
 				sb.WriteString(textutil.TruncateUTF8Bytes(chunk.content, remain))
-				sb.WriteString("\n…（Diff 达到预算上限，本文件变更已截断）\n")
 			}
 			diffTruncated = true
 			break
@@ -438,15 +437,17 @@ func scanDiffHeuristics(diff string) heuristicReport {
 		inRunBlock = false
 	}
 
+	currentHeader := ""
 	for _, line := range lines {
-		if strings.HasPrefix(line, "diff --git ") || strings.HasPrefix(line, "--- ") {
-			if strings.HasPrefix(line, "diff --git ") {
-				flushWorkflow()
-				flushFile()
-				currentFilePath = extractFilePathFromDiffHeader(line)
-				inWorkflow = strings.Contains(line, ".github/workflows/")
-			}
-			if match := suspiciousDocFileRegex.FindStringSubmatch(extractFilePathFromDiffHeader(line)); len(match) > 1 {
+		isGitDiff := strings.HasPrefix(line, "diff --git ")
+		isUnifiedDiff := strings.HasPrefix(line, "--- ") && !strings.HasPrefix(currentHeader, "diff --git ")
+		if isGitDiff || isUnifiedDiff {
+			flushWorkflow()
+			flushFile()
+			currentHeader = line
+			currentFilePath = extractFilePathFromDiffHeader(line)
+			inWorkflow = strings.Contains(line, ".github/workflows/") || strings.Contains(currentFilePath, ".github/workflows/")
+			if match := suspiciousDocFileRegex.FindStringSubmatch(currentFilePath); len(match) > 1 {
 				docName := match[0]
 				if !seenSpamDocs[docName] {
 					seenSpamDocs[docName] = true

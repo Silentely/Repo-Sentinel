@@ -997,6 +997,21 @@ Let me format this as bullet points.</think>
 				input: "<think>全部都是思考</think>",
 				want:  "",
 			},
+			{
+				name:  "保留非思考标签的类似名称标签",
+				input: "<code><thinking>keep this</thinking></code>",
+				want:  "<code><thinking>keep this</thinking></code>",
+			},
+			{
+				name:  "保留带连字符的标签",
+				input: "<thought-process>analysis</thought-process>",
+				want:  "<thought-process>analysis</thought-process>",
+			},
+			{
+				name:  "保留包含比较运算符与空格的代码",
+				input: "if a < reasoning > b: pass",
+				want:  "if a < reasoning > b: pass",
+			},
 		}
 
 		for _, tt := range tests {

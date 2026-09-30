@@ -1,5 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 
+// Configure React 19 act environment for Vitest fake timer testing
+// @ts-expect-error React 18/19 act test flag
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 

@@ -673,12 +673,12 @@ func errorDetail(resp *http.Response) string {
 
 var (
 	closedThinkingRegexps = []*regexp.Regexp{
-		regexp.MustCompile(`(?is)<\s*think[^>]*>.*?<\s*/\s*think\s*>`),
-		regexp.MustCompile(`(?is)<\s*thought[^>]*>.*?<\s*/\s*thought\s*>`),
-		regexp.MustCompile(`(?is)<\s*reasoning[^>]*>.*?<\s*/\s*reasoning\s*>`),
+		regexp.MustCompile(`(?is)<think(?:\s+[^>]*)?>.*?<\s*/\s*think\s*>`),
+		regexp.MustCompile(`(?is)<thought(?:\s+[^>]*)?>.*?<\s*/\s*thought\s*>`),
+		regexp.MustCompile(`(?is)<reasoning(?:\s+[^>]*)?>.*?<\s*/\s*reasoning\s*>`),
 	}
 	unclosedThinkingRegexps = []*regexp.Regexp{
-		regexp.MustCompile(`(?is)<\s*(?:think|thought|reasoning)[^>]*>.*$`),
+		regexp.MustCompile(`(?is)<(?:think|thought|reasoning)(?:\s+[^>]*)?>.*$`),
 	}
 )
 

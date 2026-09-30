@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"github.com/Silentely/Repo-Sentinel/internal/textutil"
 	"strings"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/Silentely/Repo-Sentinel/internal/textutil"
 	"github.com/oklog/ulid/v2"
 )
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/oklog/ulid/v2"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
 
 const (
