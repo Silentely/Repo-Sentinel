@@ -145,10 +145,10 @@ func extractFilePathFromDiffHeader(header string) string {
 }
 
 // extractFilePathFromDiffHeaders 兼容纯 unified diff 的新增文件格式：
-// 旧文件头为 /dev/null 时，真实路径位于紧随其后的 +++ b/path 文件头。
+// 旧文件头为空或 /dev/null 时，真实路径位于紧随其后的 +++ b/path 文件头。
 func extractFilePathFromDiffHeaders(oldHeader, newHeader string) string {
 	path := extractFilePathFromDiffHeader(oldHeader)
-	if path != "/dev/null" {
+	if path != "" && path != "/dev/null" {
 		return path
 	}
 
@@ -159,6 +159,17 @@ func extractFilePathFromDiffHeaders(oldHeader, newHeader string) string {
 		return strings.TrimSpace(path)
 	}
 	return path
+}
+
+// isUnifiedFileHeaderAt 判定 lines[i] 是否为纯 unified diff 的文件头。
+// git 与 diff -u 输出的文件头固定为「--- 旧路径 / +++ 新路径 / @@ 首个 hunk」三连，
+// 借此与 hunk 内容中以 --- 或 +++ 开头的行（如新增行 "++ x" 生成的 "+++ x"）区分，
+// 避免内容行被当成文件头而覆盖已解析出的真实路径。
+func isUnifiedFileHeaderAt(lines []string, i int) bool {
+	return i+2 < len(lines) &&
+		strings.HasPrefix(lines[i], "--- ") &&
+		strings.HasPrefix(lines[i+1], "+++ ") &&
+		strings.HasPrefix(lines[i+2], "@@")
 }
 
 // classifySensitiveAsset 嗅探敏感关键资产变更（工作流/依赖锁定/DB迁移/密钥配置）。
@@ -314,13 +325,15 @@ func parseDiffChunks(rawDiff string) []diffChunk {
 		currentNewHeader = ""
 	}
 
-	for _, line := range lines {
-		if strings.HasPrefix(line, "diff --git ") || (currentHeader == "" && strings.HasPrefix(line, "--- ")) {
+	for i, line := range lines {
+		if strings.HasPrefix(line, "diff --git ") {
 			flush()
 			currentHeader = line
 			currentNewHeader = ""
-		} else if strings.HasPrefix(line, "+++ ") && strings.HasPrefix(currentHeader, "--- ") {
-			currentNewHeader = line
+		} else if isUnifiedFileHeaderAt(lines, i) && !strings.HasPrefix(currentHeader, "diff --git ") {
+			flush()
+			currentHeader = line
+			currentNewHeader = lines[i+1]
 		}
 		currentLines = append(currentLines, line)
 	}
@@ -402,7 +415,6 @@ func scanDiffHeuristics(diff string) heuristicReport {
 
 	var currentFilePath string
 	var currentAdds, currentDels int
-	var currentNewHeader string
 
 	flushFile := func() {
 		if currentFilePath == "" {
@@ -461,28 +473,20 @@ func scanDiffHeuristics(diff string) heuristicReport {
 	}
 
 	currentHeader := ""
-	for _, line := range lines {
+	for i, line := range lines {
 		isGitDiff := strings.HasPrefix(line, "diff --git ")
-		isUnifiedDiff := strings.HasPrefix(line, "--- ") && !strings.HasPrefix(currentHeader, "diff --git ")
+		// 文件边界与 parseDiffChunks 共用同一判定：diff --git 头，或 --- / +++ / @@ 三连的 unified 头。
+		isUnifiedDiff := isUnifiedFileHeaderAt(lines, i) && !strings.HasPrefix(currentHeader, "diff --git ")
 		if isGitDiff || isUnifiedDiff {
 			flushWorkflow()
 			flushFile()
 			currentHeader = line
-			currentFilePath = extractFilePathFromDiffHeader(line)
-			currentNewHeader = ""
-			inWorkflow = strings.Contains(line, ".github/workflows/") || strings.Contains(currentFilePath, ".github/workflows/")
-			if match := suspiciousDocFileRegex.FindStringSubmatch(currentFilePath); len(match) > 1 {
-				docName := match[0]
-				if !seenSpamDocs[docName] {
-					seenSpamDocs[docName] = true
-					rep.flaggedSpamDocs = append(rep.flaggedSpamDocs, docName)
-				}
+			if isUnifiedDiff {
+				currentFilePath = extractFilePathFromDiffHeaders(line, lines[i+1])
+			} else {
+				currentFilePath = extractFilePathFromDiffHeader(line)
 			}
-		}
-		if strings.HasPrefix(line, "+++") && strings.HasPrefix(currentHeader, "--- ") {
-			currentNewHeader = line
-			currentFilePath = extractFilePathFromDiffHeaders(currentHeader, currentNewHeader)
-			inWorkflow = strings.Contains(currentFilePath, ".github/workflows/")
+			inWorkflow = strings.Contains(line, ".github/workflows/") || strings.Contains(currentFilePath, ".github/workflows/")
 			if match := suspiciousDocFileRegex.FindStringSubmatch(currentFilePath); len(match) > 1 {
 				docName := match[0]
 				if !seenSpamDocs[docName] {

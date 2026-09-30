@@ -218,6 +218,80 @@ func TestUnifiedDiffNewFileUsesAddedPath(t *testing.T) {
 	}
 }
 
+func TestUnifiedDiffContentLineLookingLikeHeader(t *testing.T) {
+	// hunk 内容中以 +++ 开头的行（新增行 "++ x" 的 diff 形态）不得被当成文件头，
+	// 否则新增文件的真实路径会被覆盖，敏感资产嗅探随之失效。
+	cases := map[string]string{
+		"无空格": `--- /dev/null
++++ b/.github/workflows/new-check.yml
+@@ -0,0 +1,3 @@
++name: New check
++++not-a-header
++on: pull_request`,
+		"带空格": `--- /dev/null
++++ b/.github/workflows/new-check.yml
+@@ -0,0 +1,3 @@
++name: New check
++++ a-list-item
++on: pull_request`,
+	}
+
+	for name, diff := range cases {
+		t.Run(name, func(t *testing.T) {
+			chunks := parseDiffChunks(diff)
+			if len(chunks) != 1 {
+				t.Fatalf("expected one diff chunk, got %d", len(chunks))
+			}
+			if chunks[0].filePath != ".github/workflows/new-check.yml" {
+				t.Fatalf("expected added file path preserved, got %q", chunks[0].filePath)
+			}
+
+			report := scanDiffHeuristics(diff)
+			if len(report.sensitiveAssets) != 1 {
+				t.Fatalf("expected new workflow still detected as sensitive, got %v", report.sensitiveAssets)
+			}
+			if len(report.fileManifest) != 1 || report.fileManifest[0].path != ".github/workflows/new-check.yml" {
+				t.Fatalf("expected manifest to keep added file path, got %v", report.fileManifest)
+			}
+		})
+	}
+}
+
+func TestUnifiedDiffMultiFileIsolation(t *testing.T) {
+	// 无 diff --git 头的多文件 unified diff：每个文件必须各自成块并保留自身路径
+	diff := `--- a/pkg/one.go
++++ b/pkg/one.go
+@@ -1 +1 @@
+-a
++b
+--- a/pkg/two.go
++++ b/pkg/two.go
+@@ -1 +1 @@
+-c
++d`
+
+	chunks := parseDiffChunks(diff)
+	if len(chunks) != 2 {
+		t.Fatalf("expected two diff chunks, got %d", len(chunks))
+	}
+	if chunks[0].filePath != "pkg/one.go" || chunks[1].filePath != "pkg/two.go" {
+		t.Fatalf("expected per-file chunk paths, got %q and %q", chunks[0].filePath, chunks[1].filePath)
+	}
+
+	report := scanDiffHeuristics(diff)
+	if len(report.fileManifest) != 2 {
+		t.Fatalf("expected two manifest entries, got %v", report.fileManifest)
+	}
+	if report.fileManifest[0].path != "pkg/one.go" || report.fileManifest[1].path != "pkg/two.go" {
+		t.Fatalf("expected per-file manifest paths, got %v", report.fileManifest)
+	}
+	for _, f := range report.fileManifest {
+		if f.adds != 1 || f.dels != 1 {
+			t.Fatalf("expected isolated add/del counts per file, got %v", report.fileManifest)
+		}
+	}
+}
+
 func TestScanDiffHeuristicsSafePRTarget(t *testing.T) {
 	diff := `diff --git a/.github/workflows/pr.yml b/.github/workflows/pr.yml
 --- a/.github/workflows/pr.yml

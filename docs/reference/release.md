@@ -20,6 +20,10 @@ ghcr.io/silentely/repo-sentinel:latest
 - 正式 tag 双架构 + QEMU，通常比 `main` 单架构更久
 - 工作流：[`.github/workflows/docker.yml`](https://github.com/Silentely/Repo-Sentinel/blob/main/.github/workflows/docker.yml)
 
+### 工作流权限
+
+镜像工作流按任务最小授权：顶层只申请 `contents: read`；`build-and-push` 追加 `packages: write` 用于推送 GHCR；`cleanup-old-runs` 单独持有 `actions: write` 用于删除历史运行记录，并跳过 `pull_request` 事件（PR 触发的运行不持有该权限）。当前不生成 provenance / SBOM 证明，因此不申请 `id-token: write` 与 `attestations: write`。
+
 ## 版本约定
 
 | 项 | 约定 |
