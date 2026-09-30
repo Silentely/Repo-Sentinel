@@ -501,10 +501,25 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 		return
 	}
 
-	idempotencyKey := "github_label:" + repoFullName + ":" + strconv.Itoa(issueNumber) + ":" + res.Category
-	if _, err := e.Store.Settings().Get(ctx, idempotencyKey); err == nil {
+	idempotencyKey := store.AutoLabelReceiptKey(repoFullName, issueNumber, res.Category)
+	// 原子竞争回执键：已存在即表示本次打标已成功（或另一并发分诊正在处理），跳过。
+	// 相比先 Get 再 Upsert，避免多个并发分诊对同一 Issue 重复调用打标接口。
+	if _, err := e.Store.Settings().Create(ctx, store.SystemSetting{
+		ID:        ulid.Make().String(),
+		Key:       idempotencyKey,
+		ValueJSON: json.RawMessage(`{"status":"pending"}`),
+		UpdatedAt: time.Now().UTC(),
+		UpdatedBy: "auto_label",
+	}); err != nil {
 		return
 	}
+	// 领取回执后任一环节失败都必须释放，否则该 Issue 会被永久抑制打标。
+	applied := false
+	defer func() {
+		if !applied {
+			_ = e.Store.Settings().Delete(ctx, idempotencyKey)
+		}
+	}()
 
 	parts := strings.SplitN(repoFullName, "/", 2)
 	if len(parts) != 2 {
@@ -533,6 +548,7 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 		}
 		return
 	}
+	applied = true
 	_, _ = e.Store.Settings().Upsert(ctx, store.SystemSetting{
 		ID: ulid.Make().String(), Key: idempotencyKey,
 		ValueJSON: json.RawMessage(`{"status":"applied"}`), UpdatedAt: time.Now().UTC(), UpdatedBy: "auto_label",
