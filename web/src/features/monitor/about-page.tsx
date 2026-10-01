@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 
 import { ApiErrorAlert } from "../../components/error-alert";
 import { GithubIcon } from "../../components/github-icon";
+import { PixelTree, PixelWatchtower } from "../../components/pixel-scenery";
 import { checkForUpdates, versionQueryOptions } from "./api";
 
 const REPO_URL = "https://github.com/Silentely/Repo-Sentinel";
@@ -56,16 +57,22 @@ export function AboutPage() {
         </div>
       </section>
 
-      <section className="onboarding-card" aria-labelledby="about-product-title">
-        <h2 id="about-product-title">你在用什么</h2>
-        <p>单管理员实例，数据与密钥都在你控制的环境中。</p>
-        <div className="link-row">
-          <a className="quiet-button" href={REPO_URL} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><GithubIcon size={14} aria-hidden="true" /> GitHub 仓库</a>
-          <a className="quiet-button" href={DOCS_CONFIG} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 配置参考</a>
-          <a className="quiet-button" href={DOCS_FAQ} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 常见问题</a>
-          <a className="quiet-button" href={DOCS_CHANGELOG} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 变更日志</a>
-          <Link className="quiet-button" to="/github">GitHub App 指引</Link>
-          <Link className="quiet-button" to="/settings">打开设置</Link>
+      <section className="onboarding-card onboarding-card--with-scenery" aria-labelledby="about-product-title">
+        <div className="onboarding-card__content">
+          <h2 id="about-product-title">你在用什么</h2>
+          <p>单管理员实例，数据与密钥都在你控制的环境中。</p>
+          <div className="link-row">
+            <a className="quiet-button" href={REPO_URL} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><GithubIcon size={14} aria-hidden="true" /> GitHub 仓库</a>
+            <a className="quiet-button" href={DOCS_CONFIG} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 配置参考</a>
+            <a className="quiet-button" href={DOCS_FAQ} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 常见问题</a>
+            <a className="quiet-button" href={DOCS_CHANGELOG} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 变更日志</a>
+            <Link className="quiet-button" to="/github">GitHub App 指引</Link>
+            <Link className="quiet-button" to="/settings">打开设置</Link>
+          </div>
+        </div>
+        <div className="about-scenery" aria-hidden="true">
+          <PixelTree />
+          <PixelWatchtower />
         </div>
       </section>
 

@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import type { FC, ReactNode } from "react";
 
 /**
  * PixelArt SVG helper components.
@@ -6,7 +6,7 @@ import type { FC } from "react";
  * - Restrained, sparse pixel-art scenery in peripheral background margins.
  * - Non-intrusive: aria-hidden="true", pointer-events: none, user-select: none.
  * - Crisp pixelated edges (shape-rendering: crispEdges).
- * - Adaptive to light cream paper and dark arcade terminal palettes.
+ * - Adaptive to light cream paper and dark arcade terminal palettes via --pixel-ink.
  */
 
 export const PixelTree: FC<{ className?: string }> = ({ className }) => (
@@ -171,6 +171,151 @@ export const PixelCloud: FC<{ className?: string }> = ({ className }) => (
 );
 
 /**
+ * PixelCampfire: 哨兵篝火，象征持续守望与值守陪伴。
+ */
+export const PixelCampfire: FC<{ className?: string }> = ({ className }) => (
+  <svg
+    viewBox="0 0 32 32"
+    width="32"
+    height="32"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    shapeRendering="crispEdges"
+    className={className}
+    aria-hidden="true"
+  >
+    {/* Embers / Sparks */}
+    <rect x="14" y="2" width="2" height="2" fill="#ffa726" />
+    <rect x="9" y="6" width="2" height="2" fill="#ff7043" />
+    <rect x="21" y="5" width="2" height="2" fill="#ffa726" />
+
+    {/* Flame Outer Layer (Orange-Red) */}
+    <rect x="13" y="6" width="6" height="4" fill="var(--pixel-ink, #17140f)" />
+    <rect x="10" y="10" width="12" height="6" fill="var(--pixel-ink, #17140f)" />
+    <rect x="8" y="16" width="16" height="6" fill="var(--pixel-ink, #17140f)" />
+
+    <rect x="14" y="7" width="4" height="4" fill="#ff5722" />
+    <rect x="11" y="11" width="10" height="6" fill="#f4511e" />
+    <rect x="9" y="17" width="14" height="5" fill="#e64a19" />
+
+    {/* Flame Inner Layer (Warm Yellow & Light) */}
+    <rect x="13" y="12" width="6" height="8" fill="#ffca28" />
+    <rect x="14" y="15" width="4" height="4" fill="#fff9c4" />
+
+    {/* Firewood Logs */}
+    <rect x="4" y="24" width="24" height="4" fill="var(--pixel-ink, #17140f)" />
+    <rect x="5" y="25" width="22" height="2" fill="#6d4c41" />
+    <rect x="6" y="22" width="6" height="4" fill="#8d6e63" />
+    <rect x="20" y="22" width="6" height="4" fill="#8d6e63" />
+    {/* Ashes */}
+    <rect x="2" y="27" width="28" height="2" fill="#424242" opacity="0.6" />
+  </svg>
+);
+
+/**
+ * PixelMailbox: 像素邮筒/投递箱，呼应通知分发与 Outbox 队列。
+ */
+export const PixelMailbox: FC<{ className?: string }> = ({ className }) => (
+  <svg
+    viewBox="0 0 26 34"
+    width="26"
+    height="34"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    shapeRendering="crispEdges"
+    className={className}
+    aria-hidden="true"
+  >
+    {/* Post / Pole */}
+    <rect x="11" y="18" width="4" height="14" fill="var(--pixel-ink, #17140f)" />
+    <rect x="12" y="18" width="2" height="13" fill="#8d6e63" />
+    <rect x="8" y="31" width="10" height="2" fill="var(--pixel-ink, #17140f)" />
+
+    {/* Mailbox Box Body Outline */}
+    <rect x="4" y="4" width="18" height="2" fill="var(--pixel-ink, #17140f)" />
+    <rect x="2" y="6" width="22" height="12" fill="var(--pixel-ink, #17140f)" />
+
+    {/* Red Body Fill */}
+    <rect x="4" y="6" width="18" height="10" fill="#e53935" />
+    <rect x="4" y="6" width="18" height="2" fill="#ef5350" />
+    <rect x="4" y="14" width="18" height="2" fill="#c62828" />
+
+    {/* Letter Slot */}
+    <rect x="6" y="10" width="10" height="2" fill="var(--pixel-ink, #17140f)" />
+
+    {/* Signal Flag (Upright) */}
+    <rect x="19" y="0" width="2" height="8" fill="var(--pixel-ink, #17140f)" />
+    <rect x="21" y="0" width="4" height="4" fill="#ffd54f" />
+    <rect x="20" y="7" width="2" height="2" fill="var(--pixel-ink, #17140f)" />
+  </svg>
+);
+
+/**
+ * PixelWatchtower: 哨兵瞭望塔，象征 RepoSentinel 哨兵全天候监控与值守。
+ */
+export const PixelWatchtower: FC<{ className?: string }> = ({ className }) => (
+  <svg
+    viewBox="0 0 36 46"
+    width="36"
+    height="46"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    shapeRendering="crispEdges"
+    className={className}
+    aria-hidden="true"
+  >
+    {/* Flag on top */}
+    <rect x="17" y="2" width="2" height="8" fill="var(--pixel-ink, #17140f)" />
+    <rect x="19" y="3" width="7" height="4" fill="#ff5722" />
+    <rect x="24" y="4" width="2" height="2" fill="#ffd54f" />
+
+    {/* Roof */}
+    <rect x="10" y="8" width="16" height="2" fill="var(--pixel-ink, #17140f)" />
+    <rect x="6" y="10" width="24" height="3" fill="var(--pixel-ink, #17140f)" />
+    <rect x="8" y="10" width="20" height="2" fill="#d84315" />
+
+    {/* Cabin Observation Deck */}
+    <rect x="9" y="13" width="18" height="9" fill="var(--pixel-ink, #17140f)" />
+    <rect x="11" y="13" width="14" height="7" fill="var(--bg-panel-warm)" />
+    {/* Lookouts/Windows */}
+    <rect x="13" y="15" width="3" height="3" fill="var(--pixel-ink, #17140f)" />
+    <rect x="20" y="15" width="3" height="3" fill="var(--pixel-ink, #17140f)" />
+
+    {/* Deck Floor Railing */}
+    <rect x="5" y="21" width="26" height="3" fill="var(--pixel-ink, #17140f)" />
+    <rect x="6" y="22" width="24" height="1" fill="#8d6e63" />
+
+    {/* Stilts / Legs */}
+    <rect x="8" y="24" width="3" height="18" fill="var(--pixel-ink, #17140f)" />
+    <rect x="25" y="24" width="3" height="18" fill="var(--pixel-ink, #17140f)" />
+    {/* Cross Bracing */}
+    <rect x="11" y="29" width="14" height="2" fill="var(--pixel-ink, #17140f)" opacity="0.8" />
+    <rect x="11" y="36" width="14" height="2" fill="var(--pixel-ink, #17140f)" opacity="0.8" />
+
+    {/* Ground Footings */}
+    <rect x="6" y="42" width="7" height="2" fill="var(--pixel-ink, #17140f)" />
+    <rect x="23" y="42" width="7" height="2" fill="var(--pixel-ink, #17140f)" />
+  </svg>
+);
+
+/**
+ * PixelPeacefulClearing: 空状态专用治愈系微缩地块（小草坪 + 跳动篝火 + 小木桩）。
+ */
+export const PixelPeacefulClearing: FC<{ className?: string }> = ({ className }) => (
+  <div className={`pixel-peaceful-clearing ${className || ""}`} aria-hidden="true">
+    <div className="pixel-peaceful-clearing__tree">
+      <PixelTree />
+    </div>
+    <div className="pixel-peaceful-clearing__center">
+      <PixelCampfire />
+    </div>
+    <div className="pixel-peaceful-clearing__mailbox">
+      <PixelMailbox />
+    </div>
+  </div>
+);
+
+/**
  * PixelSceneryBackdrop renders a charming, sparse pixel scenery in peripheral margins.
  * Ideal for auth screens (login, setup) and dashboard bottom margins.
  */
@@ -193,12 +338,13 @@ export const PixelSceneryGround: FC<{ className?: string }> = ({ className }) =>
 };
 
 /**
- * PixelScenerySidebarDecor renders a miniature house and tree at the bottom of the sidebar.
+ * PixelScenerySidebarDecor renders a miniature house, tree, and campfire at the bottom of the sidebar.
  */
 export const PixelScenerySidebarDecor: FC<{ className?: string }> = ({ className }) => {
   return (
     <div className={`pixel-scenery-sidebar ${className || ""}`} aria-hidden="true">
       <PixelTree />
+      <PixelCampfire />
       <PixelHouse />
     </div>
   );

@@ -152,6 +152,7 @@ export function WebhookDeliveriesPage() {
           isEmpty={items.length === 0}
           emptyState={
             <EmptyState
+              illustration="mailbox"
               title="暂无 Webhook 投递记录"
               description="GitHub 触发的 Webhook 事件将自动记录在此，供对账与排障使用。"
             />

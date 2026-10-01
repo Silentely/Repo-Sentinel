@@ -3505,3 +3505,69 @@ a.status-item--link:focus-visible {
 .app-footer__dot {
   opacity: 0.5;
 }
+
+/* ── 空状态像素微景插图 ── */
+.empty-state__illustration {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 14px;
+  opacity: 0.95;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ── 认证页浮空天际小景 ── */
+.auth-sky {
+  position: absolute;
+  top: 32px;
+  right: 48px;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.75;
+  z-index: 1;
+}
+
+/* ── 关于页哨兵瞭望微缩景 ── */
+.onboarding-card--with-scenery {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+
+.about-scenery {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 10px 18px;
+  background: var(--bg-muted);
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  box-shadow: 3px 3px 0 var(--shadow-neo);
+  pointer-events: none;
+  user-select: none;
+}
+
+.pixel-peaceful-clearing {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  padding-bottom: 2px;
+  border-bottom: 2px solid var(--border-subtle);
+}
+
+@media (max-width: 768px) {
+  .auth-sky {
+    display: none !important;
+  }
+  .onboarding-card--with-scenery {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .about-scenery {
+    display: none !important;
+  }
+}

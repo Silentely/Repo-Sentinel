@@ -229,6 +229,7 @@ export function OutboxPage() {
           isEmpty={items.length === 0}
           emptyState={
             <EmptyState
+              illustration="mailbox"
               title="没有投递记录"
               description={
                 statusFilter || channelFilter

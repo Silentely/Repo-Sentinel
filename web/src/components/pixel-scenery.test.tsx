@@ -5,6 +5,10 @@ import {
   PixelHouse,
   PixelFlowerPatch,
   PixelCloud,
+  PixelCampfire,
+  PixelMailbox,
+  PixelWatchtower,
+  PixelPeacefulClearing,
   PixelSceneryGround,
   PixelScenerySidebarDecor,
 } from "./pixel-scenery";
@@ -33,13 +37,36 @@ describe("PixelScenery Components", () => {
     const cloudSvg = cloudContainer.querySelector("svg");
     expect(cloudSvg).not.toBeNull();
     expect(cloudSvg?.getAttribute("aria-hidden")).toBe("true");
+
+    const { container: fireContainer } = render(<PixelCampfire />);
+    const fireSvg = fireContainer.querySelector("svg");
+    expect(fireSvg).not.toBeNull();
+    expect(fireSvg?.getAttribute("aria-hidden")).toBe("true");
+    expect(fireSvg?.getAttribute("shape-rendering")).toBe("crispEdges");
+
+    const { container: mailContainer } = render(<PixelMailbox />);
+    const mailSvg = mailContainer.querySelector("svg");
+    expect(mailSvg).not.toBeNull();
+    expect(mailSvg?.getAttribute("aria-hidden")).toBe("true");
+    expect(mailSvg?.getAttribute("shape-rendering")).toBe("crispEdges");
+
+    const { container: towerContainer } = render(<PixelWatchtower />);
+    const towerSvg = towerContainer.querySelector("svg");
+    expect(towerSvg).not.toBeNull();
+    expect(towerSvg?.getAttribute("aria-hidden")).toBe("true");
+    expect(towerSvg?.getAttribute("shape-rendering")).toBe("crispEdges");
   });
 
-  it("renders compound scenery ground and sidebar with aria-hidden", () => {
+  it("renders compound scenery ground, clearing, and sidebar with aria-hidden", () => {
     const { container: groundContainer } = render(<PixelSceneryGround />);
     const ground = groundContainer.querySelector(".pixel-scenery-ground");
     expect(ground).not.toBeNull();
     expect(ground?.getAttribute("aria-hidden")).toBe("true");
+
+    const { container: clearingContainer } = render(<PixelPeacefulClearing />);
+    const clearing = clearingContainer.querySelector(".pixel-peaceful-clearing");
+    expect(clearing).not.toBeNull();
+    expect(clearing?.getAttribute("aria-hidden")).toBe("true");
 
     const { container: sidebarContainer } = render(<PixelScenerySidebarDecor />);
     const sidebar = sidebarContainer.querySelector(".pixel-scenery-sidebar");
