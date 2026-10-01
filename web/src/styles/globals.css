@@ -3932,3 +3932,84 @@ a.status-item--link:focus-visible {
     display: none;
   }
 }
+
+/* ── 认证页宽屏左右两侧田园牧场景致（高山流水、小木屋与草地牛羊） ── */
+.auth-flanks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.auth-flank {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  opacity: 0.94;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.auth-flank--left {
+  right: calc(50% + 248px);
+  align-items: flex-end;
+}
+
+.auth-flank--right {
+  left: calc(50% + 248px);
+  align-items: flex-start;
+}
+
+.auth-flank__mountain {
+  opacity: 0.88;
+  margin-bottom: 2px;
+}
+
+.auth-flank__cluster {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.auth-flank__animals {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.auth-flank__buildings {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.auth-flank__stream {
+  margin-right: 4px;
+}
+
+.auth-flank__fire {
+  margin-left: 2px;
+}
+
+@media (max-width: 1280px) {
+  .auth-flank {
+    transform: translateY(-50%) scale(0.85);
+  }
+  .auth-flank--left {
+    right: calc(50% + 228px);
+  }
+  .auth-flank--right {
+    left: calc(50% + 228px);
+  }
+}
+
+@media (max-width: 1040px) {
+  .auth-flanks {
+    display: none !important;
+  }
+}
