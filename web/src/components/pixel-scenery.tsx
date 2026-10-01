@@ -672,8 +672,11 @@ export const PixelFence: FC<{ className?: string }> = ({ className }) => (
 export const PixelAuthFlanks: FC = () => {
   return (
     <div className="auth-flanks" aria-hidden="true">
-      {/* 左侧翼：高山、松林与吃草小羊 */}
+      {/* 左侧翼：浮云、高山、松林与吃草小羊 */}
       <aside className="auth-flank auth-flank--left">
+        <div className="auth-flank__cloud auth-flank__cloud--left">
+          <PixelCloud />
+        </div>
         <div className="auth-flank__mountain">
           <PixelMountain />
         </div>
@@ -691,8 +694,11 @@ export const PixelAuthFlanks: FC = () => {
         </div>
       </aside>
 
-      {/* 右侧翼：小溪流水、木屋、木栅栏与奶牛 */}
+      {/* 右侧翼：浮云、小溪流水、木屋、木栅栏与奶牛 */}
       <aside className="auth-flank auth-flank--right">
+        <div className="auth-flank__cloud auth-flank__cloud--right">
+          <PixelCloud />
+        </div>
         <div className="auth-flank__buildings">
           <PixelWatchtower />
           <PixelHouse />

@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { ErrorAlert } from "../../components/error-alert";
 import { GithubIcon } from "../../components/github-icon";
 import { ThemeToggle } from "../../components/theme-toggle";
-import { PixelAuthFlanks, PixelSceneryGround } from "../../components/pixel-scenery";
+import { PixelAuthFlanks, PixelCloud, PixelSceneryGround } from "../../components/pixel-scenery";
 import { apiRequest } from "../../lib/api/client";
 import { ApiError, toApiError } from "../../lib/api/errors";
 import { AuthCardHeader, AuthField, applyZodErrors } from "./auth-card";
@@ -152,6 +152,9 @@ export function LoginPage({
 
   return (
     <main className="auth-shell">
+      <div className="auth-sky" aria-hidden="true">
+        <PixelCloud />
+      </div>
       <div className="auth-shell__theme">
         {/* 仓库入口：登录页右上角 GitHub 图标直达源码/Issue。 */}
         <a

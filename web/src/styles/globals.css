@@ -3619,12 +3619,13 @@ a.status-item--link:focus-visible {
 /* ── 认证页浮空天际小景 ── */
 .auth-sky {
   position: absolute;
-  top: 32px;
-  right: 48px;
+  top: 28px;
+  left: 36px;
   pointer-events: none;
   user-select: none;
-  opacity: 0.75;
+  opacity: 0.78;
   z-index: 1;
+  animation: flank-cloud-float 8s ease-in-out infinite alternate;
 }
 
 /* ── 关于页哨兵瞭望微缩景 ── */
@@ -3962,6 +3963,32 @@ a.status-item--link:focus-visible {
 .auth-flank--right {
   left: calc(50% + 248px);
   align-items: flex-start;
+}
+
+
+.auth-flank__cloud {
+  opacity: 0.85;
+  margin-bottom: 6px;
+  animation: flank-cloud-float 6s ease-in-out infinite alternate;
+}
+
+.auth-flank__cloud--left {
+  align-self: flex-start;
+  margin-left: 10px;
+}
+
+.auth-flank__cloud--right {
+  align-self: flex-end;
+  margin-right: 16px;
+}
+
+@keyframes flank-cloud-float {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-5px);
+  }
 }
 
 .auth-flank__mountain {
