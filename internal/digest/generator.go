@@ -83,9 +83,8 @@ func (g *Generator) RunOnce(ctx context.Context, now time.Time) error {
 	}
 
 	title := "📊 每日摘要 " + dateKey
-	body, aiUsed := g.reportBody(ctx, title, events, "过去 24 小时", now)
-	return g.enqueue(ctx, settingLastDigest, "digest", dateKey, title, body, map[string]any{
-		"digest": true, "date": dateKey, "count": len(events), "ai": aiUsed,
+	return g.enqueue(ctx, settingLastDigest, "digest", dateKey, title, "过去 24 小时", now, events, map[string]any{
+		"digest": true, "date": dateKey,
 	})
 }
 
@@ -120,9 +119,8 @@ func (g *Generator) RunWeekly(ctx context.Context, now time.Time) error {
 	}
 
 	title := "📊 每周报告 " + dateKey + " 起"
-	body, aiUsed := g.reportBody(ctx, title, events, "过去 7 天", now)
-	return g.enqueue(ctx, settingLastWeekly, "report|weekly", dateKey, title, body, map[string]any{
-		"report": "weekly", "period_start": dateKey, "count": len(events), "ai": aiUsed,
+	return g.enqueue(ctx, settingLastWeekly, "report|weekly", dateKey, title, "过去 7 天", now, events, map[string]any{
+		"report": "weekly", "period_start": dateKey,
 	})
 }
 
@@ -155,9 +153,8 @@ func (g *Generator) RunMonthly(ctx context.Context, now time.Time) error {
 	}
 
 	title := "📊 每月报告 " + dateKey
-	body, aiUsed := g.reportBody(ctx, title, events, "过去 30 天", now)
-	return g.enqueue(ctx, settingLastMonthly, "report|monthly", dateKey, title, body, map[string]any{
-		"report": "monthly", "period": dateKey, "count": len(events), "ai": aiUsed,
+	return g.enqueue(ctx, settingLastMonthly, "report|monthly", dateKey, title, "过去 30 天", now, events, map[string]any{
+		"report": "monthly", "period": dateKey,
 	})
 }
 
@@ -307,26 +304,82 @@ func (g *Generator) repoNames(ctx context.Context, events []store.Event) map[str
 }
 
 // enqueue 向启用定期汇总的渠道写入 outbox，并记录 last-sent 记账键。
+// 正文按渠道的机器人免打扰配置生成：开启 IgnoreBots 的渠道使用剔除机器人 Issue/PR 后的事件集，
+// 其余渠道使用完整事件集；两种变体各自只生成一次（含 AI 总结与仓库名映射），避免重复调用模型。
+// 渠道过滤后无有效事件（报告内容全是机器人动态）时跳过该渠道：免打扰的渠道不应收到空报告。
 func (g *Generator) enqueue(
 	ctx context.Context,
-	lastKey, prefix, dateKey, title, body string,
-	bodyJSON map[string]any,
+	lastKey, prefix, dateKey, title, period string,
+	now time.Time,
+	events []store.Event,
+	extraJSON map[string]any,
 ) error {
 	channels, err := g.Store.Channels().List(ctx)
 	if err != nil {
 		return err
 	}
+
+	// 变体 0 = 完整事件集；变体 1 = 剔除机器人工作项后的事件集。
+	// 仅当存在开启 IgnoreBots 的渠道且确实过滤掉事件时才需要变体 1，因此惰性生成。
+	// 以「开启 IgnoreBots 的渠道」为参照，复用 rules 的单一判定剔除机器人工作项事件。
+	filteredEvents := make([]store.Event, 0, len(events))
+	botFilterChannel := store.NotificationChannel{IgnoreBots: true}
+	for _, ev := range events {
+		if rules.ShouldSuppressBotEvent(botFilterChannel, &ev) {
+			continue
+		}
+		filteredEvents = append(filteredEvents, ev)
+	}
+	botFiltered := len(filteredEvents) != len(events)
+
+	var (
+		bodies = [2]string{}
+		counts = [2]int{}
+		aiUsed = [2]bool{}
+		ready  = [2]bool{}
+	)
+	bodyFor := func(variant int) (string, int, bool) {
+		if !ready[variant] {
+			evs := events
+			if variant == 1 {
+				evs = filteredEvents
+			}
+			bodies[variant], aiUsed[variant] = g.reportBody(ctx, title, evs, period, now)
+			counts[variant] = len(evs)
+			ready[variant] = true
+		}
+		return bodies[variant], counts[variant], aiUsed[variant]
+	}
+
 	enqueued := 0
 	for _, ch := range channels {
 		if !ch.Enabled || !ch.DigestEnabled {
 			continue
 		}
+		variant := 0
+		if ch.IgnoreBots && botFiltered {
+			variant = 1
+		}
+		body, count, used := bodyFor(variant)
+		if variant == 1 && count == 0 {
+			// 报告内容全部是机器人动态：该渠道开启免打扰，跳过投递避免空报告。
+			if g.Logger != nil {
+				g.Logger.Debug("digest skipped for bot-free channel", "title", title, "channel_id", ch.ID)
+			}
+			continue
+		}
+		payload := make(map[string]any, len(extraJSON)+2)
+		for k, v := range extraJSON {
+			payload[k] = v
+		}
+		payload["count"] = count
+		payload["ai"] = used
 		idem := prefix + "|" + ch.ID + "|" + dateKey
 		_, err := g.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
 			Title: title, BodyText: body, ParseMode: "HTML",
-			BodyJSON: bodyJSON,
+			BodyJSON: payload,
 		})
 		if err != nil && !errors.Is(err, store.ErrConflict) {
 			return err

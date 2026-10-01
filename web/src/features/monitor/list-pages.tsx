@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
@@ -97,6 +97,22 @@ export function filterWorkItemsByText(items: WorkItem[], textQuery: string): Wor
       : false;
     return titleMatch || authorMatch || numMatch || repoMatch;
   });
+}
+
+/**
+ * 按搜索语法的 `repo:` 引用解析活跃仓 ID：支持 full_name、短名（均忽略大小写）与仓库 ID 精确匹配。
+ * 未命中（仓库不在活跃列表或拼写有误）返回空串，调用方据此清空而非残留上一次的仓库筛选。
+ */
+export function resolveRepoId(repos: Repository[], reference: string | undefined): string {
+  if (!reference) return "";
+  const lower = reference.toLowerCase();
+  const found = repos.find(
+    (r) =>
+      r.full_name.toLowerCase() === lower ||
+      r.name.toLowerCase() === lower ||
+      r.id === reference,
+  );
+  return found?.id ?? "";
 }
 
 interface WorkflowRun {
@@ -988,94 +1004,95 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
   const [inputValue, setInputValue] = useState(searchQuery);
   const lastAppliedRef = useRef(searchQuery);
 
-  // 初始化或 URL 中 q 变更时同步到控件状态
+  // 初始化或 URL 中 q 变更时同步到控件状态。
+  // 依赖包含各控件现值：每次只写差异值，值写入后即相等，effect 收敛不会循环。
   useEffect(() => {
-    if (searchQuery.trim()) {
-      const parsed = parseSearchSyntax(searchQuery);
-      setTextQuery(parsed.text ?? "");
-      if (parsed.repo) {
-        const found = activeRepos.find(
-          (r) =>
-            r.full_name.toLowerCase() === parsed.repo!.toLowerCase() ||
-            r.name.toLowerCase() === parsed.repo!.toLowerCase() ||
-            r.id === parsed.repo
-        );
-        if (found && found.id !== repoId) {
-          setRepoId(found.id);
-        }
-      }
-      if (parsed.kind && parsed.kind !== kind) {
-        setKind(parsed.kind);
-      }
-      if (parsed.state && parsed.state !== state) {
-        setState(parsed.state);
-      }
-      if (parsed.author !== undefined && parsed.author !== author) {
-        setAuthor(parsed.author);
-      }
-      if (parsed.isBot !== undefined) {
-        const nextBot = parsed.isBot ? "true" : "false";
-        if (nextBot !== isBot) setIsBot(nextBot);
-      }
-    }
-  }, [searchQuery, activeRepos]);
-
-  const applySearchInput = (raw: string) => {
-    if (raw === lastAppliedRef.current) return;
-    lastAppliedRef.current = raw;
-
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      setTextQuery("");
-      setSearchQuery("");
-      setAuthor("");
-      setIsBot("");
-      setRepoId("");
-      return;
-    }
-
-    const parsed = parseSearchSyntax(trimmed);
+    if (!searchQuery.trim()) return;
+    const parsed = parseSearchSyntax(searchQuery);
     setTextQuery(parsed.text ?? "");
-    setSearchQuery(trimmed);
-
     if (parsed.repo) {
-      const found = activeRepos.find(
-        (r) =>
-          r.full_name.toLowerCase() === parsed.repo!.toLowerCase() ||
-          r.name.toLowerCase() === parsed.repo!.toLowerCase() ||
-          r.id === parsed.repo
-      );
-      if (found) {
-        setRepoId(found.id);
+      const resolved = resolveRepoId(activeRepos, parsed.repo);
+      // 仅补写命中值：URL 上的 repo 参数可能是权威来源，未命中时不清空。
+      if (resolved && resolved !== repoId) {
+        setRepoId(resolved);
       }
-    } else {
-      setRepoId("");
     }
-
-    if (parsed.kind) {
+    if (parsed.kind && parsed.kind !== kind) {
       setKind(parsed.kind);
-    } else {
-      setKind(defaultKind);
     }
-
-    if (parsed.state) {
+    if (parsed.state && parsed.state !== state) {
       setState(parsed.state);
-    } else {
-      setState("");
     }
-
-    if (parsed.author !== undefined) {
+    if (parsed.author !== undefined && parsed.author !== author) {
       setAuthor(parsed.author);
-    } else {
-      setAuthor("");
     }
-
     if (parsed.isBot !== undefined) {
-      setIsBot(parsed.isBot ? "true" : "false");
-    } else {
-      setIsBot("");
+      const nextBot = parsed.isBot ? "true" : "false";
+      if (nextBot !== isBot) setIsBot(nextBot);
     }
-  };
+  }, [
+    searchQuery,
+    activeRepos,
+    repoId,
+    kind,
+    state,
+    author,
+    isBot,
+    setRepoId,
+    setKind,
+    setState,
+    setAuthor,
+    setIsBot,
+  ]);
+
+  const applySearchInput = useCallback(
+    (raw: string) => {
+      if (raw === lastAppliedRef.current) return;
+      lastAppliedRef.current = raw;
+
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        setTextQuery("");
+        setSearchQuery("");
+        setAuthor("");
+        setIsBot("");
+        setRepoId("");
+        return;
+      }
+
+      const parsed = parseSearchSyntax(trimmed);
+      setTextQuery(parsed.text ?? "");
+      setSearchQuery(trimmed);
+
+      // 仓库前缀未命中任何活跃仓时清空，避免残留上一次的 repository_id 继续过滤。
+      setRepoId(resolveRepoId(activeRepos, parsed.repo));
+
+      if (parsed.kind) {
+        setKind(parsed.kind);
+      } else {
+        setKind(defaultKind);
+      }
+
+      if (parsed.state) {
+        setState(parsed.state);
+      } else {
+        setState("");
+      }
+
+      if (parsed.author !== undefined) {
+        setAuthor(parsed.author);
+      } else {
+        setAuthor("");
+      }
+
+      if (parsed.isBot !== undefined) {
+        setIsBot(parsed.isBot ? "true" : "false");
+      } else {
+        setIsBot("");
+      }
+    },
+    [activeRepos, defaultKind, setTextQuery, setSearchQuery, setRepoId, setKind, setState, setAuthor, setIsBot],
+  );
 
   // 搜索输入防抖
   useEffect(() => {
@@ -1083,71 +1100,52 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
       applySearchInput(inputValue);
     }, 400);
     return () => clearTimeout(timer);
-  }, [inputValue]);
+  }, [inputValue, applySearchInput]);
 
-  // 下拉与切换控件变动时，双向反写搜索框
-  const handleRepoChange = (newRepoId: string) => {
-    setRepoId(newRepoId);
-    const repoObj = activeRepos.find((r) => r.id === newRepoId);
+  // 下拉与切换控件变动时，双向反写搜索框。
+  // override 为本次变更的控件值，其余取当前值，避免四个控件各自复制一份序列化逻辑。
+  const syncSearchFromControls = (override: {
+    repoId?: string;
+    kind?: string;
+    state?: string;
+    isBot?: string;
+  }) => {
+    const nextRepoId = override.repoId ?? repoId;
+    const nextKind = override.kind ?? kind;
+    const nextState = override.state ?? state;
+    const nextIsBot = override.isBot ?? isBot;
+    const repoObj = activeRepos.find((r) => r.id === nextRepoId);
     const newQ = serializeSearchSyntax({
       repo: repoObj?.full_name,
-      kind: (kind === "pull_request" || kind === "issue") ? kind : undefined,
-      state: (state === "open" || state === "closed") ? state : undefined,
-      isBot: isBot === "true" ? true : isBot === "false" ? false : undefined,
+      kind: nextKind === "pull_request" || nextKind === "issue" ? nextKind : undefined,
+      state: nextState === "open" || nextState === "closed" ? nextState : undefined,
+      isBot: nextIsBot === "true" ? true : nextIsBot === "false" ? false : undefined,
       author: author || undefined,
       text: textQuery || undefined,
     });
     lastAppliedRef.current = newQ;
     setInputValue(newQ);
     setSearchQuery(newQ);
+  };
+
+  const handleRepoChange = (newRepoId: string) => {
+    setRepoId(newRepoId);
+    syncSearchFromControls({ repoId: newRepoId });
   };
 
   const handleKindChange = (newKind: string) => {
     setKind(newKind);
-    const repoObj = activeRepos.find((r) => r.id === repoId);
-    const newQ = serializeSearchSyntax({
-      repo: repoObj?.full_name,
-      kind: (newKind === "pull_request" || newKind === "issue") ? newKind : undefined,
-      state: (state === "open" || state === "closed") ? state : undefined,
-      isBot: isBot === "true" ? true : isBot === "false" ? false : undefined,
-      author: author || undefined,
-      text: textQuery || undefined,
-    });
-    lastAppliedRef.current = newQ;
-    setInputValue(newQ);
-    setSearchQuery(newQ);
+    syncSearchFromControls({ kind: newKind });
   };
 
   const handleStateChange = (newState: string) => {
     setState(newState);
-    const repoObj = activeRepos.find((r) => r.id === repoId);
-    const newQ = serializeSearchSyntax({
-      repo: repoObj?.full_name,
-      kind: (kind === "pull_request" || kind === "issue") ? kind : undefined,
-      state: (newState === "open" || newState === "closed") ? newState : undefined,
-      isBot: isBot === "true" ? true : isBot === "false" ? false : undefined,
-      author: author || undefined,
-      text: textQuery || undefined,
-    });
-    lastAppliedRef.current = newQ;
-    setInputValue(newQ);
-    setSearchQuery(newQ);
+    syncSearchFromControls({ state: newState });
   };
 
   const handleBotChange = (newIsBot: string) => {
     setIsBot(newIsBot);
-    const repoObj = activeRepos.find((r) => r.id === repoId);
-    const newQ = serializeSearchSyntax({
-      repo: repoObj?.full_name,
-      kind: (kind === "pull_request" || kind === "issue") ? kind : undefined,
-      state: (state === "open" || state === "closed") ? state : undefined,
-      isBot: newIsBot === "true" ? true : newIsBot === "false" ? false : undefined,
-      author: author || undefined,
-      text: textQuery || undefined,
-    });
-    lastAppliedRef.current = newQ;
-    setInputValue(newQ);
-    setSearchQuery(newQ);
+    syncSearchFromControls({ isBot: newIsBot });
   };
 
   const { q, items, total } = useInfiniteList<WorkItem>({

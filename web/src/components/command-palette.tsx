@@ -247,13 +247,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       setPendingAction(action);
       setActionError(null);
       setActionSuccess(null);
-    } else {
+      return;
+    }
+    // 非危险动作直接执行；await 才能捕获异步拒绝（如路由跳转失败）。
+    void (async () => {
       try {
-        void action.perform();
+        await action.perform();
       } catch (err) {
         console.error("Failed to perform palette action:", err);
       }
-    }
+    })();
   };
 
   const handleConfirmAction = async () => {
@@ -305,8 +308,17 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   if (!open) return null;
 
+  // 危险动作确认态下点遮罩等同「取消确认」，避免绕过二次确认直接丢弃待执行动作。
+  const handleOverlayClick = () => {
+    if (pendingAction) {
+      setPendingAction(null);
+      return;
+    }
+    onClose();
+  };
+
   return (
-    <div className="dialog-overlay command-palette-overlay" onClick={onClose}>
+    <div className="dialog-overlay command-palette-overlay" onClick={handleOverlayClick}>
       <div
         ref={containerRef}
         className="command-palette-dialog"

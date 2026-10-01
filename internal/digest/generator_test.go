@@ -361,6 +361,100 @@ func aiStub(t *testing.T, reply string) *ai.Client {
 	return &ai.Client{BaseURL: srv.URL, APIKey: "sk-test", Enabled: true, DigestEnabled: true, TriageEnabled: true}
 }
 
+// seedDigestChannel 建一个启用每日汇总的渠道；ignoreBots 控制机器人免打扰开关。
+func seedDigestChannel(t *testing.T, data store.Store, id string, ignoreBots bool) {
+	t.Helper()
+	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: id, ChannelType: store.ChannelTelegram, Name: id,
+		Enabled: true, Target: "1", DigestEnabled: true, IgnoreBots: ignoreBots,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 机器人免打扰渠道的报告正文必须剔除机器人 Issue/PR 动态，未开启的渠道保持完整。
+func TestRunOnceDigestHonorsIgnoreBots(t *testing.T) {
+	data := openDigestStore(t)
+	seedDigestChannel(t, data, "ch-ignore", true)
+	seedDigestChannel(t, data, "ch-keep", false)
+	seedUTCSettings(t, data)
+
+	repoID := ulid.Make().String()
+	for _, ev := range []store.Event{
+		{ID: ulid.Make().String(), Source: "test", Kind: store.WorkItemKindPR, Action: "opened",
+			Title: "bot-bump", RepositoryID: &repoID, SenderIsBot: true,
+			OccurredAt: time.Now().UTC(), DedupeFingerprint: ulid.Make().String()},
+		{ID: ulid.Make().String(), Source: "test", Kind: store.WorkItemKindIssue, Action: "opened",
+			Title: "human-fix", RepositoryID: &repoID, SenderIsBot: false,
+			OccurredAt: time.Now().UTC(), DedupeFingerprint: ulid.Make().String()},
+	} {
+		if _, err := data.Events().Create(t.Context(), ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	g := &Generator{Store: data}
+	if err := g.RunOnce(t.Context(), time.Date(2026, 7, 28, 9, 15, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byChannel := map[string]store.NotificationOutbox{}
+	for _, it := range items {
+		byChannel[it.ChannelID] = it
+	}
+	if len(byChannel) != 2 {
+		t.Fatalf("两个渠道都应收到报告，got %d", len(byChannel))
+	}
+	if body := byChannel["ch-ignore"].BodyText; strings.Contains(body, "bot-bump") {
+		t.Errorf("开启免打扰的渠道正文不应包含机器人动态，got %q", body)
+	} else if !strings.Contains(body, "human-fix") {
+		t.Errorf("开启免打扰的渠道仍应包含真人动态，got %q", body)
+	}
+	if body := byChannel["ch-keep"].BodyText; !strings.Contains(body, "bot-bump") || !strings.Contains(body, "human-fix") {
+		t.Errorf("未开启免打扰的渠道正文应完整，got %q", body)
+	}
+	// count 按渠道各自的有效事件数记账。
+	if got, _ := byChannel["ch-ignore"].BodyJSON["count"].(float64); got != 1 {
+		t.Errorf("免打扰渠道 count 应为 1，got %v", byChannel["ch-ignore"].BodyJSON["count"])
+	}
+	if got, _ := byChannel["ch-keep"].BodyJSON["count"].(float64); got != 2 {
+		t.Errorf("完整渠道 count 应为 2，got %v", byChannel["ch-keep"].BodyJSON["count"])
+	}
+}
+
+// 报告内容全部为机器人动态时，开启免打扰的渠道不应收到空报告（未开启的照常收到）。
+func TestRunOnceDigestSkipsAllBotReport(t *testing.T) {
+	data := openDigestStore(t)
+	seedDigestChannel(t, data, "ch-ignore", true)
+	seedDigestChannel(t, data, "ch-keep", false)
+	seedUTCSettings(t, data)
+
+	repoID := ulid.Make().String()
+	if _, err := data.Events().Create(t.Context(), store.Event{
+		ID: ulid.Make().String(), Source: "test", Kind: store.WorkItemKindPR, Action: "opened",
+		Title: "bot-only", RepositoryID: &repoID, SenderIsBot: true,
+		OccurredAt: time.Now().UTC(), DedupeFingerprint: ulid.Make().String(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	g := &Generator{Store: data}
+	if err := g.RunOnce(t.Context(), time.Date(2026, 7, 28, 9, 15, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ChannelID != "ch-keep" {
+		t.Fatalf("仅未开启免打扰的渠道应收到全机器人报告，got %+v", items)
+	}
+}
+
 func seedUTCSettings(t *testing.T, data store.Store) {
 	t.Helper()
 	rawTZ, _ := json.Marshal("UTC")

@@ -72,22 +72,25 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		return nil
 	}
 	title, body, htmlURL := renderMessage(res.Event, repoFullName)
-	// 安全告警分诊：新告警附带影响分析与处理建议；失败保持原文，不阻塞入库。
-	// 是否有接收渠道的检查并入 triageAnalysis，与参与度日志归并一处。
-	if analysis := e.triageAnalysis(ctx, res.Event, repoFullName, channels); analysis != "" {
-		body = body + "\n────────────────\n🤖 告警分析\n" + htmlpkg.EscapeString(analysis)
-	}
-	// release 更新速览：新 release 附带智能翻译要点；失败降级原文链接，不阻塞入库。
-	if summary := e.releaseAnalysis(ctx, res.Event, repoFullName, channels); summary != "" {
-		body = body + "\n────────────────\n🤖 更新速览\n" + htmlpkg.EscapeString(summary)
-	}
-	// Actions 失败归因诊断：构建失败时附带 AI 智能归因与排查建议；失败保持原文，不阻塞入库。
-	if diagnosis := e.workflowFailureAnalysis(ctx, res.Event, repoFullName, channels); diagnosis != "" {
-		body = body + "\n────────────────\n🤖 故障诊断\n" + htmlpkg.EscapeString(diagnosis)
-	}
-	// Issue 智能分析与首响建议：新 Issue 附带分类、要素完整度与维护者回复建议
-	if issueTriage := e.issueAnalysis(ctx, res.Event, repoFullName, channels); issueTriage != "" {
-		body = body + "\n────────────────\n🤖 Issue 智能分析与回复建议\n" + htmlpkg.EscapeString(issueTriage)
+	// 全部订阅渠道都会被机器人免打扰过滤时不做 AI 分析：省下无效费用与最长一个 AI 超时的等待。
+	if hasReceivingChannel(channels, res.Event) {
+		// 安全告警分诊：新告警附带影响分析与处理建议；失败保持原文，不阻塞入库。
+		// 是否有接收渠道的检查并入 triageAnalysis，与参与度日志归并一处。
+		if analysis := e.triageAnalysis(ctx, res.Event, repoFullName, channels); analysis != "" {
+			body = body + "\n────────────────\n🤖 告警分析\n" + htmlpkg.EscapeString(analysis)
+		}
+		// release 更新速览：新 release 附带智能翻译要点；失败降级原文链接，不阻塞入库。
+		if summary := e.releaseAnalysis(ctx, res.Event, repoFullName, channels); summary != "" {
+			body = body + "\n────────────────\n🤖 更新速览\n" + htmlpkg.EscapeString(summary)
+		}
+		// Actions 失败归因诊断：构建失败时附带 AI 智能归因与排查建议；失败保持原文，不阻塞入库。
+		if diagnosis := e.workflowFailureAnalysis(ctx, res.Event, repoFullName, channels); diagnosis != "" {
+			body = body + "\n────────────────\n🤖 故障诊断\n" + htmlpkg.EscapeString(diagnosis)
+		}
+		// Issue 智能分析与首响建议：新 Issue 附带分类、要素完整度与维护者回复建议
+		if issueTriage := e.issueAnalysis(ctx, res.Event, repoFullName, channels); issueTriage != "" {
+			body = body + "\n────────────────\n🤖 Issue 智能分析与回复建议\n" + htmlpkg.EscapeString(issueTriage)
+		}
 	}
 	for _, ch := range channels {
 		// 渠道未订阅该事件类型时跳过。
@@ -96,7 +99,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		}
 		// 免打扰：若渠道开启了忽略机器人且当前事件触发者为机器人，
 		// 仅过滤常规 Issue 与 PR 事件；安全告警与 Actions 工作流严格豁免。
-		if shouldSuppressBotEvent(ch, res.Event) {
+		if ShouldSuppressBotEvent(ch, res.Event) {
 			e.logNotifySkipped(res, repoFullName, "bot_suppressed")
 			continue
 		}
@@ -116,11 +119,23 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	return nil
 }
 
-// shouldSuppressBotEvent 是所有通知路径共享的渠道级机器人免打扰规则。
+// ShouldSuppressBotEvent 是所有通知路径共享的渠道级机器人免打扰规则：
+// 实时通知、合并聚合、超频摘要与定期报告（digest）统一复用，避免各路径各自实现导致口径漂移。
 // 安全告警与 Actions 等事件保持现有豁免，仅过滤 Issue/PR 这类工作项事件。
-func shouldSuppressBotEvent(ch store.NotificationChannel, ev *store.Event) bool {
+func ShouldSuppressBotEvent(ch store.NotificationChannel, ev *store.Event) bool {
 	return ev != nil && ch.IgnoreBots && ev.SenderIsBot &&
 		(ev.Kind == store.WorkItemKindIssue || ev.Kind == store.WorkItemKindPR)
+}
+
+// hasReceivingChannel 判定是否存在「既订阅该事件类型、又不会被机器人免打扰过滤」的启用渠道。
+// 全部渠道都会被过滤时无需发起 AI 分析：省下无效费用与最长一个 AI 超时的等待。
+func hasReceivingChannel(channels []store.NotificationChannel, ev *store.Event) bool {
+	for _, ch := range channels {
+		if ch.Enabled && ch.AcceptsKind(ev.Kind) && !ShouldSuppressBotEvent(ch, ev) {
+			return true
+		}
+	}
+	return false
 }
 
 // allowsEventKind 判定全局功能 + 仓库能力是否放行该类型事件。

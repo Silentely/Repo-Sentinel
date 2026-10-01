@@ -1123,6 +1123,60 @@ func TestEvaluateWithIssueTriage(t *testing.T) {
 	}
 }
 
+func TestEngineBotSuppressionSkipsAIAnalysis(t *testing.T) {
+	data := openEngineStore(t)
+	ctx := t.Context()
+
+	// 唯一的订阅渠道开启机器人免打扰：机器人 Issue 不应触发任何 AI 分析。
+	if _, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg-ignore",
+		Enabled: true, Target: "1", IgnoreBots: true,
+		EventKinds: []string{store.WorkItemKindIssue},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"category\":\"Bug Report\",\"priority\":\"P1 High\",\"summary\":\"x\",\"missing_details\":[],\"suggested_reply\":\"y\",\"confidence\":5}"}}]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	e := &Engine{Store: data, AI: &ai.Client{BaseURL: srv.URL, APIKey: "sk-test", Enabled: true, TriageEnabled: true}}
+	res := normalizer.Result{Event: &store.Event{
+		Kind: store.WorkItemKindIssue, Action: "opened", Title: "bot issue", Actor: "dependabot[bot]",
+		SenderIsBot: true, PayloadSummary: map[string]any{"body": "bot body"},
+	}}
+	if err := e.Evaluate(ctx, res, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 0 {
+		t.Fatalf("全部渠道被机器人免打扰过滤时不应发起 AI 请求，got %d", requests)
+	}
+	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("机器人事件不应投递通知，got %d", len(items))
+	}
+
+	// 存在一个不屏蔽机器人的渠道时仍需分析：正文带上分析结果。
+	if _, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelHTTPWebhook, Name: "hook-keep",
+		Enabled: true, Target: "https://example.test/hook", EventKinds: []string{store.WorkItemKindIssue},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Evaluate(ctx, res, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+	if requests == 0 {
+		t.Fatal("存在接收渠道时应发起 AI 分析")
+	}
+}
+
 func TestEngineBotSuppression(t *testing.T) {
 	data := openEngineStore(t)
 	ctx := t.Context()

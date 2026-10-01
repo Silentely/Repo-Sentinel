@@ -116,8 +116,11 @@ describe("isBotUser 识别规则", () => {
     expect(isBotUser("copilot")).toBe(true);
   });
 
-  it("识别以 bot- 开头的机器账号", () => {
-    expect(isBotUser("bot-worker")).toBe(true);
+  it("仅识别后端 botutil 同名规则，未知前缀账号按真人处理", () => {
+    // 后端 botutil 不匹配 bot- 前缀与未列入名单的服务名，前端兜底必须同口径。
+    expect(isBotUser("bot-worker")).toBe(false);
+    expect(isBotUser("sonarcloud")).toBe(false);
+    expect(isBotUser("stale")).toBe(false);
   });
 
   it("正常人类开发者账号返回 false", () => {

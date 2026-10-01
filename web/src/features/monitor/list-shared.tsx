@@ -283,26 +283,25 @@ export function BatchActionBar({
 export { ListShell, ListSkeleton };
 
 /**
- * 机器账号（Bot）识别辅助函数：与后端 botutil 规则保持一致。
- * 匹配规则：以 [bot] 结尾、以 bot- 开头、或常见常用 bot 名称。
+ * 机器账号（Bot）识别辅助函数：与后端 `internal/botutil` 判定规则逐条对齐，
+ * 仅在 `author_is_bot` 字段缺失（旧缓存/异常数据）时作为兜底，避免前后端口径分裂。
+ * 匹配规则：user type 为 Bot（此处不可得）、登录名以 [bot] 结尾、或命中常见机器人名。
  */
+const KNOWN_BOT_LOGINS = new Set([
+  "dependabot",
+  "renovate",
+  "github-actions",
+  "greenkeeper",
+  "snyk-bot",
+  "codecov",
+  "copilot",
+]);
+
 export function isBotUser(login?: string | null): boolean {
   if (!login) return false;
   const lower = login.trim().toLowerCase();
   if (lower.endsWith("[bot]")) return true;
-  if (lower.startsWith("bot-") || lower.startsWith("bot_")) return true;
-  const knownBots = new Set([
-    "dependabot",
-    "github-actions",
-    "renovate",
-    "greenkeeper",
-    "snyk-bot",
-    "codecov",
-    "sonarcloud",
-    "stale",
-    "copilot",
-  ]);
-  return knownBots.has(lower);
+  return KNOWN_BOT_LOGINS.has(lower);
 }
 
 /** 机器账号标识徽章 */

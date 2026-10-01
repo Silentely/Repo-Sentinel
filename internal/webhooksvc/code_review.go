@@ -320,7 +320,7 @@ func (s *Service) persistPRReview(ctx context.Context, req prReviewRequest, res 
 }
 
 // commentOnPR 可选模式 B：审查结果持久化成功后在 GitHub PR 下发表评论。
-// 评论失败与「已评论」状态回写失败均留 Warn（两条触发路径行为一致，排隘有迹可循）；
+// 评论失败与「已评论」状态回写失败均留 Warn（两条触发路径行为一致，排障有迹可循）；
 // 同一 head SHA 已评论过则跳过，避免手动重复触发时刷屏。
 func (s *Service) commentOnPR(ctx context.Context, req prReviewRequest, token string, res *ai.CodeReviewResult) {
 	if !s.AI.ShouldCommentOnPR() || s.GitHub == nil || token == "" {

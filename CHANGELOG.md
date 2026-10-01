@@ -35,6 +35,11 @@
 - 启用 2FA 不再把 TOTP 种子以明文写入数据库：`SaveTOTPConfig` 在密钥环不可用时返回 `ErrInvalidTOTPConfig`，`LoadTOTPConfig` 不再接受 `plain_secret` 字段（存量明文行 fail-closed），`handleEnable2FA` 增加 `KeyRing == nil` 前置守卫返回 503 `encryption_unavailable`。原实现 `ring == nil` 时写 `plain_secret` 且读取侧无条件接受，使该状态可自洽运行——取得数据库读权限者即可生成动态码，把第二因子降级为已知量。停用 2FA 不涉及密钥材质，密钥环缺失时仍可执行
 - 渠道订阅列表显式清空不再被改写为「订阅全部」：`handleUpsertChannel` 的清洗结果切片按输入长度预分配，显式空数组落为非 nil 空切片。原实现 `var cleanedKinds []string` 在空数组时保持 nil，而 `AcceptsKind` 视 nil 为订阅全部——管理员在管理台取消全部勾选（前端发送 `event_kinds: []`，界面摘要显示「不接收实时通知」）并保存后，该渠道实际收到每一种事件，私有仓库的事件标题/仓库名/告警摘要被推到管理员明确限定为不接收的目标
 - 通知投递失败日志不再写出携带令牌的目标 URL：新增 `logSafeDeliveryError`，对 `*url.Error` 去除 userinfo/path/query/fragment 后只保留 `scheme://host` 与协议层原因（与 `internal/ai` 的 `redactURL` 同一意图并扩展到 path/query）。Discord/飞书/钉钉/企业微信的 Webhook 地址与 Bark 的 key 把可发布消息的凭据放在 URL 里，原样写日志会让持有日志读权限者凭该凭据向渠道推送任意消息（伪装告警、钓鱼）；定位所需信息由同一条日志的 outbox_id/channel_id/channel_type 承担
+- 定期报告（日/周/月）遵循渠道机器人免打扰：`enqueue` 按渠道 `IgnoreBots` 选择事件集并生成该渠道的正文，两种变体各自只生成一次（含 AI 总结与仓库名映射）避免重复调用模型，报告内容全部是机器人工作项时跳过该渠道。此前 `IgnoreBots` 只在实时通知、合并聚合与超频摘要生效，开启免打扰的渠道仍会在报告里收到机器人 Issue/PR 动态，与「忽略机器人常规动态」的配置语义相悖
+- 全部订阅渠道都会被机器人免打扰过滤时不再发起 AI 分析：`Evaluate` 先经 `hasReceivingChannel` 判定是否存在真正会投递的渠道，没有则跳过告警分诊、release 更新速览、CI 故障诊断与 Issue 智能分析。此前这些分析在渠道循环之前执行，结果随被过滤的通知一并丢弃，白付一次模型调用与最长一个 AI 超时的等待
+- 工作项搜索的 `repo:` 引用未命中活跃仓时清空仓库筛选：抽出 `resolveRepoId` 统一解析 full_name / 短名 / 仓库 ID，未命中返回空串。此前该分支不清空 `repository_id`，输入 `repo:acme/unknown` 会继续沿用上一次选中的仓库过滤，请求参数与搜索框语义不一致
+- 前端 Bot 兜底识别与后端 `botutil` 对齐：去掉 `bot-`/`bot_` 前缀与 `sonarcloud`/`stale` 两条后端不存在的规则。该函数仅在 `author_is_bot` 字段缺失（旧缓存/异常数据）时兜底，口径不一致会让 BOT 徽标与 `is:bot` 筛选对同一账号给出相反结论
+- 指令面板在二次确认态下点击遮罩等同「取消确认」：此前遮罩点击直接关闭面板，绕过二次确认丢弃待执行动作；非危险动作改 `await` 执行，异步拒绝不再逸出为未处理的 Promise
 
 ### Changed
 

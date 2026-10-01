@@ -106,6 +106,31 @@ describe("CommandPalette 全局指令面板", () => {
     expect(screen.queryByText(/二次确认/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/输入指令或搜索/)).toBeInTheDocument();
   });
+
+  it("二次确认态下点击遮罩只取消确认，不绕过确认直接关闭面板", () => {
+    const onClose = vi.fn();
+    const { container } = renderPalette({ open: true, onClose });
+
+    fireEvent.change(screen.getByPlaceholderText(/输入指令或搜索/), { target: { value: "全量对账" } });
+    fireEvent.click(screen.getByText("强制全量对账"));
+    expect(screen.getByText(/二次确认/)).toBeInTheDocument();
+
+    fireEvent.click(container.firstChild as Element);
+
+    expect(reconcileAll).not.toHaveBeenCalled();
+    expect(screen.queryByText(/二次确认/)).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(/输入指令或搜索/)).toBeInTheDocument();
+  });
+
+  it("无待确认动作时点击遮罩关闭面板", () => {
+    const onClose = vi.fn();
+    const { container } = renderPalette({ open: true, onClose });
+
+    fireEvent.click(container.firstChild as Element);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
 
 import { renderHook } from "@testing-library/react";
