@@ -23,6 +23,7 @@ import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-route
 
 import { GithubIcon } from "../components/github-icon";
 import { ThemeToggle } from "../components/theme-toggle";
+import { PixelScenerySidebarDecor } from "../components/pixel-scenery";
 import {
   logout,
   readyStatusQueryOptions,
@@ -251,6 +252,7 @@ export function RootLayout({ session }: RootLayoutProps) {
             <span>关于</span>
           </Link>
         </nav>
+        <PixelScenerySidebarDecor />
       </aside>
 
       {navOpen && <div className="app-scrim" aria-hidden="true" onClick={closeNav} />}

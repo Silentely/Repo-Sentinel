@@ -149,6 +149,7 @@ button:disabled {
   min-height: 100dvh;
   place-items: center;
   padding: 48px 20px;
+  overflow: hidden;
 }
 
 .auth-shell::before {
@@ -195,6 +196,8 @@ button:disabled {
 }
 
 .auth-card {
+  position: relative;
+  z-index: 2;
   width: min(100%, 432px);
   padding: 32px;
   border: 2.5px solid var(--border-subtle);
@@ -3399,4 +3402,73 @@ a.status-item--link:focus-visible {
   font-weight: 750;
   box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
   font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+}
+
+/* ── 像素风背景小景（Pixel-art Scenery Layer） ── */
+.pixel-scenery-ground {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  pointer-events: none;
+  user-select: none;
+  overflow: hidden;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 48px;
+  opacity: 0.9;
+}
+
+.pixel-scenery-ground__strip {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-around;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pixel-scenery-ground__item {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 2px;
+}
+
+.pixel-scenery-ground__item--tree {
+  transform-origin: bottom left;
+  transform: scale(1.15);
+}
+
+.pixel-scenery-ground__item--house {
+  transform-origin: bottom right;
+  transform: scale(1.15);
+}
+
+/* 侧边栏底部像素小景 */
+.pixel-scenery-sidebar {
+  margin-top: auto;
+  padding-top: 24px;
+  padding-bottom: 6px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 14px;
+  opacity: 0.78;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 窄屏/移动端降级：隐藏非核心像素装饰，避免挤占排版空间与产生横向滚动 */
+@media (max-width: 768px) {
+  .pixel-scenery-ground {
+    display: none !important;
+  }
+  .pixel-scenery-sidebar {
+    display: none !important;
+  }
 }
