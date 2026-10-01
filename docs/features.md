@@ -40,6 +40,10 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | ChatOps 回调与防重放 Token | 支持 Telegram 与飞书按钮交互回调；基于 128 位 ULID 事务原子单次消费 Action Token（唯一约束保证跨进程仅一个消费者），Telegram 紧凑化适配，多层级安全验签；令牌与领取标记随保留清理节拍按 TTL 清除 |
 | AI Issue 自动打标防御 | 基于白名单映射规范化标签（`sentinel:*`），严苛过滤垃圾分类；GitHub API 422 容错与系统级设置开关 `ai.auto_label_enabled`；打标回执键原子竞争防并发重复打标，失败即释放可重试，回执 90 天后随临时设置清理 |
 | 工作项批量忽略与防倒流守卫 | 单事务批量更新忽略标记（上限 100 条，任一 ID 缺失整体回滚并返回 404）；closed 终态防陈旧消息倒流；前端 BatchActionBar 悬浮操作栏 |
+| 对账时效遥测与态势胶囊 | 统计活跃仓最大同步滞后时间（`max_lag_seconds`）与异常状态；Prometheus 导出 `reposentinel_sync_max_lag_seconds`；仪表盘态势胶囊（健康/滞后/异常） |
+| 机器账号识别与渠道降噪 | 统一 `botutil` 判定模块；区分作者与触发者 Bot 属性；通知渠道支持 Issue/PR 机器账号免打扰（安全告警除外）；前端 `[Bot]` 徽标 |
+| 前缀搜索与分诊收件箱 | 支持 `is:open`、`is:pr`、`author:xxx`、`is:bot` 前缀搜索语法并与下拉框双向联动；收件箱（Inbox）/ 已归档（Archived）分诊流与真人操作受控自动唤醒 |
+| 全局指令面板与键盘流 | `Cmd+K` / `Ctrl+K` 快速唤起全局指令面板；`G D`/`G I`/`G P`/`G R`/`G A`/`G S`/`G N` 快捷跳转；破坏性动作强制二次确认守卫 |
 | 复合游标审计检索与写入期脱敏 | `(created_at, id)` 复合游标消除深分页扫描开销；审计写入期深度递归脱敏机密凭据（password/token/secret/api_key） |
 
 ## 可持续增强

@@ -140,8 +140,8 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		if _, err := p.Store.Events().Create(ctx, store.Event{
 			ID: ulid.Make().String(), Source: "external_poll", Kind: kind, Action: "updated",
 			RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
-			SenderIsBot:          saved.AuthorIsBot,
-			OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &src, HTMLURL: saved.HTMLURL,
+			SenderIsBot: saved.AuthorIsBot,
+			OccurredAt:  saved.SourceUpdatedAt, SourceUpdatedAt: &src, HTMLURL: saved.HTMLURL,
 			DedupeFingerprint: fp, StateHash: hash, PayloadSummary: map[string]any{"state": saved.State},
 		}); err != nil {
 			softFailed = true

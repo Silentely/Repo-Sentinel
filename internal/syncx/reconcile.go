@@ -364,8 +364,8 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			if _, err := r.Store.Events().Create(ctx, store.Event{
 				ID: ulid.Make().String(), Source: "reconcile", Kind: kind, Action: "updated",
 				RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
-				SenderIsBot:          saved.AuthorIsBot,
-				OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &src, HTMLURL: saved.HTMLURL,
+				SenderIsBot: saved.AuthorIsBot,
+				OccurredAt:  saved.SourceUpdatedAt, SourceUpdatedAt: &src, HTMLURL: saved.HTMLURL,
 				SuppressNotification: false, DedupeFingerprint: fp, StateHash: hash,
 				PayloadSummary: map[string]any{"state": saved.State},
 			}); err != nil && r.Logger != nil {

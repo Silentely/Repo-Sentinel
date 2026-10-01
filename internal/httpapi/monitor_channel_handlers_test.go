@@ -2,8 +2,8 @@ package httpapi
 
 import (
 	"context"
-	"net/http"
 	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"

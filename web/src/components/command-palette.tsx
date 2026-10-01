@@ -4,7 +4,6 @@ import {
   ArrowRight,
   Bell,
   Check,
-  CheckCircle,
   FolderGit2,
   GitPullRequest,
   Info,
@@ -47,6 +46,15 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current);
+      }
+    };
+  }, []);
 
   const containerRef = useModalLayer<HTMLDivElement>({
     open,
@@ -240,7 +248,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       setActionError(null);
       setActionSuccess(null);
     } else {
-      action.perform();
+      try {
+        void action.perform();
+      } catch (err) {
+        console.error("Failed to perform palette action:", err);
+      }
     }
   };
 
@@ -251,7 +263,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     try {
       await pendingAction.perform();
       setActionSuccess("操作执行成功");
-      setTimeout(() => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => {
         setPendingAction(null);
         onClose();
       }, 700);

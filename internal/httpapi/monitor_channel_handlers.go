@@ -28,7 +28,7 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 			// 订阅配置：event_kinds 为 nil 表示订阅全部实时类型。
 			"event_kinds": ch.EventKinds, "digest_enabled": ch.DigestEnabled,
 			"ignore_bots": ch.IgnoreBots,
-			"updated_at": ch.UpdatedAt,
+			"updated_at":  ch.UpdatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": masked})

@@ -1482,7 +1482,7 @@ func eventFromEntity(e *entclient.Event) Event {
 	return Event{
 		ID: e.ID, Source: e.Source, Kind: e.Kind, Action: e.Action, RepositoryID: e.RepositoryID,
 		SubjectNumber: e.SubjectNumber, Title: e.Title, Severity: e.Severity, Actor: e.Actor,
-		SenderIsBot: e.SenderIsBot,
+		SenderIsBot:   e.SenderIsBot,
 		WorkflowRunID: e.WorkflowRunID, WorkflowConclusion: e.WorkflowConclusion, OccurredAt: e.OccurredAt,
 		SourceUpdatedAt: e.SourceUpdatedAt, HTMLURL: e.HTMLURL, PayloadSummary: e.PayloadSummary,
 		SuppressNotification: e.SuppressNotification, DedupeFingerprint: e.DedupeFingerprint,

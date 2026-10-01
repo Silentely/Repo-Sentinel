@@ -440,8 +440,8 @@ func (p *Processor) processStar(ctx context.Context, env envelope, deliveryID st
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: store.StarKind, Action: action,
 		RepositoryID: &repo.ID, Title: title, Actor: actor,
-		SenderIsBot:          botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
-		OccurredAt: starredAt, SourceUpdatedAt: &starredAt, HTMLURL: repo.HTMLURL,
+		SenderIsBot: botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
+		OccurredAt:  starredAt, SourceUpdatedAt: &starredAt, HTMLURL: repo.HTMLURL,
 		PayloadSummary:       map[string]any{"count": env.Repository.StargazersCount},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}
@@ -488,8 +488,8 @@ func (p *Processor) processWatch(ctx context.Context, env envelope, deliveryID s
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: store.WatchKind, Action: action,
 		RepositoryID: &repo.ID, Title: title, Actor: actor,
-		SenderIsBot:          botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
-		OccurredAt: occurredAt, SourceUpdatedAt: &occurredAt, HTMLURL: repo.HTMLURL,
+		SenderIsBot: botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
+		OccurredAt:  occurredAt, SourceUpdatedAt: &occurredAt, HTMLURL: repo.HTMLURL,
 		PayloadSummary:       map[string]any{},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}
@@ -613,7 +613,16 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 	}
 	senderIsBot := botutil.IsBotUser(sender.Login, sender.Type)
 	if saved.Ignored && !senderIsBot && isUnarchiveAction(action) {
-		if unerr := p.Store.WorkItems().SetIgnored(ctx, saved.ID, false); unerr == nil {
+		if unerr := p.Store.WorkItems().SetIgnored(ctx, saved.ID, false); unerr != nil {
+			if p.Logger != nil {
+				p.Logger.Warn("failed to auto-unarchive work item",
+					"work_item_id", saved.ID,
+					"repo", repo.FullName,
+					"number", saved.Number,
+					"error", unerr,
+				)
+			}
+		} else {
 			saved.Ignored = false
 			p.logAutoUnarchive(repo, saved, action, sender.Login)
 		}
@@ -638,8 +647,8 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(action),
 		RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
-		SenderIsBot:          botutil.IsBotUser(sender.Login, sender.Type),
-		OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: saved.HTMLURL,
+		SenderIsBot: botutil.IsBotUser(sender.Login, sender.Type),
+		OccurredAt:  saved.SourceUpdatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: saved.HTMLURL,
 		PayloadSummary:       payloadSummary,
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: item.StateHash,
 	}
@@ -706,7 +715,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: store.WorkflowRunKind, Action: "completed",
 		RepositoryID: &repo.ID, Title: run.Name, Actor: in.Actor, WorkflowRunID: &runID,
-		SenderIsBot:          botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
+		SenderIsBot:        botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
 		WorkflowConclusion: *run.Conclusion, OccurredAt: run.UpdatedAt, SourceUpdatedAt: &srcUpdated,
 		HTMLURL: run.HTMLURL,
 		PayloadSummary: map[string]any{
@@ -862,8 +871,8 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(env.Action),
 		RepositoryID: &repo.ID, SubjectNumber: &num, Title: rule, Severity: severity,
-		SenderIsBot:          botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
-		OccurredAt: updatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: a.HTMLURL,
+		SenderIsBot: botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
+		OccurredAt:  updatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: a.HTMLURL,
 		PayloadSummary:       map[string]any{"state": a.State, "severity": severity, "rule_or_dependency": rule},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}

@@ -107,3 +107,47 @@ describe("CommandPalette 全局指令面板", () => {
     expect(screen.getByPlaceholderText(/输入指令或搜索/)).toBeInTheDocument();
   });
 });
+
+import { renderHook, act } from "@testing-library/react";
+import { useGlobalHotkeys } from "./command-palette";
+
+describe("useGlobalHotkeys 全局快捷键", () => {
+  it("按下 Cmd+K 或 Ctrl+K 时触发 onTogglePalette", () => {
+    const onTogglePalette = vi.fn();
+    const onNavigate = vi.fn();
+    renderHook(() => useGlobalHotkeys({ onTogglePalette, onNavigate }));
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+    expect(onTogglePalette).toHaveBeenCalledTimes(1);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }));
+    expect(onTogglePalette).toHaveBeenCalledTimes(2);
+  });
+
+  it("连续输入 g d 时导航到仪表盘", () => {
+    const onTogglePalette = vi.fn();
+    const onNavigate = vi.fn();
+    renderHook(() => useGlobalHotkeys({ onTogglePalette, onNavigate }));
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "g" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "d" }));
+
+    expect(onNavigate).toHaveBeenCalledWith("/");
+  });
+
+  it("输入框获得焦点时不触发字母序列快捷键", () => {
+    const onTogglePalette = vi.fn();
+    const onNavigate = vi.fn();
+    renderHook(() => useGlobalHotkeys({ onTogglePalette, onNavigate }));
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "g", bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "d", bubbles: true }));
+
+    expect(onNavigate).not.toHaveBeenCalled();
+    document.body.removeChild(input);
+  });
+});
