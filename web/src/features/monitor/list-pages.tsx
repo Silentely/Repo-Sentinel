@@ -39,6 +39,7 @@ import {
   type IssueTriageResult,
   batchSetWorkItemIgnored,
 } from "./api";
+import { parseSearchSyntax, serializeSearchSyntax } from "../../lib/search-syntax";
 import {
   ClearFiltersButton,
   FeatureGuard,
@@ -953,27 +954,208 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
   );
 });
 
-function WorkItemsList({ kind, title, description }: { kind: string; title: string; description: string }) {
+function WorkItemsList({ kind: defaultKind, title, description }: { kind: string; title: string; description: string }) {
   const { active: activeRepos } = useActiveRepos();
-  // 筛选条件同步到 URL（?state=&repo=&ignored=&review=&check=）：刷新/复制链接后保留。
-  const [state, setState] = useUrlState("state", "open");
+
+  // 筛选条件与搜索语法同步到 URL（?q=&kind=&state=&repo=&author=&is_bot=&ignored=&review=&check=）
+  const [searchQuery, setSearchQuery] = useUrlState("q", "");
+  const [kind, setKind] = useUrlState("kind", defaultKind);
+  const [state, setState] = useUrlState<string>("state", "open");
   const [repoId, setRepoId] = useUrlState("repo", "");
+  const [author, setAuthor] = useUrlState("author", "");
+  const [isBot, setIsBot] = useUrlState("is_bot", "");
   const [ignoredMode, setIgnoredMode] = useUrlState<IgnoredMode>("ignored", "active", parseIgnoredMode);
   const [reviewFilter, setReviewFilter] = useUrlState("review", "");
   const [checkFilter, setCheckFilter] = useUrlState("check", "");
 
-  // 审核/检查状态由后端按 review/check 参数过滤（total 为过滤后总数），客户端不再二次过滤；
-  // 每页 50 条，超过时通过「加载更多」翻页拉取。
+  const [textQuery, setTextQuery] = useState("");
+  const [inputValue, setInputValue] = useState(searchQuery);
+  const lastAppliedRef = useRef(searchQuery);
+
+  // 初始化或 URL 中 q 变更时同步到控件状态
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const parsed = parseSearchSyntax(searchQuery);
+      setTextQuery(parsed.text ?? "");
+      if (parsed.repo) {
+        const found = activeRepos.find(
+          (r) =>
+            r.full_name.toLowerCase() === parsed.repo!.toLowerCase() ||
+            r.name.toLowerCase() === parsed.repo!.toLowerCase() ||
+            r.id === parsed.repo
+        );
+        if (found && found.id !== repoId) {
+          setRepoId(found.id);
+        }
+      }
+      if (parsed.kind && parsed.kind !== kind) {
+        setKind(parsed.kind);
+      }
+      if (parsed.state && parsed.state !== state) {
+        setState(parsed.state);
+      }
+      if (parsed.author !== undefined && parsed.author !== author) {
+        setAuthor(parsed.author);
+      }
+      if (parsed.isBot !== undefined) {
+        const nextBot = parsed.isBot ? "true" : "false";
+        if (nextBot !== isBot) setIsBot(nextBot);
+      }
+    }
+  }, [searchQuery, activeRepos]);
+
+  const applySearchInput = (raw: string) => {
+    if (raw === lastAppliedRef.current) return;
+    lastAppliedRef.current = raw;
+
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      setTextQuery("");
+      setSearchQuery("");
+      setAuthor("");
+      setIsBot("");
+      setRepoId("");
+      return;
+    }
+
+    const parsed = parseSearchSyntax(trimmed);
+    setTextQuery(parsed.text ?? "");
+    setSearchQuery(trimmed);
+
+    if (parsed.repo) {
+      const found = activeRepos.find(
+        (r) =>
+          r.full_name.toLowerCase() === parsed.repo!.toLowerCase() ||
+          r.name.toLowerCase() === parsed.repo!.toLowerCase() ||
+          r.id === parsed.repo
+      );
+      if (found) {
+        setRepoId(found.id);
+      }
+    } else {
+      setRepoId("");
+    }
+
+    if (parsed.kind) {
+      setKind(parsed.kind);
+    } else {
+      setKind(defaultKind);
+    }
+
+    if (parsed.state) {
+      setState(parsed.state);
+    } else {
+      setState("");
+    }
+
+    if (parsed.author !== undefined) {
+      setAuthor(parsed.author);
+    } else {
+      setAuthor("");
+    }
+
+    if (parsed.isBot !== undefined) {
+      setIsBot(parsed.isBot ? "true" : "false");
+    } else {
+      setIsBot("");
+    }
+  };
+
+  // 搜索输入防抖
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      applySearchInput(inputValue);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [inputValue]);
+
+  // 下拉与切换控件变动时，双向反写搜索框
+  const handleRepoChange = (newRepoId: string) => {
+    setRepoId(newRepoId);
+    const repoObj = activeRepos.find((r) => r.id === newRepoId);
+    const newQ = serializeSearchSyntax({
+      repo: repoObj?.full_name,
+      kind: (kind === "pull_request" || kind === "issue") ? kind : undefined,
+      state: (state === "open" || state === "closed") ? state : undefined,
+      isBot: isBot === "true" ? true : isBot === "false" ? false : undefined,
+      author: author || undefined,
+      text: textQuery || undefined,
+    });
+    lastAppliedRef.current = newQ;
+    setInputValue(newQ);
+    setSearchQuery(newQ);
+  };
+
+  const handleKindChange = (newKind: string) => {
+    setKind(newKind);
+    const repoObj = activeRepos.find((r) => r.id === repoId);
+    const newQ = serializeSearchSyntax({
+      repo: repoObj?.full_name,
+      kind: (newKind === "pull_request" || newKind === "issue") ? newKind : undefined,
+      state: (state === "open" || state === "closed") ? state : undefined,
+      isBot: isBot === "true" ? true : isBot === "false" ? false : undefined,
+      author: author || undefined,
+      text: textQuery || undefined,
+    });
+    lastAppliedRef.current = newQ;
+    setInputValue(newQ);
+    setSearchQuery(newQ);
+  };
+
+  const handleStateChange = (newState: string) => {
+    setState(newState);
+    const repoObj = activeRepos.find((r) => r.id === repoId);
+    const newQ = serializeSearchSyntax({
+      repo: repoObj?.full_name,
+      kind: (kind === "pull_request" || kind === "issue") ? kind : undefined,
+      state: (newState === "open" || newState === "closed") ? newState : undefined,
+      isBot: isBot === "true" ? true : isBot === "false" ? false : undefined,
+      author: author || undefined,
+      text: textQuery || undefined,
+    });
+    lastAppliedRef.current = newQ;
+    setInputValue(newQ);
+    setSearchQuery(newQ);
+  };
+
+  const handleBotChange = (newIsBot: string) => {
+    setIsBot(newIsBot);
+    const repoObj = activeRepos.find((r) => r.id === repoId);
+    const newQ = serializeSearchSyntax({
+      repo: repoObj?.full_name,
+      kind: (kind === "pull_request" || kind === "issue") ? kind : undefined,
+      state: (state === "open" || state === "closed") ? state : undefined,
+      isBot: newIsBot === "true" ? true : newIsBot === "false" ? false : undefined,
+      author: author || undefined,
+      text: textQuery || undefined,
+    });
+    lastAppliedRef.current = newQ;
+    setInputValue(newQ);
+    setSearchQuery(newQ);
+  };
+
   const { q, items, total } = useInfiniteList<WorkItem>({
-    queryKey: ["work-items", kind, state, repoId, ignoredMode, reviewFilter, checkFilter],
+    queryKey: [
+      "work-items",
+      kind,
+      state,
+      repoId,
+      ignoredMode,
+      reviewFilter,
+      checkFilter,
+      author,
+      isBot,
+    ],
     endpoint: "/api/v1/work-items",
     buildParams: (params) => {
-      params.set("kind", kind);
+      if (kind) params.set("kind", kind);
       if (state) params.set("state", state);
       if (repoId) params.set("repository_id", repoId);
       if (ignoredMode === "ignored") params.set("ignored", "true");
       if (reviewFilter) params.set("review", reviewFilter);
       if (checkFilter) params.set("check", checkFilter);
+      if (author) params.set("author", author);
+      if (isBot !== "") params.set("is_bot", isBot);
     },
   });
 
@@ -981,11 +1163,10 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchError, setBatchError] = useState<string | null>(null);
 
-  // 切换筛选/状态/类型时清空勾选：否则旧选中项（可能已不在当前结果集）会被一并提交。
   useEffect(() => {
     setSelectedIds(new Set());
     setBatchError(null);
-  }, [kind, state, repoId, ignoredMode, reviewFilter, checkFilter]);
+  }, [kind, state, repoId, ignoredMode, reviewFilter, checkFilter, author, isBot, textQuery]);
 
   const batchIgnoreMutation = useMutation({
     mutationFn: (ids: string[]) => batchSetWorkItemIgnored(ids, ignoredMode !== "ignored"),
@@ -998,17 +1179,89 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
   });
 
   const { mutation: ignoreMutation, busyId, errorMessage } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
-  // 仓库/审核/检查筛选激活时，空态需区分「筛选后为空」与「真的没有」。
-  const filtersActive = repoId !== "" || reviewFilter !== "" || checkFilter !== "";
+  const filtersActive =
+    repoId !== "" ||
+    reviewFilter !== "" ||
+    checkFilter !== "" ||
+    author !== "" ||
+    isBot !== "" ||
+    searchQuery !== "" ||
+    state !== "open" ||
+    kind !== defaultKind;
+
   const clearFilters = () => {
     setRepoId("");
+    setState("open");
+    setKind(defaultKind);
     setReviewFilter("");
     setCheckFilter("");
+    setAuthor("");
+    setIsBot("");
+    setTextQuery("");
+    setInputValue("");
+    setSearchQuery("");
+    lastAppliedRef.current = "";
   };
+
+  const displayedItems = useMemo(() => {
+    if (!textQuery.trim()) return items;
+    const lower = textQuery.trim().toLowerCase();
+    return items.filter((it) => {
+      const titleMatch = it.title ? it.title.toLowerCase().includes(lower) : false;
+      const authorMatch = it.author ? it.author.toLowerCase().includes(lower) : false;
+      const numMatch = String(it.number ?? "").includes(lower);
+      const repoMatch = it.repository_full_name
+        ? it.repository_full_name.toLowerCase().includes(lower)
+        : false;
+      return titleMatch || authorMatch || numMatch || repoMatch;
+    });
+  }, [items, textQuery]);
+
+  const displayedTotal = textQuery.trim() ? displayedItems.length : total;
 
   return (
     <ListShell eyebrow="仓库" title={title} description={description}>
       <div className="filter-bar filter-bar--wrap">
+        <form
+          className="search-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            applySearchInput(inputValue);
+          }}
+          role="search"
+        >
+          <input
+            type="search"
+            className="search-input"
+            placeholder="搜索工作项，支持 repo: is:pr is:open author: is:bot ..."
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onBlur={() => applySearchInput(inputValue)}
+            aria-label="搜索工作项"
+          />
+          {inputValue ? (
+            <button
+              type="button"
+              className="search-clear-btn"
+              onClick={() => {
+                setInputValue("");
+                applySearchInput("");
+              }}
+              aria-label="清除搜索输入"
+            >
+              ×
+            </button>
+          ) : null}
+        </form>
+        <StateFilterButtons
+          options={[
+            { value: "", label: "全部类型" },
+            { value: "issue", label: "Issue" },
+            { value: "pull_request", label: "PR" },
+          ]}
+          value={kind}
+          onChange={handleKindChange}
+        />
         <StateFilterButtons
           options={[
             { value: "", label: "全部" },
@@ -1016,11 +1269,23 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
             { value: "closed", label: "已关闭" },
           ]}
           value={state}
-          onChange={setState}
+          onChange={handleStateChange}
         />
         <IgnoredToggle mode={ignoredMode} onChange={setIgnoredMode} />
         <span className="filter-bar__sep" />
-        <RepoFilterSelect value={repoId} onChange={setRepoId} repos={activeRepos} />
+        <RepoFilterSelect value={repoId} onChange={handleRepoChange} repos={activeRepos} />
+        <label className="repo-filter">
+          <span className="sr-only">作者过滤</span>
+          <select
+            value={isBot}
+            onChange={(e) => handleBotChange(e.target.value)}
+            aria-label="作者过滤"
+          >
+            <option value="">全部作者</option>
+            <option value="false">仅真人</option>
+            <option value="true">仅机器人</option>
+          </select>
+        </label>
         {kind === "pull_request" && (
           <>
             <span className="filter-bar__sep" />
@@ -1059,8 +1324,8 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
       />
       <EventListBody
         query={q}
-        items={items}
-        total={total}
+        items={displayedItems}
+        total={displayedTotal}
         emptyState={
           <EmptyState
             title={
@@ -1068,18 +1333,14 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                 ? "没有符合筛选条件的项目"
                 : ignoredMode === "ignored"
                   ? "没有已忽略的项目"
-                  : state === "closed"
-                    ? "没有已关闭的项目"
-                    : "暂无工作项"
+                  : "暂无工作项"
             }
             description={
               filtersActive
                 ? "可尝试调整或清除筛选条件后重试。"
                 : ignoredMode === "ignored"
                   ? "忽略的长期打开 Issue/PR 会显示在这里，可随时取消忽略。"
-                  : state === "closed"
-                    ? "已关闭的 Issues 或 PR 会显示在这里。"
-                    : "安装 GitHub App 并完成对账后，相关数据会自动同步到这里。已归档仓库的历史项默认不显示。"
+                  : "安装 GitHub App 并完成对账后，相关数据会自动同步到这里。已归档仓库的历史项默认不显示。"
             }
             action={
               filtersActive ? (
@@ -1778,7 +2039,7 @@ export function ActionsPage() {
 function SecurityList() {
   const { active: activeRepos } = useActiveRepos();
   // 筛选条件同步到 URL：刷新后保留状态/类型/仓库/忽略筛选。
-  const [state, setState] = useUrlState("state", "open");
+  const [state, setState] = useUrlState<string>("state", "open");
   const [alertKind, setAlertKind] = useUrlState("kind", "");
   const [repoId, setRepoId] = useUrlState("repo", "");
   const [ignoredMode, setIgnoredMode] = useUrlState<IgnoredMode>("ignored", "active", parseIgnoredMode);

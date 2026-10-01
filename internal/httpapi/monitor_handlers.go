@@ -241,6 +241,12 @@ func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
 	// PR 维度过滤下沉到 SQL：客户端对首页 50 条二次过滤会导致总数失真。
 	f.ReviewDecision = queryTrimmed(q, "review")
 	f.CheckStatus = mapCheckStatusParam(q.Get("check"))
+	f.Author = queryTrimmed(q, "author")
+	if isBotStr := queryTrimmed(q, "is_bot"); isBotStr != "" {
+		if b, err := strconv.ParseBool(isBotStr); err == nil {
+			f.AuthorIsBot = &b
+		}
+	}
 	applyIgnoredFilter(&f, q)
 	// closed 状态应用系统设置的显示限制，避免历史数据无限增长。
 	if f.State == "closed" && f.PerPage == 0 {

@@ -255,6 +255,7 @@ func NormalizeListFilter(f ListFilter) ListFilter {
 	f.Status = strings.TrimSpace(f.Status)
 	f.ReviewDecision = strings.TrimSpace(f.ReviewDecision)
 	f.CheckStatus = strings.TrimSpace(f.CheckStatus)
+	f.Author = strings.TrimSpace(f.Author)
 	if len(f.ChannelIDs) > 0 {
 		cleaned := make([]string, 0, len(f.ChannelIDs))
 		for _, id := range f.ChannelIDs {
@@ -534,6 +535,10 @@ type ListFilter struct {
 	ReviewDecision string
 	// CheckStatus 按 PR 检查状态过滤：success / failure；空串值 "pending" 表示尚无检查数据。
 	CheckStatus string
+	// Author 按作者用户名过滤（不区分大小写匹配）。
+	Author string
+	// AuthorIsBot 按作者是否为机器人过滤。
+	AuthorIsBot *bool
 	// IncludeIgnored=true 时包含已忽略项；默认 false 只返回未忽略。
 	IncludeIgnored bool
 	// OnlyIgnored=true 时仅返回已忽略项（优先于 IncludeIgnored）。

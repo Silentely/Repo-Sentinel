@@ -830,6 +830,12 @@ func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, Pag
 			q = q.Where(workitem.CheckStatusEQ(f.CheckStatus))
 		}
 	}
+	if f.Author != "" {
+		q = q.Where(workitem.AuthorEqualFold(f.Author))
+	}
+	if f.AuthorIsBot != nil {
+		q = q.Where(workitem.AuthorIsBotEQ(*f.AuthorIsBot))
+	}
 	if f.OnlyIgnored {
 		q = q.Where(workitem.IgnoredEQ(true))
 	} else if !f.IncludeIgnored {

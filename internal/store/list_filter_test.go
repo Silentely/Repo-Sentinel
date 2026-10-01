@@ -892,3 +892,56 @@ func TestDashboardFreshnessSummary(t *testing.T) {
 		t.Fatal("expected AsOf not zero")
 	}
 }
+
+func TestListWorkItemsAuthorAndBotFilter(t *testing.T) {
+	data := openTestStore(t)
+	ctx := t.Context()
+	now := time.Now().UTC()
+
+	active, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-author-st", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "o", Name: "app", FullName: "o/app",
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+
+	for _, item := range []store.WorkItem{
+		{ID: "wi-st-1", RepositoryID: active.ID, Number: 1, Kind: store.WorkItemKindIssue, State: "open", Title: "t1", Author: "Alice", AuthorIsBot: false, SourceUpdatedAt: now, StateHash: "1"},
+		{ID: "wi-st-2", RepositoryID: active.ID, Number: 2, Kind: store.WorkItemKindIssue, State: "open", Title: "t2", Author: "bot[bot]", AuthorIsBot: true, SourceUpdatedAt: now, StateHash: "2"},
+		{ID: "wi-st-3", RepositoryID: active.ID, Number: 3, Kind: store.WorkItemKindIssue, State: "open", Title: "t3", Author: "bob", AuthorIsBot: false, SourceUpdatedAt: now, StateHash: "3"},
+	} {
+		if _, _, err := data.WorkItems().UpsertIfNewer(ctx, item, nil); err != nil {
+			t.Fatalf("upsert work item %s: %v", item.ID, err)
+		}
+	}
+
+	// 1. Author filter case-insensitive
+	items, page, err := data.WorkItems().List(ctx, store.ListFilter{Author: "alice"})
+	if err != nil {
+		t.Fatalf("list author: %v", err)
+	}
+	if page.Total != 1 || len(items) != 1 || items[0].ID != "wi-st-1" {
+		t.Fatalf("expected wi-st-1, got total=%d items=%+v", page.Total, items)
+	}
+
+	// 2. AuthorIsBot = true
+	isBot := true
+	items, page, err = data.WorkItems().List(ctx, store.ListFilter{AuthorIsBot: &isBot})
+	if err != nil {
+		t.Fatalf("list isBot: %v", err)
+	}
+	if page.Total != 1 || len(items) != 1 || items[0].ID != "wi-st-2" {
+		t.Fatalf("expected wi-st-2, got total=%d items=%+v", page.Total, items)
+	}
+
+	// 3. AuthorIsBot = false
+	isHuman := false
+	items, page, err = data.WorkItems().List(ctx, store.ListFilter{AuthorIsBot: &isHuman})
+	if err != nil {
+		t.Fatalf("list isHuman: %v", err)
+	}
+	if page.Total != 2 || len(items) != 2 {
+		t.Fatalf("expected 2 items, got total=%d items=%+v", page.Total, items)
+	}
+}

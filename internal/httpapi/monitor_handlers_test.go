@@ -1239,3 +1239,121 @@ func TestTriggerWorkItemAITriage(t *testing.T) {
 		t.Fatalf("expected stored triage to be retrievable, got %v", getResp)
 	}
 }
+
+func TestListWorkItemsFiltersByAuthorAndIsBot(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	ctx := t.Context()
+	now := time.Now().UTC()
+
+	repo, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-author-filter-1", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "acme", Name: "app", FullName: "acme/app",
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+
+	for _, item := range []store.WorkItem{
+		{
+			ID: "wi-alice-1", RepositoryID: repo.ID, Number: 101, Kind: store.WorkItemKindIssue,
+			State: "open", Title: "Issue by Alice", Author: "Alice", AuthorIsBot: false,
+			SourceUpdatedAt: now, StateHash: "ha1",
+		},
+		{
+			ID: "wi-renovate-1", RepositoryID: repo.ID, Number: 102, Kind: store.WorkItemKindPR,
+			State: "open", Title: "PR by Renovate Bot", Author: "renovate[bot]", AuthorIsBot: true,
+			SourceUpdatedAt: now, StateHash: "hb1",
+		},
+		{
+			ID: "wi-bob-1", RepositoryID: repo.ID, Number: 103, Kind: store.WorkItemKindIssue,
+			State: "open", Title: "Issue by Bob", Author: "Bob", AuthorIsBot: false,
+			SourceUpdatedAt: now, StateHash: "hc1",
+		},
+	} {
+		if _, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, item, nil); err != nil {
+			t.Fatalf("upsert work item %s: %v", item.ID, err)
+		}
+	}
+
+	// 1. Filter by author (case-insensitive)
+	respAlice := fixture.request(t, http.MethodGet, "/api/v1/work-items?author=alice", "", "127.0.0.1:45020", cookies, nil)
+	if respAlice.Code != http.StatusOK {
+		t.Fatalf("author=alice status=%d body=%s", respAlice.Code, respAlice.Body.String())
+	}
+	var alicePage struct {
+		Items []store.WorkItem `json:"items"`
+		Total int              `json:"total"`
+	}
+	if err := json.Unmarshal(respAlice.Body.Bytes(), &alicePage); err != nil {
+		t.Fatal(err)
+	}
+	if alicePage.Total != 1 || len(alicePage.Items) != 1 || alicePage.Items[0].ID != "wi-alice-1" {
+		t.Fatalf("expected only wi-alice-1, got total=%d items=%+v", alicePage.Total, alicePage.Items)
+	}
+
+	// 2. Filter by is_bot=true
+	respBot := fixture.request(t, http.MethodGet, "/api/v1/work-items?is_bot=true", "", "127.0.0.1:45021", cookies, nil)
+	if respBot.Code != http.StatusOK {
+		t.Fatalf("is_bot=true status=%d body=%s", respBot.Code, respBot.Body.String())
+	}
+	var botPage struct {
+		Items []store.WorkItem `json:"items"`
+		Total int              `json:"total"`
+	}
+	if err := json.Unmarshal(respBot.Body.Bytes(), &botPage); err != nil {
+		t.Fatal(err)
+	}
+	if botPage.Total != 1 || len(botPage.Items) != 1 || botPage.Items[0].ID != "wi-renovate-1" {
+		t.Fatalf("expected only wi-renovate-1, got total=%d items=%+v", botPage.Total, botPage.Items)
+	}
+
+	// 3. Filter by is_bot=false
+	respHuman := fixture.request(t, http.MethodGet, "/api/v1/work-items?is_bot=false", "", "127.0.0.1:45022", cookies, nil)
+	if respHuman.Code != http.StatusOK {
+		t.Fatalf("is_bot=false status=%d body=%s", respHuman.Code, respHuman.Body.String())
+	}
+	var humanPage struct {
+		Items []store.WorkItem `json:"items"`
+		Total int              `json:"total"`
+	}
+	if err := json.Unmarshal(respHuman.Body.Bytes(), &humanPage); err != nil {
+		t.Fatal(err)
+	}
+	if humanPage.Total != 2 || len(humanPage.Items) != 2 {
+		t.Fatalf("expected 2 human items, got total=%d items=%+v", humanPage.Total, humanPage.Items)
+	}
+
+	// 4. Combined author and is_bot
+	respBobHuman := fixture.request(t, http.MethodGet, "/api/v1/work-items?author=Bob&is_bot=false", "", "127.0.0.1:45023", cookies, nil)
+	if respBobHuman.Code != http.StatusOK {
+		t.Fatalf("author=Bob&is_bot=false status=%d body=%s", respBobHuman.Code, respBobHuman.Body.String())
+	}
+	var bobHumanPage struct {
+		Items []store.WorkItem `json:"items"`
+		Total int              `json:"total"`
+	}
+	if err := json.Unmarshal(respBobHuman.Body.Bytes(), &bobHumanPage); err != nil {
+		t.Fatal(err)
+	}
+	if bobHumanPage.Total != 1 || len(bobHumanPage.Items) != 1 || bobHumanPage.Items[0].ID != "wi-bob-1" {
+		t.Fatalf("expected only wi-bob-1, got total=%d items=%+v", bobHumanPage.Total, bobHumanPage.Items)
+	}
+
+	// 5. Contradictory author and is_bot -> empty
+	respBobBot := fixture.request(t, http.MethodGet, "/api/v1/work-items?author=Bob&is_bot=true", "", "127.0.0.1:45024", cookies, nil)
+	if respBobBot.Code != http.StatusOK {
+		t.Fatalf("author=Bob&is_bot=true status=%d body=%s", respBobBot.Code, respBobBot.Body.String())
+	}
+	var bobBotPage struct {
+		Items []store.WorkItem `json:"items"`
+		Total int              `json:"total"`
+	}
+	if err := json.Unmarshal(respBobBot.Body.Bytes(), &bobBotPage); err != nil {
+		t.Fatal(err)
+	}
+	if bobBotPage.Total != 0 || len(bobBotPage.Items) != 0 {
+		t.Fatalf("expected 0 items, got total=%d items=%+v", bobBotPage.Total, bobBotPage.Items)
+	}
+}

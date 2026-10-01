@@ -2503,6 +2503,50 @@ a.status-item--link:focus-visible {
   font-weight: 700;
 }
 
+.search-form {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 280px;
+  max-width: 500px;
+  min-width: 200px;
+}
+
+.search-input {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 32px 0 14px;
+  border: 2px solid var(--border-subtle);
+  border-radius: 9999px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  box-shadow: 2px 2px 0 var(--shadow-neo);
+  font-size: 0.84rem;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.search-input:focus {
+  border-color: var(--text-primary);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.search-clear-btn:hover {
+  color: var(--text-primary);
+}
+
 .item-actions {
   display: flex;
   flex-wrap: wrap;
