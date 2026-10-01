@@ -108,7 +108,7 @@ describe("CommandPalette 全局指令面板", () => {
   });
 });
 
-import { renderHook, act } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { useGlobalHotkeys } from "./command-palette";
 
 describe("useGlobalHotkeys 全局快捷键", () => {

@@ -246,6 +246,79 @@ func TestAggregatorBurstSummary(t *testing.T) {
 	}
 }
 
+func TestAggregatorSuppressesBotWorkItemsPerChannel(t *testing.T) {
+	data := openTestStore(t)
+	ctx := t.Context()
+	ignored, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-ignore-bots", ChannelType: store.ChannelTelegram, Name: "ignore", Enabled: true,
+		Target: "1", IgnoreBots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	notify, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-notify-bots", ChannelType: store.ChannelHTTPWebhook, Name: "notify", Enabled: true,
+		Target: "https://example.test/hook",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = ignored
+
+	repoID := ulid.Make().String()
+	agg := NewAggregator(data, time.Minute, 100, time.Minute)
+	for _, title := range []string{"bot-a", "bot-b"} {
+		if err := agg.Evaluate(ctx, normalizer.Result{Event: &store.Event{
+			ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened",
+			Title: title, RepositoryID: &repoID, SenderIsBot: true,
+		}}, "acme/demo"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	agg.FlushAll()
+
+	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ChannelID != notify.ID {
+		t.Fatalf("机器人聚合通知应只投递到未屏蔽渠道，got %+v", items)
+	}
+}
+
+func TestAggregatorBurstSuppressesBotWorkItemsPerChannel(t *testing.T) {
+	data := openTestStore(t)
+	ctx := t.Context()
+	ignored, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-ignore-burst", ChannelType: store.ChannelTelegram, Name: "ignore", Enabled: true,
+		Target: "1", IgnoreBots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	notify, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-notify-burst", ChannelType: store.ChannelHTTPWebhook, Name: "notify", Enabled: true,
+		Target: "https://example.test/hook",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = ignored
+
+	sample := &store.Event{ID: "bot-burst", Kind: store.WorkItemKindIssue, Action: "opened", SenderIsBot: true}
+	agg := NewAggregator(data, time.Minute, 3, time.Minute)
+	if err := agg.enqueueBurstSummary(ctx, "repo-1", "acme/demo", "issue", "burst", sample); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ChannelID != notify.ID {
+		t.Fatalf("机器人 burst 摘要应只投递到未屏蔽渠道，got %+v", items)
+	}
+}
+
 // TestAggregatorBurstLogsWarn 超频降级必须 Warn 留痕（repo/次数）：异常流量审计信号。
 func TestAggregatorBurstLogsWarn(t *testing.T) {
 	data := openTestStore(t)

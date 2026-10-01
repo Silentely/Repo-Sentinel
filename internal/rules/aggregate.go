@@ -288,7 +288,7 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 		}
 		sub := make([]*store.Event, 0, len(b.events))
 		for _, ev := range b.events {
-			if ch.AcceptsKind(ev.Kind) && features.AllowsKind(ev.Kind) {
+			if ch.AcceptsKind(ev.Kind) && features.AllowsKind(ev.Kind) && !shouldSuppressBotEvent(ch, ev) {
 				sub = append(sub, ev)
 			}
 		}
@@ -364,7 +364,7 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 	body := "<b>" + safeTitle + "</b>\n────────────────\n📦 仓库：<code>" + safeRepo + "</code>\n📋 类型：" + safeCat + "\n🔇 已降级为摘要模式，请在仪表盘查看详情\n⏰ 时间：" + now.Format("2006-01-02 15:04 UTC")
 	for _, ch := range channels {
 		// 以 sample 事件的类型判定渠道是否接收超频摘要。
-		if !ch.Enabled || !ch.AcceptsKind(sample.Kind) {
+		if !ch.Enabled || !ch.AcceptsKind(sample.Kind) || shouldSuppressBotEvent(ch, sample) {
 			continue
 		}
 		// repoID 为空时回退仓库名进幂等键，避免不同仓库摘要互相碰撞。

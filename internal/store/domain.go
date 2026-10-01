@@ -539,6 +539,8 @@ type ListFilter struct {
 	Author string
 	// AuthorIsBot 按作者是否为机器人过滤。
 	AuthorIsBot *bool
+	// SearchText 对工作项标题、作者、编号或仓库名称执行不区分大小写的文本搜索。
+	SearchText string
 	// IncludeIgnored=true 时包含已忽略项；默认 false 只返回未忽略。
 	IncludeIgnored bool
 	// OnlyIgnored=true 时仅返回已忽略项（优先于 IncludeIgnored）。

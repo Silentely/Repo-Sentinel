@@ -242,6 +242,7 @@ func (s *server) handleListWorkItems(w http.ResponseWriter, r *http.Request) {
 	f.ReviewDecision = queryTrimmed(q, "review")
 	f.CheckStatus = mapCheckStatusParam(q.Get("check"))
 	f.Author = queryTrimmed(q, "author")
+	f.SearchText = queryTrimmed(q, "search")
 	if isBotStr := queryTrimmed(q, "is_bot"); isBotStr != "" {
 		if b, err := strconv.ParseBool(isBotStr); err == nil {
 			f.AuthorIsBot = &b

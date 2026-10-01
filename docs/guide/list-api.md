@@ -11,6 +11,7 @@
 | `repository_id` | 仓库 ID | 限定单仓 |
 | `review` | `approved` / `changes_requested` / `pending` | PR 审核结论；`pending` 映射为尚无审核记录（服务端存空串） |
 | `check` | `passed` / `failed` / `pending` | PR 检查状态；`passed`/`failed` 分别映射存储值 `success`/`failure`，`pending` 匹配空串或 `pending` |
+| `search` | 任意文本 | 在标题、作者、工作项编号或仓库名称上执行不区分大小写搜索；分页与 `total` 均基于搜索结果 |
 | `ignored` | `true` / `all` | 默认仅返回未忽略项；`true` 仅已忽略，`all` 含全部 |
 
 `review` / `check` 的组合过滤在 SQL 层完成，分页与 `total` 均为过滤后结果。

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -835,6 +836,25 @@ func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, Pag
 	}
 	if f.AuthorIsBot != nil {
 		q = q.Where(workitem.AuthorIsBotEQ(*f.AuthorIsBot))
+	}
+	if search := strings.TrimSpace(f.SearchText); search != "" {
+		predicates := []predicate.WorkItem{
+			workitem.TitleContainsFold(search),
+			workitem.AuthorContainsFold(search),
+		}
+		if number, err := strconv.Atoi(search); err == nil {
+			predicates = append(predicates, workitem.NumberEQ(number))
+		}
+		repositoryIDs, err := s.client.Repository.Query().
+			Where(repository.Or(repository.NameContainsFold(search), repository.FullNameContainsFold(search))).
+			IDs(ctx)
+		if err != nil {
+			return nil, PageResult{}, mapStoreError(err)
+		}
+		if len(repositoryIDs) > 0 {
+			predicates = append(predicates, workitem.RepositoryIDIn(repositoryIDs...))
+		}
+		q = q.Where(workitem.Or(predicates...))
 	}
 	if f.OnlyIgnored {
 		q = q.Where(workitem.IgnoredEQ(true))

@@ -56,7 +56,7 @@ import {
   type IgnoredMode,
 } from "./list-shared";
 
-interface WorkItem {
+export interface WorkItem {
   id: string;
   kind: string;
   number: number;
@@ -81,6 +81,22 @@ interface WorkItem {
   checks_total?: number;
   checks_passed?: number;
   ignored?: boolean;
+}
+
+/** 与后端搜索字段保持一致的前端防御性过滤；后端负责全量分页与 total。 */
+export function filterWorkItemsByText(items: WorkItem[], textQuery: string): WorkItem[] {
+  const lower = textQuery.trim().toLowerCase();
+  if (!lower) return items;
+  return items.filter((it) => {
+    const titleMatch = it.title ? it.title.toLowerCase().includes(lower) : false;
+    const authorMatch = it.author ? it.author.toLowerCase().includes(lower) : false;
+    // 后端对纯数字搜索按工作项编号精确匹配，前端防御性过滤保持同一口径。
+    const numMatch = String(it.number ?? "") === lower;
+    const repoMatch = it.repository_full_name
+      ? it.repository_full_name.toLowerCase().includes(lower)
+      : false;
+    return titleMatch || authorMatch || numMatch || repoMatch;
+  });
 }
 
 interface WorkflowRun {
@@ -1145,6 +1161,7 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
       checkFilter,
       author,
       isBot,
+      textQuery,
     ],
     endpoint: "/api/v1/work-items",
     buildParams: (params) => {
@@ -1156,6 +1173,7 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
       if (checkFilter) params.set("check", checkFilter);
       if (author) params.set("author", author);
       if (isBot !== "") params.set("is_bot", isBot);
+      if (textQuery.trim()) params.set("search", textQuery.trim());
     },
   });
 
@@ -1203,21 +1221,8 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
     lastAppliedRef.current = "";
   };
 
-  const displayedItems = useMemo(() => {
-    if (!textQuery.trim()) return items;
-    const lower = textQuery.trim().toLowerCase();
-    return items.filter((it) => {
-      const titleMatch = it.title ? it.title.toLowerCase().includes(lower) : false;
-      const authorMatch = it.author ? it.author.toLowerCase().includes(lower) : false;
-      const numMatch = String(it.number ?? "").includes(lower);
-      const repoMatch = it.repository_full_name
-        ? it.repository_full_name.toLowerCase().includes(lower)
-        : false;
-      return titleMatch || authorMatch || numMatch || repoMatch;
-    });
-  }, [items, textQuery]);
-
-  const displayedTotal = textQuery.trim() ? displayedItems.length : total;
+  const displayedItems = useMemo(() => filterWorkItemsByText(items, textQuery), [items, textQuery]);
+  const displayedTotal = total;
 
   return (
     <ListShell eyebrow="仓库" title={title} description={description}>
@@ -1354,7 +1359,7 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
           />
         }
       >
-        {items.map((it) => {
+        {displayedItems.map((it) => {
             const num = it.number ?? 0;
             const itemTitle = (it.title || "").trim() || "（无标题）";
             return (

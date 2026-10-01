@@ -945,3 +945,33 @@ func TestListWorkItemsAuthorAndBotFilter(t *testing.T) {
 		t.Fatalf("expected 2 items, got total=%d items=%+v", page.Total, items)
 	}
 }
+
+func TestListWorkItemsSearchTextFiltersBeforePagination(t *testing.T) {
+	data := openTestStore(t)
+	ctx := t.Context()
+	now := time.Now().UTC()
+
+	repo, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-search", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "acme", Name: "sentinel", FullName: "acme/sentinel",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []store.WorkItem{
+		{ID: "search-1", RepositoryID: repo.ID, Number: 1, Kind: store.WorkItemKindIssue, State: "open", Title: "unrelated", Author: "alice", SourceUpdatedAt: now, StateHash: "1"},
+		{ID: "search-2", RepositoryID: repo.ID, Number: 2, Kind: store.WorkItemKindIssue, State: "open", Title: "memory leak", Author: "bob", SourceUpdatedAt: now, StateHash: "2"},
+	} {
+		if _, _, err := data.WorkItems().UpsertIfNewer(ctx, item, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	items, page, err := data.WorkItems().List(ctx, store.ListFilter{Page: 1, PerPage: 1, SearchText: "memory"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || len(items) != 1 || items[0].ID != "search-2" {
+		t.Fatalf("搜索应在分页前过滤，got total=%d items=%+v", page.Total, items)
+	}
+}
