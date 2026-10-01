@@ -23,7 +23,7 @@ import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-route
 
 import { GithubIcon } from "../components/github-icon";
 import { ThemeToggle } from "../components/theme-toggle";
-import { PixelScenerySidebarDecor } from "../components/pixel-scenery";
+import { PixelFlowerPatch, PixelScenerySidebarDecor } from "../components/pixel-scenery";
 import {
   logout,
   readyStatusQueryOptions,
@@ -310,6 +310,16 @@ export function RootLayout({ session }: RootLayoutProps) {
         </header>
         <main className="app-content">
           <Outlet />
+          <footer className="app-footer" aria-label="页脚信息">
+            <div className="app-footer__scenery" aria-hidden="true">
+              <PixelFlowerPatch />
+            </div>
+            <p className="app-footer__text">
+              <span>RepoSentinel</span>
+              <span className="app-footer__dot">·</span>
+              <span>开源仓库安全与值守平台</span>
+            </p>
+          </footer>
         </main>
       </div>
     </div>

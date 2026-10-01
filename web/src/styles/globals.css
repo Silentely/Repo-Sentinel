@@ -3472,3 +3472,36 @@ a.status-item--link:focus-visible {
     display: none !important;
   }
 }
+
+/* ── 应用全局页脚（App Footer & Pixel Decoration） ── */
+.app-footer {
+  margin-top: 56px;
+  padding-top: 28px;
+  border-top: 1.5px dashed var(--border-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+}
+
+.app-footer__scenery {
+  opacity: 0.78;
+  display: flex;
+  justify-content: center;
+}
+
+.app-footer__text {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+  font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.app-footer__dot {
+  opacity: 0.5;
+}

@@ -9,6 +9,7 @@
 
   /* 墨水描边与硬阴影 */
   --ink: #17140f;
+  --pixel-ink: #17140f;
   --border-subtle: #17140f;
   --border-muted: #796f5c;
   --shadow-neo: #211c14;
@@ -58,6 +59,7 @@
 
   /* 终端边框与深黑硬阴影 */
   --ink: #f2ede4;
+  --pixel-ink: #0a0908;
   --border-subtle: #595347;
   --border-muted: #3d382f;
   --shadow-neo: #000000;

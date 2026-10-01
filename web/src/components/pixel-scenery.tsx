@@ -21,12 +21,12 @@ export const PixelTree: FC<{ className?: string }> = ({ className }) => (
     aria-hidden="true"
   >
     {/* Outline & Shadow */}
-    <rect x="10" y="2" width="12" height="4" fill="var(--ink)" />
-    <rect x="6" y="6" width="20" height="4" fill="var(--ink)" />
-    <rect x="4" y="10" width="24" height="6" fill="var(--ink)" />
-    <rect x="2" y="16" width="28" height="6" fill="var(--ink)" />
-    <rect x="4" y="22" width="24" height="6" fill="var(--ink)" />
-    <rect x="8" y="28" width="16" height="4" fill="var(--ink)" />
+    <rect x="10" y="2" width="12" height="4" fill="var(--pixel-ink, #17140f)" />
+    <rect x="6" y="6" width="20" height="4" fill="var(--pixel-ink, #17140f)" />
+    <rect x="4" y="10" width="24" height="6" fill="var(--pixel-ink, #17140f)" />
+    <rect x="2" y="16" width="28" height="6" fill="var(--pixel-ink, #17140f)" />
+    <rect x="4" y="22" width="24" height="6" fill="var(--pixel-ink, #17140f)" />
+    <rect x="8" y="28" width="16" height="4" fill="var(--pixel-ink, #17140f)" />
 
     {/* Foliage Fill */}
     <rect x="12" y="4" width="8" height="4" fill="#34a853" />
@@ -42,10 +42,10 @@ export const PixelTree: FC<{ className?: string }> = ({ className }) => (
     <rect x="6" y="14" width="4" height="2" fill="#66bb6a" />
 
     {/* Trunk */}
-    <rect x="13" y="32" width="6" height="10" fill="var(--ink)" />
+    <rect x="13" y="32" width="6" height="10" fill="var(--pixel-ink, #17140f)" />
     <rect x="14" y="32" width="4" height="10" fill="#795548" />
     <rect x="14" y="34" width="1" height="6" fill="#a1887f" />
-    <rect x="11" y="41" width="10" height="3" fill="var(--ink)" />
+    <rect x="11" y="41" width="10" height="3" fill="var(--pixel-ink, #17140f)" />
     <rect x="12" y="42" width="8" height="2" fill="#4e342e" />
   </svg>
 );
@@ -62,17 +62,17 @@ export const PixelHouse: FC<{ className?: string }> = ({ className }) => (
     aria-hidden="true"
   >
     {/* Chimney */}
-    <rect x="29" y="4" width="6" height="8" fill="var(--ink)" />
+    <rect x="29" y="4" width="6" height="8" fill="var(--pixel-ink, #17140f)" />
     <rect x="30" y="5" width="4" height="7" fill="#c0392b" />
-    <rect x="28" y="2" width="8" height="2" fill="var(--ink)" />
+    <rect x="28" y="2" width="8" height="2" fill="var(--pixel-ink, #17140f)" />
 
     {/* Roof Outline */}
-    <rect x="20" y="6" width="4" height="2" fill="var(--ink)" />
-    <rect x="16" y="8" width="12" height="2" fill="var(--ink)" />
-    <rect x="12" y="10" width="20" height="2" fill="var(--ink)" />
-    <rect x="8" y="12" width="28" height="2" fill="var(--ink)" />
-    <rect x="4" y="14" width="36" height="2" fill="var(--ink)" />
-    <rect x="2" y="16" width="40" height="4" fill="var(--ink)" />
+    <rect x="20" y="6" width="4" height="2" fill="var(--pixel-ink, #17140f)" />
+    <rect x="16" y="8" width="12" height="2" fill="var(--pixel-ink, #17140f)" />
+    <rect x="12" y="10" width="20" height="2" fill="var(--pixel-ink, #17140f)" />
+    <rect x="8" y="12" width="28" height="2" fill="var(--pixel-ink, #17140f)" />
+    <rect x="4" y="14" width="36" height="2" fill="var(--pixel-ink, #17140f)" />
+    <rect x="2" y="16" width="40" height="4" fill="var(--pixel-ink, #17140f)" />
 
     {/* Roof Fill */}
     <rect x="18" y="8" width="8" height="2" fill="#ff7043" />
@@ -82,22 +82,22 @@ export const PixelHouse: FC<{ className?: string }> = ({ className }) => (
     <rect x="4" y="16" width="36" height="2" fill="#d84315" />
 
     {/* Body Walls */}
-    <rect x="5" y="19" width="34" height="20" fill="var(--ink)" />
+    <rect x="5" y="19" width="34" height="20" fill="var(--pixel-ink, #17140f)" />
     <rect x="7" y="19" width="30" height="18" fill="var(--bg-panel-warm)" />
 
     {/* Window */}
-    <rect x="10" y="23" width="9" height="9" fill="var(--ink)" />
+    <rect x="10" y="23" width="9" height="9" fill="var(--pixel-ink, #17140f)" />
     <rect x="11" y="24" width="7" height="7" fill="var(--info-bg)" />
-    <rect x="14" y="24" width="1" height="7" fill="var(--ink)" />
-    <rect x="11" y="27" width="7" height="1" fill="var(--ink)" />
+    <rect x="14" y="24" width="1" height="7" fill="var(--pixel-ink, #17140f)" />
+    <rect x="11" y="27" width="7" height="1" fill="var(--pixel-ink, #17140f)" />
 
     {/* Door */}
-    <rect x="24" y="25" width="9" height="12" fill="var(--ink)" />
+    <rect x="24" y="25" width="9" height="12" fill="var(--pixel-ink, #17140f)" />
     <rect x="25" y="26" width="7" height="11" fill="#8d6e63" />
     <rect x="30" y="31" width="1" height="2" fill="#ffd54f" />
 
     {/* Ground base */}
-    <rect x="3" y="38" width="38" height="2" fill="var(--ink)" />
+    <rect x="3" y="38" width="38" height="2" fill="var(--pixel-ink, #17140f)" />
   </svg>
 );
 
@@ -113,7 +113,7 @@ export const PixelFlowerPatch: FC<{ className?: string }> = ({ className }) => (
     aria-hidden="true"
   >
     {/* Flower 1 - Yellow Tulip */}
-    <rect x="6" y="8" width="6" height="6" fill="var(--ink)" />
+    <rect x="6" y="8" width="6" height="6" fill="var(--pixel-ink, #17140f)" />
     <rect x="7" y="9" width="4" height="4" fill="#fbc02d" />
     <rect x="8" y="14" width="2" height="8" fill="#2e7d32" />
     <rect x="5" y="16" width="3" height="2" fill="#388e3c" />
@@ -124,7 +124,7 @@ export const PixelFlowerPatch: FC<{ className?: string }> = ({ className }) => (
     <rect x="16" y="16" width="2" height="6" fill="#388e3c" />
 
     {/* Flower 2 - Orange Blossom */}
-    <rect x="34" y="6" width="8" height="8" fill="var(--ink)" />
+    <rect x="34" y="6" width="8" height="8" fill="var(--pixel-ink, #17140f)" />
     <rect x="35" y="7" width="6" height="6" fill="#ff7043" />
     <rect x="37" y="9" width="2" height="2" fill="#fff59d" />
     <rect x="37" y="14" width="2" height="8" fill="#2e7d32" />
@@ -153,13 +153,13 @@ export const PixelCloud: FC<{ className?: string }> = ({ className }) => (
     aria-hidden="true"
   >
     {/* Cloud Outline */}
-    <rect x="16" y="2" width="18" height="2" fill="var(--ink)" opacity="0.35" />
-    <rect x="12" y="4" width="26" height="2" fill="var(--ink)" opacity="0.35" />
-    <rect x="8" y="6" width="36" height="2" fill="var(--ink)" opacity="0.35" />
-    <rect x="4" y="8" width="44" height="12" fill="var(--ink)" opacity="0.35" />
-    <rect x="2" y="12" width="48" height="8" fill="var(--ink)" opacity="0.35" />
-    <rect x="4" y="20" width="44" height="2" fill="var(--ink)" opacity="0.35" />
-    <rect x="8" y="22" width="36" height="2" fill="var(--ink)" opacity="0.35" />
+    <rect x="16" y="2" width="18" height="2" fill="var(--pixel-ink, #17140f)" opacity="0.35" />
+    <rect x="12" y="4" width="26" height="2" fill="var(--pixel-ink, #17140f)" opacity="0.35" />
+    <rect x="8" y="6" width="36" height="2" fill="var(--pixel-ink, #17140f)" opacity="0.35" />
+    <rect x="4" y="8" width="44" height="12" fill="var(--pixel-ink, #17140f)" opacity="0.35" />
+    <rect x="2" y="12" width="48" height="8" fill="var(--pixel-ink, #17140f)" opacity="0.35" />
+    <rect x="4" y="20" width="44" height="2" fill="var(--pixel-ink, #17140f)" opacity="0.35" />
+    <rect x="8" y="22" width="36" height="2" fill="var(--pixel-ink, #17140f)" opacity="0.35" />
 
     {/* Cloud White Fill */}
     <rect x="16" y="4" width="18" height="2" fill="#ffffff" opacity="0.85" />
