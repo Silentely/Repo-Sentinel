@@ -1265,3 +1265,148 @@ func TestProcessBotDetection(t *testing.T) {
 		t.Errorf("expected WorkItem.AuthorIsBot=false, got true")
 	}
 }
+
+func TestGuardedAutoUnarchive(t *testing.T) {
+	dbURL := "file:" + filepath.Join(t.TempDir(), "unarchive.db")
+	data, err := store.Open(t.Context(), config.DatabaseConfig{Driver: "sqlite", URL: dbURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = data.Close() })
+
+	proc := &normalizer.Processor{Store: data}
+	now := time.Now().UTC()
+
+	// 1. 创建 PR #10 并将其归档 (ignored = true)
+	prPayload, _ := json.Marshal(map[string]any{
+		"action": "opened",
+		"pull_request": map[string]any{
+			"number":     10,
+			"title":      "chore: bump dependencies",
+			"state":      "open",
+			"html_url":   "https://github.com/acme/demo/pull/10",
+			"user":       map[string]any{"login": "dependabot[bot]", "type": "Bot"},
+			"updated_at": now.Format(time.RFC3339),
+			"labels":     []any{},
+			"assignees":  []any{},
+		},
+		"sender": map[string]any{"login": "dependabot[bot]", "type": "Bot"},
+		"repository": map[string]any{
+			"id":        1001,
+			"name":      "demo",
+			"full_name": "acme/demo",
+			"owner":     map[string]any{"login": "acme"},
+			"html_url":  "https://github.com/acme/demo",
+		},
+	})
+	res, err := proc.Process(t.Context(), "pull_request", "d-pr-1", prPayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := data.WorkItems().GetByRepoNumber(t.Context(), res.Repository.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := data.WorkItems().SetIgnored(t.Context(), item.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Dependabot 进行 synchronize（rebase 推送）-> 必须防御唤醒风暴，保持 ignored = true
+	botSyncPayload, _ := json.Marshal(map[string]any{
+		"action": "synchronize",
+		"pull_request": map[string]any{
+			"number":     10,
+			"title":      "chore: bump dependencies (rebased)",
+			"state":      "open",
+			"html_url":   "https://github.com/acme/demo/pull/10",
+			"user":       map[string]any{"login": "dependabot[bot]", "type": "Bot"},
+			"updated_at": now.Add(time.Minute).Format(time.RFC3339),
+			"labels":     []any{},
+			"assignees":  []any{},
+		},
+		"sender": map[string]any{"login": "dependabot[bot]", "type": "Bot"},
+		"repository": map[string]any{
+			"id":        1001,
+			"name":      "demo",
+			"full_name": "acme/demo",
+			"owner":     map[string]any{"login": "acme"},
+			"html_url":  "https://github.com/acme/demo",
+		},
+	})
+	if _, err := proc.Process(t.Context(), "pull_request", "d-pr-2", botSyncPayload); err != nil {
+		t.Fatal(err)
+	}
+	item, err = data.WorkItems().GetByRepoNumber(t.Context(), res.Repository.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !item.Ignored {
+		t.Fatalf("Bot synchronize 绝不能唤醒已归档工作项，实际 ignored=%v", item.Ignored)
+	}
+
+	// 3. 真人操作未在白名单的动作 (如 labeled) -> 保持 ignored = true
+	humanLabelPayload, _ := json.Marshal(map[string]any{
+		"action": "labeled",
+		"pull_request": map[string]any{
+			"number":     10,
+			"title":      "chore: bump dependencies (labeled)",
+			"state":      "open",
+			"html_url":   "https://github.com/acme/demo/pull/10",
+			"user":       map[string]any{"login": "dependabot[bot]", "type": "Bot"},
+			"updated_at": now.Add(2 * time.Minute).Format(time.RFC3339),
+			"labels":     []any{map[string]any{"name": "dependencies"}},
+			"assignees":  []any{},
+		},
+		"sender": map[string]any{"login": "alice", "type": "User"},
+		"repository": map[string]any{
+			"id":        1001,
+			"name":      "demo",
+			"full_name": "acme/demo",
+			"owner":     map[string]any{"login": "acme"},
+			"html_url":  "https://github.com/acme/demo",
+		},
+	})
+	if _, err := proc.Process(t.Context(), "pull_request", "d-pr-3", humanLabelPayload); err != nil {
+		t.Fatal(err)
+	}
+	item, err = data.WorkItems().GetByRepoNumber(t.Context(), res.Repository.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !item.Ignored {
+		t.Fatalf("非白名单动作不应唤醒已归档工作项，实际 ignored=%v", item.Ignored)
+	}
+
+	// 4. 真人操作重要白名单动作 (如 review_requested) -> 必须受控唤醒，置 ignored = false
+	humanReviewPayload, _ := json.Marshal(map[string]any{
+		"action": "review_requested",
+		"pull_request": map[string]any{
+			"number":     10,
+			"title":      "chore: bump dependencies (needs review)",
+			"state":      "open",
+			"html_url":   "https://github.com/acme/demo/pull/10",
+			"user":       map[string]any{"login": "dependabot[bot]", "type": "Bot"},
+			"updated_at": now.Add(3 * time.Minute).Format(time.RFC3339),
+			"labels":     []any{map[string]any{"name": "dependencies"}},
+			"assignees":  []any{},
+		},
+		"sender": map[string]any{"login": "alice", "type": "User"},
+		"repository": map[string]any{
+			"id":        1001,
+			"name":      "demo",
+			"full_name": "acme/demo",
+			"owner":     map[string]any{"login": "acme"},
+			"html_url":  "https://github.com/acme/demo",
+		},
+	})
+	if _, err := proc.Process(t.Context(), "pull_request", "d-pr-4", humanReviewPayload); err != nil {
+		t.Fatal(err)
+	}
+	item, err = data.WorkItems().GetByRepoNumber(t.Context(), res.Repository.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Ignored {
+		t.Fatalf("真人重要动作 (review_requested) 必须受控唤醒工作项，实际 ignored=%v", item.Ignored)
+	}
+}

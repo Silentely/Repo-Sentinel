@@ -1319,7 +1319,7 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
         selectedCount={selectedIds.size}
         onClear={() => setSelectedIds(new Set())}
         onBatchIgnore={() => batchIgnoreMutation.mutate(Array.from(selectedIds))}
-        actionLabel={ignoredMode === "ignored" ? "批量取消忽略" : "批量忽略"}
+        actionLabel={ignoredMode === "ignored" ? "批量移回收件箱" : "批量归档"}
         isPending={batchIgnoreMutation.isPending}
       />
       <EventListBody
@@ -1332,14 +1332,14 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
               filtersActive
                 ? "没有符合筛选条件的项目"
                 : ignoredMode === "ignored"
-                  ? "没有已忽略的项目"
-                  : "暂无工作项"
+                  ? "没有已归档的项目"
+                  : "收件箱暂无工作项"
             }
             description={
               filtersActive
                 ? "可尝试调整或清除筛选条件后重试。"
                 : ignoredMode === "ignored"
-                  ? "忽略的长期打开 Issue/PR 会显示在这里，可随时取消忽略。"
+                  ? "已归档的 Issues 或 PR 会显示在这里，收到人类指派、审核请求或重新打开时会自动唤醒。"
                   : "安装 GitHub App 并完成对账后，相关数据会自动同步到这里。已归档仓库的历史项默认不显示。"
             }
             action={
@@ -1378,7 +1378,7 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
                     <span className={`event-kind state-${it.state || "open"}`}>{workItemStateLabel(it.state)}</span>
                     {it.draft && <span className="draft-badge">Draft</span>}
                     {it.merged && <span className="merged-badge">Merged</span>}
-                    {it.ignored && <span className="ignored-badge">已忽略</span>}
+                    {it.ignored && <span className="ignored-badge">已归档</span>}
                     {it.repository_full_name ? <span className="event-repo">{it.repository_full_name}</span> : null}
                     <strong title={itemTitle}>
                       #{num} {itemTitle}

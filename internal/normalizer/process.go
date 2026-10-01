@@ -611,6 +611,13 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 	if !updated {
 		return Result{Repository: &repo, StaleDiscarded: true}, nil
 	}
+	senderIsBot := botutil.IsBotUser(sender.Login, sender.Type)
+	if saved.Ignored && !senderIsBot && isUnarchiveAction(action) {
+		if unerr := p.Store.WorkItems().SetIgnored(ctx, saved.ID, false); unerr == nil {
+			saved.Ignored = false
+			p.logAutoUnarchive(repo, saved, action, sender.Login)
+		}
+	}
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
 	fp := Fingerprint("webhook", repo.FullName, kind, ResourceIdentity(kind, int64(saved.Number), 0), action, saved.SourceUpdatedAt, item.StateHash)
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
@@ -907,6 +914,23 @@ func (p *Processor) eventDuplicate(repo store.Repository, kind, action string) {
 		return
 	}
 	p.Logger.Debug("webhook event duplicate skipped", "repo", repo.FullName, "kind", kind, "action", action)
+}
+
+func isUnarchiveAction(action string) bool {
+	norm := normalizeAction(action)
+	switch norm {
+	case "reopened", "assigned", "review_requested", "synchronize":
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *Processor) logAutoUnarchive(repo store.Repository, item store.WorkItem, action, sender string) {
+	if p.Logger == nil {
+		return
+	}
+	p.Logger.Info("work item auto-unarchived", "repo", repo.FullName, "number", item.Number, "action", action, "sender", sender)
 }
 
 func normalizeAction(action string) string {

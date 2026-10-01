@@ -164,7 +164,7 @@ export function IgnoredToggle({
         aria-pressed={mode === "active"}
         onClick={() => onChange("active")}
       >
-        关注中
+        收件箱
       </button>
       <button
         className={`quiet-button${mode === "ignored" ? " active" : ""}`}
@@ -172,7 +172,7 @@ export function IgnoredToggle({
         aria-pressed={mode === "ignored"}
         onClick={() => onChange("ignored")}
       >
-        已忽略
+        已归档
       </button>
     </>
   );
@@ -193,10 +193,10 @@ export function IgnoreButton({
       type="button"
       disabled={busy}
       onClick={onToggle}
-      title={ignored ? "取消忽略" : "忽略此项"}
+      title={ignored ? "移回收件箱" : "归档此项"}
     >
       {ignored ? <RotateCcw size={14} aria-hidden="true" /> : <EyeOff size={14} aria-hidden="true" />}
-      <span>{ignored ? "取消忽略" : "忽略"}</span>
+      <span>{ignored ? "移回收件箱" : "归档"}</span>
     </button>
   );
 }
