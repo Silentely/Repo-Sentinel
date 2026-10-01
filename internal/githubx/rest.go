@@ -22,6 +22,7 @@ type IssueItem struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	User      struct {
 		Login string `json:"login"`
+		Type  string `json:"type"`
 	} `json:"user"`
 	PullRequest *struct {
 		URL string `json:"url"`
@@ -55,6 +56,7 @@ type WorkflowRunItem struct {
 	CreatedAt  time.Time `json:"created_at"`
 	Actor      struct {
 		Login string `json:"login"`
+		Type  string `json:"type"`
 	} `json:"actor"`
 }
 

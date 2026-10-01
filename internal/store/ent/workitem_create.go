@@ -64,6 +64,20 @@ func (_c *WorkItemCreate) SetNillableAuthor(v *string) *WorkItemCreate {
 	return _c
 }
 
+// SetAuthorIsBot sets the "author_is_bot" field.
+func (_c *WorkItemCreate) SetAuthorIsBot(v bool) *WorkItemCreate {
+	_c.mutation.SetAuthorIsBot(v)
+	return _c
+}
+
+// SetNillableAuthorIsBot sets the "author_is_bot" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableAuthorIsBot(v *bool) *WorkItemCreate {
+	if v != nil {
+		_c.SetAuthorIsBot(*v)
+	}
+	return _c
+}
+
 // SetLabelsJSON sets the "labels_json" field.
 func (_c *WorkItemCreate) SetLabelsJSON(v []interface{}) *WorkItemCreate {
 	_c.mutation.SetLabelsJSON(v)
@@ -305,6 +319,10 @@ func (_c *WorkItemCreate) defaults() {
 		v := workitem.DefaultAuthor
 		_c.mutation.SetAuthor(v)
 	}
+	if _, ok := _c.mutation.AuthorIsBot(); !ok {
+		v := workitem.DefaultAuthorIsBot
+		_c.mutation.SetAuthorIsBot(v)
+	}
 	if _, ok := _c.mutation.Milestone(); !ok {
 		v := workitem.DefaultMilestone
 		_c.mutation.SetMilestone(v)
@@ -370,6 +388,9 @@ func (_c *WorkItemCreate) check() error {
 	}
 	if _, ok := _c.mutation.Author(); !ok {
 		return &ValidationError{Name: "author", err: errors.New(`ent: missing required field "WorkItem.author"`)}
+	}
+	if _, ok := _c.mutation.AuthorIsBot(); !ok {
+		return &ValidationError{Name: "author_is_bot", err: errors.New(`ent: missing required field "WorkItem.author_is_bot"`)}
 	}
 	if _, ok := _c.mutation.Milestone(); !ok {
 		return &ValidationError{Name: "milestone", err: errors.New(`ent: missing required field "WorkItem.milestone"`)}
@@ -474,6 +495,10 @@ func (_c *WorkItemCreate) createSpec() (*WorkItem, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Author(); ok {
 		_spec.SetField(workitem.FieldAuthor, field.TypeString, value)
 		_node.Author = value
+	}
+	if value, ok := _c.mutation.AuthorIsBot(); ok {
+		_spec.SetField(workitem.FieldAuthorIsBot, field.TypeBool, value)
+		_node.AuthorIsBot = value
 	}
 	if value, ok := _c.mutation.LabelsJSON(); ok {
 		_spec.SetField(workitem.FieldLabelsJSON, field.TypeJSON, value)

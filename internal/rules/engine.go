@@ -94,6 +94,14 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		if !ch.Enabled || !ch.AcceptsKind(res.Event.Kind) {
 			continue
 		}
+		// 免打扰：若渠道开启了忽略机器人且当前事件触发者为机器人，
+		// 仅过滤常规 Issue 与 PR 事件；安全告警与 Actions 工作流严格豁免。
+		if ch.IgnoreBots && res.Event.SenderIsBot {
+			if res.Event.Kind == store.WorkItemKindIssue || res.Event.Kind == store.WorkItemKindPR {
+				e.logNotifySkipped(res, repoFullName, "bot_suppressed")
+				continue
+			}
+		}
 		idem := idempotencyKey(ch.ID, res.Event.ID, "realtime")
 		if _, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &res.Event.ID,

@@ -26,6 +26,7 @@ func (Event) Fields() []ent.Field {
 		field.String("title").Default(""),
 		field.String("severity").Default(""),
 		field.String("actor").Default(""),
+		field.Bool("sender_is_bot").Default(false),
 		field.Int64("workflow_run_id").Optional().Nillable(),
 		field.String("workflow_conclusion").Default(""),
 		field.Time("occurred_at"),

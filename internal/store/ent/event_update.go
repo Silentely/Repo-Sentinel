@@ -159,6 +159,20 @@ func (_u *EventUpdate) SetNillableActor(v *string) *EventUpdate {
 	return _u
 }
 
+// SetSenderIsBot sets the "sender_is_bot" field.
+func (_u *EventUpdate) SetSenderIsBot(v bool) *EventUpdate {
+	_u.mutation.SetSenderIsBot(v)
+	return _u
+}
+
+// SetNillableSenderIsBot sets the "sender_is_bot" field if the given value is not nil.
+func (_u *EventUpdate) SetNillableSenderIsBot(v *bool) *EventUpdate {
+	if v != nil {
+		_u.SetSenderIsBot(*v)
+	}
+	return _u
+}
+
 // SetWorkflowRunID sets the "workflow_run_id" field.
 func (_u *EventUpdate) SetWorkflowRunID(v int64) *EventUpdate {
 	_u.mutation.ResetWorkflowRunID()
@@ -376,6 +390,9 @@ func (_u *EventUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Actor(); ok {
 		_spec.SetField(event.FieldActor, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.SenderIsBot(); ok {
+		_spec.SetField(event.FieldSenderIsBot, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.WorkflowRunID(); ok {
 		_spec.SetField(event.FieldWorkflowRunID, field.TypeInt64, value)
 	}
@@ -562,6 +579,20 @@ func (_u *EventUpdateOne) SetActor(v string) *EventUpdateOne {
 func (_u *EventUpdateOne) SetNillableActor(v *string) *EventUpdateOne {
 	if v != nil {
 		_u.SetActor(*v)
+	}
+	return _u
+}
+
+// SetSenderIsBot sets the "sender_is_bot" field.
+func (_u *EventUpdateOne) SetSenderIsBot(v bool) *EventUpdateOne {
+	_u.mutation.SetSenderIsBot(v)
+	return _u
+}
+
+// SetNillableSenderIsBot sets the "sender_is_bot" field if the given value is not nil.
+func (_u *EventUpdateOne) SetNillableSenderIsBot(v *bool) *EventUpdateOne {
+	if v != nil {
+		_u.SetSenderIsBot(*v)
 	}
 	return _u
 }
@@ -812,6 +843,9 @@ func (_u *EventUpdateOne) sqlSave(ctx context.Context) (_node *Event, err error)
 	}
 	if value, ok := _u.mutation.Actor(); ok {
 		_spec.SetField(event.FieldActor, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SenderIsBot(); ok {
+		_spec.SetField(event.FieldSenderIsBot, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.WorkflowRunID(); ok {
 		_spec.SetField(event.FieldWorkflowRunID, field.TypeInt64, value)

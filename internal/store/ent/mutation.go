@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"sync"
@@ -1618,8 +1618,8 @@ type AuditLogMutation struct {
 	actor_id            *string
 	target_type         *string
 	target_id           *string
-	metadata_json       *json.RawMessage
-	appendmetadata_json json.RawMessage
+	metadata_json       *jsontext.Value
+	appendmetadata_json jsontext.Value
 	ip_address          *string
 	created_at          *time.Time
 	clearedFields       map[string]struct{}
@@ -1913,13 +1913,13 @@ func (m *AuditLogMutation) ResetTargetID() {
 }
 
 // SetMetadataJSON sets the "metadata_json" field.
-func (m *AuditLogMutation) SetMetadataJSON(jm json.RawMessage) {
-	m.metadata_json = &jm
+func (m *AuditLogMutation) SetMetadataJSON(j jsontext.Value) {
+	m.metadata_json = &j
 	m.appendmetadata_json = nil
 }
 
 // MetadataJSON returns the value of the "metadata_json" field in the mutation.
-func (m *AuditLogMutation) MetadataJSON() (r json.RawMessage, exists bool) {
+func (m *AuditLogMutation) MetadataJSON() (r jsontext.Value, exists bool) {
 	v := m.metadata_json
 	if v == nil {
 		return
@@ -1930,7 +1930,7 @@ func (m *AuditLogMutation) MetadataJSON() (r json.RawMessage, exists bool) {
 // OldMetadataJSON returns the old "metadata_json" field's value of the AuditLog entity.
 // If the AuditLog object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v json.RawMessage, err error) {
+func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldMetadataJSON is only allowed on UpdateOne operations")
 	}
@@ -1944,13 +1944,13 @@ func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v json.RawMessa
 	return oldValue.MetadataJSON, nil
 }
 
-// AppendMetadataJSON adds jm to the "metadata_json" field.
-func (m *AuditLogMutation) AppendMetadataJSON(jm json.RawMessage) {
-	m.appendmetadata_json = append(m.appendmetadata_json, jm...)
+// AppendMetadataJSON adds j to the "metadata_json" field.
+func (m *AuditLogMutation) AppendMetadataJSON(j jsontext.Value) {
+	m.appendmetadata_json = append(m.appendmetadata_json, j...)
 }
 
 // AppendedMetadataJSON returns the list of values that were appended to the "metadata_json" field in this mutation.
-func (m *AuditLogMutation) AppendedMetadataJSON() (json.RawMessage, bool) {
+func (m *AuditLogMutation) AppendedMetadataJSON() (jsontext.Value, bool) {
 	if len(m.appendmetadata_json) == 0 {
 		return nil, false
 	}
@@ -2188,7 +2188,7 @@ func (m *AuditLogMutation) SetField(name string, value ent.Value) error {
 		m.SetTargetID(v)
 		return nil
 	case auditlog.FieldMetadataJSON:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -2348,6 +2348,7 @@ type EventMutation struct {
 	title                 *string
 	severity              *string
 	actor                 *string
+	sender_is_bot         *bool
 	workflow_run_id       *int64
 	addworkflow_run_id    *int64
 	workflow_conclusion   *string
@@ -2804,6 +2805,42 @@ func (m *EventMutation) ResetActor() {
 	m.actor = nil
 }
 
+// SetSenderIsBot sets the "sender_is_bot" field.
+func (m *EventMutation) SetSenderIsBot(b bool) {
+	m.sender_is_bot = &b
+}
+
+// SenderIsBot returns the value of the "sender_is_bot" field in the mutation.
+func (m *EventMutation) SenderIsBot() (r bool, exists bool) {
+	v := m.sender_is_bot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSenderIsBot returns the old "sender_is_bot" field's value of the Event entity.
+// If the Event object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EventMutation) OldSenderIsBot(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSenderIsBot is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSenderIsBot requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSenderIsBot: %w", err)
+	}
+	return oldValue.SenderIsBot, nil
+}
+
+// ResetSenderIsBot resets all changes to the "sender_is_bot" field.
+func (m *EventMutation) ResetSenderIsBot() {
+	m.sender_is_bot = nil
+}
+
 // SetWorkflowRunID sets the "workflow_run_id" field.
 func (m *EventMutation) SetWorkflowRunID(i int64) {
 	m.workflow_run_id = &i
@@ -3258,7 +3295,7 @@ func (m *EventMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EventMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 19)
 	if m.source != nil {
 		fields = append(fields, event.FieldSource)
 	}
@@ -3282,6 +3319,9 @@ func (m *EventMutation) Fields() []string {
 	}
 	if m.actor != nil {
 		fields = append(fields, event.FieldActor)
+	}
+	if m.sender_is_bot != nil {
+		fields = append(fields, event.FieldSenderIsBot)
 	}
 	if m.workflow_run_id != nil {
 		fields = append(fields, event.FieldWorkflowRunID)
@@ -3337,6 +3377,8 @@ func (m *EventMutation) Field(name string) (ent.Value, bool) {
 		return m.Severity()
 	case event.FieldActor:
 		return m.Actor()
+	case event.FieldSenderIsBot:
+		return m.SenderIsBot()
 	case event.FieldWorkflowRunID:
 		return m.WorkflowRunID()
 	case event.FieldWorkflowConclusion:
@@ -3382,6 +3424,8 @@ func (m *EventMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldSeverity(ctx)
 	case event.FieldActor:
 		return m.OldActor(ctx)
+	case event.FieldSenderIsBot:
+		return m.OldSenderIsBot(ctx)
 	case event.FieldWorkflowRunID:
 		return m.OldWorkflowRunID(ctx)
 	case event.FieldWorkflowConclusion:
@@ -3466,6 +3510,13 @@ func (m *EventMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetActor(v)
+		return nil
+	case event.FieldSenderIsBot:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSenderIsBot(v)
 		return nil
 	case event.FieldWorkflowRunID:
 		v, ok := value.(int64)
@@ -3669,6 +3720,9 @@ func (m *EventMutation) ResetField(name string) error {
 		return nil
 	case event.FieldActor:
 		m.ResetActor()
+		return nil
+	case event.FieldSenderIsBot:
+		m.ResetSenderIsBot()
 		return nil
 	case event.FieldWorkflowRunID:
 		m.ResetWorkflowRunID()
@@ -4535,6 +4589,7 @@ type NotificationChannelMutation struct {
 	event_kinds       *[]string
 	appendevent_kinds []string
 	digest_enabled    *bool
+	ignore_bots       *bool
 	created_at        *time.Time
 	updated_at        *time.Time
 	clearedFields     map[string]struct{}
@@ -4964,6 +5019,42 @@ func (m *NotificationChannelMutation) ResetDigestEnabled() {
 	m.digest_enabled = nil
 }
 
+// SetIgnoreBots sets the "ignore_bots" field.
+func (m *NotificationChannelMutation) SetIgnoreBots(b bool) {
+	m.ignore_bots = &b
+}
+
+// IgnoreBots returns the value of the "ignore_bots" field in the mutation.
+func (m *NotificationChannelMutation) IgnoreBots() (r bool, exists bool) {
+	v := m.ignore_bots
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIgnoreBots returns the old "ignore_bots" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldIgnoreBots(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIgnoreBots is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIgnoreBots requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIgnoreBots: %w", err)
+	}
+	return oldValue.IgnoreBots, nil
+}
+
+// ResetIgnoreBots resets all changes to the "ignore_bots" field.
+func (m *NotificationChannelMutation) ResetIgnoreBots() {
+	m.ignore_bots = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *NotificationChannelMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -5070,7 +5161,7 @@ func (m *NotificationChannelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationChannelMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.channel_type != nil {
 		fields = append(fields, notificationchannel.FieldChannelType)
 	}
@@ -5094,6 +5185,9 @@ func (m *NotificationChannelMutation) Fields() []string {
 	}
 	if m.digest_enabled != nil {
 		fields = append(fields, notificationchannel.FieldDigestEnabled)
+	}
+	if m.ignore_bots != nil {
+		fields = append(fields, notificationchannel.FieldIgnoreBots)
 	}
 	if m.created_at != nil {
 		fields = append(fields, notificationchannel.FieldCreatedAt)
@@ -5125,6 +5219,8 @@ func (m *NotificationChannelMutation) Field(name string) (ent.Value, bool) {
 		return m.EventKinds()
 	case notificationchannel.FieldDigestEnabled:
 		return m.DigestEnabled()
+	case notificationchannel.FieldIgnoreBots:
+		return m.IgnoreBots()
 	case notificationchannel.FieldCreatedAt:
 		return m.CreatedAt()
 	case notificationchannel.FieldUpdatedAt:
@@ -5154,6 +5250,8 @@ func (m *NotificationChannelMutation) OldField(ctx context.Context, name string)
 		return m.OldEventKinds(ctx)
 	case notificationchannel.FieldDigestEnabled:
 		return m.OldDigestEnabled(ctx)
+	case notificationchannel.FieldIgnoreBots:
+		return m.OldIgnoreBots(ctx)
 	case notificationchannel.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case notificationchannel.FieldUpdatedAt:
@@ -5222,6 +5320,13 @@ func (m *NotificationChannelMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDigestEnabled(v)
+		return nil
+	case notificationchannel.FieldIgnoreBots:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIgnoreBots(v)
 		return nil
 	case notificationchannel.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -5318,6 +5423,9 @@ func (m *NotificationChannelMutation) ResetField(name string) error {
 		return nil
 	case notificationchannel.FieldDigestEnabled:
 		m.ResetDigestEnabled()
+		return nil
+	case notificationchannel.FieldIgnoreBots:
+		m.ResetIgnoreBots()
 		return nil
 	case notificationchannel.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -11742,8 +11850,8 @@ type SystemSettingMutation struct {
 	typ              string
 	id               *string
 	key              *string
-	value_json       *json.RawMessage
-	appendvalue_json json.RawMessage
+	value_json       *jsontext.Value
+	appendvalue_json jsontext.Value
 	updated_at       *time.Time
 	updated_by       *string
 	clearedFields    map[string]struct{}
@@ -11893,13 +12001,13 @@ func (m *SystemSettingMutation) ResetKey() {
 }
 
 // SetValueJSON sets the "value_json" field.
-func (m *SystemSettingMutation) SetValueJSON(jm json.RawMessage) {
-	m.value_json = &jm
+func (m *SystemSettingMutation) SetValueJSON(j jsontext.Value) {
+	m.value_json = &j
 	m.appendvalue_json = nil
 }
 
 // ValueJSON returns the value of the "value_json" field in the mutation.
-func (m *SystemSettingMutation) ValueJSON() (r json.RawMessage, exists bool) {
+func (m *SystemSettingMutation) ValueJSON() (r jsontext.Value, exists bool) {
 	v := m.value_json
 	if v == nil {
 		return
@@ -11910,7 +12018,7 @@ func (m *SystemSettingMutation) ValueJSON() (r json.RawMessage, exists bool) {
 // OldValueJSON returns the old "value_json" field's value of the SystemSetting entity.
 // If the SystemSetting object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v json.RawMessage, err error) {
+func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldValueJSON is only allowed on UpdateOne operations")
 	}
@@ -11924,13 +12032,13 @@ func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v json.RawMes
 	return oldValue.ValueJSON, nil
 }
 
-// AppendValueJSON adds jm to the "value_json" field.
-func (m *SystemSettingMutation) AppendValueJSON(jm json.RawMessage) {
-	m.appendvalue_json = append(m.appendvalue_json, jm...)
+// AppendValueJSON adds j to the "value_json" field.
+func (m *SystemSettingMutation) AppendValueJSON(j jsontext.Value) {
+	m.appendvalue_json = append(m.appendvalue_json, j...)
 }
 
 // AppendedValueJSON returns the list of values that were appended to the "value_json" field in this mutation.
-func (m *SystemSettingMutation) AppendedValueJSON() (json.RawMessage, bool) {
+func (m *SystemSettingMutation) AppendedValueJSON() (jsontext.Value, bool) {
 	if len(m.appendvalue_json) == 0 {
 		return nil, false
 	}
@@ -12112,7 +12220,7 @@ func (m *SystemSettingMutation) SetField(name string, value ent.Value) error {
 		m.SetKey(v)
 		return nil
 	case systemsetting.FieldValueJSON:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -13063,6 +13171,7 @@ type WorkItemMutation struct {
 	state                *string
 	title                *string
 	author               *string
+	author_is_bot        *bool
 	labels_json          *[]interface{}
 	appendlabels_json    []interface{}
 	assignees_json       *[]interface{}
@@ -13430,6 +13539,42 @@ func (m *WorkItemMutation) OldAuthor(ctx context.Context) (v string, err error) 
 // ResetAuthor resets all changes to the "author" field.
 func (m *WorkItemMutation) ResetAuthor() {
 	m.author = nil
+}
+
+// SetAuthorIsBot sets the "author_is_bot" field.
+func (m *WorkItemMutation) SetAuthorIsBot(b bool) {
+	m.author_is_bot = &b
+}
+
+// AuthorIsBot returns the value of the "author_is_bot" field in the mutation.
+func (m *WorkItemMutation) AuthorIsBot() (r bool, exists bool) {
+	v := m.author_is_bot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAuthorIsBot returns the old "author_is_bot" field's value of the WorkItem entity.
+// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkItemMutation) OldAuthorIsBot(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAuthorIsBot is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAuthorIsBot requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAuthorIsBot: %w", err)
+	}
+	return oldValue.AuthorIsBot, nil
+}
+
+// ResetAuthorIsBot resets all changes to the "author_is_bot" field.
+func (m *WorkItemMutation) ResetAuthorIsBot() {
+	m.author_is_bot = nil
 }
 
 // SetLabelsJSON sets the "labels_json" field.
@@ -14241,7 +14386,7 @@ func (m *WorkItemMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkItemMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.repository_id != nil {
 		fields = append(fields, workitem.FieldRepositoryID)
 	}
@@ -14259,6 +14404,9 @@ func (m *WorkItemMutation) Fields() []string {
 	}
 	if m.author != nil {
 		fields = append(fields, workitem.FieldAuthor)
+	}
+	if m.author_is_bot != nil {
+		fields = append(fields, workitem.FieldAuthorIsBot)
 	}
 	if m.labels_json != nil {
 		fields = append(fields, workitem.FieldLabelsJSON)
@@ -14334,6 +14482,8 @@ func (m *WorkItemMutation) Field(name string) (ent.Value, bool) {
 		return m.Title()
 	case workitem.FieldAuthor:
 		return m.Author()
+	case workitem.FieldAuthorIsBot:
+		return m.AuthorIsBot()
 	case workitem.FieldLabelsJSON:
 		return m.LabelsJSON()
 	case workitem.FieldAssigneesJSON:
@@ -14391,6 +14541,8 @@ func (m *WorkItemMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldTitle(ctx)
 	case workitem.FieldAuthor:
 		return m.OldAuthor(ctx)
+	case workitem.FieldAuthorIsBot:
+		return m.OldAuthorIsBot(ctx)
 	case workitem.FieldLabelsJSON:
 		return m.OldLabelsJSON(ctx)
 	case workitem.FieldAssigneesJSON:
@@ -14477,6 +14629,13 @@ func (m *WorkItemMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAuthor(v)
+		return nil
+	case workitem.FieldAuthorIsBot:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAuthorIsBot(v)
 		return nil
 	case workitem.FieldLabelsJSON:
 		v, ok := value.([]interface{})
@@ -14730,6 +14889,9 @@ func (m *WorkItemMutation) ResetField(name string) error {
 		return nil
 	case workitem.FieldAuthor:
 		m.ResetAuthor()
+		return nil
+	case workitem.FieldAuthorIsBot:
+		m.ResetAuthorIsBot()
 		return nil
 	case workitem.FieldLabelsJSON:
 		m.ResetLabelsJSON()

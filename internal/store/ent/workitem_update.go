@@ -120,6 +120,20 @@ func (_u *WorkItemUpdate) SetNillableAuthor(v *string) *WorkItemUpdate {
 	return _u
 }
 
+// SetAuthorIsBot sets the "author_is_bot" field.
+func (_u *WorkItemUpdate) SetAuthorIsBot(v bool) *WorkItemUpdate {
+	_u.mutation.SetAuthorIsBot(v)
+	return _u
+}
+
+// SetNillableAuthorIsBot sets the "author_is_bot" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableAuthorIsBot(v *bool) *WorkItemUpdate {
+	if v != nil {
+		_u.SetAuthorIsBot(*v)
+	}
+	return _u
+}
+
 // SetLabelsJSON sets the "labels_json" field.
 func (_u *WorkItemUpdate) SetLabelsJSON(v []interface{}) *WorkItemUpdate {
 	_u.mutation.SetLabelsJSON(v)
@@ -446,6 +460,9 @@ func (_u *WorkItemUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Author(); ok {
 		_spec.SetField(workitem.FieldAuthor, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.AuthorIsBot(); ok {
+		_spec.SetField(workitem.FieldAuthorIsBot, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.LabelsJSON(); ok {
 		_spec.SetField(workitem.FieldLabelsJSON, field.TypeJSON, value)
 	}
@@ -634,6 +651,20 @@ func (_u *WorkItemUpdateOne) SetAuthor(v string) *WorkItemUpdateOne {
 func (_u *WorkItemUpdateOne) SetNillableAuthor(v *string) *WorkItemUpdateOne {
 	if v != nil {
 		_u.SetAuthor(*v)
+	}
+	return _u
+}
+
+// SetAuthorIsBot sets the "author_is_bot" field.
+func (_u *WorkItemUpdateOne) SetAuthorIsBot(v bool) *WorkItemUpdateOne {
+	_u.mutation.SetAuthorIsBot(v)
+	return _u
+}
+
+// SetNillableAuthorIsBot sets the "author_is_bot" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableAuthorIsBot(v *bool) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetAuthorIsBot(*v)
 	}
 	return _u
 }
@@ -993,6 +1024,9 @@ func (_u *WorkItemUpdateOne) sqlSave(ctx context.Context) (_node *WorkItem, err 
 	}
 	if value, ok := _u.mutation.Author(); ok {
 		_spec.SetField(workitem.FieldAuthor, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AuthorIsBot(); ok {
+		_spec.SetField(workitem.FieldAuthorIsBot, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.LabelsJSON(); ok {
 		_spec.SetField(workitem.FieldLabelsJSON, field.TypeJSON, value)

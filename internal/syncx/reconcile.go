@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/botutil"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -294,7 +295,8 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			hash := normalizer.StateHash(kind, it.State, it.Title, it.User.Login, milestone, strconv.FormatBool(it.Draft))
 			item := store.WorkItem{
 				RepositoryID: repo.ID, Number: it.Number, Kind: kind, State: it.State, Title: it.Title,
-				Author: it.User.Login, LabelsJSON: labels, AssigneesJSON: assignees, Milestone: milestone,
+				Author: it.User.Login, AuthorIsBot: botutil.IsBotUser(it.User.Login, it.User.Type),
+				LabelsJSON: labels, AssigneesJSON: assignees, Milestone: milestone,
 				Draft: it.Draft, HTMLURL: it.HTMLURL, SourceUpdatedAt: it.UpdatedAt, StateHash: hash,
 			}
 
@@ -362,6 +364,7 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			if _, err := r.Store.Events().Create(ctx, store.Event{
 				ID: ulid.Make().String(), Source: "reconcile", Kind: kind, Action: "updated",
 				RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
+				SenderIsBot:          saved.AuthorIsBot,
 				OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &src, HTMLURL: saved.HTMLURL,
 				SuppressNotification: false, DedupeFingerprint: fp, StateHash: hash,
 				PayloadSummary: map[string]any{"state": saved.State},

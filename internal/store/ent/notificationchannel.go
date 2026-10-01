@@ -34,6 +34,8 @@ type NotificationChannel struct {
 	EventKinds []string `json:"event_kinds,omitempty"`
 	// DigestEnabled holds the value of the "digest_enabled" field.
 	DigestEnabled bool `json:"digest_enabled,omitempty"`
+	// IgnoreBots holds the value of the "ignore_bots" field.
+	IgnoreBots bool `json:"ignore_bots,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -48,7 +50,7 @@ func (*NotificationChannel) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case notificationchannel.FieldEventKinds:
 			values[i] = new([]byte)
-		case notificationchannel.FieldEnabled, notificationchannel.FieldAllowPrivate, notificationchannel.FieldDigestEnabled:
+		case notificationchannel.FieldEnabled, notificationchannel.FieldAllowPrivate, notificationchannel.FieldDigestEnabled, notificationchannel.FieldIgnoreBots:
 			values[i] = new(sql.NullBool)
 		case notificationchannel.FieldID, notificationchannel.FieldChannelType, notificationchannel.FieldName, notificationchannel.FieldTarget, notificationchannel.FieldSecretEnvelope:
 			values[i] = new(sql.NullString)
@@ -125,6 +127,12 @@ func (_m *NotificationChannel) assignValues(columns []string, values []any) erro
 			} else if value.Valid {
 				_m.DigestEnabled = value.Bool
 			}
+		case notificationchannel.FieldIgnoreBots:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field ignore_bots", values[i])
+			} else if value.Valid {
+				_m.IgnoreBots = value.Bool
+			}
 		case notificationchannel.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -196,6 +204,9 @@ func (_m *NotificationChannel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("digest_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DigestEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("ignore_bots=")
+	builder.WriteString(fmt.Sprintf("%v", _m.IgnoreBots))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

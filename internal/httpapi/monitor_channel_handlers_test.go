@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"encoding/json"
 	"testing"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -70,5 +71,55 @@ func TestChannelHandlersLifecycle(t *testing.T) {
 	}
 	if !hasUpsert || !hasDelete {
 		t.Fatalf("expected audit logs for channel.upsert and channel.delete, got: %+v", audits)
+	}
+}
+
+func TestChannelIgnoreBotsHandler(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{
+		CSRFHeaderName: csrf.Value,
+	}
+
+	// 1. Upsert with ignore_bots = true
+	body := `{"name":"bot-test","enabled":true,"target":"https://open.feishu.cn/open-apis/bot/v2/hook/xxx","ignore_bots":true}`
+	putRec := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/feishu", body, "127.0.0.1:45101", cookies, headers)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("upsert channel failed: code %d, body: %s", putRec.Code, putRec.Body.String())
+	}
+
+	// 2. List channels and verify ignore_bots is true
+	listRec := fixture.request(t, http.MethodGet, "/api/v1/notifications/channels", "", "127.0.0.1:45102", cookies, headers)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list channels failed: code %d", listRec.Code)
+	}
+	var resp struct {
+		Items []struct {
+			ChannelType string `json:"channel_type"`
+			IgnoreBots  bool   `json:"ignore_bots"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 1 || !resp.Items[0].IgnoreBots {
+		t.Fatalf("expected ignore_bots=true, got %+v", resp.Items)
+	}
+
+	// 3. Upsert with ignore_bots = false
+	bodyFalse := `{"name":"bot-test","enabled":true,"target":"https://open.feishu.cn/open-apis/bot/v2/hook/xxx","ignore_bots":false}`
+	putRec2 := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/feishu", bodyFalse, "127.0.0.1:45103", cookies, headers)
+	if putRec2.Code != http.StatusOK {
+		t.Fatalf("upsert channel failed: code %d", putRec2.Code)
+	}
+
+	listRec2 := fixture.request(t, http.MethodGet, "/api/v1/notifications/channels", "", "127.0.0.1:45104", cookies, headers)
+	if err := json.Unmarshal(listRec2.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 1 || resp.Items[0].IgnoreBots {
+		t.Fatalf("expected ignore_bots=false, got %+v", resp.Items)
 	}
 }

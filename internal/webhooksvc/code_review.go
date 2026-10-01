@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/botutil"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
@@ -65,23 +66,9 @@ type ghPRPayload struct {
 }
 
 // IsBotUser 判断指定 GitHub 用户名或类型是否为机器人账户。
-// 规则：
-// 1. GitHub API 用户类型为 "Bot"；
-// 2. 登录名以 "[bot]" 结尾（如 dependabot[bot], renovate[bot], github-actions[bot] 等）；
-// 3. 常见自动化机器人名匹配（如 dependabot, renovate, github-actions, greenkeeper, snyk-bot, codecov, copilot）。
+// 转发至 botutil.IsBotUser 保证系统判定逻辑单一真实源。
 func IsBotUser(login, userType string) bool {
-	if strings.EqualFold(userType, "Bot") {
-		return true
-	}
-	loginLower := strings.ToLower(strings.TrimSpace(login))
-	if strings.HasSuffix(loginLower, "[bot]") {
-		return true
-	}
-	switch loginLower {
-	case "dependabot", "renovate", "github-actions", "greenkeeper", "snyk-bot", "codecov", "copilot":
-		return true
-	}
-	return false
+	return botutil.IsBotUser(login, userType)
 }
 
 // maybeTriggerAICodeReview 检查是否满足 PR AI 审查触发条件（opened 或 synchronize），并异步执行审查与可选评论回写。
@@ -333,7 +320,7 @@ func (s *Service) persistPRReview(ctx context.Context, req prReviewRequest, res 
 }
 
 // commentOnPR 可选模式 B：审查结果持久化成功后在 GitHub PR 下发表评论。
-// 评论失败与「已评论」状态回写失败均留 Warn（两条触发路径行为一致，排障有迹可循）；
+// 评论失败与「已评论」状态回写失败均留 Warn（两条触发路径行为一致，排隘有迹可循）；
 // 同一 head SHA 已评论过则跳过，避免手动重复触发时刷屏。
 func (s *Service) commentOnPR(ctx context.Context, req prReviewRequest, token string, res *ai.CodeReviewResult) {
 	if !s.AI.ShouldCommentOnPR() || s.GitHub == nil || token == "" {

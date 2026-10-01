@@ -27,6 +27,7 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 			"secret_configured": ch.SecretEnvelope != "",
 			// 订阅配置：event_kinds 为 nil 表示订阅全部实时类型。
 			"event_kinds": ch.EventKinds, "digest_enabled": ch.DigestEnabled,
+			"ignore_bots": ch.IgnoreBots,
 			"updated_at": ch.UpdatedAt,
 		})
 	}
@@ -52,6 +53,7 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		AllowPrivate  bool      `json:"allow_private"`
 		EventKinds    *[]string `json:"event_kinds"`
 		DigestEnabled *bool     `json:"digest_enabled"`
+		IgnoreBots    *bool     `json:"ignore_bots"`
 	}
 	if !s.decodeRequestJSON(w, r, &body) {
 		return
@@ -103,6 +105,7 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		// 请求未携带订阅配置时保留现值。
 		ch.EventKinds = existing.EventKinds
 		ch.DigestEnabled = existing.DigestEnabled
+		ch.IgnoreBots = existing.IgnoreBots
 		// 目标留空时保留已有 Chat ID / URL，避免「只改订阅」误清空。
 		if target == "" {
 			ch.Target = existing.Target
@@ -116,6 +119,9 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.DigestEnabled != nil {
 		ch.DigestEnabled = *body.DigestEnabled
+	}
+	if body.IgnoreBots != nil {
+		ch.IgnoreBots = *body.IgnoreBots
 	}
 	if secret != "" {
 		if s.dependencies.KeyRing == nil {

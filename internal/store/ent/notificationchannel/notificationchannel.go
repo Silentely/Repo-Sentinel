@@ -27,6 +27,8 @@ const (
 	FieldEventKinds = "event_kinds"
 	// FieldDigestEnabled holds the string denoting the digest_enabled field in the database.
 	FieldDigestEnabled = "digest_enabled"
+	// FieldIgnoreBots holds the string denoting the ignore_bots field in the database.
+	FieldIgnoreBots = "ignore_bots"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -46,6 +48,7 @@ var Columns = []string{
 	FieldAllowPrivate,
 	FieldEventKinds,
 	FieldDigestEnabled,
+	FieldIgnoreBots,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -73,6 +76,8 @@ var (
 	DefaultAllowPrivate bool
 	// DefaultDigestEnabled holds the default value on creation for the "digest_enabled" field.
 	DefaultDigestEnabled bool
+	// DefaultIgnoreBots holds the default value on creation for the "ignore_bots" field.
+	DefaultIgnoreBots bool
 )
 
 // OrderOption defines the ordering options for the NotificationChannel queries.
@@ -116,6 +121,11 @@ func ByAllowPrivate(opts ...sql.OrderTermOption) OrderOption {
 // ByDigestEnabled orders the results by the digest_enabled field.
 func ByDigestEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDigestEnabled, opts...).ToFunc()
+}
+
+// ByIgnoreBots orders the results by the ignore_bots field.
+func ByIgnoreBots(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIgnoreBots, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

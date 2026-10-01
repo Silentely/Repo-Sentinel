@@ -30,6 +30,8 @@ type WorkItem struct {
 	Title string `json:"title,omitempty"`
 	// Author holds the value of the "author" field.
 	Author string `json:"author,omitempty"`
+	// AuthorIsBot holds the value of the "author_is_bot" field.
+	AuthorIsBot bool `json:"author_is_bot,omitempty"`
 	// LabelsJSON holds the value of the "labels_json" field.
 	LabelsJSON []interface{} `json:"labels_json,omitempty"`
 	// AssigneesJSON holds the value of the "assignees_json" field.
@@ -76,7 +78,7 @@ func (*WorkItem) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case workitem.FieldLabelsJSON, workitem.FieldAssigneesJSON, workitem.FieldReviewers:
 			values[i] = new([]byte)
-		case workitem.FieldDraft, workitem.FieldMerged, workitem.FieldIgnored:
+		case workitem.FieldAuthorIsBot, workitem.FieldDraft, workitem.FieldMerged, workitem.FieldIgnored:
 			values[i] = new(sql.NullBool)
 		case workitem.FieldNumber, workitem.FieldChecksTotal, workitem.FieldChecksPassed:
 			values[i] = new(sql.NullInt64)
@@ -140,6 +142,12 @@ func (_m *WorkItem) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field author", values[i])
 			} else if value.Valid {
 				_m.Author = value.String
+			}
+		case workitem.FieldAuthorIsBot:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field author_is_bot", values[i])
+			} else if value.Valid {
+				_m.AuthorIsBot = value.Bool
 			}
 		case workitem.FieldLabelsJSON:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -308,6 +316,9 @@ func (_m *WorkItem) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("author=")
 	builder.WriteString(_m.Author)
+	builder.WriteString(", ")
+	builder.WriteString("author_is_bot=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AuthorIsBot))
 	builder.WriteString(", ")
 	builder.WriteString("labels_json=")
 	builder.WriteString(fmt.Sprintf("%v", _m.LabelsJSON))

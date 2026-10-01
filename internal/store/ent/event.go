@@ -34,6 +34,8 @@ type Event struct {
 	Severity string `json:"severity,omitempty"`
 	// Actor holds the value of the "actor" field.
 	Actor string `json:"actor,omitempty"`
+	// SenderIsBot holds the value of the "sender_is_bot" field.
+	SenderIsBot bool `json:"sender_is_bot,omitempty"`
 	// WorkflowRunID holds the value of the "workflow_run_id" field.
 	WorkflowRunID *int64 `json:"workflow_run_id,omitempty"`
 	// WorkflowConclusion holds the value of the "workflow_conclusion" field.
@@ -64,7 +66,7 @@ func (*Event) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case event.FieldPayloadSummary:
 			values[i] = new([]byte)
-		case event.FieldSuppressNotification:
+		case event.FieldSenderIsBot, event.FieldSuppressNotification:
 			values[i] = new(sql.NullBool)
 		case event.FieldSubjectNumber, event.FieldWorkflowRunID:
 			values[i] = new(sql.NullInt64)
@@ -142,6 +144,12 @@ func (_m *Event) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field actor", values[i])
 			} else if value.Valid {
 				_m.Actor = value.String
+			}
+		case event.FieldSenderIsBot:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field sender_is_bot", values[i])
+			} else if value.Valid {
+				_m.SenderIsBot = value.Bool
 			}
 		case event.FieldWorkflowRunID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -270,6 +278,9 @@ func (_m *Event) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("actor=")
 	builder.WriteString(_m.Actor)
+	builder.WriteString(", ")
+	builder.WriteString("sender_is_bot=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SenderIsBot))
 	builder.WriteString(", ")
 	if v := _m.WorkflowRunID; v != nil {
 		builder.WriteString("workflow_run_id=")

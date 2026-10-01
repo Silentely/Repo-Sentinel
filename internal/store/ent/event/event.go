@@ -27,6 +27,8 @@ const (
 	FieldSeverity = "severity"
 	// FieldActor holds the string denoting the actor field in the database.
 	FieldActor = "actor"
+	// FieldSenderIsBot holds the string denoting the sender_is_bot field in the database.
+	FieldSenderIsBot = "sender_is_bot"
 	// FieldWorkflowRunID holds the string denoting the workflow_run_id field in the database.
 	FieldWorkflowRunID = "workflow_run_id"
 	// FieldWorkflowConclusion holds the string denoting the workflow_conclusion field in the database.
@@ -62,6 +64,7 @@ var Columns = []string{
 	FieldTitle,
 	FieldSeverity,
 	FieldActor,
+	FieldSenderIsBot,
 	FieldWorkflowRunID,
 	FieldWorkflowConclusion,
 	FieldOccurredAt,
@@ -91,6 +94,8 @@ var (
 	DefaultSeverity string
 	// DefaultActor holds the default value on creation for the "actor" field.
 	DefaultActor string
+	// DefaultSenderIsBot holds the default value on creation for the "sender_is_bot" field.
+	DefaultSenderIsBot bool
 	// DefaultWorkflowConclusion holds the default value on creation for the "workflow_conclusion" field.
 	DefaultWorkflowConclusion string
 	// DefaultHTMLURL holds the default value on creation for the "html_url" field.
@@ -147,6 +152,11 @@ func BySeverity(opts ...sql.OrderTermOption) OrderOption {
 // ByActor orders the results by the actor field.
 func ByActor(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActor, opts...).ToFunc()
+}
+
+// BySenderIsBot orders the results by the sender_is_bot field.
+func BySenderIsBot(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSenderIsBot, opts...).ToFunc()
 }
 
 // ByWorkflowRunID orders the results by the workflow_run_id field.

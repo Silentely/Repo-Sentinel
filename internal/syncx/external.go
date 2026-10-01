@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/botutil"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -110,7 +111,8 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		hash := normalizer.StateHash(kind, it.State, it.Title, it.User.Login, strconv.FormatBool(it.Draft))
 		item := store.WorkItem{
 			RepositoryID: repo.ID, Number: it.Number, Kind: kind, State: it.State, Title: it.Title,
-			Author: it.User.Login, LabelsJSON: labels, HTMLURL: it.HTMLURL,
+			Author: it.User.Login, AuthorIsBot: botutil.IsBotUser(it.User.Login, it.User.Type),
+			LabelsJSON: labels, HTMLURL: it.HTMLURL,
 			Draft: it.Draft, SourceUpdatedAt: it.UpdatedAt, StateHash: hash,
 		}
 		saved, updated, err := p.Store.WorkItems().UpsertIfNewer(ctx, item, nil)
@@ -138,6 +140,7 @@ func (p *ExternalPoller) PollOne(ctx context.Context, repo store.Repository) err
 		if _, err := p.Store.Events().Create(ctx, store.Event{
 			ID: ulid.Make().String(), Source: "external_poll", Kind: kind, Action: "updated",
 			RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
+			SenderIsBot:          saved.AuthorIsBot,
 			OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &src, HTMLURL: saved.HTMLURL,
 			DedupeFingerprint: fp, StateHash: hash, PayloadSummary: map[string]any{"state": saved.State},
 		}); err != nil {

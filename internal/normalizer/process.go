@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/botutil"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/textutil"
 	"github.com/oklog/ulid/v2"
@@ -76,6 +77,7 @@ type ghInstallation struct {
 
 type ghUser struct {
 	Login string `json:"login"`
+	Type  string `json:"type"`
 }
 
 // ghLabel / ghMilestone 为 issue 与 PR 载荷共用的内嵌结构（字段一致，类型唯一）。
@@ -438,6 +440,7 @@ func (p *Processor) processStar(ctx context.Context, env envelope, deliveryID st
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: store.StarKind, Action: action,
 		RepositoryID: &repo.ID, Title: title, Actor: actor,
+		SenderIsBot:          botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
 		OccurredAt: starredAt, SourceUpdatedAt: &starredAt, HTMLURL: repo.HTMLURL,
 		PayloadSummary:       map[string]any{"count": env.Repository.StargazersCount},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
@@ -485,6 +488,7 @@ func (p *Processor) processWatch(ctx context.Context, env envelope, deliveryID s
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: store.WatchKind, Action: action,
 		RepositoryID: &repo.ID, Title: title, Actor: actor,
+		SenderIsBot:          botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
 		OccurredAt: occurredAt, SourceUpdatedAt: &occurredAt, HTMLURL: repo.HTMLURL,
 		PayloadSummary:       map[string]any{},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
@@ -526,6 +530,7 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 		State:           issue.State,
 		Title:           issue.Title,
 		Author:          issue.User.Login,
+		AuthorIsBot:     botutil.IsBotUser(issue.User.Login, issue.User.Type),
 		LabelsJSON:      labelsToAny(issue.Labels),
 		AssigneesJSON:   assigneesToAny(issue.Assignees),
 		Milestone:       milestoneTitle(issue.Milestone),
@@ -538,7 +543,7 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 	if trimmed := strings.TrimSpace(issue.Body); trimmed != "" {
 		extra = map[string]any{"body": textutil.TruncateUTF8Bytes(trimmed, textutil.MaxBodyTextBytes)}
 	}
-	return p.processWorkItem(ctx, repo, kind, item, env.Action, extra)
+	return p.processWorkItem(ctx, repo, kind, item, env.Action, env.Sender, extra)
 }
 
 func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Result, error) {
@@ -562,6 +567,7 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 		State:           pr.State,
 		Title:           pr.Title,
 		Author:          pr.User.Login,
+		AuthorIsBot:     botutil.IsBotUser(pr.User.Login, pr.User.Type),
 		LabelsJSON:      labelsToAny(pr.Labels),
 		AssigneesJSON:   assigneesToAny(pr.Assignees),
 		Milestone:       milestoneTitle(pr.Milestone),
@@ -575,7 +581,7 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 	if trimmed := strings.TrimSpace(pr.Body); trimmed != "" {
 		extra = map[string]any{"body": textutil.TruncateUTF8Bytes(trimmed, textutil.MaxBodyTextBytes)}
 	}
-	res, err := p.processWorkItem(ctx, repo, store.WorkItemKindPR, item, env.Action, extra)
+	res, err := p.processWorkItem(ctx, repo, store.WorkItemKindPR, item, env.Action, env.Sender, extra)
 	if err != nil {
 		return res, err
 	}
@@ -592,7 +598,7 @@ func (p *Processor) processPullRequest(ctx context.Context, env envelope) (Resul
 
 // processWorkItem 处理 issue/PR 共用的落库与事件创建：
 // 能力门禁 → UpsertIfNewer → 指纹去重 → Event 落库。kind 由调用方按载荷形态判定。
-func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, kind string, item store.WorkItem, action string, extraPayload ...map[string]any) (Result, error) {
+func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, kind string, item store.WorkItem, action string, sender ghUser, extraPayload ...map[string]any) (Result, error) {
 	// 能力门禁：对应类型开关关闭或仓库已归档时不再采集（不更新数据、不创建事件）。
 	if ok, reason := p.ingestGate(ctx, repo, kind); !ok {
 		p.logSkip(repo, kind, reason)
@@ -625,6 +631,7 @@ func (p *Processor) processWorkItem(ctx context.Context, repo store.Repository, 
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(action),
 		RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
+		SenderIsBot:          botutil.IsBotUser(sender.Login, sender.Type),
 		OccurredAt: saved.SourceUpdatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: saved.HTMLURL,
 		PayloadSummary:       payloadSummary,
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: item.StateHash,
@@ -692,6 +699,7 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: store.WorkflowRunKind, Action: "completed",
 		RepositoryID: &repo.ID, Title: run.Name, Actor: in.Actor, WorkflowRunID: &runID,
+		SenderIsBot:          botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
 		WorkflowConclusion: *run.Conclusion, OccurredAt: run.UpdatedAt, SourceUpdatedAt: &srcUpdated,
 		HTMLURL: run.HTMLURL,
 		PayloadSummary: map[string]any{
@@ -847,6 +855,7 @@ func (p *Processor) processSecurityAlert(ctx context.Context, kind string, env e
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "webhook", Kind: kind, Action: normalizeAction(env.Action),
 		RepositoryID: &repo.ID, SubjectNumber: &num, Title: rule, Severity: severity,
+		SenderIsBot:          botutil.IsBotUser(env.Sender.Login, env.Sender.Type),
 		OccurredAt: updatedAt, SourceUpdatedAt: &srcUpdated, HTMLURL: a.HTMLURL,
 		PayloadSummary:       map[string]any{"state": a.State, "severity": severity, "rule_or_dependency": rule},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,

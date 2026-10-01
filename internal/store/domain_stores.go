@@ -624,6 +624,7 @@ func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem, known *W
 			SetState(in.State).
 			SetTitle(in.Title).
 			SetAuthor(in.Author).
+			SetAuthorIsBot(in.AuthorIsBot).
 			SetLabelsJSON(in.LabelsJSON).
 			SetAssigneesJSON(in.AssigneesJSON).
 			SetMilestone(in.Milestone).
@@ -661,6 +662,7 @@ func (s *workItemStore) UpsertIfNewer(ctx context.Context, in WorkItem, known *W
 		SetState(in.State).
 		SetTitle(in.Title).
 		SetAuthor(in.Author).
+		SetAuthorIsBot(in.AuthorIsBot).
 		SetLabelsJSON(in.LabelsJSON).
 		SetAssigneesJSON(in.AssigneesJSON).
 		SetMilestone(in.Milestone).
@@ -881,7 +883,7 @@ func (s *workItemStore) CountOpen(ctx context.Context) (int, error) {
 func workItemFromEntity(e *entclient.WorkItem) WorkItem {
 	return WorkItem{
 		ID: e.ID, RepositoryID: e.RepositoryID, Number: e.Number, Kind: e.Kind, State: e.State,
-		Title: e.Title, Author: e.Author, LabelsJSON: e.LabelsJSON, AssigneesJSON: e.AssigneesJSON,
+		Title: e.Title, Author: e.Author, AuthorIsBot: e.AuthorIsBot, LabelsJSON: e.LabelsJSON, AssigneesJSON: e.AssigneesJSON,
 		Milestone: e.Milestone, Draft: e.Draft, Merged: e.Merged, HTMLURL: e.HTMLURL,
 		SourceUpdatedAt: e.SourceUpdatedAt, StateHash: e.StateHash,
 		ReviewState: e.ReviewState, ReviewDecision: e.ReviewDecision, Reviewers: e.Reviewers,
@@ -1314,6 +1316,7 @@ func (s *eventStore) Create(ctx context.Context, in Event) (Event, error) {
 		SetTitle(in.Title).
 		SetSeverity(in.Severity).
 		SetActor(in.Actor).
+		SetSenderIsBot(in.SenderIsBot).
 		SetWorkflowConclusion(in.WorkflowConclusion).
 		SetOccurredAt(in.OccurredAt.UTC()).
 		SetHTMLURL(in.HTMLURL).
@@ -1473,6 +1476,7 @@ func eventFromEntity(e *entclient.Event) Event {
 	return Event{
 		ID: e.ID, Source: e.Source, Kind: e.Kind, Action: e.Action, RepositoryID: e.RepositoryID,
 		SubjectNumber: e.SubjectNumber, Title: e.Title, Severity: e.Severity, Actor: e.Actor,
+		SenderIsBot: e.SenderIsBot,
 		WorkflowRunID: e.WorkflowRunID, WorkflowConclusion: e.WorkflowConclusion, OccurredAt: e.OccurredAt,
 		SourceUpdatedAt: e.SourceUpdatedAt, HTMLURL: e.HTMLURL, PayloadSummary: e.PayloadSummary,
 		SuppressNotification: e.SuppressNotification, DedupeFingerprint: e.DedupeFingerprint,
@@ -1500,6 +1504,7 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 				SetAllowPrivate(in.AllowPrivate).
 				SetEventKinds(in.EventKinds).
 				SetDigestEnabled(in.DigestEnabled).
+				SetIgnoreBots(in.IgnoreBots).
 				SetUpdatedAt(now).
 				Save(ctx)
 			if err != nil {
@@ -1522,6 +1527,7 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 		SetAllowPrivate(in.AllowPrivate).
 		SetEventKinds(in.EventKinds).
 		SetDigestEnabled(in.DigestEnabled).
+		SetIgnoreBots(in.IgnoreBots).
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
@@ -1616,7 +1622,7 @@ func channelFromEntity(e *entclient.NotificationChannel) NotificationChannel {
 	return NotificationChannel{
 		ID: e.ID, ChannelType: e.ChannelType, Name: e.Name, Enabled: e.Enabled,
 		Target: e.Target, SecretEnvelope: e.SecretEnvelope, AllowPrivate: e.AllowPrivate,
-		EventKinds: e.EventKinds, DigestEnabled: e.DigestEnabled,
+		EventKinds: e.EventKinds, DigestEnabled: e.DigestEnabled, IgnoreBots: e.IgnoreBots,
 		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 }

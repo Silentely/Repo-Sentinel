@@ -99,6 +99,11 @@ func DigestEnabled(v bool) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldDigestEnabled, v))
 }
 
+// IgnoreBots applies equality check predicate on the "ignore_bots" field. It's identical to IgnoreBotsEQ.
+func IgnoreBots(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldIgnoreBots, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldCreatedAt, v))
@@ -407,6 +412,16 @@ func DigestEnabledEQ(v bool) predicate.NotificationChannel {
 // DigestEnabledNEQ applies the NEQ predicate on the "digest_enabled" field.
 func DigestEnabledNEQ(v bool) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldNEQ(FieldDigestEnabled, v))
+}
+
+// IgnoreBotsEQ applies the EQ predicate on the "ignore_bots" field.
+func IgnoreBotsEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldIgnoreBots, v))
+}
+
+// IgnoreBotsNEQ applies the NEQ predicate on the "ignore_bots" field.
+func IgnoreBotsNEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldIgnoreBots, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

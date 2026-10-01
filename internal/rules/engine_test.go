@@ -1122,3 +1122,118 @@ func TestEvaluateWithIssueTriage(t *testing.T) {
 		t.Fatalf("正文应包含 Issue 智能分析与回复建议，实际: %s", items[0].BodyText)
 	}
 }
+
+func TestEngineBotSuppression(t *testing.T) {
+	data := openEngineStore(t)
+	ctx := t.Context()
+
+	// Channel 1: IgnoreBots = true
+	chIgnore, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg-ignore",
+		Enabled: true, Target: "ch-ignore", IgnoreBots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Channel 2: IgnoreBots = false
+	chNotify, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelHTTPWebhook, Name: "webhook-all",
+		Enabled: true, Target: "http://example.com/hook", IgnoreBots: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	e := &Engine{Store: data, Logger: logger}
+
+	num := int64(10)
+
+	// 1. Bot Issue -> chIgnore skips, chNotify receives
+	buf.Reset()
+	botIssue := normalizer.Result{Event: &store.Event{
+		ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened",
+		Title: "bot opened issue", Actor: "renovate[bot]", SubjectNumber: &num,
+		SenderIsBot: true, OccurredAt: time.Now().UTC(),
+	}}
+	if err := e.Evaluate(ctx, botIssue, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+
+	outbox, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only chNotify should have received this
+	var ch1Count, ch2Count int
+	for _, o := range outbox {
+		if o.ChannelID == chIgnore.ID {
+			ch1Count++
+		} else if o.ChannelID == chNotify.ID {
+			ch2Count++
+		}
+	}
+	if ch1Count != 0 {
+		t.Errorf("expected chIgnore to receive 0 outbox for bot issue, got %d", ch1Count)
+	}
+	if ch2Count != 1 {
+		t.Errorf("expected chNotify to receive 1 outbox for bot issue, got %d", ch2Count)
+	}
+	if !strings.Contains(buf.String(), "bot_suppressed") {
+		t.Errorf("expected logger to record bot_suppressed, got %s", buf.String())
+	}
+
+	// 2. Human Issue -> both receive
+	humanIssue := normalizer.Result{Event: &store.Event{
+		ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened",
+		Title: "human opened issue", Actor: "alice", SubjectNumber: &num,
+		SenderIsBot: false, OccurredAt: time.Now().UTC(),
+	}}
+	if err := e.Evaluate(ctx, humanIssue, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+	outbox, _, _ = data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 50})
+	ch1Count, ch2Count = 0, 0
+	for _, o := range outbox {
+		if o.ChannelID == chIgnore.ID {
+			ch1Count++
+		} else if o.ChannelID == chNotify.ID {
+			ch2Count++
+		}
+	}
+	// chIgnore: was 0, now +1 = 1. chNotify: was 1, now +1 = 2.
+	if ch1Count != 1 {
+		t.Errorf("expected chIgnore to receive 1 outbox for human issue, got %d", ch1Count)
+	}
+	if ch2Count != 2 {
+		t.Errorf("expected chNotify to receive 2 outboxes total, got %d", ch2Count)
+	}
+
+	// 3. Security Alert with SenderIsBot: true -> both receive (exempt from bot suppression)
+	botAlert := normalizer.Result{Event: &store.Event{
+		ID: ulid.Make().String(), Kind: store.AlertKindDependabot, Action: "created",
+		Title: "critical vulnx", Severity: "critical", SubjectNumber: &num,
+		SenderIsBot: true, OccurredAt: time.Now().UTC(),
+	}}
+	if err := e.Evaluate(ctx, botAlert, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+	outbox, _, _ = data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 50})
+	ch1Count, ch2Count = 0, 0
+	for _, o := range outbox {
+		if o.ChannelID == chIgnore.ID {
+			ch1Count++
+		} else if o.ChannelID == chNotify.ID {
+			ch2Count++
+		}
+	}
+	// chIgnore: was 1, now +1 = 2 (security alert not suppressed). chNotify: was 2, now +1 = 3.
+	if ch1Count != 2 {
+		t.Errorf("expected chIgnore to receive security alert despite SenderIsBot, got %d", ch1Count)
+	}
+	if ch2Count != 3 {
+		t.Errorf("expected chNotify to receive security alert, got %d", ch2Count)
+	}
+}

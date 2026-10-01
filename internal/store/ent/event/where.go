@@ -104,6 +104,11 @@ func Actor(v string) predicate.Event {
 	return predicate.Event(sql.FieldEQ(FieldActor, v))
 }
 
+// SenderIsBot applies equality check predicate on the "sender_is_bot" field. It's identical to SenderIsBotEQ.
+func SenderIsBot(v bool) predicate.Event {
+	return predicate.Event(sql.FieldEQ(FieldSenderIsBot, v))
+}
+
 // WorkflowRunID applies equality check predicate on the "workflow_run_id" field. It's identical to WorkflowRunIDEQ.
 func WorkflowRunID(v int64) predicate.Event {
 	return predicate.Event(sql.FieldEQ(FieldWorkflowRunID, v))
@@ -662,6 +667,16 @@ func ActorEqualFold(v string) predicate.Event {
 // ActorContainsFold applies the ContainsFold predicate on the "actor" field.
 func ActorContainsFold(v string) predicate.Event {
 	return predicate.Event(sql.FieldContainsFold(FieldActor, v))
+}
+
+// SenderIsBotEQ applies the EQ predicate on the "sender_is_bot" field.
+func SenderIsBotEQ(v bool) predicate.Event {
+	return predicate.Event(sql.FieldEQ(FieldSenderIsBot, v))
+}
+
+// SenderIsBotNEQ applies the NEQ predicate on the "sender_is_bot" field.
+func SenderIsBotNEQ(v bool) predicate.Event {
+	return predicate.Event(sql.FieldNEQ(FieldSenderIsBot, v))
 }
 
 // WorkflowRunIDEQ applies the EQ predicate on the "workflow_run_id" field.

@@ -8,7 +8,7 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children }: { to: string; children?: ReactNode }) => <a href={to}>{children}</a>,
 }));
 
-import { BatchActionBar, ClearFiltersButton, FeatureGuard } from "./list-shared";
+import { BatchActionBar, ClearFiltersButton, FeatureGuard, isBotUser, BotBadge } from "./list-shared";
 
 function renderGuard() {
   const queryClient = new QueryClient({
@@ -97,5 +97,41 @@ describe("BatchActionBar", () => {
     );
     const ignoreBtn = screen.getByRole("button", { name: "处理中…" });
     expect(ignoreBtn).toBeDisabled();
+  });
+});
+
+describe("isBotUser 识别规则", () => {
+  it("识别以 [bot] 为后缀的机器账号", () => {
+    expect(isBotUser("renovate[bot]")).toBe(true);
+    expect(isBotUser("dependabot[bot]")).toBe(true);
+    expect(isBotUser("my-custom-bot[bot]")).toBe(true);
+  });
+
+  it("识别白名单内的常用服务机器账号", () => {
+    expect(isBotUser("dependabot")).toBe(true);
+    expect(isBotUser("renovate")).toBe(true);
+    expect(isBotUser("github-actions")).toBe(true);
+    expect(isBotUser("snyk-bot")).toBe(true);
+    expect(isBotUser("codecov")).toBe(true);
+    expect(isBotUser("copilot")).toBe(true);
+  });
+
+  it("识别以 bot- 开头的机器账号", () => {
+    expect(isBotUser("bot-worker")).toBe(true);
+  });
+
+  it("正常人类开发者账号返回 false", () => {
+    expect(isBotUser("octocat")).toBe(false);
+    expect(isBotUser("alice")).toBe(false);
+    expect(isBotUser(null)).toBe(false);
+    expect(isBotUser(undefined)).toBe(false);
+    expect(isBotUser("")).toBe(false);
+  });
+});
+
+describe("BotBadge 组件", () => {
+  it("渲染带有 BOT 文本的徽章", () => {
+    render(<BotBadge />);
+    expect(screen.getByText("BOT")).toBeInTheDocument();
   });
 });

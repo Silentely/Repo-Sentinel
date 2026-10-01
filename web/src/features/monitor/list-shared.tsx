@@ -281,3 +281,52 @@ export function BatchActionBar({
 }
 
 export { ListShell, ListSkeleton };
+
+/**
+ * 机器账号（Bot）识别辅助函数：与后端 botutil 规则保持一致。
+ * 匹配规则：以 [bot] 结尾、以 bot- 开头、或常见常用 bot 名称。
+ */
+export function isBotUser(login?: string | null): boolean {
+  if (!login) return false;
+  const lower = login.trim().toLowerCase();
+  if (lower.endsWith("[bot]")) return true;
+  if (lower.startsWith("bot-") || lower.startsWith("bot_")) return true;
+  const knownBots = new Set([
+    "dependabot",
+    "github-actions",
+    "renovate",
+    "greenkeeper",
+    "snyk-bot",
+    "codecov",
+    "sonarcloud",
+    "stale",
+    "copilot",
+  ]);
+  return knownBots.has(lower);
+}
+
+/** 机器账号标识徽章 */
+export function BotBadge() {
+  return (
+    <span
+      className="badge badge--neutral badge--compact"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        fontSize: "0.6875rem",
+        lineHeight: 1,
+        padding: "0.125rem 0.3125rem",
+        borderRadius: "0.25rem",
+        fontWeight: 600,
+        marginLeft: "0.25rem",
+        verticalAlign: "middle",
+        textTransform: "uppercase",
+        letterSpacing: "0.02em",
+        opacity: 0.85,
+      }}
+      title="机器人账号 (Bot)"
+    >
+      BOT
+    </span>
+  );
+}

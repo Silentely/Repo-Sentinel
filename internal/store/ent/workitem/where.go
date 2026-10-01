@@ -94,6 +94,11 @@ func Author(v string) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldAuthor, v))
 }
 
+// AuthorIsBot applies equality check predicate on the "author_is_bot" field. It's identical to AuthorIsBotEQ.
+func AuthorIsBot(v bool) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldAuthorIsBot, v))
+}
+
 // Milestone applies equality check predicate on the "milestone" field. It's identical to MilestoneEQ.
 func Milestone(v string) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldMilestone, v))
@@ -532,6 +537,16 @@ func AuthorEqualFold(v string) predicate.WorkItem {
 // AuthorContainsFold applies the ContainsFold predicate on the "author" field.
 func AuthorContainsFold(v string) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldContainsFold(FieldAuthor, v))
+}
+
+// AuthorIsBotEQ applies the EQ predicate on the "author_is_bot" field.
+func AuthorIsBotEQ(v bool) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldAuthorIsBot, v))
+}
+
+// AuthorIsBotNEQ applies the NEQ predicate on the "author_is_bot" field.
+func AuthorIsBotNEQ(v bool) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldAuthorIsBot, v))
 }
 
 // LabelsJSONIsNil applies the IsNil predicate on the "labels_json" field.

@@ -116,6 +116,20 @@ func (_c *NotificationChannelCreate) SetNillableDigestEnabled(v *bool) *Notifica
 	return _c
 }
 
+// SetIgnoreBots sets the "ignore_bots" field.
+func (_c *NotificationChannelCreate) SetIgnoreBots(v bool) *NotificationChannelCreate {
+	_c.mutation.SetIgnoreBots(v)
+	return _c
+}
+
+// SetNillableIgnoreBots sets the "ignore_bots" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableIgnoreBots(v *bool) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetIgnoreBots(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *NotificationChannelCreate) SetCreatedAt(v time.Time) *NotificationChannelCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -193,6 +207,10 @@ func (_c *NotificationChannelCreate) defaults() {
 		v := notificationchannel.DefaultDigestEnabled
 		_c.mutation.SetDigestEnabled(v)
 	}
+	if _, ok := _c.mutation.IgnoreBots(); !ok {
+		v := notificationchannel.DefaultIgnoreBots
+		_c.mutation.SetIgnoreBots(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -217,6 +235,9 @@ func (_c *NotificationChannelCreate) check() error {
 	}
 	if _, ok := _c.mutation.DigestEnabled(); !ok {
 		return &ValidationError{Name: "digest_enabled", err: errors.New(`ent: missing required field "NotificationChannel.digest_enabled"`)}
+	}
+	if _, ok := _c.mutation.IgnoreBots(); !ok {
+		return &ValidationError{Name: "ignore_bots", err: errors.New(`ent: missing required field "NotificationChannel.ignore_bots"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "NotificationChannel.created_at"`)}
@@ -290,6 +311,10 @@ func (_c *NotificationChannelCreate) createSpec() (*NotificationChannel, *sqlgra
 	if value, ok := _c.mutation.DigestEnabled(); ok {
 		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)
 		_node.DigestEnabled = value
+	}
+	if value, ok := _c.mutation.IgnoreBots(); ok {
+		_spec.SetField(notificationchannel.FieldIgnoreBots, field.TypeBool, value)
+		_node.IgnoreBots = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(notificationchannel.FieldCreatedAt, field.TypeTime, value)

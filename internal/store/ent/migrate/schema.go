@@ -117,6 +117,7 @@ var (
 		{Name: "title", Type: field.TypeString, Default: ""},
 		{Name: "severity", Type: field.TypeString, Default: ""},
 		{Name: "actor", Type: field.TypeString, Default: ""},
+		{Name: "sender_is_bot", Type: field.TypeBool, Default: false},
 		{Name: "workflow_run_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "workflow_conclusion", Type: field.TypeString, Default: ""},
 		{Name: "occurred_at", Type: field.TypeTime},
@@ -137,22 +138,22 @@ var (
 			{
 				Name:    "event_dedupe_fingerprint",
 				Unique:  true,
-				Columns: []*schema.Column{EventsColumns[16]},
+				Columns: []*schema.Column{EventsColumns[17]},
 			},
 			{
 				Name:    "event_repository_id_kind_occurred_at",
 				Unique:  false,
-				Columns: []*schema.Column{EventsColumns[4], EventsColumns[2], EventsColumns[11]},
+				Columns: []*schema.Column{EventsColumns[4], EventsColumns[2], EventsColumns[12]},
 			},
 			{
 				Name:    "event_occurred_at",
 				Unique:  false,
-				Columns: []*schema.Column{EventsColumns[11]},
+				Columns: []*schema.Column{EventsColumns[12]},
 			},
 			{
 				Name:    "event_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{EventsColumns[18]},
+				Columns: []*schema.Column{EventsColumns[19]},
 			},
 		},
 	}
@@ -192,6 +193,7 @@ var (
 		{Name: "allow_private", Type: field.TypeBool, Default: false},
 		{Name: "event_kinds", Type: field.TypeJSON, Nullable: true},
 		{Name: "digest_enabled", Type: field.TypeBool, Default: true},
+		{Name: "ignore_bots", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -524,6 +526,7 @@ var (
 		{Name: "state", Type: field.TypeString},
 		{Name: "title", Type: field.TypeString},
 		{Name: "author", Type: field.TypeString, Default: ""},
+		{Name: "author_is_bot", Type: field.TypeBool, Default: false},
 		{Name: "labels_json", Type: field.TypeJSON, Nullable: true},
 		{Name: "assignees_json", Type: field.TypeJSON, Nullable: true},
 		{Name: "milestone", Type: field.TypeString, Default: ""},
@@ -562,22 +565,22 @@ var (
 			{
 				Name:    "workitem_ignored_kind_state",
 				Unique:  false,
-				Columns: []*schema.Column{WorkItemsColumns[22], WorkItemsColumns[3], WorkItemsColumns[4]},
+				Columns: []*schema.Column{WorkItemsColumns[23], WorkItemsColumns[3], WorkItemsColumns[4]},
 			},
 			{
 				Name:    "workitem_ignored_review_decision",
 				Unique:  false,
-				Columns: []*schema.Column{WorkItemsColumns[22], WorkItemsColumns[16]},
+				Columns: []*schema.Column{WorkItemsColumns[23], WorkItemsColumns[17]},
 			},
 			{
 				Name:    "workitem_ignored_check_status",
 				Unique:  false,
-				Columns: []*schema.Column{WorkItemsColumns[22], WorkItemsColumns[18]},
+				Columns: []*schema.Column{WorkItemsColumns[23], WorkItemsColumns[19]},
 			},
 			{
 				Name:    "workitem_updated_at",
 				Unique:  false,
-				Columns: []*schema.Column{WorkItemsColumns[24]},
+				Columns: []*schema.Column{WorkItemsColumns[25]},
 			},
 		},
 	}

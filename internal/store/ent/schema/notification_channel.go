@@ -24,6 +24,7 @@ func (NotificationChannel) Fields() []ent.Field {
 		field.Bool("allow_private").Default(false),
 		field.JSON("event_kinds", []string{}).Optional(), // 订阅的实时通知类型；NULL=全部
 		field.Bool("digest_enabled").Default(true),       // 是否接收每日汇总
+		field.Bool("ignore_bots").Default(false),          // 免打扰：忽略机器人常规 Issue/PR 动态
 		field.Time("created_at").Immutable(),
 		field.Time("updated_at"),
 	}

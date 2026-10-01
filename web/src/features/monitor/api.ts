@@ -128,6 +128,7 @@ export interface NotificationChannelRow {
   // 订阅的实时通知类型；null 表示全部订阅。
   event_kinds: string[] | null;
   digest_enabled: boolean;
+  ignore_bots: boolean;
   updated_at?: string;
 }
 
@@ -257,6 +258,7 @@ export async function upsertChannel(
     // 订阅的实时通知类型；不传则保留后端现值。
     event_kinds?: string[];
     digest_enabled?: boolean;
+    ignore_bots?: boolean;
   },
 ): Promise<void> {
   await apiRequest(`/api/v1/notifications/channels/${type}`, {

@@ -145,6 +145,20 @@ func (_u *NotificationChannelUpdate) SetNillableDigestEnabled(v *bool) *Notifica
 	return _u
 }
 
+// SetIgnoreBots sets the "ignore_bots" field.
+func (_u *NotificationChannelUpdate) SetIgnoreBots(v bool) *NotificationChannelUpdate {
+	_u.mutation.SetIgnoreBots(v)
+	return _u
+}
+
+// SetNillableIgnoreBots sets the "ignore_bots" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableIgnoreBots(v *bool) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetIgnoreBots(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *NotificationChannelUpdate) SetUpdatedAt(v time.Time) *NotificationChannelUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -231,6 +245,9 @@ func (_u *NotificationChannelUpdate) sqlSave(ctx context.Context) (_node int, er
 	}
 	if value, ok := _u.mutation.DigestEnabled(); ok {
 		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IgnoreBots(); ok {
+		_spec.SetField(notificationchannel.FieldIgnoreBots, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(notificationchannel.FieldUpdatedAt, field.TypeTime, value)
@@ -371,6 +388,20 @@ func (_u *NotificationChannelUpdateOne) SetNillableDigestEnabled(v *bool) *Notif
 	return _u
 }
 
+// SetIgnoreBots sets the "ignore_bots" field.
+func (_u *NotificationChannelUpdateOne) SetIgnoreBots(v bool) *NotificationChannelUpdateOne {
+	_u.mutation.SetIgnoreBots(v)
+	return _u
+}
+
+// SetNillableIgnoreBots sets the "ignore_bots" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableIgnoreBots(v *bool) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetIgnoreBots(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *NotificationChannelUpdateOne) SetUpdatedAt(v time.Time) *NotificationChannelUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -487,6 +518,9 @@ func (_u *NotificationChannelUpdateOne) sqlSave(ctx context.Context) (_node *Not
 	}
 	if value, ok := _u.mutation.DigestEnabled(); ok {
 		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IgnoreBots(); ok {
+		_spec.SetField(notificationchannel.FieldIgnoreBots, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(notificationchannel.FieldUpdatedAt, field.TypeTime, value)

@@ -1197,3 +1197,71 @@ func TestProcessWatchReplayIdempotent(t *testing.T) {
 		t.Fatalf("不同 delivery 应各自建事件，got %d", got)
 	}
 }
+
+func TestProcessBotDetection(t *testing.T) {
+	st := openProcessStore(t)
+	p := &normalizer.Processor{Store: st}
+	ctx := context.Background()
+
+	// 1. Bot PR
+	botPayload := []byte(`{
+		"action": "opened",
+		"pull_request": {
+			"number": 1,
+			"title": "bump deps",
+			"state": "open",
+			"user": {"login": "dependabot[bot]", "type": "Bot"},
+			"html_url": "https://github.com/o/r/pull/1"
+		},
+		"sender": {"login": "dependabot[bot]", "type": "Bot"},
+		"repository": {"id": 1001, "name": "r", "full_name": "o/r", "html_url": "https://github.com/o/r", "owner": {"login": "o"}}
+	}`)
+	res, err := p.Process(ctx, "pull_request", "dlv-bot-pr", botPayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Event == nil {
+		t.Fatal("expected event")
+	}
+	if !res.Event.SenderIsBot {
+		t.Errorf("expected Event.SenderIsBot=true, got false")
+	}
+	wi, err := st.WorkItems().GetByRepoNumber(ctx, *res.Event.RepositoryID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wi.AuthorIsBot {
+		t.Errorf("expected WorkItem.AuthorIsBot=true, got false")
+	}
+
+	// 2. Human Issue
+	humanPayload := []byte(`{
+		"action": "opened",
+		"issue": {
+			"number": 2,
+			"title": "bug report",
+			"state": "open",
+			"user": {"login": "alice", "type": "User"},
+			"html_url": "https://github.com/o/r/issues/2"
+		},
+		"sender": {"login": "alice", "type": "User"},
+		"repository": {"id": 1001, "name": "r", "full_name": "o/r", "html_url": "https://github.com/o/r", "owner": {"login": "o"}}
+	}`)
+	res2, err := p.Process(ctx, "issues", "dlv-human-issue", humanPayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.Event == nil {
+		t.Fatal("expected event")
+	}
+	if res2.Event.SenderIsBot {
+		t.Errorf("expected Event.SenderIsBot=false, got true")
+	}
+	wi2, err := st.WorkItems().GetByRepoNumber(ctx, *res2.Event.RepositoryID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wi2.AuthorIsBot {
+		t.Errorf("expected WorkItem.AuthorIsBot=false, got true")
+	}
+}

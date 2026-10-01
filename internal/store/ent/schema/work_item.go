@@ -22,6 +22,7 @@ func (WorkItem) Fields() []ent.Field {
 		field.String("state"),
 		field.String("title"),
 		field.String("author").Default(""),
+		field.Bool("author_is_bot").Default(false),
 		field.JSON("labels_json", []any{}).Optional(),
 		field.JSON("assignees_json", []any{}).Optional(),
 		field.String("milestone").Default(""),

@@ -42,20 +42,24 @@ func init() {
 	eventDescActor := eventFields[8].Descriptor()
 	// event.DefaultActor holds the default value on creation for the actor field.
 	event.DefaultActor = eventDescActor.Default.(string)
+	// eventDescSenderIsBot is the schema descriptor for sender_is_bot field.
+	eventDescSenderIsBot := eventFields[9].Descriptor()
+	// event.DefaultSenderIsBot holds the default value on creation for the sender_is_bot field.
+	event.DefaultSenderIsBot = eventDescSenderIsBot.Default.(bool)
 	// eventDescWorkflowConclusion is the schema descriptor for workflow_conclusion field.
-	eventDescWorkflowConclusion := eventFields[10].Descriptor()
+	eventDescWorkflowConclusion := eventFields[11].Descriptor()
 	// event.DefaultWorkflowConclusion holds the default value on creation for the workflow_conclusion field.
 	event.DefaultWorkflowConclusion = eventDescWorkflowConclusion.Default.(string)
 	// eventDescHTMLURL is the schema descriptor for html_url field.
-	eventDescHTMLURL := eventFields[13].Descriptor()
+	eventDescHTMLURL := eventFields[14].Descriptor()
 	// event.DefaultHTMLURL holds the default value on creation for the html_url field.
 	event.DefaultHTMLURL = eventDescHTMLURL.Default.(string)
 	// eventDescSuppressNotification is the schema descriptor for suppress_notification field.
-	eventDescSuppressNotification := eventFields[15].Descriptor()
+	eventDescSuppressNotification := eventFields[16].Descriptor()
 	// event.DefaultSuppressNotification holds the default value on creation for the suppress_notification field.
 	event.DefaultSuppressNotification = eventDescSuppressNotification.Default.(bool)
 	// eventDescStateHash is the schema descriptor for state_hash field.
-	eventDescStateHash := eventFields[17].Descriptor()
+	eventDescStateHash := eventFields[18].Descriptor()
 	// event.DefaultStateHash holds the default value on creation for the state_hash field.
 	event.DefaultStateHash = eventDescStateHash.Default.(string)
 	githubinstallationFields := schema.GitHubInstallation{}.Fields()
@@ -94,6 +98,10 @@ func init() {
 	notificationchannelDescDigestEnabled := notificationchannelFields[8].Descriptor()
 	// notificationchannel.DefaultDigestEnabled holds the default value on creation for the digest_enabled field.
 	notificationchannel.DefaultDigestEnabled = notificationchannelDescDigestEnabled.Default.(bool)
+	// notificationchannelDescIgnoreBots is the schema descriptor for ignore_bots field.
+	notificationchannelDescIgnoreBots := notificationchannelFields[9].Descriptor()
+	// notificationchannel.DefaultIgnoreBots holds the default value on creation for the ignore_bots field.
+	notificationchannel.DefaultIgnoreBots = notificationchannelDescIgnoreBots.Default.(bool)
 	notificationoutboxFields := schema.NotificationOutbox{}.Fields()
 	_ = notificationoutboxFields
 	// notificationoutboxDescAggregateKey is the schema descriptor for aggregate_key field.
@@ -244,48 +252,52 @@ func init() {
 	workitemDescAuthor := workitemFields[6].Descriptor()
 	// workitem.DefaultAuthor holds the default value on creation for the author field.
 	workitem.DefaultAuthor = workitemDescAuthor.Default.(string)
+	// workitemDescAuthorIsBot is the schema descriptor for author_is_bot field.
+	workitemDescAuthorIsBot := workitemFields[7].Descriptor()
+	// workitem.DefaultAuthorIsBot holds the default value on creation for the author_is_bot field.
+	workitem.DefaultAuthorIsBot = workitemDescAuthorIsBot.Default.(bool)
 	// workitemDescMilestone is the schema descriptor for milestone field.
-	workitemDescMilestone := workitemFields[9].Descriptor()
+	workitemDescMilestone := workitemFields[10].Descriptor()
 	// workitem.DefaultMilestone holds the default value on creation for the milestone field.
 	workitem.DefaultMilestone = workitemDescMilestone.Default.(string)
 	// workitemDescDraft is the schema descriptor for draft field.
-	workitemDescDraft := workitemFields[10].Descriptor()
+	workitemDescDraft := workitemFields[11].Descriptor()
 	// workitem.DefaultDraft holds the default value on creation for the draft field.
 	workitem.DefaultDraft = workitemDescDraft.Default.(bool)
 	// workitemDescMerged is the schema descriptor for merged field.
-	workitemDescMerged := workitemFields[11].Descriptor()
+	workitemDescMerged := workitemFields[12].Descriptor()
 	// workitem.DefaultMerged holds the default value on creation for the merged field.
 	workitem.DefaultMerged = workitemDescMerged.Default.(bool)
 	// workitemDescHTMLURL is the schema descriptor for html_url field.
-	workitemDescHTMLURL := workitemFields[12].Descriptor()
+	workitemDescHTMLURL := workitemFields[13].Descriptor()
 	// workitem.DefaultHTMLURL holds the default value on creation for the html_url field.
 	workitem.DefaultHTMLURL = workitemDescHTMLURL.Default.(string)
 	// workitemDescReviewState is the schema descriptor for review_state field.
-	workitemDescReviewState := workitemFields[15].Descriptor()
+	workitemDescReviewState := workitemFields[16].Descriptor()
 	// workitem.DefaultReviewState holds the default value on creation for the review_state field.
 	workitem.DefaultReviewState = workitemDescReviewState.Default.(string)
 	// workitemDescReviewDecision is the schema descriptor for review_decision field.
-	workitemDescReviewDecision := workitemFields[16].Descriptor()
+	workitemDescReviewDecision := workitemFields[17].Descriptor()
 	// workitem.DefaultReviewDecision holds the default value on creation for the review_decision field.
 	workitem.DefaultReviewDecision = workitemDescReviewDecision.Default.(string)
 	// workitemDescCheckStatus is the schema descriptor for check_status field.
-	workitemDescCheckStatus := workitemFields[18].Descriptor()
+	workitemDescCheckStatus := workitemFields[19].Descriptor()
 	// workitem.DefaultCheckStatus holds the default value on creation for the check_status field.
 	workitem.DefaultCheckStatus = workitemDescCheckStatus.Default.(string)
 	// workitemDescCheckConclusion is the schema descriptor for check_conclusion field.
-	workitemDescCheckConclusion := workitemFields[19].Descriptor()
+	workitemDescCheckConclusion := workitemFields[20].Descriptor()
 	// workitem.DefaultCheckConclusion holds the default value on creation for the check_conclusion field.
 	workitem.DefaultCheckConclusion = workitemDescCheckConclusion.Default.(string)
 	// workitemDescChecksTotal is the schema descriptor for checks_total field.
-	workitemDescChecksTotal := workitemFields[20].Descriptor()
+	workitemDescChecksTotal := workitemFields[21].Descriptor()
 	// workitem.DefaultChecksTotal holds the default value on creation for the checks_total field.
 	workitem.DefaultChecksTotal = workitemDescChecksTotal.Default.(int)
 	// workitemDescChecksPassed is the schema descriptor for checks_passed field.
-	workitemDescChecksPassed := workitemFields[21].Descriptor()
+	workitemDescChecksPassed := workitemFields[22].Descriptor()
 	// workitem.DefaultChecksPassed holds the default value on creation for the checks_passed field.
 	workitem.DefaultChecksPassed = workitemDescChecksPassed.Default.(int)
 	// workitemDescIgnored is the schema descriptor for ignored field.
-	workitemDescIgnored := workitemFields[22].Descriptor()
+	workitemDescIgnored := workitemFields[23].Descriptor()
 	// workitem.DefaultIgnored holds the default value on creation for the ignored field.
 	workitem.DefaultIgnored = workitemDescIgnored.Default.(bool)
 	workflowrunFields := schema.WorkflowRun{}.Fields()

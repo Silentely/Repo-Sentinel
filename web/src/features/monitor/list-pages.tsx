@@ -50,6 +50,8 @@ import {
   useActiveRepos,
   useIgnoreMutation,
   BatchActionBar,
+  BotBadge,
+  isBotUser,
   type IgnoredMode,
 } from "./list-shared";
 
@@ -61,6 +63,7 @@ interface WorkItem {
   state: string;
   html_url: string;
   author: string;
+  author_is_bot?: boolean;
   repository_id?: string;
   repository_full_name?: string;
   draft?: boolean;
@@ -195,22 +198,9 @@ function EventListBody({
 }
 
 
-export function isBotAuthor(author?: string): boolean {
-  if (!author) return false;
-  const lower = author.toLowerCase().trim();
-  if (lower.endsWith("[bot]")) return true;
-  switch (lower) {
-    case "dependabot":
-    case "renovate":
-    case "github-actions":
-    case "greenkeeper":
-    case "snyk-bot":
-    case "codecov":
-    case "copilot":
-      return true;
-    default:
-      return false;
-  }
+export function isBotAuthor(author?: string, authorIsBot?: boolean): boolean {
+  if (authorIsBot !== undefined) return authorIsBot;
+  return isBotUser(author);
 }
 
 function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string {
@@ -257,7 +247,7 @@ function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string
 
   parts.push(`**代码健康评分**: \`${review.score} / 100\` (${scoreBadge})\n`);
   if (item?.author) {
-    const botTag = isBotAuthor(item.author) ? " [Bot]" : "";
+    const botTag = isBotAuthor(item.author, item.author_is_bot) ? " [Bot]" : "";
     parts.push(`**PR 作者**: @${item.author}${botTag}\n`);
   }
   if (review.diff_truncated) {
@@ -512,7 +502,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
           ) : !review ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
               <span className="muted">
-                {isBotAuthor(item?.author)
+                {isBotAuthor(item?.author, item?.author_is_bot)
                   ? "🤖 机器人提交的 PR 默认跳过自动审查，可按需手动触发。"
                   : "暂无 AI 审查报告（可能未开启自动审查或正等待触发）。"}
               </span>
@@ -620,21 +610,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                   {item?.author && (
                     <span className="muted" style={{ fontSize: "0.75rem" }}>
                       作者: @{item.author}
-                      {isBotAuthor(item.author) && (
-                        <span
-                          className="label"
-                          style={{
-                            marginLeft: "0.25rem",
-                            fontSize: "0.65rem",
-                            padding: "0.05rem 0.25rem",
-                            background: "rgba(107, 114, 128, 0.15)",
-                            color: "var(--color-text-secondary, #6b7280)",
-                            borderRadius: "3px",
-                          }}
-                        >
-                          Bot
-                        </span>
-                      )}
+                      {isBotAuthor(item.author, item.author_is_bot) && <BotBadge />}
                     </span>
                   )}
                   {item?.html_url && (
@@ -1150,23 +1126,7 @@ function WorkItemsList({ kind, title, description }: { kind: string; title: stri
                   <div className="pr-meta">
                     <span className="muted">
                       {it.author ? ` · ${it.author}` : ""}
-                      {isBotAuthor(it.author) && (
-                        <span
-                          className="label"
-                          style={{
-                            marginLeft: "0.35rem",
-                            fontSize: "0.7rem",
-                            padding: "0.05rem 0.35rem",
-                            background: "rgba(107, 114, 128, 0.15)",
-                            color: "var(--color-text-secondary, #6b7280)",
-                            borderRadius: "3px",
-                            verticalAlign: "middle",
-                          }}
-                          title="机器人用户提交"
-                        >
-                          🤖 Bot
-                        </span>
-                      )}
+                      {isBotAuthor(it.author, it.author_is_bot) && <BotBadge />}
                     </span>
                     {it.labels && it.labels.length > 0 && (
                       <div className="labels">

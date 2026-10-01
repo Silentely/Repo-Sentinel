@@ -292,6 +292,7 @@ type WorkItem struct {
 	State              string    `json:"state"`
 	Title              string    `json:"title"`
 	Author             string    `json:"author"`
+	AuthorIsBot        bool      `json:"author_is_bot"`
 	LabelsJSON         []any     `json:"labels,omitempty"`
 	AssigneesJSON      []any     `json:"assignees,omitempty"`
 	Milestone          string    `json:"milestone,omitempty"`
@@ -372,6 +373,7 @@ type Event struct {
 	Title                string         `json:"title"`
 	Severity             string         `json:"severity"`
 	Actor                string         `json:"actor"`
+	SenderIsBot          bool           `json:"sender_is_bot"`
 	WorkflowRunID        *int64         `json:"workflow_run_id,omitempty"`
 	WorkflowConclusion   string         `json:"workflow_conclusion,omitempty"`
 	OccurredAt           time.Time      `json:"occurred_at"`
@@ -414,6 +416,7 @@ type NotificationChannel struct {
 	EventKinds []string `json:"event_kinds"`
 	// DigestEnabled 是否接收每日汇总。
 	DigestEnabled bool      `json:"digest_enabled"`
+	IgnoreBots    bool      `json:"ignore_bots"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }

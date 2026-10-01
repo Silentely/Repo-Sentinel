@@ -23,6 +23,8 @@ const (
 	FieldTitle = "title"
 	// FieldAuthor holds the string denoting the author field in the database.
 	FieldAuthor = "author"
+	// FieldAuthorIsBot holds the string denoting the author_is_bot field in the database.
+	FieldAuthorIsBot = "author_is_bot"
 	// FieldLabelsJSON holds the string denoting the labels_json field in the database.
 	FieldLabelsJSON = "labels_json"
 	// FieldAssigneesJSON holds the string denoting the assignees_json field in the database.
@@ -72,6 +74,7 @@ var Columns = []string{
 	FieldState,
 	FieldTitle,
 	FieldAuthor,
+	FieldAuthorIsBot,
 	FieldLabelsJSON,
 	FieldAssigneesJSON,
 	FieldMilestone,
@@ -105,6 +108,8 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultAuthor holds the default value on creation for the "author" field.
 	DefaultAuthor string
+	// DefaultAuthorIsBot holds the default value on creation for the "author_is_bot" field.
+	DefaultAuthorIsBot bool
 	// DefaultMilestone holds the default value on creation for the "milestone" field.
 	DefaultMilestone string
 	// DefaultDraft holds the default value on creation for the "draft" field.
@@ -165,6 +170,11 @@ func ByTitle(opts ...sql.OrderTermOption) OrderOption {
 // ByAuthor orders the results by the author field.
 func ByAuthor(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAuthor, opts...).ToFunc()
+}
+
+// ByAuthorIsBot orders the results by the author_is_bot field.
+func ByAuthorIsBot(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAuthorIsBot, opts...).ToFunc()
 }
 
 // ByMilestone orders the results by the milestone field.

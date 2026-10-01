@@ -90,6 +90,7 @@ function ChannelForm({
   const [secret, setSecret] = useState("");
   const [kinds, setKinds] = useState<string[]>(() => SUBSCRIBABLE_KINDS.map((k) => k.value));
   const [digest, setDigest] = useState(true);
+  const [ignoreBots, setIgnoreBots] = useState(false);
 
   // 仅在渠道记录就绪时回填一次（按实例 ID 记账），避免覆盖用户正在编辑的勾选；
   // 依赖完整（channel 与 setter 均入数组），不依赖禁用 exhaustive-deps。
@@ -102,6 +103,7 @@ function ChannelForm({
     prefilledIdRef.current = channel.id;
     setKinds(uiCheckedKinds(channel.event_kinds));
     setDigest(channel.digest_enabled);
+    setIgnoreBots(channel.ignore_bots ?? false);
     // 预填目标值，避免「只改订阅」时表单为空误清空。
     if (channel.target) setTarget(channel.target);
   }, [channel, setKinds, setDigest, setTarget]);
@@ -120,6 +122,7 @@ function ChannelForm({
         secret: secret.trim() || undefined,
         event_kinds: kinds,
         digest_enabled: digest,
+        ignore_bots: ignoreBots,
       });
     },
     onSuccess: async () => {
@@ -254,6 +257,16 @@ function ChannelForm({
         <label className="channel-kinds__item">
           <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} />
           接收定期汇总（日/周/月）
+        </label>
+      </div>
+      <div className="field--plain">
+        <label className="channel-kinds__item">
+          <input
+            type="checkbox"
+            checked={ignoreBots}
+            onChange={(e) => setIgnoreBots(e.target.checked)}
+          />
+          免打扰：忽略机器人常规动态（仅过滤常规 Issue/PR，安全告警与 CI 诊断严格不受影响）
         </label>
       </div>
       <div className="channel-form__buttons">

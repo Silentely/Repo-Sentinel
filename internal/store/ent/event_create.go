@@ -108,6 +108,20 @@ func (_c *EventCreate) SetNillableActor(v *string) *EventCreate {
 	return _c
 }
 
+// SetSenderIsBot sets the "sender_is_bot" field.
+func (_c *EventCreate) SetSenderIsBot(v bool) *EventCreate {
+	_c.mutation.SetSenderIsBot(v)
+	return _c
+}
+
+// SetNillableSenderIsBot sets the "sender_is_bot" field if the given value is not nil.
+func (_c *EventCreate) SetNillableSenderIsBot(v *bool) *EventCreate {
+	if v != nil {
+		_c.SetSenderIsBot(*v)
+	}
+	return _c
+}
+
 // SetWorkflowRunID sets the "workflow_run_id" field.
 func (_c *EventCreate) SetWorkflowRunID(v int64) *EventCreate {
 	_c.mutation.SetWorkflowRunID(v)
@@ -269,6 +283,10 @@ func (_c *EventCreate) defaults() {
 		v := event.DefaultActor
 		_c.mutation.SetActor(v)
 	}
+	if _, ok := _c.mutation.SenderIsBot(); !ok {
+		v := event.DefaultSenderIsBot
+		_c.mutation.SetSenderIsBot(v)
+	}
 	if _, ok := _c.mutation.WorkflowConclusion(); !ok {
 		v := event.DefaultWorkflowConclusion
 		_c.mutation.SetWorkflowConclusion(v)
@@ -306,6 +324,9 @@ func (_c *EventCreate) check() error {
 	}
 	if _, ok := _c.mutation.Actor(); !ok {
 		return &ValidationError{Name: "actor", err: errors.New(`ent: missing required field "Event.actor"`)}
+	}
+	if _, ok := _c.mutation.SenderIsBot(); !ok {
+		return &ValidationError{Name: "sender_is_bot", err: errors.New(`ent: missing required field "Event.sender_is_bot"`)}
 	}
 	if _, ok := _c.mutation.WorkflowConclusion(); !ok {
 		return &ValidationError{Name: "workflow_conclusion", err: errors.New(`ent: missing required field "Event.workflow_conclusion"`)}
@@ -394,6 +415,10 @@ func (_c *EventCreate) createSpec() (*Event, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Actor(); ok {
 		_spec.SetField(event.FieldActor, field.TypeString, value)
 		_node.Actor = value
+	}
+	if value, ok := _c.mutation.SenderIsBot(); ok {
+		_spec.SetField(event.FieldSenderIsBot, field.TypeBool, value)
+		_node.SenderIsBot = value
 	}
 	if value, ok := _c.mutation.WorkflowRunID(); ok {
 		_spec.SetField(event.FieldWorkflowRunID, field.TypeInt64, value)
