@@ -144,12 +144,14 @@ button:disabled {
 
 .auth-shell {
   position: relative;
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   min-height: 100vh;
   min-height: 100dvh;
-  place-items: center;
-  padding: 48px 20px;
-  overflow: hidden;
+  padding: 48px 20px 24px;
+  overflow-x: hidden;
 }
 
 .auth-shell::before {
@@ -3406,11 +3408,11 @@ a.status-item--link:focus-visible {
 
 /* ── 像素风背景小景（Pixel-art Scenery Layer） ── */
 .pixel-scenery-ground {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 52px;
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  margin-top: 36px;
+  height: 48px;
   pointer-events: none;
   user-select: none;
   overflow: hidden;
@@ -3418,8 +3420,8 @@ a.status-item--link:focus-visible {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  padding: 0 48px;
-  opacity: 0.9;
+  padding: 0 24px;
+  opacity: 0.88;
 }
 
 .pixel-scenery-ground__strip {
