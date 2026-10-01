@@ -10,6 +10,7 @@ import {
   Menu,
   Radio,
   Rocket,
+  Search,
   Send,
   Settings,
   Shield,
@@ -32,6 +33,7 @@ import {
 import { dashboardQueryOptions, settingsQueryOptions } from "../features/monitor/api";
 import { useLiveEventStream } from "../lib/sse-client";
 import { useModalLayer } from "../lib/use-modal-layer";
+import { CommandPalette, useGlobalHotkeys } from "../components/command-palette";
 
 export interface RootLayoutProps {
   session: AuthenticationResponse;
@@ -71,6 +73,12 @@ export function RootLayout({ session }: RootLayoutProps) {
 
   // 移动端抽屉导航：≤640px 时侧边栏变为离屏抽屉，由顶栏菜单按钮唤起。
   const [navOpen, setNavOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  useGlobalHotkeys({
+    onTogglePalette: () => setPaletteOpen((prev) => !prev),
+    onNavigate: (path) => navigate({ to: path }),
+  });
   // 模态层通用行为（滚动锁/Escape/焦点循环/焦点归还）由 useModalLayer 统一承担；
   // 焦点归还显式指向菜单按钮（Safari 桌面版点击按钮不聚焦，activeElement 捕获不可靠）。
   const closeNav = useCallback(() => setNavOpen(false), []);
@@ -153,6 +161,7 @@ export function RootLayout({ session }: RootLayoutProps) {
 
   return (
     <div className="app-shell">
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <aside
         id="app-sidebar"
         ref={sidebarRef}
@@ -278,6 +287,16 @@ export function RootLayout({ session }: RootLayoutProps) {
             </p>
           </div>
           <div className="app-topbar__actions">
+            <button
+              className="quiet-button quiet-button--compact topbar-palette-btn"
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              title="全局指令面板 (Cmd+K / Ctrl+K)"
+              aria-label="打开全局指令面板"
+            >
+              <Search aria-hidden="true" size={16} />
+              <kbd className="topbar-kbd">⌘K</kbd>
+            </button>
             {/* 仓库入口：顶栏 GitHub 图标直达源码/Issue。 */}
             <a
               className="quiet-button quiet-button--compact"
