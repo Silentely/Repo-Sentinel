@@ -72,14 +72,12 @@ A: 可以，将 BaseURL 指向 OpenAI 兼容网关即可。
 
 ## 变更记录 (Changelog)
 
-| 时间戳 (UTC) | 变更摘要 |
-|---|---|
-| 2026-09-25T10:15:00Z | 优化请求 ID 与审查 Prompt/Markdown 组装：NewRequestID 改用栈缓冲区十六进制编码消除堆分配；classifyCallError 使用 strconv.Itoa 替代 fmt.Sprintf；ReviewPR 与 FormatMarkdownComment 采用预分配容量与直接写入消除格式化装箱 |
-| 2026-09-25T08:22:00Z | 优化 AI 审查 Diff 解析与评论渲染内存开销：在 parseDiffChunks 仅当包含 \r 时才执行 CRLF 替换，避免标准 Unix 换行 Diff 重复产生大字符串堆副本；FormatPRComment 预分配 StringBuilder 容量 (1024 字节) 避免动态扩容 |
-| 2026-09-25T07:28:00Z | Diff 切片解析与优先级格式安全收口：在 `parseDiffChunks` 中预先规范化 Windows CRLF (`\r\n` / `\r` -> `\n`)，并在拼接各文件 Diff chunk 时严格保证换行分隔符，杜绝跨文件 diff 标头被粘滞在上一文件代码行尾的问题 |
-| 2026-09-23T00:00:00Z | 重试耗尽的错误文案追加尝试次数（`attempts=N`，`withAttemptCount` 保留原错误码与 Unwrap 链，`classifyCallError` 分类不变）：此前单次失败与连续 N 次失败返回同一句「ai: http 500: boom」，告警与降级文案无法区分上游是偶发抖动还是持续不可用；`Retries=0` 的单次失败不附加次数；补尝试次数标注与分类不受影响的回归 |
-| 2026-09-16T00:00:00Z | 新增 PR Diff AI 代码审查引擎：结构化审查报告与健康评分、严格 JSON 与空响应校验（空内容返回 ErrInvalidCodeReview、评分仅拒绝负数）、同一 PR 同一提交审查去重、结果先持久化再回写 PR 评论、Diff 启发式风险嗅探与评分安全截断、机器人 PR 自动跳过；新增 Actions 失败工作流 LLM 根因诊断（失败步骤上限 30 条）；手动触发审查管线异步入队（202 回执 + head SHA 幂等）并抽取自动/手动共用管线；release notes 截断改用 textutil.TruncateUTF8Bytes；AI 请求附 X-Request-ID |
-| 2026-08-10T13:00:00Z | 新增 `Client.ReleaseSummary`（star 仓库新 Release 中文总结，英文 notes 翻译摘要；notes 截断 8000 字符）与 `release_summary_enabled` 开关（默认 true，受 `enabled` 总开关约束），贯通 config/runtime/HTTP API/管理台表单 |
-| 2026-08-10T12:00:00Z | 瞬时失败自动重试：Complete 按 Retries 配置重试（默认 1，范围 0–5，超时/网络/5xx/空响应可重试），固定间隔 1s，受外层 ctx 预算约束；新增 `DEBUG ai request retry` 留痕；配置贯通 config → runtime → HTTP API → 管理台表单（重试次数字段） |
-| 2026-08-06T11:20:00Z | 打磨批次 1：AI 调用指标与 token 用量记账（/metrics 暴露）、请求关联 ID（req_id 端到端串联）、调用并发预算（默认 2，排队超预算降级）、摘要/分诊输出质量护栏（low_quality / format_invalid） |
-| 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
+| 日期 | 版本 / 范围 | 说明 |
+|------|------------|------|
+| 2026-09-25 | 性能优化 | 优化 Diff 切片解析与换行规范化；优化 Prompt 与 Markdown 格式化内存分配 |
+| 2026-09-23 | 稳定性优化 | AI 请求重试耗尽时增加尝试次数标识，区分偶发抖动与持续故障 |
+| 2026-09-16 | 功能新增 | 新增 PR Diff 智能代码审查与 Actions CI 失败根因诊断能力；支持手动审查入队与结果回写 |
+| 2026-08-10 | 功能扩展 | 新增 Star 仓库 Release 更新中文总结，支持重试机制与调用指标统计 |
+| 2026-08-05 | 模块初始化 | 初始化模块 AI 上下文文档 |
+
+> 完整历史变更请查阅根目录 [`CHANGELOG.md`](../../CHANGELOG.md)。

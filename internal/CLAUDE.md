@@ -94,10 +94,9 @@ A: 领域常量与共享判定放在 `store`（如 `RepoAllowsKind`、`IsFailure
 
 ## 变更记录 (Changelog)
 
-| 时间戳 (UTC) | 变更摘要 |
-|---|---|
-| 2026-09-25T10:35:00Z | 优化 digest 发送窗口解析与报告标题格式化：sendWindow 采用 strings.Cut + strconv 替代 fmt.Sscanf 反射解析；日/周/月报标题改用原生拼接；reportBody 使用 utf8.RuneCountInString 消除 []rune 堆切片分配，预分配 Builder 并精简 fmt 依赖 |
-| 2026-09-25T09:35:00Z | 优化 cryptox 信封加解密开销：parseEnvelope 改用 IndexByte 切分字段消除 parts 切片堆分配；Encrypt 统一预分配单个连续切片直接由 AEAD.Seal 追加密文，消除冗余 make 与 copy 开销 |
-| 2026-09-25T09:12:00Z | 优化基础工具库计算开销：updatecheck.ParseSemver 消除切片与字符串堆分配并以数学计算解析数字；textutil.TruncateUTF8Bytes 采用 O(1) 回退至多 3 字节检查 utf8.RuneStart，消除循环全串校验开销 |
-| 2026-09-25T09:08:00Z | 优化 digest 定期报告渲染性能：buildReportBody 预分配 Builder 缓冲区并消除中间 fmt.Sprintf 与装箱开销；enqueue 幂等键简化为直接拼接 |
-| 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
+| 日期 | 版本 / 范围 | 说明 |
+|------|------------|------|
+| 2026-09-25 | 性能优化 | 优化定时报告渲染与格式化性能；优化信封加解密与版本解析内存开销 |
+| 2026-08-05 | 模块初始化 | 初始化模块 AI 上下文文档 |
+
+> 完整历史变更请查阅根目录 [`CHANGELOG.md`](../CHANGELOG.md)。

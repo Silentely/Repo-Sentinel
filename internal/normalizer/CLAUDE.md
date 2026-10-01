@@ -46,12 +46,11 @@ A: 来源更新时间旧于库内状态时丢弃写入，防止乱序 Webhook �
 
 ## 变更记录 (Changelog)
 
-| 时间戳 (UTC) | 变更摘要 |
-|---|---|
-| 2026-09-28T12:00:00Z | NormalizeRepository 不再由单条 webhook 改判既有仓库类型：载荷无可解析安装绑定时保留当前行类型并 Warn 留痕 repo_type_reclassify_skipped，携带真实绑定才允许 external_public → installation 升级。原实现无条件写 Type=installation，使匿名轮询中的外部公开仓被改判后仍拿不到令牌，sync_status 停在 baseline_sync |
-| 2026-09-28T00:00:00Z | normalizer 补齐 installation 绑定：新增 Processor.resolveInstallation 从事件信封的 installation.id 解析本地安装主键，processStar/processWatch/processIssue/processPullRequest/processWorkflowRun/processSecurityAlert 六处改为传该值（原直接传 nil）；NormalizeRepository 在落库仍无绑定时 Warn 留痕 repo_missing_installation_binding。此前漏投递 installation 事件时首建仓库行 installation_id 为 NULL，对账在 resolveInstallationToken 处即失败，sync_status 永远停在 baseline_sync，事件又被 baseline 抑制通知，平台静默失去对该仓库的可见性且无自愈路径 |
-| 2026-09-25T11:10:00Z | 优化仓库归一化拆分性能：NormalizeRepository 改用 strings.IndexByte 快速切分 owner/name 消除 SplitN 切片堆分配，移除 repo.go 对 fmt 依赖 |
-| 2026-09-25T10:05:00Z | 优化 WorkflowRun 默认链接拼装：使用原生字符串拼接与 strconv.FormatInt 替代 fmt.Sprintf，消除运行时格式化反射与装箱分配 |
-| 2026-09-25T08:50:00Z | 优化事件指纹与资源标识生成开销：Fingerprint/StateHash 改用 io.WriteString 流式写入与栈缓冲区十六进制编码消除中间切片分配；ResourceIdentity 采用 strconv 消除 fmt.Sprintf 反射与装箱开销 |
-| 2026-09-23T00:00:00Z | PR 合并置位（`MarkMerged`）改用本次解析出的 `repo.ID`，不再解引用 `*res.Event.RepositoryID`：事件行的仓库关联并非置位标记的前提，指针解引用只带来空指针风险——一旦事件行缺 `repository_id`，一条正常的 PR 合并 webhook 会 panic 致整个处理失败；补事件行缺仓库关联时合并标记仍落定的回归（装饰存储注入 nil RepositoryID，先还原实现验证可捕获 panic） |
-| 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
+| 日期 | 版本 / 范围 | 说明 |
+|------|------------|------|
+| 2026-09-28 | 缺陷修复 | 修复 Webhook 事件首建仓库缺失安装绑定问题；防止外部公开仓被普通事件误改判为安装仓 |
+| 2026-09-25 | 性能优化 | 优化仓库名称切分与事件指纹生成性能 |
+| 2026-09-23 | 稳定性修复 | 修复 PR 合并事件在缺失仓库关联时可能发生的空指针异常 |
+| 2026-08-05 | 模块初始化 | 初始化模块 AI 上下文文档 |
+
+> 完整历史变更请查阅根目录 [`CHANGELOG.md`](../../CHANGELOG.md)。

@@ -51,10 +51,10 @@ A: Session 行删除（Revoke），非仅清 Cookie。
 
 ## 变更记录 (Changelog)
 
-| 时间戳 (UTC) | 变更摘要 |
-|---|---|
-| 2026-09-28T00:00:00Z | ①SaveTOTPConfig 在密钥环不可用时返回 ErrInvalidTOTPConfig 而非写 plain_secret，LoadTOTPConfig 不再接受 plain_secret（存量明文行 fail-closed），与 githubx.EncryptSecret / ai.EncryptAPIKey / notify 渠道密钥的降级语义对齐；②GetTicket 的 IP 绑定改 fail-closed（任一侧为空即拒绝），原实现任一侧为空时整体跳过绑定，与 setup 环回门、metrics 的 fail-closed 判定不一致 |
-| 2026-09-25T10:55:00Z | 优化 TOTP 验证码计算与认证 URL 组装：calculateHOTP 采用栈数组与固定算术填充消除 fmt.Sprintf 反射格式化装箱与 digest 堆切片；ValidateTOTP 使用固定数组循环与定长字节常量时间比较消除切片分配；GenerateOTPAuthURL 改用原生拼接 |
-| 2026-09-25T09:16:00Z | 会话与令牌处理重构优化：SessionService.UserAgent 截断统一复用 textutil.TruncateUTF8Bytes 消除重复实现与全串循环扫描；hashEncodedToken 与 issueRandomToken 令牌哈希改用栈缓冲区十六进制编码消除堆分配 |
-| 2026-09-25T08:00:00Z | 鉴权安全与性能加固：①CSRF 校验改用栈分配固定数组与就地解码，消除全部堆分配（0 次内存分配），显著降低高频 API 写入鉴权的 GC 压力；②LoginLimiter 增加容量上限防护（maxLimiterEntries=10000），超出上限且未超时时主动清理或拒绝新 IP，防止海量恶意 IP 爆破导致内存耗尽（DoS 保护） |
-| 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
+| 日期 | 版本 / 范围 | 说明 |
+|------|------------|------|
+| 2026-09-28 | 安全加固 | 禁用明文 TOTP 密钥存储，未配置密钥环时严格拒绝；加固 2FA 票据客户端 IP 绑定 |
+| 2026-09-25 | 性能与防护 | 优化 TOTP 验证计算与哈希编码开销；增加登录限流器总容量防护防范 DoS 爆破 |
+| 2026-08-05 | 模块初始化 | 初始化模块 AI 上下文文档 |
+
+> 完整历史变更请查阅根目录 [`CHANGELOG.md`](../../CHANGELOG.md)。

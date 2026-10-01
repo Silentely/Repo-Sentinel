@@ -100,22 +100,13 @@ A: `reconcileAllRunning` atomic 防重入。
 
 ## 变更记录 (Changelog)
 
-| 时间戳 (UTC) | 变更摘要 |
-|---|---|
-| 2026-09-28T12:00:00Z | 安全加固评审修复：①「添加外部公开仓库」查重提到上限判定之前（列表已满时重复提交已登记仓库改为幂等 200 而非 409 external_repo_limit），幂等分支响应带 already_registered 标记（externalRepositoryResponse 内嵌仓库字段），安装仓冲突改用专用码 repository_type_conflict（原先以 409 配 validation_failed，状态与错误码语义不符），OpenAPI 补 200 响应；②2FA 登录两阶段统一处理「配置存在但读不出来」（新增 writeTOTPConfigUnreadable → 503 totp_config_unreadable，文案指明 CLI reset-2fa），原先第一阶段退化成 500 internal_error、第二阶段并在 401 invalid_credentials 里；③第二因子改按独立令牌桶（新增 Dependencies.TOTPLimiter，New 中默认装配），原先复用 LoginLimiter 使一次完整登录消耗两份额度、单 IP 每分钟完整登录数减半；④resolveClientIP 的 X-Real-IP 分支与 XFF 同口径（受信任网段内的取值不予采信）；⑤MCP 作用域拒绝在 error.data.error_code 回传 forbidden 使日志与线上同码，tools/list 经 mcpVisibleTool 按作用域过滤写工具；⑥清理 agent_discovery.go 重复的 discoveryCacheControl 注释 |
-| 2026-09-28T00:00:00Z | 安全加固：①Agent OAuth 令牌作用域收口——oauthValidateToken 验签后解析 Scope 并写入上下文，未声明已知作用域的令牌一律拒绝；新增 agentWriteScopeMiddleware 挂 mutating 组（read 令牌对全部管理写路由 403），MCP 写工具经 mcpWriteTools 同一口径收口，POST /repositories/external 移入 mutating 组使 CSRF 与写作用域成为一致写边界；②「添加外部公开仓库」按 full_name 查重（安装仓 409、外部仓幂等返回）；③渠道订阅显式空数组落为非 nil 空切片，不再被 AcceptsKind 解释为「订阅全部」；④启用 2FA 加 KeyRing nil 守卫（503 encryption_unavailable）；⑤AI 配置写入补 ai.config_updated 审计（只记字段名，不记密钥原文）；⑥isReservedHTTPPath 大小写归一、joinWebhookURL 对 X-Forwarded-Proto 归一化（只接受 http/https）、发现文档补 Vary: Host + must-revalidate、MCP get_star_trend 的 days 按 enum 收敛（提取 mcpStarTrendDays）；⑦第二因子登录路径施加与第一因子对称的按 IP 限流 |
-| 2026-09-25T13:35:00Z | 删除 `listFilterFromRequest` 死代码：URL Query 解析去重重构后所有调用点已直连 `listFilterFromQuery`，该包装函数无引用方，`unused` linter 会拦截合并 |
-| 2026-09-25T11:15:00Z | 优化 HTTP API 时间归一化与响应头/重放标识格式化：normalizeLocalTime 改用 IndexByte 与固定栈缓冲区组装时间串消除 Split 切片与 fmt 堆开销；X-Markdown-Tokens、重放投递 ID 与 MCP 异常文案采用原生拼接与 strconv，新增 BenchmarkNormalizeLocalTime（19.38 ns/op，1 alloc） |
-| 2026-09-25T09:50:00Z | 优化 normalizeUsername 前缀剥离逻辑：使用显式 HasPrefix 分支替代临时 []string 切片循环，消除切片堆分配 |
-| 2026-09-25T09:25:00Z | 优化 HTTP 查询参数解析性能：消除 handlers 对 r.URL.Query() 的多次重复解析与 map 堆分配；重构 listFilterFromQuery 与 queryTrimmed 共享已解析的 Values 集合 |
-| 2026-09-25T08:24:00Z | 优化 JSON 请求体解码性能：isJSONContentType 增加针对标准 application/json 与带参数 Content-Type 的零分配快速路径判定，避免每次写请求重复调用 mime.ParseMediaType 分配参数字典 |
-| 2026-09-25T07:31:00Z | 渠道配置与仓库激活审计留痕：在 `handleUpsertChannel`、`handleDeleteChannel`、`handleActivateRepository`、`handleUpdateRepositorySettings` 中补齐 `s.appendAudit` 审计调用，统一沉淀操作者、IP、目标类型与关键参数 |
-| 2026-09-23T00:00:00Z | 审计写入可见性与洞察统计窗口收口：①新增 `server.appendAudit` 统一落审计（`admin.2fa_enabled`/`admin.2fa_disabled`/`repository.delete` 三处原 `_, _ = ...Audits().Append(...)` 静默丢弃写失败错误），失败不改变主流程结论但 Warn 留痕 `audit_append_failed`（带 action/target_type/target_id/error），使「谁在何时做了什么」在审计表缺失时仍可从日志定位；②`/api/v1/stats/actions-insights` 分析窗口从「实际只取第一页 100 条、注释却写 300 条」改为按 300 条样本（`actionsInsightsSampleSize` 样本量、`workflowRunsPageSize` 页大小，`listRecentWorkflowRuns` 逐页拉取、每页按剩余样本量取、末页不足一页提前收尾）：成功率与耗时分位数依赖样本量，窗口过小让高频仓库的统计只剩几个小时；③新增 actions-insights 三个 handler 回归（250 条全量纳入、样本上限 300、`repository_id` 过滤生效，均先缩小窗口/去掉过滤验证可捕获缺陷） |
-| 2026-09-23T00:00:00Z | star 同步用户名收敛写入与消费两侧边界：管理台 `PUT /api/v1/starred-releases/config` 对归一化后的用户名按 GitHub 字符集校验（`githubx.ValidGitHubUsername`，1-39 位字母/数字/连字符且不以连字符起止），非法值返回 400 `validation_failed` 并指明 `field=username`（此前含 `/`、空格的值会拼出错误 API 路径，star 同步每轮失败而用户侧无反馈）；`ListUserStarred` 路径构造改 `url.PathEscape` 兜底转义（历史脏值或其他写入路径漏校验时不再构成路径注入）；`syncStarsLocked` 对非法用户名跳过本轮、推进记账并 Warn 留痕 `star_sync_invalid_username`（与未配置同样避免每 1m 节拍空转）；补用户名字符集表驱动测试、含 `/` 用户名的线上转义路径断言、处理器 400 拒绝不覆盖已存合法值、轮询端跳过留痕四条回归 |
-| 2026-09-20T00:00:00Z | 管理面健壮性：①`/metrics` 未授权访问日志按来源 IP 采样输出（扫描类流量不再逐条打爆访问日志，正常访问仍逐条留痕）；②发件箱列表的渠道类型→名称映射改懒加载，无 `channel_type` 筛选且结果为空时不再无谓查渠道；③启用 2FA 端点（`handleEnable2FA`）把会话校验前置于落库：无法定位会话时直接 401，避免 TOTP 配置已写入却因缺 admin_id 写不出审计条目（与 `handleDisable2FA` 同一模式）；④AI 配置的 Base URL 校验仅拦截云元数据域名（`metadata.google.internal` / `metadata`），内网自建网关不再被 `.internal` 后缀误拦，IP 级防护由 `validAIBaseURL` 与 `safeAIDialContext` 拨号层双重兜底 |
-| 2026-09-20T00:00:00Z | starred-releases 配置 API 响应新增 `last_star_sync_at`（最近一次完整 star 同步落定时刻，未同步为空）：「立即同步」异步执行，前端据此等待同步落定后再刷新追踪列表；`POST /api/v1/starred-releases/sync` 行为不变 |
-| 2026-09-16T00:00:00Z | 新增 PR 审查获取/触发端点 /api/v1/work-items/{id}/ai-review（异步入队 202 回执，错误按类别映射 404/400/503/409）与对应 MCP 审查工具；MCP 新增 trigger_reconciliation、retry_failed_outbox、replay_webhook_delivery 运维写工具；httpapi.New 支持外部注入 WebhookService 统一生命周期管理 |
-| 2026-08-10T13:00:00Z | 新增 starred-releases 端点：GET/PUT `/api/v1/starred-releases/config`（用户名归一化、周期/上限/预发布开关）、POST `/api/v1/starred-releases/sync`（立即同步）、GET `/api/v1/starred-releases/trackers`（分页 + state 筛选）、POST `/api/v1/starred-releases/trackers/{id}/state`（停用/恢复）；AI 配置 API 增 `release_summary_enabled` |
-| 2026-08-06T15:48:41Z | 新增 /api/v1/stats/star-trend 端点（days=7/30/90/0），/api/v1/repositories/{id}/settings 支持 stars_enabled、watches_enabled 字段 |
-| 2026-08-06T12:50:00Z | Agent 发现端点：sitemap/robots/Content-Signals、Link 头、RFC 9727 API 目录、OpenAPI 3.1、OAuth 2.0 client-credentials（token/jwks/Bearer 认证）、RFC 8414/9728 元数据、auth.md、MCP Streamable HTTP 网关 + Server Card、Agent Skills 索引、Markdown 协商；`authenticationMiddleware` 支持 Bearer，`csrfMiddleware` 对 Agent 放行 |
-| 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
+| 日期 | 版本 / 范围 | 说明 |
+|------|------------|------|
+| 2026-09-28 | 安全加固 | 优化外部公开仓添加查重防降级；第二因子采用独立限流器；收拢 Agent OAuth 作用域与 MCP 写权限 |
+| 2026-09-25 | 性能与审计 | 优化请求参数解析与时间序列化性能；补齐渠道配置与仓库激活的审计留痕 |
+| 2026-09-23 | 健壮性优化 | 统一审计日志写入；修正 Actions 洞察采样窗口；修复 2FA 开启端点会话未校验先落库问题 |
+| 2026-09-16 | 功能扩展 | 新增 PR 审查端点与 MCP 运维写工具 |
+| 2026-08-06 | 协议扩展 | 新增 Agent 发现端点、OAuth 客户端凭据鉴权与 MCP 流式网关 |
+| 2026-08-05 | 模块初始化 | 初始化模块 AI 上下文文档 |
+
+> 完整历史变更请查阅根目录 [`CHANGELOG.md`](../../CHANGELOG.md)。

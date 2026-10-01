@@ -61,10 +61,9 @@ A: 使用 `store.IsFailureConclusion` 单一来源。
 
 ## 变更记录 (Changelog)
 
-| 时间戳 (UTC) | 变更摘要 |
-|---|---|
-| 2026-09-25T11:05:00Z | 优化消息聚合与超频降级消息组装：renderMergedMessage 与 enqueueBurstSummary 消除全部 fmt.Sprintf 反射格式化装箱，改用原生拼接与 strconv，完全移除 rules 包对 fmt 依赖 |
-| 2026-09-25T10:00:00Z | 优化 renderMessage 纯文本标题组装：使用原生字符串拼接替代 fmt.Sprintf，消除高频事件流中的格式化解析与 interface 逃逸装箱开销 |
-| 2026-09-25T08:52:00Z | 优化规则引擎状态映射与幂等键生成开销：EventStatusLabel 委托 statusDisplay 实现单点维护并消除冗余分支；idempotencyKey 改用 io.WriteString 与栈缓冲区十六进制编码消除中间切片分配；ReloadFrom 采用 errors.Join 严格传递存储层错误 |
-| 2026-09-25T07:45:00Z | 通知标题纯文本与正文 HTML 转义安全收口：`renderMessage` 与 `renderMergedMessage` 返回纯文本标题（供 Outbox.Title 及钉钉/飞书/企微/Slack 标题消费，杜绝 `&lt;`、`&amp;` 等实体泄漏），并在 HTML 正文的 `<b>` 标签中统一使用 `htmlpkg.EscapeString` 转义，兼顾各渠道展示美观与 Telegram 解析安全 |
-| 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
+| 日期 | 版本 / 范围 | 说明 |
+|------|------------|------|
+| 2026-09-25 | 性能与安全 | 优化消息聚合与纯文本标题组装性能；通知标题与正文 HTML 统一转义防注入 |
+| 2026-08-05 | 模块初始化 | 初始化模块 AI 上下文文档 |
+
+> 完整历史变更请查阅根目录 [`CHANGELOG.md`](../../CHANGELOG.md)。

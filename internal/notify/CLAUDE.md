@@ -53,12 +53,10 @@ A: 管理 API `POST .../outbox/{id}/retry` → `Outbox.RetryDead`。
 
 ## 变更记录 (Changelog)
 
-| 时间戳 (UTC) | 变更摘要 |
-|---|---|
-| 2026-09-28T12:00:00Z | markDead 依据 MarkDead 的推进结果决定是否触发 OnDead：守卫拒绝（行已被并发投递推进到终态）时留痕 outbox_state_advanced 并跳过指标。上一版只在写库报错时提前返回，而守卫拒绝返回的是 (false, nil)，死信计数仍会与实际行数不符 |
-| 2026-09-28T00:00:00Z | ①投递失败日志经 logSafeDeliveryError 脱敏：对 *url.Error 去除 userinfo/path/query/fragment，只保留 scheme://host 与协议层原因（Discord/飞书/钉钉/企微/Bark 的凭据在 URL 中，原样写日志会把可发布消息的令牌落盘）；②markDead 写库失败时不再触发 OnDead 指标回调，避免死信计数与列表不符 |
-| 2026-09-25T10:50:00Z | 优化消息通道与 Worker 组装性能：飞书/企业微信/钉钉/Telegram 消息体与签名链接组装消除 fmt.Sprintf，状态码错误码改用 strconv.Itoa 拼接，完全移除 channels.go 对 fmt 依赖 |
-| 2026-09-25T09:30:00Z | 优化 Webhook 签名与投递错误码性能：sendHTTPWebhook 改用栈缓冲区生成 HMAC-SHA256 十六进制签名消除堆分配；状态码错误使用 strconv.Itoa 替代 fmt.Sprintf 消除装箱开销 |
-| 2026-09-25T08:20:00Z | 优化通知管道文本截断与 HTML 转纯文本性能：消除 truncateLogTitle 的 []rune 堆分配；引入 isDeliveryCode 线性扫描替代正则匹配；htmlToPlainText 增加无标签与实体的零分配快速路径并支持大写 `<A HREF>`；truncateRunes 省略号前清理尾随空白；加固 Feishu/WeCom/DingTalk/Bark 机器人错误详情兜底回显 |
-| 2026-09-25T07:25:00Z | 优化已删除渠道投递错误分类：当 `Channels().Get` 返回 `store.ErrNotFound` 时包装为 `channel_not_found` 并加入 `isPermanentDeliveryError`，立即标记死信并触发 `OnDead`，避免无谓重试 8 次耗时 30 小时 |
-| 2026-08-05T09:57:59Z | 初始化模块 AI 上下文文档 |
+| 日期 | 版本 / 范围 | 说明 |
+|------|------------|------|
+| 2026-09-28 | 安全与一致性 | 通知投递失败日志自动脱敏目标 Webhook URL；修正死信推进状态守卫与指标计数一致性 |
+| 2026-09-25 | 性能与错误分类 | 优化各渠道消息格式化性能；已删除渠道投递失败立即标记为死信并停止无谓重试 |
+| 2026-08-05 | 模块初始化 | 初始化模块 AI 上下文文档 |
+
+> 完整历史变更请查阅根目录 [`CHANGELOG.md`](../../CHANGELOG.md)。

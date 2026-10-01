@@ -1,578 +1,117 @@
-# Changelog
+# Repo-Sentinel 变更记录
 
-本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 SemVer。
+> 记录 Repo-Sentinel 各版本的更新内容与演进历史。变更记录撰写规范参见 [CLAUDE.md](./CLAUDE.md)。
 
-## [Unreleased]
-
-### Added
-
-- Issue 智能分诊与首响应建议：新 Issue 创建时完成意图分类（Bug Report / Feature Request / Question / Incomplete / Invalid）、优先级评估（P0 Blocker / P1 High / P2 Normal / P3 Low）、排查要素完整度审计（复现步骤、运行环境、版本号、错误堆栈等缺失项）并产出维护者可直接发出的首响回复草稿；结果随新 Issue 通知正文附带，同时落库 `ai.issue_triage.<work_item_id>` 供管理后台查看。新增 `GET /api/v1/work-items/{id}/ai-triage` 与 `POST`（异步入队，202）两个端点，后台卡片支持展开查看、立即/重新分诊、一键复制首响草稿与跳转 GitHub 回复。开关复用 `triage_enabled`；未启用、无订阅渠道或调用失败时保持原通知正文不变，AI 不可用绝不影响通知入库，分诊结果随仓库删除一并级联清理
-- PR 审查新增维护者合并裁决（`maintainer_verdict`）与关键敏感资产嗅探（`sensitive_assets`）：裁决按 Block Risk > Needs Manual Review > Needs Tests > Ready to Merge 的阶梯自上而下判定，存在安全风险、健康评分低于 60 或合并风险为 Critical 时一律落在 Block Risk，改动了 CI/CD 工作流、依赖锁定清单、数据库迁移或部署凭据配置时至少落在 Needs Manual Review；敏感资产逐条列出变动路径与对应风险提示，随 PR 评论与通知正文展示
-- Issue/PR 正文纳入采集：归一化落库时把正文写入事件载荷（按 `textutil.MaxBodyTextBytes` 统一截断），供智能分诊与人工排查引用。此前正文不回传，分诊只能凭标题判断意图
-
-- Agent 访问令牌的作用域收口为真实能力边界：`oauthValidateToken` 验签后解析 `Scope` 声明并把作用域集合写入请求上下文，未声明任何已知作用域（`read`/`write`）的令牌一律拒绝（空 scope 不再被解释为「全部允许」）；新增 `agentWriteScopeMiddleware` 挂在 mutating 组上，仅持 `read` 的 Agent 令牌对全部管理写路由返回 403 `forbidden`，MCP 写工具（`trigger_work_item_ai_review` / `trigger_reconciliation` / `retry_failed_outbox` / `replay_webhook_delivery`）经 `mcpWriteTools` 同一口径收口；`POST /repositories/external` 从 protected 组移入 mutating 组，使 CSRF 与写作用域成为一致的写边界
-- AI 配置写入补审计留痕（`ai.config_updated`）：记录本次涉及的字段名与是否涉及密钥，绝不记录密钥与 BaseURL 原文；此前 `PUT /api/v1/ai/config` 改API Key 与出站端点无任何审计记录，运维无法回答「谁把 LLM 流量指向了什么」
-- 「添加外部公开仓库」的幂等分支明确化：命中已有外部仓时返回 200 并在响应体带 `already_registered: true`（新建仍为 201 且不带该字段），前端据此提示「已在列表中、同步状态未变动」而不再对未发生的事承诺基线同步；OpenAPI 补该端点的 200 响应
-- MCP 写工具的作用域拒绝在 JSON-RPC `error.data.error_code` 回传 `forbidden`（与日志的 `error_code` 同一取值），`tools/list` 按作用域过滤：只持 `read` 的令牌不再看到注定被拒的写工具
-- 第二因子（动态码）改按独立令牌桶限流（`Dependencies.TOTPLimiter`，与第一因子分桶）：一次完整登录只消耗第一因子的一份额度，单 IP 每分钟可完成的登录数不再因新增的第二因子校验而减半
-
-### Fixed
-
-- 通知主题色判定由裸子串匹配改为词级匹配：此前 `high` 会命中 `highlight(s)`/`high-level`，把普通通知渲染成最高危红色，削弱告警可信度；现按词边界匹配（连字符计入词内，使 `high-level` 视为一个整体词），并保留 `P1 High`、`Block Risk`、`high-risk` 等真实信号的判定
-- Issue 分诊正文上限与落库截断统一为 `textutil.MaxBodyTextBytes`：此前落库截断到 4000 字节而模型侧上限标称 6000，模型只会静默拿到被截断的副本，连「正文已截断」提示都触发不了
-- 事件载荷缺少正文时留痕 `body_not_captured`：手动触发与 webhook 触发两条分诊路径均记录，便于区分「作者未填写正文」与「事件创建时未采集正文」——此前两种情况都只是表现为空正文
-- 企业微信与钉钉的 AI 段落改渲染为完整引用块：此前只把分隔线替换成 `> 🤖`，段落正文裸露在引用之外，与 Telegram 的可折叠引用块表现不一致
-
-- 非 installation 类 webhook 首建的仓库行补齐 installation 绑定：`Processor.resolveInstallation` 从事件信封的 `installation.id` 解析本地安装主键并传给 `ensureRepository`（此前 `processStar`/`processWatch`/`processIssue`/`processPullRequest`/`processWorkflowRun`/`processSecurityAlert` 六处直接传 `nil`）；落库仍无绑定时 Warn 留痕 `repo_missing_installation_binding`。缺失绑定的行永远无法换取令牌（`resolveInstallationToken` 直接 `missing_installation`），`sync_status` 永远停在 `baseline_sync`，其事件又被 baseline 抑制通知——平台在毫无告警的情况下静默失去对该仓库的可见性且无自愈路径
-- 「添加外部公开仓库」不再静默改判已存在的安装仓：`handleAddExternalRepository` 落库前按 `full_name` 查重，安装仓返回 409 `repository_type_conflict` 并告知现有类型，已是外部仓则幂等返回既有行（不重复计入上限、不重置同步状态）；`repositoryStore.Upsert` 追加类型降级守卫，任何写路径都不得把 installation 行改为其它类型。原实现只填 7 个字段且不查重，而 Upsert 更新分支对 `type`/`sync_status`/`is_archived`/`is_private`/`default_branch` 无条件覆写，会把正在被安装令牌对账的私有仓改判为 `external_public`、重置同步状态并抹掉私有标记，该行随即退出安装对账，私有仓再被匿名轮询 404 钉成 `unavailable` 而永久跳过，接口却返回 201 不报错
-- 「添加外部公开仓库」的查重先于外部仓上限判定：顺序反了（先判上限）时，列表已满的情况下重复提交一个已登记的外部仓会拿到 409 `external_repo_limit`，与幂等语义矛盾
-- webhook 归一化不再静默改判既有仓库类型（`NormalizeRepository`）：载荷没有可解析的安装绑定时保留当前行的类型并 Warn 留痕 `repo_type_reclassify_skipped`，携带真实绑定才允许升级为 `installation`。原实现无条件写入 `installation`，使匿名轮询中的外部公开仓因普通事件被改判，却仍拿不到令牌，`sync_status` 永远停在 `baseline_sync`——与本次修复的静默失联同源，只是从反方向进入
-- 死信指标只在真的写入 dead 行时自增：`MarkSent`/`MarkRetry`/`MarkDead` 改为返回是否完成状态推进（守卫拒绝时返回 `false`），`markDead` 据此跳过 `OnDead`。原实现只按 error 判定，租约过期竞态下第二个 worker 的死信标记会被守卫拒绝却仍自增计数，排障时出现「死信计数有值但列表查不到」
-- 存量明文 2FA 种子给出可执行的错误：库内存在历史 `plain_secret` 行（或主密钥缺失、信封损坏）时，登录的两个阶段统一返回 503 `totp_config_unreadable`，文案指明补齐主密钥或执行 `reposentinel admin reset-2fa`。此前第一因子阶段退化成 500 `internal_error`，第二因子阶段并与「用户名或密码错误」共用 401，管理员输入正确动态码也只会看到凭据错误
-- 2FA 登录限流不再复用第一因子令牌桶：原实现让一次完整登录消耗两份额度，单 IP 每分钟可完成的登录数从 5 降到约 2.5，第 3 次完整登录即被 429 拦下
-- `resolveClientIP` 的 X-Real-IP 回退与 XFF 同口径：受信任对端给出的地址若本身落在受信任网段内同样不予采信（回退直连对端）。此前只加固了 XFF 分支，同一网段内的主机仍可用 `X-Real-IP: 127.0.0.1` 自选客户端身份
-- 在途对账/轮询不再用开轮前的仓库快照整体写回：`Reconciler.finalizeSyncState` 与 `ExternalPoller.PollOne` 收尾前重新读取当前行——行已删除则放弃写回（不得复活），并以当前行的值为基准只改本轮负责的同步进度字段，基线放行仅在本轮起始状态仍是 `baseline` 时生效。原实现把候选读取时的快照直接交给 Upsert，会抹平并发归档（留下「未归档 + active + 监控已关」的粘滞矛盾行）并以同一 ID 重建已被彻底删除的仓库行（`monitor_enabled` 取 schema 默认 true，仓库重新进入活跃轮询）
-- 启用 2FA 不再把 TOTP 种子以明文写入数据库：`SaveTOTPConfig` 在密钥环不可用时返回 `ErrInvalidTOTPConfig`，`LoadTOTPConfig` 不再接受 `plain_secret` 字段（存量明文行 fail-closed），`handleEnable2FA` 增加 `KeyRing == nil` 前置守卫返回 503 `encryption_unavailable`。原实现 `ring == nil` 时写 `plain_secret` 且读取侧无条件接受，使该状态可自洽运行——取得数据库读权限者即可生成动态码，把第二因子降级为已知量。停用 2FA 不涉及密钥材质，密钥环缺失时仍可执行
-- 渠道订阅列表显式清空不再被改写为「订阅全部」：`handleUpsertChannel` 的清洗结果切片按输入长度预分配，显式空数组落为非 nil 空切片。原实现 `var cleanedKinds []string` 在空数组时保持 nil，而 `AcceptsKind` 视 nil 为订阅全部——管理员在管理台取消全部勾选（前端发送 `event_kinds: []`，界面摘要显示「不接收实时通知」）并保存后，该渠道实际收到每一种事件，私有仓库的事件标题/仓库名/告警摘要被推到管理员明确限定为不接收的目标
-- 通知投递失败日志不再写出携带令牌的目标 URL：新增 `logSafeDeliveryError`，对 `*url.Error` 去除 userinfo/path/query/fragment 后只保留 `scheme://host` 与协议层原因（与 `internal/ai` 的 `redactURL` 同一意图并扩展到 path/query）。Discord/飞书/钉钉/企业微信的 Webhook 地址与 Bark 的 key 把可发布消息的凭据放在 URL 里，原样写日志会让持有日志读权限者凭该凭据向渠道推送任意消息（伪装告警、钓鱼）；定位所需信息由同一条日志的 outbox_id/channel_id/channel_type 承担
-- 定期报告（日/周/月）遵循渠道机器人免打扰：`enqueue` 按渠道 `IgnoreBots` 选择事件集并生成该渠道的正文，两种变体各自只生成一次（含 AI 总结与仓库名映射）避免重复调用模型，报告内容全部是机器人工作项时跳过该渠道。此前 `IgnoreBots` 只在实时通知、合并聚合与超频摘要生效，开启免打扰的渠道仍会在报告里收到机器人 Issue/PR 动态，与「忽略机器人常规动态」的配置语义相悖
-- 全部订阅渠道都会被机器人免打扰过滤时不再发起 AI 分析：`Evaluate` 先经 `hasReceivingChannel` 判定是否存在真正会投递的渠道，没有则跳过告警分诊、release 更新速览、CI 故障诊断与 Issue 智能分析。此前这些分析在渠道循环之前执行，结果随被过滤的通知一并丢弃，白付一次模型调用与最长一个 AI 超时的等待
-- 工作项搜索的 `repo:` 引用未命中活跃仓时清空仓库筛选：抽出 `resolveRepoId` 统一解析 full_name / 短名 / 仓库 ID，未命中返回空串。此前该分支不清空 `repository_id`，输入 `repo:acme/unknown` 会继续沿用上一次选中的仓库过滤，请求参数与搜索框语义不一致
-- 前端 Bot 兜底识别与后端 `botutil` 对齐：去掉 `bot-`/`bot_` 前缀与 `sonarcloud`/`stale` 两条后端不存在的规则。该函数仅在 `author_is_bot` 字段缺失（旧缓存/异常数据）时兜底，口径不一致会让 BOT 徽标与 `is:bot` 筛选对同一账号给出相反结论
-- 指令面板在二次确认态下点击遮罩等同「取消确认」：此前遮罩点击直接关闭面板，绕过二次确认丢弃待执行动作；非危险动作改 `await` 执行，异步拒绝不再逸出为未处理的 Promise
-- 通知渠道表单的长文案勾选项改整行换行排版：定期汇总与「机器人免打扰」此前复用订阅类型项的 `nowrap` 标签样式，窄屏（390px）下撑出 164px 横向滚动，并因溢出覆盖保存按钮导致点击被拦截；新增长文案勾选项样式（`white-space: normal` + 整行占宽），桌面端外观不变
-- 认证页（登录 / 初始化）接入 `PixelAuthFlanks`：左右两岸田园景致已写好组件与响应式样式（≤1040px 隐藏），但登录页与初始化页只加了导入未渲染，导致组件成为「已定义未显示」且两个 `PixelCloud`/`PixelAuthFlanks` 导入因未使用使 oxlint 报错打红 CI；现于两页 `<main className="auth-shell">` 内、`PixelSceneryGround` 之前挂载，并移除未使用的 `PixelCloud` 导入
-
-### Changed
-
-- 通知渠道的 AI 段落渲染收敛到同一拆分逻辑：`splitAISections` 统一识别 `\n────────────────\n🤖 ` 标记并拆出「主体 + 段落列表」，飞书/Discord 主题色、Telegram 可折叠引用块、企业微信/钉钉引用块各按自身语法渲染；此前企业微信与钉钉各用两处 `ReplaceAll`、Telegram 自带 `Split`，三处各自维护分隔符字面量，新增 AI 段落类型时容易漏改某个渠道
-- 维护者裁决阶梯抽为单一函数：后端 `deriveMaintainerVerdict`、前端 `deriveMaintainerVerdict`/`verdictBadge`/`verdictStyle`，PR 评论、Web 卡片与复制报告共用同一口径。此前三处各自复写阈值，且 PR 评论的兜底分支漏判 Critical 合并风险，同一份报告可能给出两种裁决
-- Outbox 终态标记增加状态守卫：`MarkSent`/`MarkRetry`/`MarkDead` 只允许从在途状态（`pending`/`sending`）推进。原实现按 ID 无条件更新，租约过期导致的两份在途投递会让迟到的失败标记把已 `sent` 行改回 `pending` 再次投递，或让迟到的成功标记把 `dead` 行改成 `sent`；而同文件的 `RetryDead`/`RetryAllDead` 都带 `StatusEQ(OutboxDead)` 守卫，同类控制强弱不一致
-- `markDead` 写库失败时不再触发 `OnDead` 指标回调：未落库即不算死信，避免死信计数与列表不符
-- 第二因子登录路径施加与第一因子对称的按 IP 限流（`LoginLimiter.Allow` + 429 `rate_limited`）：原实现只按票据计尝试预算（每票 3 次），而票据可由每次成功的第一因子登录免费重铸，分布式来源下没有账号级上界
-- 2FA 票据 IP 绑定改 fail-closed：`GetTicket` 在 `remoteIP` 或 `ticket.RemoteIP` 任一侧为空时拒绝，与 setup 环回门、metrics 对同一取值的 fail-closed 判定一致（原实现任一侧为空时整体跳过绑定）
-- `resolveClientIP` 在 XFF 全部条目均为受信任地址时回退直连对端：原实现返回最左段，使受信任网段内的主机可自选客户端身份（如 `XFF: 10.9.9.9` 即被记为 10.9.9.9）
-- `isReservedHTTPPath` 改大小写归一：`/API/v1/dashboard` 这类变体此前会通过保留路径判定并拿到 200 index.html，与「客户端探测不误判服务正常」的意图不符
-- `joinWebhookURL` 对 `X-Forwarded-Proto` 归一化（按逗号取首段、大小写归一、只接受 http/https）：原样透传会得出 `javascript://host/path` 这类畸形值；显式配置的 `PublicBaseURL` 仍优先
-- MCP `get_star_trend` 的 `days` 按声明的 enum 收敛（提取 `mcpStarTrendDays`，白名单 7/30/90/0，越界或类型错误回退 30）：`inputSchema` 的 enum 原只是对外声明，服务端从不校验，调用方传入的任意整数会原样进入 store 的逐日聚合；同时修正「非数值回退 0 而 0 恰是合法枚举值」导致的 `{"days":"7"}` 静默变成「全部历史」
-- Agent 发现文档缓存策略补 `Vary: Host` 并加 `must-revalidate`：这些文档内嵌由请求推导的站点 origin，若前置共享缓存以路径为键而忽略 Host，一次伪造 Host 的抓取就会让后续调用方（含 AI Agent）拿到指向攻击者 origin 的 `token_endpoint` 与 API 基址
-- SQLite 备份产物权限收紧为 0600：`VACUUM INTO` 由 SQLite VFS 以默认权限创建（通常 0644），操作员把源库加固为 0600 时会静默回落到全局可读，而源库含 Argon2 口令哈希与信封加密的渠道密钥；与同文件 `copyFile` 的 0600 保持一致
-
-
-- 审计写入可见性收口：`admin.2fa_enabled` / `admin.2fa_disabled` / `repository.delete` / CLI 应急重置 2FA 四处此前以 `_, _ =` 丢弃审计落库错误，改为统一经 `server.appendAudit` 在失败时 Warn 留痕 `audit_append_failed`（带 action/target_type/target_id/error），主流程结论不变，但「谁在何时做了什么」在审计表缺失时仍可从日志定位
-- `/api/v1/stats/actions-insights` 分析窗口按 300 条样本取（`actionsInsightsSampleSize` 样本量、`workflowRunsPageSize` 页大小，每页按剩余样本量取、末页不足一页提前收尾）：此前注释写 300 条而实际只取第一页 100 条，成功率与耗时分位数依赖样本量，窗口过小让高频仓库的统计只剩几个小时；按剩余量取页后不再多取再截断
-- AI 重试耗尽的错误文案追加尝试次数（`attempts=N`，保留原错误码与 Unwrap 链，`classifyCallError` 分类不变）：单次失败与连续 N 次失败此前返回同一句文案，告警与降级提示无法区分上游是偶发抖动还是持续不可用；`Retries=0` 的单次失败不附加次数
-- 接入 oxlint 静态检查（`pnpm --dir web lint`，correctness 类别为 error）：项目使用 typescript 7.0.2，超出 typescript-eslint 的 peer 支持范围（`<6.1.0`，parser 直接抛 `typescript-eslint does not support TS 7.0`），故选用不依赖 TypeScript 版本的 oxlint，类型正确性仍由 `tsc --noEmit` 保证
-
-### Fixed
-
-- 对账工作项读写失败不再静默吞掉：`syncIssues` 原把「UpsertIfNewer 返回存储错误」与「无变化/基线期」合并为同一个 continue，DB 写入失败时无日志、无错误返回，last_sync 记账照常推进，工作项静默停留在旧状态且每轮重复发生；现写入失败留痕 `reconcile_upsert_failed` 并计入软失败，读取失败显式区分 `store.ErrNotFound`（真实错误跳过该条并留痕 `work_item_read_failed`，不再触发 enrich），存在读写失败时不推进游标，下轮从 since 重拉补齐（事件指纹幂等，不会重复通知）
-- GitHub 运行时配置解析与解密失败不再静默降级：`LoadStoredRuntime` 原丢弃 JSON 解析错误，库内 `github.runtime_config` 损坏时静默返回零值并退化为「仅 env 配置」；`MergeFromStore` 中 `DecryptSecret` 失败被 `err == nil` 条件吞掉，主密钥轮换后旧信封解不开时 webhook 密钥变为未配置、所有入站 webhook 被 503 拒绝，而管理台仍显示「已配置」；现均返回指明字段的包装错误
-- 外部轮询归档收口失败留痕（`error_code=repo_state_update_failed`）：`UpdateSettings` 失败被 `_` 丢弃时本地仓仍处于监控开启 + 能力开启，平台继续轮询并通知一个已归档的仓；`PollOne` 的客户端惰性初始化改只读回退到局部变量，导出的 `PollOne` 被并发直呼时不再构成 `p.Client` 同一字段的并发写
-- star 同步用户名收敛写入与消费两侧边界：管理台 `PUT /api/v1/starred-releases/config` 对归一化后的用户名按 GitHub 字符集校验（1-39 位字母/数字/连字符且不以连字符起止），非法值返回 400 `validation_failed` 并指明 `field=username`（此前含 `/`、空格的值会拼出错误 API 路径，star 同步每轮失败而用户侧无反馈）；`ListUserStarred` 路径构造改 `url.PathEscape` 兜底转义；`syncStarsLocked` 对非法用户名跳过本轮并 Warn 留痕 `star_sync_invalid_username`
-- 2FA 状态查询失败不再回落到「未开启」徽章与配置引导：改渲染「状态未知」+ 错误条，此前网络失败会被误读为账号未受保护而重复配置；`enable2FA` 的 `setupData!.secret` 非空断言改显式守卫并抛出带 `two_factor_setup_missing` 错误码的 `ApiError`
-- Webhook 投递历史页载荷查询失败不再落到「未找到记录详情」：那会把服务端或网络错误误报为记录不存在，改渲染 `ApiErrorAlert`；Inspector 模态接入 `useModalLayer`（补背景滚动锁、焦点循环与焦点归还）
-- 前端配置表单回填补「仅首次」守卫（设置页、GitHub 页、Star Release 页同一模式）：保存、同步仓库等 mutation 触发 invalidate 后配置 refetch 得到新对象引用，旧实现会再次整体回填，把用户在输入框中的未保存编辑静默覆盖为服务端值
-- 前端异步轮询生命周期收口：AIReviewCard 审查轮询与 Star Release「立即同步」轮询在组件卸载后立即停止并跳过回调（mutation 生命周期不随组件卸载取消，此前卸载后仍按 2s 节奏拉取到 90s 上限）；「已复制」提示的复位定时器改为引用持有，卸载或再次复制即清除
-- 前端派生缓存与渲染：仪表盘与设置页 `repoItems` 源数组入 memo（`repos.data?.items ?? []` 每次渲染产出新引用，下游 useMemo 依赖永不相等、派生缓存实际无效）；审查结论三类清单（安全风险/破坏性兼容风险/优化建议）抽取为 `ReviewRiskList` 组件并以 `${idx}-${item}` 作 key（条目文本可能重复，纯文本 key 会撞键）；Webhook 投递历史页码同步 URL（`?page=`，含 0/非数字回退第 1 页）
-- 前端类型安全：主题选择与登录页剩余重试次数改用收敛函数取代 `as ThemeMode`、`as Record<string, unknown>` 强转；据 oxlint 结果清理 7 处未使用导入
-- PR 合并置位（`MarkMerged`）改用本次解析出的 `repo.ID`，不再解引用 `*res.Event.RepositoryID`：事件行的仓库关联并非置位标记的前提，指针解引用只带来空指针风险，事件行缺 `repository_id` 时一条正常的 PR 合并 webhook 会 panic 致整个处理失败
-- 归档收口重复实现收敛为 `collapseArchived`（`internal/syncx`）：对账与外部轮询两条路径各自的 `UpdateSettings{IsArchived}` + `repo_state_update_failed` Warn 合并为单一辅助函数，日志文案由调用方区分，行为不变
-- Star Release 页 `setPage` 改 `useCallback` 稳定引用：超界钳制 effect 的依赖不再每渲染变化，消除 oxlint `react-hooks/exhaustive-deps` 告警（该 effect 此前每次渲染都会重跑）
+## 2026-10-01 (Unreleased)
+- **新增**：新增 Issue 智能分诊与首响应建议，自动识别意图类型、评估优先级并生成维护者回复草稿。
+- **新增**：PR 审查增加维护者合并裁决与敏感关键资产嗅探，提前警示高风险代码变动。
+- **功能**：新增 Issue 与 PR 正文采集与统一截断，支持分诊与人工排查引用。
+- **安全**：收口 Agent 访问令牌权限，未声明已知作用域的令牌一律拒绝，只读令牌禁止执行管理写操作。
+- **安全**：通知投递失败日志自动脱敏目标 Webhook URL，防止内嵌 Token 泄露。
+- **安全**：SQLite 备份文件权限严格收敛为 0600，防止敏感信息全局可读。
+- **安全**：启用 2FA 时严格校验主密钥环，禁止以明文方式存储密钥。
+- **修复**：修复非安装事件首建仓库未绑定 installation 导致监控失效与通知永久静默的问题。
+- **修复**：修复添加外部公开仓库误改判既有私有仓库的问题，增加查重与防降级守卫。
+- **修复**：修复对账与外部轮询写回旧快照导致已删除仓库被意外复活的问题。
+- **修复**：修复通知渠道清空订阅后误判定为订阅全量事件的问题。
+- **修复**：修复工作项搜索未命中时残留上一次仓库筛选的问题。
+- **修复**：修复指令面板在二次确认状态下点击遮罩未能正常取消的问题。
+- **优化**：第二因子（TOTP）采用独立令牌桶限流，消除与密码登录共用限流导致的过早被拦截问题。
+- **优化**：通知渠道机器人免打扰语义对齐，日/周/月报与 AI 分析统一遵循免打扰规则。
+- **优化**：改进通知主题色识别算法，由裸子串匹配改为词级匹配，防止普通通知误判为高危红标。
+- **优化**：统一飞书、钉钉、企微、Telegram 等渠道的 AI 段落渲染与引用块样式。
+- **体验**：优化通知渠道长文案在移动窄屏下的排版，避免横向滚动与遮挡保存按钮。
+- **界面**：认证页（登录与初始化）补充田园景致插画渲染，移除无用导入以通过静态检查。
 
 ## [0.6.1] - 2026-09-23
-
-### Changed
-
-- 管理台热点查询与轮询性能收敛：①`notification_outbox` 新增冗余列 `repository_full_name` 与 `(status, repository_full_name)` 索引，取消 unstar 仓未投递 Release 通知改单条批量 UPDATE（SQLite/PostgreSQL 双轨迁移，含回填），不再逐行回查关联事件，事件被级联删除也能正确取消；②仪表盘统计同表维度合并分组聚合（work_items 按 kind、repositories 按 sync_status），整页刷新 SQL 往返由 9 条降至 7 条；③活跃/归档仓 ID 集合缓存随附 `id→full_name` 映射，工作项/运行流/告警三类列表页解析仓库名复用同一份扫描结果；④外部公开仓轮询 `PollAll` 改有界并发（5 worker），整轮耗时不再随仓数线性增长，限流命中即停整轮、逐仓失败不波及其余；⑤对账 PR 补数据改固定 3 路并发扇出，单 PR 由 4 次串行 RTT 降为 2 轮；⑥发件箱列表渠道映射改懒加载、PR 审查在途判定改前缀快速拒绝并将结果幂等查询收敛为单条直查、列表查询保留「COUNT + 取页」两次往返（实测 SQLite 2 万行事件 1.45ms、2000 活跃仓 2.75ms，取证结论记入 `internal/store/CLAUDE.md` FAQ）
-- 安全加固：AI 出站客户端与配置探测禁用 30x 重定向跟随，配置与拨号层双重拦截链路本地及云元数据地址（`metadata.google.internal` / `metadata`）防 SSRF 与 DNS 重绑定，内网自建网关不再被 `.internal` 后缀误拦；按 TLS 与 `X-Forwarded-Proto: https` 自动为会话与 CSRF Cookie 加 Secure 属性；仓库硬删除与 2FA 启用/停用补审计日志落库；`/metrics` 未授权访问日志按来源 IP 采样输出，扫描流量不再打爆访问日志
-- 启用 2FA 端点把会话校验前置于落库：无法定位会话时直接 401，避免 TOTP 配置已写入却因缺 admin_id 写不出审计条目（与停用端点同一模式）
-- 依赖更新：github.com/jackc/pgx/v5 5.11.0、golang.org/x/crypto 0.57.0、golang.org/x/time 0.16.0、react 19.3.0、react-dom 19.3.0、@types/react 19.3.0、@types/react-dom 19.3.0、@tanstack/react-router 1.170.36、zod 4.6.1、lucide-react 1.44.0、@testing-library/user-event 14.6.7
-
-### Fixed
-
-- 已取消星标仓库仍被轮询并推送 Release 通知：GitHub 分页 Link 头在末页与越界页均非空（仅带 `rel="prev"/"first"`，无 `rel="next"`），旧代码以「Link 头非空」判断是否还有下一页，导致 star 同步分页打到页码防御上限、完整分页标记失效，unstar 移除被整体静默跳过（同步日志仍显示成功）；改为以 `rel="next"` 作为唯一翻页依据（与 `ListWorkflowJobs` 一致），页码上限命中补 Warn 留痕
-- 「立即同步」为异步执行，前端此前在同步完成前即刷新追踪列表，用户看到同步前状态以为未生效：配置 API 新增 `last_star_sync_at` 暴露最近一次完整 star 同步落定时刻，前端轮询该时刻推进后再刷新并提示结果
-- 私有仓库手动触发 PR 审查失败：新增仓库安装 ID 解析，优先按本地 installations 表主键 ULID 关联并兼容直接存储的数字安装号，安装令牌缺失时明确返回审查不可用，修复仓库记录未携带 GitHub installation 号时无法获取私有 PR 详情
-- `PollAll` 轮询期间上下文取消被误报为成功：worker 可能在派发完成后才观察到取消，新增派发结束后的 `ctx.Err()` 检查确保取消原因正确向上传播
-- 保留策略清理在途通知：`DeleteTerminalOlderThan` 补「在途行无论多旧都不删」的回归断言，避免 pending / sending 行被清理造成静默丢消息
-- webhook 投递列表 `queryKey` 改用逐字段标量参数：内联对象作为 `queryKey` 时 TanStack Query v5 按 `Object.is` 比较，父组件每次重渲染都产生新缓存条目并触发重复请求
-- 补齐回归测试与文档：PR 审查安装解析四条路径与审查结果幂等判定边界、取消/去重语义与 `repository_full_name` 冗余字段耦合断言、外部轮询前置取消不发起请求的边界语义
+- **性能**：优化通知发件箱索引与批量更新机制，提升高频投递与状态流转吞吐。
+- **性能**：仪表盘统计合并分组聚合，外部公开仓轮询改有界并发，对账 PR 引入并发拉取。
+- **性能**：优化基础工具库热点字符串拼接与时间解析，消除多处无谓的内存分配与装箱开销。
+- **安全**：AI 出站请求与配置探测禁用重定向，双层拦截云元数据地址防范 SSRF。
+- **安全**：Cookie 自动适配 HTTPS Secure 属性，仓库删除与 2FA 开关操作补齐审计留痕。
+- **修复**：修复已取消星标的仓库因分页判定缺陷仍被轮询推送的问题。
+- **修复**：修复私有仓库手动触发 PR 审查时无法正常解析安装身份的问题。
+- **修复**：修复外部仓轮询在上下文取消时被误报为成功的问题。
+- **修复**：修复 Webhook 投递历史列表父组件重渲染导致的重复网络请求问题。
+- **优化**：Star Release 立即同步改在后台同步落定后再刷新界面，避免界面提前显示旧数据。
 
 ## [0.6.0] - 2026-09-16
-
-### Added
-
-- PR AI 智能代码审查引擎：通过 LLM 自动审计 PR Diff 的安全风险、破坏性变更与代码气味，生成结构化审查报告与健康评分；PR 打开或同步时异步触发，审查结果先持久化至系统设置表再回写 PR 评论，同一 PR 同一提交审查去重，避免 webhook 重试重复消耗 AI 配额
-- PR 审查手动触发：REST 端点 `/api/v1/work-items/{id}/ai-review` 与 MCP 工具支持获取/触发审查，异步入队返回 202 排队回执（含 head SHA），前端轮询报告比对 head_sha 与 reviewed_at 获取结果
-- Diff 启发式风险嗅探：自动识别高危 workflow、可疑外链与垃圾文档，并基于风险对评分进行安全截断；机器人 PR（dependabot、renovate 等）自动跳过审查节省 AI 配额，支持手动按需触发；前端审查报告卡片新增风险等级徽章、Bot 作者标记、打开 PR 链接与安全警示横幅
-- Actions CI 失败智能诊断：拉取失败 Workflow 的 Job 与 Step 详情（分页拉取每页 100、最多 20 页），AI 归因故障根因并输出排查建议附加到通知正文，异常时平滑降级；`failure_analysis_enabled` 独立开关，与安全告警分诊解耦
-- 五种新通知渠道：飞书、企业微信、钉钉、Discord、Bark，支持签名校验、消息卡片格式化与平台错误码死信判定
-- Webhook 投递历史管理页面：按状态/事件/仓库筛选、载荷 Inspector 检查与一键重放触发规则评估
-- Actions 效能洞察接口：CI 成功率、平均/中位数/P95 执行耗时与 Top 失败工作流统计
-- SPA 静态资源 ETag：基于文件内容 SHA-256 生成弱验证器，支持 If-None-Match 条件请求 304 与 `Vary: Accept-Encoding` 缓存协商
-- API 路由与发现端点启用 gzip 压缩；MCP 网关新增 trigger_reconciliation、retry_failed_outbox、replay_webhook_delivery 三个自动化运维写工具
-
-### Changed
-
-- 高危风险或低分审查自动联动 Outbox 发送多渠道安全预警，高风险通知自适应预警等级并附带仓库链接、作者信息与处置建议
-- 手动触发审查接口错误按类别映射（不存在 404、目标不可审查 400、能力未启用 503、在途冲突 409）；reviewTracker 以互斥锁管理在途任务登记与停机排空，Close 先拒绝新任务再等待排空，消除停机窗口竞态
-- AI 审查响应严格 JSON 校验与空响应校验：格式错误或空内容返回错误，不再静默降级渲染空报告；评分校验仅拒绝负数；送入 LLM 的失败步骤上限 30 条；GitHub Diff 读取统一按 MaxPRDiffBytes+1 上限并透传读取错误
-- AI 与 GitHub 客户端实现自定义 HTTP 传输层，优化连接池复用与请求超时；AI 请求附 X-Request-ID 增强链路追踪
-- rules.Engine 补充 GitHub 客户端依赖，默认引擎模式下 webhook 服务可拉取失败 workflow job 与步骤详情；ListWorkflowJobs 改分页拉取，避免任务超过 100 个时仅取首页
-- 新增 internal/textutil 包统一 UTF-8 安全截断（TruncateUTF8Bytes），release 说明截断与存储复用同一实现
-- 前端 RelativeTime 组件改用全局单一定时器与订阅分发机制，每 60 秒自动刷新；监控模块查询失效改 Promise.all 并行执行
-- 无启用订阅渠道时规则引擎跳过通知与分诊分析；渠道删除与切换改用 GetByType 查询，支持操作已禁用渠道；摘要生成器活动仓不超过 3 个时主键点查；超频滑动窗口超 100 键自动清理过期条目
-- 依赖更新：golang.org/x/crypto 0.56.0、modernc.org/sqlite 1.58.0、react-hook-form 7.87.0、@vitejs/plugin-react 6.1.1、@types/react-dom 19.2.7
-
-### Fixed
-
-- release 说明按字节截断导致 UTF-8 多字节字符损坏：统一改用 truncateUTF8Bytes 按字符边界截断，保障数据库存储与 AI 摘要输入文本完整
-- 静态资源 ETag 全局缓存跨文件复用旧值导致缓存脏读：改为每次基于文件内容动态计算，支持多候选弱比较与 gzip 变体协商
-- AI 审查空响应被渲染为健康报告并回写 PR：summary 为空且无任何风险/建议时返回 ErrInvalidCodeReview；前端 AI 审查接口仅 404 视为暂无报告，其余错误向上抛出不再静默吞掉
-- 手动触发 PR AI 审查同步执行超过 HTTP WriteTimeout 导致前端误判失败而审查已入库：改为异步入队并返回 202
-- RelativeTime 组件前置 return 导致 Hook 顺序不一致：空值与非法日期判断移入 useMemo 内部
-- webhook 异步处理并发槽位获取失败时行残留 accepted 状态：新增 Service.MarkFailed 显式标记投递失败
-- outbox 通道类型筛选无匹配结果时仍执行后续查询：提前返回与其他列表端点一致的响应格式
-- store 删除前查询 ID、worker 信号量控制等多处空指针与并发问题
-- 测试稳定性：`TestServiceTriggerWorkItemReviewAndHighRiskAlert` 对 Outbox 告警改为有界轮询等待（测试直构 Service 未装配 reviewTracker，WaitReviews 为空操作，告警入队在报告持久化之后异步完成），消除偶发失败
+- **功能**：新增 PR AI 智能代码审查引擎，自动审计 Diff 安全风险、破坏性变更并生成健康评分与处置建议。
+- **功能**：支持手动按需触发 PR 审查，提供审查报告卡片、一键复制 Markdown 与 PR 评论回写能力。
+- **功能**：新增 Actions CI 失败智能诊断，自动分析失败工作流 Job/Step 并归因根因。
+- **功能**：新增飞书、企业微信、钉钉、Discord、Bark 五种通知渠道，支持富文本卡片展示。
+- **功能**：新增 Webhook 投递历史管理页面，支持状态筛选、载荷检查与一键重放。
+- **功能**：新增 Actions 效能洞察接口与统计分析能力。
+- **优化**：SPA 静态资源支持基于哈希的 ETag 协商缓存，提升页面二次加载速度。
+- **优化**：统一全系统 UTF-8 字符安全截断，防止文本在字符边界截断时损坏。
+- **修复**：修复 AI 审查在模型返回空内容时被错误渲染为空报告的问题。
+- **修复**：修复 Webhook 并发槽位满时任务残留未决状态的问题。
 
 ## [0.5.0] - 2026-09-06
-
-### Added
-
-- 新增 `POST /api/v1/notifications/outbox/retry-dead`：一键重新排队全部失败投递（可选 channel_type 过滤），后端单次 UPDATE 完成，与逐条重试同一字段语义；前端「重试全部失败」从跨页收集+逐条串行 POST 改为单调用
-- 扩展 MCP 网关工具集：新增 `list_events`（只读最近事件流）、`get_star_trend`（Star 增长趋势数据）、`list_starred_releases`（Star Release 追踪列表），完善 `list_outbox` 状态与渠道类型过滤支持
-- 补齐 OpenAPI 规范契约定义：补充 `POST /api/v1/notifications/outbox/retry-dead`、`POST /api/v1/notifications/outbox/{id}/retry`、`DELETE /api/v1/repositories/{id}`、`POST /api/v1/repositories/{id}/activate`、`POST /api/v1/repositories/{id}/reconcile` 与 `POST /api/v1/sync/reconcile` 完整路由与参数描述
-- 强化 JSON 请求头与响应缓存控制：对不支持的内容协商返回明确 415 细分提示，系统版本与构建信息接口增加 `Cache-Control` 缓存指令保护
-
-### Changed
-
-- 规则引擎与事件聚合器空指针防御加固：规则引擎 Evaluate 增加引擎对象及存储依赖空指针防护；聚合器 FlushAll 与 ReloadFrom 增加安全空判断防崩溃
-- 渠道操作与单仓对账路径参数严谨收口：通知测试、删除、开关端点对 channel_type 路径参数补齐首尾去空清洗；单仓对账端点补充仓储 ID 空值校验与拦截
-- 列表查询过滤参数统一去空防守：仓库、工作项、运行流、安全告警、审计事件与发件箱列表查询参数统一执行首尾空白过滤清洗，避免无效过滤与漏匹配
-- 分页查询参数与忽略状态路由边界防护：列表分页参数 page/per_page 增加空白清洗防错；资源忽略标记端点补齐 id 校验防守；检查状态参数支持大小写不敏感与同义词映射
-- 批量重试死信渠道参数去空容错：发件箱批量重试端点对 channel_type 查询参数执行去空清洗，提升渠道筛选时的容错表现
-- 趋势统计天数参数去空与容错强化：Star 增长趋势端点对 days 查询参数执行去空清洗，提升含多余空白参数输入时的解析兼容性
-- 路由资源标识入参去空边界守护：仓库激活、仓库配置更新以及 Star 追踪器状态切换端点增加资源标识去空防空校验，统一 400 校验异常透出
-- 初始化端点凭据空白防御：初始化端点增加用户名与初始密码去空非空校验，拒绝空白无效凭据
-- 密码修改空值防御与前端校验对齐：修改密码端点增加当前密码与新密码非空白校验，拒绝无效修改请求；前端设置页修改密码表单提交前拦截空当前密码
-- GitHub 配置入参空值防御与安全校验：GitHub Webhook 密钥与私钥内容增加去空校验，拒绝纯空白非法输入；前端配置表单针对 Client ID 与公开服务地址增加去空清洗
-- 外部仓库与追踪器轮询上下文取消感知：外部公开仓轮询、Star 列表分页与 Release 追踪遍历循环增加上下文取消感知，优雅响应系统停机与超时熔断
-- Webhook 地址空白清洗与出站通知表单防护：出站 Webhook URL 校验前自动去除首尾空白，防范边界格式异常；前端通知渠道表单提交前对密钥去空清洗
-- 通知渠道配置入参规范清洗与重试边界加固：通知渠道名称、目标与密钥去空清洗，订阅类型数组自动修剪与去重校验；投递重试端点增强空白标识符防御
-- 全局外链安全属性标准化：登录、部署向导、投递详情、设置与仪表盘各页面外部链接全面统一样式及 `rel="noopener noreferrer"` 属性，防范反向窗口劫持与来源泄露
-- 命令行简写参数扩展与提示组件语义防守：子命令全面支持 `-c` 配置文件简写、备份恢复支持 `-o`/`-i`，密码读取防守空输入流；空状态与错误提示组件增强无障碍标签并对空描述与空标题安全兜底
-- 聚合器全局刷新与格式化空安全增强：聚合器提供 `FlushAll` 快速提交暂存事件并取消定时器，读取数值设置防守空存储；状态与事件类型展示函数兼容空值及未定义输入
-- 系统配置输入清洗与追踪列表异常值防守：时区、时间及周名配置自动修剪首尾空白；追踪项发布时间非法时安全回退占位符；追踪项外链统一标注 `noopener noreferrer`
-- 消息投递文本与纯文本转换加固：日志标题截断自动规整换行与连续空白；HTML 转纯文本兼容单引号及属性标签；客户端 Cookie 与登录重定向增强无 DOM / 空 Cookie 环境防护
-- 配置校验与参数解析兼容加固：数据库驱动与监听地址自动去除空白；MCP 工具参数支持多数值类型解析与参数修剪；审计记录补充零值时间回退与空标识防护
-- 界面图表与外部链接安全更新：Star 趋势图对空日期点安全守护；关于页外部链接补齐 `noopener noreferrer` 防护
-- 载荷时序与空安全加固：Issue、PR 与安全告警缺失时间时安全回退当前 UTC 时间；重试退避解析增加空响应与非法头守护
-- 客户端分页与过滤组件语义补充：GitHub REST 接口分页参数钳制下限为 1；清除筛选按钮补充无障碍可访问属性标签
-- CLI 命令行别名与帮助完善：支持 `-v`、`--version` 查看版本信息，以及 `-h`、`--help` 打印可用命令提示
-- 规则展示与动作映射扩充：补充工作流结论图示（中立、陈旧、执行中、排队中）与事件动作中文转换（指派、标记、锁定、转移、删除等）
-- 界面展示辅助函数空值防守：`formatRelativeTime` 与 `repoDisplayName` 补充非法时间与空对象安全拦截；`notify-subscription` 兼容空值与未定义场景
-- Webhook 载荷空值前置校验：`Processor.Process` 增加载荷长度为 0 的防护判定并返回语义化错误
-- 规则消息渲染空事件安全回退：`renderMessage` 增加对 `nil` 事件的安全拦截，避免空指针异常
-- 认证与引导表单用户名空白清洗：登录与系统初始化处理函数对用户名字段执行首尾空白过滤
-- 存储层列表过滤项清洗完善：`NormalizeListFilter` 对 `ChannelIDs` 集合元素执行首尾空格修剪与无效空字符串剔除
-- 确定性错误死信判定收口：出站通知投递将上游与接收端明确拒绝的 4xx 状态码统一判定为永久失败并直接进入死信队列，避免无意义的退避重试
-- 定期报告时间戳空值守护：`appendReportFooter` 增加零值时间校验，杜绝未初始化时间输出非法格式化页脚
-- 仓库操作与分页查询上限约束：`handleDeleteRepository` 增加 ID 空白校验，工作项与安全告警查询对 `closed_limit` 增加不超过 100 的上限硬约束
-- 图表坐标计算边界保护：`starTrendYDomain` 增加对非正常数值与 NaN 的清洗过滤与区间回退保护
-- 前端 URL 状态 SSR 保护：`useUrlState` 增加 `window` 及 `location` 的存在性前置断言，避免在服务端渲染或无 DOM 环境下抛出引用异常
-- OpenAPI 契约对齐真实运维端点：将历史规划端点准确对齐为 `POST /api/v1/repositories/{id}/activate` 与 `POST /api/v1/repositories/{id}/reconcile`
-- JSON 请求体错误细分与诊断提示：`decodeRequestJSON` 在 400 Bad Request 时透传底层 JSON 语法错误与尾部多余内容检测（如多对象），为客户端提供可操作的报错消息
-- 规则展示与事件格式化空指针防护：`EventStatusLabel` 与 `statusDisplay` 增加对 nil 事件的完备回退防护（回退为 `📌 有更新`），避免在非预期空事件触发时发生恐慌
-- 数据层过滤参数严格清洗：`NormalizeListFilter` 自动去除 `RepositoryID`、`Kind`、`State`、`Status`、`ReviewDecision` 与 `CheckStatus` 等过滤字段首尾空白，避免前端与 API 传参携带无意空白导致数据比对与查询失配
-- AI 配置健壮性：库内 AI 配置 JSON 损坏/类型不匹配、API Key 信封解密失败均改为报错（此前静默降级为「未配置」，出现「已配置的 AI 突然全没了」且无任何日志）
-- PR 审核一致性：最新评审非 APPROVED/CHANGES_REQUESTED 终态时清空 ReviewDecision（不再出现 COMMENTED+changes_requested 的自矛盾字段对）；webhook 标记失败 Warn 补 delivery_id/event_type
-- ReconcileRepository 拆分为 resolveInstallationToken / syncStarSnapshot / finalizeSyncState 三个私有方法；MaxPages 惰性写共享字段改只读访问器（消除数据竞争隐患）；「github rate low」升 Warn 并补 error_code
-- 更新检查双路径都失败时上报权威 API 路径的错误（403/429 更可操作）；HTTP 客户端改包级共享实例复用连接池
-- SQLite 下显式配置 max_open_conns/max_idle_conns>1 启动前直接拒绝（此前静默忽略，配置面与行为漂移）；存量部署若曾配置，删除该项或改为 1 即可迁移
-- 设置页 AI 表单回填补「仅首次」守卫（保存后 invalidate 回传不再覆盖其它区块未保存编辑）；仪表盘功能开关查询失败补错误条（此前静默按全部启用放行）；FeatureGuard 透传各页功能描述
-- 前端分包实验回退：rolldown-vite 已废弃 manualChunks/advancedChunks 且默认 codeSplitting 覆盖时忽略之；按其原生 codeSplitting 分组后 React 仍落入 recharts 所在 chunk 并被登录页依赖（354K 进首屏），边界不可控，回退到默认分包（recharts 随仪表盘懒 chunk、登录页不承载）
-- 路由补 defaultPendingComponent：lazy chunk 首载期间展示列表骨架而非空白内容区；WebMCP 工具从 bfcache 恢复时重新注册
-- e2e 工程：CI test job 追加 Playwright e2e 阶段（此前只在本机运行）；make test 带 -race 与 CI 对齐；ensureAuthenticated 会话按项目持久化复用（登录限流 5 次突发+12s 补 1，每用例各登一次必 429）
-- 文档同步：版本指南补公开 /api/v1/system/build-info、列表 API 指南补 retry-dead、docs 资产脚本补 guide/list-api 与 reference/release、.env.example 补 Star Release/智能值守/Agent OAuth 三段变量
-- webhook 状态标记预算从「标记时刻」起算：超过 5s 的慢处理（如 AI 分诊）不再必然标记失败导致行残留 accepted 被重放、重复投递
-- watch/star 无时间戳载荷的事件指纹以 deliveryID 为幂等键：accepted 行重放同一载荷不再产生重复事件
-- star 计数快照写失败降级为 Warn 留痕：辅助指标失败不再阻断 star 事件落库
-- Outbox 领取从逐行 UPDATE 改批量单条 UPDATE（积压时 51 次 SQL/tick → 2 次）；对账 PR 的 enrich 已查行透传 UpsertIfNewer 复用，同行不再二次 SELECT
-- Agent 发现目录同步：MCP list_repositories type 枚举改真实存储值（github_installation/external_public）、security alerts state 放开自由透传、OpenAPI 补 /api/v1/system/build-info、SKILL.md 修正 type 取值并补 Star 趋势/Star Release 追踪/版本/构建信息端点
-- MCP 网关一致性：/mcp 补 Store 统一守卫（未装配 503 而非 panic）、initialize 的 serverInfo.version dev 回退、MCP-Protocol-Version 响应头随协商结果回写
-- 全局 MethodNotAllowed 返回 405 method_not_allowed（路径存在但方法不符不再返回 404）；Markdown 内容协商收紧到 SPA 规范路径（不存在的路径不再 200 软着陆）；OAuth 令牌端点限流错误码改 RFC 6749 注册的 temporarily_unavailable
-- Agent 发现 Link 头不再附加到带扩展名的静态资产与 /metrics；发现文档缓存 TTL 统一为一档
-- 就绪宣告移到 HTTP 监听成功之后（消除端口占用时「先报 ready 再退出」的假就绪窗口）
-- CLI 输出：healthcheck 失败携带探针 URL 与底层原因、backup 输出 size_bytes/duration_ms、doctor 错误单行化、admin reset-password 输出 key=value
-- 聚合热加载不再把「键未设置」当错误（设置页保存任意设置不再打假 Warn）；聚合 flush 回放预算随 AI 配置超时放宽（与 webhook 直发路径同一语义）；webhook 归档联动写失败补 Warn 留痕
-- 文档站 robots.txt 改由构建脚本生成（Sitemap 绝对地址）；llms.txt 补运行时 Agent 发现端点小节
-- Star 趋势查询性能：日聚合改游标线性推进（O(快照数+天数×仓数)，原先逐日全扫）；days>0 时快照查询加日期下界不再载入全部历史，窗口起点的补值种值经 GroupBy 最大日期 + 唯一索引精确取回，曲线起点语义不变
-- 高频低变化查询接入短 TTL 进程内缓存：通知渠道 List（规则引擎/聚合器/outbox 投递热路径，写路径即时失效）、活跃/归档仓 ID 集合（各列表/计数与仪表盘共享一次扫描，repositoryStore 写路径即时失效）、仪表盘聚合统计（3s TTL，约 10 条 SQL/请求收敛为缓存命中）
-- 同步与投递热路径去重复：star 同步一轮内 installation 令牌与追踪计数各只查一次（原每个新仓各查一次），Outbox Worker 同批投递复用同渠道密钥明文；前端 Outbox 查询改条件轮询（有待投递/投递中条目 15s，空闲降 60s）
-- 日志与错误语义收口：reconcile/external 单仓失败 Error 补 error 详情、unstar 候选失败 Warn 留痕、令牌告警按调用方区分 star sync / release poll、installations Warn 统一 error_code、doctor 统计失败输出可读行；InstallationToken 未配置改返回 sentinel ErrAppNotConfigured；业务错误码全部提为常量
-- 前端模态层行为抽取为 `useModalLayer`（滚动锁/Escape/焦点循环/焦点归还），确认对话框/投递详情抽屉/移动端导航抽屉三处复制收敛；ConfirmDialog 统一固定 confirmLabel + busyLabel 范式；导航抽屉焦点归还显式指向菜单按钮（Safari 桌面版点击按钮不聚焦，activeElement 捕获不可靠）
-- GitHub API 客户端请求路径改只读回退包级共享默认 http.Client：PublicClient 不再每次调用新建 http.Client（连接池复用）
-- 定期报告命名统一为「每日摘要 / 每周报告 / 每月报告」（月报标题与设置页开关文案同步）
-- 状态展示一致性：安全告警终态补配色（已修复绿、自动忽略/已撤回灰）、code scanning 严重度别名补底色（error/warning/note）、列表截断标题补 hover 全文提示、投递记录空态补「清除筛选」入口、周期校验上限按天/小时表述
-- 仓库列表查询自动翻页拉全：超过 100 仓后仓库管理页/基线面板/筛选下拉不再静默丢失尾部仓库（50 页防御上限防异常 total 拖出无界请求循环）
-- 登录页注入版本时不再请求构建信息端点
-- 事件类别 emoji 收敛为单一来源（`rules.KindEmoji`）：digest 报告分组行不再维护私有 emoji 表，与 rules 通用回退共用，扩展类别只需改一处；`EventStatusLabel` 告警分支移除无意义的严重度判断（两分支返回值相同）
-- 日志留痕一致性：`aggregator reload failed` / `ai runtime reload failed` / 对账限流等待 / 公开 API 配额告警四处 Warn 补语义化 `error_code`，便于按码聚合
-- 仓库基线「立即放行」按钮改行级忙碌反馈：仅当前行禁用并显示「放行中…」（此前全局禁用其它仓库放行按钮），与「对账」按钮行级模式一致
-- 仓库激活接口改为单次 Upsert 写回状态与基线结束时间：删除「UpdateSyncStatus → Get → Upsert」三步中的冗余更新
-- 前端渠道名映射收敛：notify 页删除私有 `channelDisplayName`，复用 `format.channelLabel`
-- 仪表盘 Star 功能关闭时不再发起趋势查询：`starTrend` 查询 enabled 增加功能开关判定（此前仅按面板折叠暂停，无效轮询）
-- 文档同步：AI 分诊注释与 AI 后续改进计划文档中的「15s 独立预算」描述更新为「遵循配置超时」（该硬编码已于 0.4.0 移除）
-- Issue/PR 列表页描述「默认显示 Open」改「默认显示未关闭」，与筛选按钮文案一致；Star Release 同步成功提示「请稍后刷新列表」改「追踪列表将自动更新」，与自动失效刷新行为一致
-- OpenAPI 规范补录 `/api/v1/starred-releases/config`、`/api/v1/starred-releases/trackers` 与 `/api/v1/stats/star-trend` 端点（Agent 发现目录与实际 API 同步）；列表 API 文档补追踪端点参数
-- 仪表盘「24h 事件」口径排除已归档仓库（与 OpenIssues/PR/Actions/Security 的活跃仓限定一致），补回归测试
-- 受保护 API 路由补 Store 统一守卫：未装配时返回 503 而非 nil 解引用（monitor_handlers 多数 handler 此前依赖认证中间件的隐含保护）
-- 接入进度「基线已放行」步骤跳转设置页并渲染「去配置」（基线放行入口在设置页，此前 to=/ 且无操作按钮）；Star 趋势查询失败展示错误条而非误导性「暂无数据」空态
-- Star 趋势范围按钮补 `aria-pressed`；doctor 命令复用 `githubx.RuntimeSettingKey` 常量（此前硬编码键名字符串）
-- GitHub App 页与设置页外链补 `title="在新窗口打开"`，与既有外链提示一致；Star Release 行时间展示统一 `zh-CN` locale
-- 列表分页 `page` 参数补 100000 上限钳制：公开 API 的极端页号不再触发 `Offset` 整数溢出；`NormalizeListFilter` 补回归测试
-- 仪表盘「基线中」指标补跳转设置页（基线放行入口）；接入进度步骤数组 `useMemo` 缓存，减少轮询重渲染重建
-- installation 事件透传挂起状态：`ghInstallation` 补 `suspended` 字段，管理台「已挂起」标识此前因硬编码 `"false"` 永不生效
-
-### Fixed
-
-- AI 配置热更新丢失「更新速览」开关：Client.Replace 未拷贝 ReleaseSummaryEnabled，管理台保存后开关保持旧值直到进程重启
-- star 同步预加载追踪映射失败时整轮中止：此前空映射继续执行会把存量追踪误判为新仓，registerIfNewer 的 Upsert 强制写回 tracking 并清零游标（静默重置用户停用与复查状态）；中止不推进记账，下个节拍快速重试（回归测试锁定）
-- JWKS 不再携带对称密钥材料：kty=oct 的 k 参数即 HS256 签名密钥本身，公开即可自签合法 read 令牌；端点仅保留 kid/alg 供轮换识别
-- 主密钥格式非法与「与库内探针不匹配」分流：格式非法报 invalid_encryption_key（与数据库无关），不再误导为数据库密钥不匹配；密码重置 CLI 同步分流；派生密钥未装配改独立 sentinel ErrKeyUnavailable
-- 单条 RetryDead 补 dead 状态守卫：sending 在途行不再被翻回 pending 造成同一通知投递两次
-- 对账 PR enrich 后不再复用 enrich 前旧行做 UpsertIfNewer 判定：enrich 秒级窗口内 webhook 并发写入会被陈旧快照回滚
-- Outbox 页 dead 计数查询带渠道过滤：按钮计数与批量重试实际范围口径一致
-- e2e 修复陈旧断言：auth.spec Tab 序对齐 GitHub 链接加入后的 DOM 顺序（该断言自 2026-08-09 起静默失效，CI 无 e2e 阶段未暴露）；主题持久化断言改存储层验证（移动端顶栏有意隐藏选择器控件）
-- AI 配置保存后热加载失败返回明确错误（409 ai_runtime_reload_failed）且不再广播半合并运行时（此前 Warn 后仍 Replace 并响应 200）
-- Dockerfile 默认版本 0.3.8 → 0.4.0：本地 docker build 不再产出错误版本号
-- 更新检查 HTML 回退路径报错引用首个 302 响应的状态码，改为实际取到页面的响应
-- Star 追踪列表空态在加载中与出错时误展示「暂无追踪记录」：补三态守卫
-- 投递记录三个重试入口互不互斥：批量重试进行中可再点其他重试按钮导致并发重复排队，现统一互斥
-- GitHub 页/通知页成功提示常驻不消退：接入自动消退（与设置页同策略）
-- NumberField 聚焦时鼠标滚轮静默改值：禁用原生 wheel 步进
-- GitHub App 客户端并发首次调用无锁写共享字段（数据竞争隐患），改只读回退
-- 登录页页脚版本号恒为「版本 dev」：新增公开 /api/v1/system/build-info 端点，展示真实构建版本
-- outbox 页批量重试回调收敛：抽 `invalidateOutboxAndDashboard` 与 `retryBatchOptions`，消除三处重复失效逻辑与两份相同 mutation 回调
-- 筛选按钮组抽共享组件 `StateFilterButtons`：投递记录页与列表页共用，样式/aria 不再各自维护
-- outbox「重试本页失败」「重试全部失败」补 `aria-busy`（读屏可感知加载中）
-- 设置页密码区块缩进错乱（18 空格）恢复标准缩进
-- `display_test.go` 新增未收录告警动作统一回退与 `KindEmoji` 映射回归测试；`monitor_handlers_test.go` 新增仓库激活单次写回回归测试
+- **功能**：新增两阶段 2FA 登录流程与 TOTP 认证（RFC 6238），增加密码防爆破渐进延迟与并发保护，支持 CLI 应急重置 2FA。
+- **功能**：新增失败通知单次批量重试接口，管理后台支持一键重发全部失败通知。
+- **功能**：扩展 MCP 运维工具集（`list_events`、`get_star_trend`、`list_starred_releases`），OpenAPI 补齐完整运维端点契约。
+- **安全**：支持受信任反向代理真实客户端 IP 解析（`X-Forwarded-For` / `X-Real-IP`），防范 IP 伪造；全站外部链接统一安全防护。
+- **优化**：API 请求体 JSON 解码错误细分透出，增加明确的 415 不支持格式提示，提升接口调试体验。
+- **优化**：全系统配置输入与列表查询参数统一执行首尾去空防守，防范空格导致的过滤失配与空指针异常。
+- **优化**：外部仓库轮询与追踪器循环增加上下文取消感知，服务优雅停机时立即响应退出。
+- **优化**：CLI 支持 `-c` 配置文件及 `-o`/`-i` 备份恢复简写，支持标准 `-v`/`-h` 选项。
+- **修复**：修复两阶段 2FA 登录剩余次数提示与超限回退逻辑，提升异常凭据防护表现。
+- **修复**：修复前端 `useUrlState` 在无 DOM 环境下的 SSR 兼容性保护。
 
 ## [0.4.0] - 2026-08-18
-
-### Changed
-
-- Star Release 追踪修复条件请求 304 误判「无 Release」：release 未变化时 GitHub 返回 304（空响应体），此前空列表判定先于 304 处理，导致有 release 的追踪仓在每轮轮询后批量转入 inactive；调整判定顺序（先处理 304 再判空列表）并补回归测试；存量误标自愈：star 同步对「inactive 但带 release 游标」的仓立即重新探测恢复（release 确实被删除的仓仍保持 inactive），追踪页对「无 Release 但带已记录 release」的行补「恢复」按钮
-- 安全告警差集对账：完整拉取远端告警列表后，将本地存在但源端已消失（GitHub 撤回）的非终态告警标记为「已撤回」，并落一条抑制通知的 reconcile 事件供管理台追溯，不再出现「源端已修复/撤回、网页仍显示待处理」的陈旧状态；翻页超出页数预算时不执行差集，避免把「没拉到」误判为「已消失」
-- AI 相关文案统一更名为「智能值守」体系：设置页「AI 集成」区块改「智能值守」、「启用 AI」改「启用智能值守」、每日/周/月报告「AI 摘要」改「智能简报」、Release「AI 中文总结」改「更新速览」（通知正文分段标题同步）、运维文档「AI 调用」改「大模型调用」
-- AI 实时链路（安全告警分诊、Release 中文总结）的等待时长严格遵循配置的请求超时：删除 15s 硬编码预算与共享 HTTP 客户端 30s 硬顶，超时后该条通知以原文链接兜底，不再出现「设置了超时但更早被截断」
-- Webhook 单条后台处理预算跟随 AI 配置超时放宽（下限 60s），分诊调用不再被处理预算暗中截断
-- Release AI 总结提示词改为「每行一个要点、`- ` 前缀」，推送正文不再是一整段长文字
-- 设置页数字输入框统一改为「自由输入、失焦钳制」：修复输出 token 上限逐位输入首位数即被钳到 100 的问题（同步覆盖聚合窗口/保留天数/追踪上限等全部数字输入）
-- Star 增长曲线 Y 轴不再从 0 起：围绕数据波动范围自适应缩放（大基数下个位增长肉眼可见），波动大时贴近「上下 100」的常规观感
-- 关于页「构建时间」恢复绝对日期展示（不再显示「X 天前」相对时间）；移除 Git SHA 复制按钮，直接展示 SHA 文本
-- 仓库「彻底删除」失败后按钮恢复并提供原因提示（此前失败会永久停留在「删除中…」）
-- 设置页保存某一区块不再覆盖另一区块尚未保存的编辑；各区块保存错误独立展示（此前任一区块失败会在两处同时报错）
-- 投递记录页渠道筛选、Star Release 追踪页分页与状态筛选同步到 URL：刷新 / 复制链接后保留当前视角
-- 仪表盘与投递记录页单条重试失败时给出原因提示（此前静默恢复，仅错误码 hover 可见）
-- 聚合通知标题「（已合并）」改为「（已聚合）」：避免与 PR「已合并」状态语义混淆
-- 定期报告空事件文案由庆祝 emoji 改为 📭；分组标题与实时通知的类型/状态文案统一（同一映射，不再各自维护）
-- 摘要预览补齐 PR 转草稿、Star/Watch/Release 状态中文（此前回退为裸英文 action）
-- Star Release 追踪行停用/恢复的忙碌态随请求结束自动恢复
-- 通知渠道目标 / 投递 ID / Webhook URL 复制失败时给出短暂提示（此前静默降级）
-- 表单输入框宽度由自动伸缩改为 `size` 属性限定：移除 `fit-content` / `field-sizing: content`（后者仅 Chrome/Safari 支持，Firefox 行为不一致且输入时宽度抖动）；宽度按字段语义限定（时区 / 时间等短字段窄、URL / 密钥等长字段宽），NumberField 按上限位数固定宽度不再随输入内容伸缩
-
-### Added
-
-- 可访问性：忽略筛选按钮补 `aria-pressed`；移动端导航抽屉与投递详情抽屉补 Tab 焦点循环与模态语义；移动端主题选择器不再聚焦到不可见控件
-- 状态徽章补全 `action_required` / `skipped` 与 release / star / watch 类型配色，深色主题下自动提亮
-- 事件状态徽章与按钮选中态改用设计令牌（含深色档），主题色从令牌读取：改配色不再需要同步多处硬编码
-- 列表页底部「已全部加载」处新增「回到顶部」按钮，长列表滚动后一键回顶
-- 对账与外部轮询单仓成功留痕（Debug，`reconcile ok` / `external poll ok`）：排查"某仓对账过没有"不依赖调度成功日志
-- 登录成功日志补充 `user_agent`：登录来源可审计
-- 仓库生命周期事件（归档/取消归档/删除/转移）Info 留痕
-- Webhook 状态标记失败（`mark_failed`）Warn 留痕：标记失败会让行残留中间态，影响状态机与重放判断
-- 定期报告生成了但没有启用且勾选汇总的渠道时 Debug 留痕（用户看不到报告是常见困惑点）
-- GitHub REST 出站请求补充 `User-Agent: RepoSentinel-GitHubClient/1.0`（GitHub 要求 UA 识别来源）
-- JSON 请求体超过 1 MiB 上限时响应携带具体说明（不再只给通用校验文案）
-- 可访问性：列表/outbox/仓库归档筛选按钮补 `aria-pressed`；对账按钮补 `aria-busy`；dashboard 错误码 hover 展示中文说明（与投递记录页一致）；多处新窗口链接补 title 提示
-- Star 增长曲线在深色主题下适配设计令牌：Tooltip 背景/边框/文字与刻度颜色随主题切换，不再白底刺眼
-- 全局滚动条样式适配深/浅主题（WebKit），深色下滚动条不再刺眼
-- `/metrics` 新增 `reposentinel_outbox_pending_gauge` 与 `reposentinel_outbox_sending_gauge`：投递队列深度与在途量可监控
-- FAQ 补充「收不到通知怎么排查」：按链路逐段确认，并给出 Debug 日志关键词
-- 通知决策留痕：实时通知被抑制 / 能力开关关闭 / 不在实时范围时 Debug 输出原因，排查漏通知不再盲猜
-- 聚合器超频降级 Warn 留痕（repo/窗口内事件数）与合并投递 Debug 留痕（合并量可评估聚合窗口配置）
-- Webhook 处理成功日志补充 `event_id`：delivery 行 ↔ 事件可互相检索定位
-- Outbox 详情抽屉展示通知正文（纯文本化，外部 HTML 不直接渲染避免注入）
-- 通知渠道行支持一键复制目标（Chat ID / URL），配置排查时便于粘贴
-- `reposentinel version` 输出补充 `repository=` 仓库地址
-- 通知渠道目标失焦即时校验：Telegram Chat ID 须为数字、HTTP Webhook 仅接受 HTTPS URL，保存前提前反馈格式问题
-- 登录被限流（`rate_limited`）后提交按钮禁用，防止连点刷掉限流窗口
-- Outbox 详情抽屉支持一键复制投递 ID，便于粘贴到日志/工单排查
-- Session 清理（15m 周期）无论删除量都 Debug 留痕：排查"过期 Session 有没有清"不依赖删除数
-- 事件去重留痕：Webhook 重复送达（指纹预查命中与唯一索引冲突）Debug 输出 repo/kind/action，与「逻辑异常没写库」区分
-- `installation_repositories` 的 `repositories_removed` 消费留痕：本地存在标记 unavailable、本地不存在也 Debug 记录（确认事件被消费而非漏处理）
-- 设置页「立即对账全部自有仓」无自有仓时禁用并提示原因
-- 仓库地址入口：登录页/初始化页右上角与顶栏新增 GitHub 图标直达源码（lucide-react 无品牌图标，内联 octocat SVG），关于页「你在用什么」补「GitHub 仓库」链接，`/auth.md` 元数据补 `- GitHub:` 行
-- HTTPS 部署（PublicBaseURL 为 https）下发 `Strict-Transport-Security`；明文部署不下发，避免锁死纯 HTTP 自托管
-- CSP 增强：新增 `form-action 'self'`，HTTPS 部署追加 `upgrade-insecure-requests`
-- `reposentinel healthcheck` 成功输出补充 `latency_ms`：编排系统可发现"能响应但明显变慢"的实例
-- 列表页翻页失败时底部展示「加载失败，点击重试」（首屏失败仍由 QueryGate 兜底）
-- 登录凭据失败后自动清空密码框并聚焦：避免旧输入残留被误提交
-- HTTP Webhook 出站投递携带明确 `User-Agent: RepoSentinel-Webhook/1.0`，接收端日志/过滤可识别来源
-- 设置页时区输入失焦即时校验：非法 IANA 时区提前提示，保存后后端仍强校验
-- 采集跳过留痕：Webhook 规范化对"收到事件但没写数据"的静默路径输出 Debug 日志并带原因（`feature_disabled` / `monitor_off` / `archived_or_unavailable` / `capability_off`），排查开关与仓库状态变化不再盲猜
-- 版本检查（updatecheck）各路径 Debug 留痕：缓存命中 / 成功（含来源与版本）/ 回退过期缓存 / 最终失败
-- Webhook 单条处理耗时超过 5s 时 Warn 留痕（`webhook_slow`，含 delivery/event/repo/duration）：数据库抖动或外部调用阻塞一目了然
-- Star 增长曲线 tooltip 展示当日增长量（较前一日 +N / -N），首日无参照只显示总数
-- 三个列表页（Issues/PR、Actions、安全告警）筛选后为空时，空态提供「清除筛选」按钮直达无筛选视图
-- 路由错误兜底页新增「返回仪表盘」快捷链接
-- Outbox「重试全部失败」为批量操作增加确认对话框，防误触
-- 主题切换时画布与文字色平滑过渡，深/浅色不再生硬跳变
-- 渠道「发送测试通知」正文带发送时刻（UTC），多条测试通知可区分收到的具体是哪一条
-- 登录失败日志补充 `username`（不含密码）与 CSRF 校验失败日志补充来源信息：暴力尝试与写请求被拒可审计
-- Webhook 处理成功日志补充 `stale_discarded` / `unhandled_action` 布尔：乱序丢弃等"处理了但没通知"的原因可直接从日志识别
-- 三个列表页（Issues/PR、Actions、安全告警）筛选激活时提供「清除筛选」按钮，一键回到无筛选视图
-- 仓库管理页归档视图同步到 URL（`?archived=1`），刷新后保留当前视角
-- Outbox 状态筛选同步到 URL，仪表盘「投递失败」指标跳转直达 `?status=dead` 筛选
-- 关于页 Git SHA 支持一键复制并反馈「已复制」
-- 登录页对 `rate_limited` 给出限流说明（按来源 IP 生效，换用户名不重置额度）
-- 列表页（Issues/PR、Actions、安全告警）筛选条件同步到 URL：刷新或复制链接后保留当前筛选；新增 `useUrlState` 共享 hook 与受限枚举解析
-- 设置页成功提示（偏好/功能开关/AI 配置/密码）3 秒后自动消退，连续提交会重置计时，避免多条成功信息常驻堆叠
-- 登录页载入后用户名输入框自动聚焦，减少一次点击即可开始输入
-- Outbox 投递记录页新增「重试全部失败」：跨页收集全部 dead 投递并逐个重新排队，用于失败记录跨多页时一键恢复；按钮仅在有失败投递时显示
-- Webhook 处理失败计数指标（`reposentinel_webhook_failed_total`）：规范化或规则评估失败时递增，与 WebhookDelivery 的 failed 状态对应
-- 管理台按路由更新浏览器标签页标题（「仪表盘 · RepoSentinel」等）：多标签场景可直接看出当前页面；登录与初始化页设置独立标题
-- 渠道订阅类型提供「全选 / 清空」快捷操作与已选计数，全选仅勾选全局开关未关闭的类型
-- 投递记录详情抽屉对已收录的错误码展示中文排障提示（如 Telegram 限流、Chat ID 无效、接收端 5xx），机器码保留便于对照日志
-- 列表与仪表盘的相对时间（「X 分钟前」等）hover 显示精确绝对时间，统一收敛为 `RelativeTime` 组件
-- 侧边栏「关于与设置」拆分为「关于」与「设置」两个入口：关于页聚焦版本信息、更新检查与运维提示；设置页承载运行偏好、功能模块、AI 集成与账号管理
-- 仪表盘的「仓库与基线对账」面板迁入设置页（`/settings`），对账、单仓放行与基线状态集中在设置页维护；仪表盘保留接入进度与关键指标
-- 仓库管理页支持「彻底删除」：`DELETE /api/v1/repositories/{id}` 级联清理该仓库全部本地数据（PR/Issue、事件、告警、快照、游标、待投递通知），用于 GitHub 侧仓库已删除但 `repository.deleted` webhook 漏投递时的手动收口
-- 仓库级联删除：GitHub 侧删除仓库（`repository.deleted` webhook）时，自动清理本地仓库与全部关联数据（PR/Issue、事件、告警、star 快照、同步游标、待投递通知），不留孤儿数据
-- AI 集成配置新增「测试连通性」：以当前生效配置发送一次最小对话验证端点 / 模型 / API Key，返回耗时与结果；未锁定字段可在请求中临时覆盖（保存前验证），不写库、不改变运行时
-- SPA 静态资源（HTML / JS / CSS / JSON / SVG）按客户端能力 gzip 传输，降低自托管出站带宽；带 Range 的请求与非文本类型不压缩
-- 访问日志（debug 级）补充 `user_agent` 字段，便于区分浏览器、Agent 客户端与爬虫流量
-- Telegram 通知发送前按 4000 字符上限安全截断：按 Unicode 码点截断避免乱码，截断点落在 HTML 标签/实体中间时回退到完整位置，超长消息不再因 400 进入死信
-
-### Changed
-
-- 历史数据清理（retention）无过期数据时也留痕（Debug，含删除量与保留策略）：排查"清理到底跑没跑"不依赖删除量
-- Workflow 结论中文标签（成功/失败/超时/…）收敛到 store 领域层 `WorkflowConclusionLabel`：rules 实时通知与 digest 定期报告共用同一映射，消除两处维护漂移；emoji 逻辑同步收拢
-- 调度器成功执行留痕为 Debug 级（task + duration_ms）：正常周期不刷屏，排查「任务有没有跑」时开 debug 即可确认
-- Outbox 每 tick 领取批量由 20 提升到 50（`claimBatchSize`）：突发积压（如 GitHub 批量推送）时单轮消化更多，避免队列长期堆积
-- Webhook 未配置 Secret 时 503 响应补 `Retry-After: 60`：GitHub 按 5xx 退避重试，配置未就绪期间不再高频重试
-- 每日/每周/月度报告正文末尾补「生成时间」页脚（UTC，与规则通知时间格式一致），便于判断报告新鲜度
-- Webhook 拒绝日志（未配置 Secret / 验签失败）补充 `delivery_id` 与 `event_type`：GitHub 投递失败可按投递 ID 在两侧日志间交叉定位
-- Webhook 后台处理增加并发限流（信号量，默认 32）：突发事件不会无限起 goroutine 同时写库/调 GitHub API，超出部分排队等待而非丢弃；实例关闭期间不再排队新工作
-- Webhook 重复投递的日志与 202 应答收敛为单一函数，两个命中分支行为保持一致
-- 管理台查询失败提示支持原地重试；投递记录页的详情/重试控件遵循可访问交互，批量重试明确反馈成功与失败数量
-- 通知渠道的测试、启停、删除状态按 Telegram / HTTP Webhook 独立展示，操作结果文案带出具体渠道名称
-- HTTP Webhook 与 AI 上游错误详情设置读取上限并标记截断；AI 成功响应超出 1 MiB 时拒绝解析，避免异常响应消耗过多资源
-- 调度失败日志补充稳定的任务名与耗时字段，便于定位慢任务和区分不同报告周期
-
-### Fixed
-
-- `useUrlState` 筛选状态此前只写 URL 不更新本地 state（点击筛选不生效）：改为本地 state 与 URL 双向一致，set 立即触发重渲染
-- 自有仓对账遇 404/410（仓库已删除或不可见）不再每轮反复失败：兜底标记「不可用」并暂停采集，与外部仓轮询降级语义一致（webhook `repository.deleted` 漏投递时靠此收口）
-- `installation_repositories` 的 `repositories_removed` 事件此前未解析，仓库被移出安装（授权收回）后仍持续对账失败；现解析并标记「不可用」，等待重新授权后恢复
-- 主题预置脚本由 index.html 内联改为同源外部脚本（`/theme-init.js`）：全局 CSP `default-src 'self'` 会拦截内联脚本，原实现在深色主题下首帧仍闪浅色，主题预置实际未生效
-- 两处空态操作行（仪表盘与仓库列表）的内联 `style` 属性被 CSP `style-src 'self'` 拦截而静默失效，改为 `link-row--centered` CSS 类
-- 相对时间格式化对"未来时间"（客户端与服务端时钟偏差、计划事件）不再渲染空白，统一归为「刚刚」；超过 30 天改用「X 个月前 / X 年前」粒度，与列表其余行的相对时间风格一致
-- AI 集成配置：API Base URL / 模型 / 请求超时 / 输出 token 上限此前因配置层注入默认值而被误判为环境变量锁定，管理台无法编辑且保存返回 `ai_field_locked`；现仅当通过 `REPOSENTINEL_AI_*` 或 YAML 显式设置时锁定，未设置字段可在管理台编辑并持久化（实际取值仍由 AI 客户端在使用点回退默认）
-- AI 连通性测试：探测请求改用按配置超时的专用 HTTP 客户端（不再被包级 30s 硬顶截断），前端测试请求放宽至 60s 等待；AI 配置查询失败时禁用保存 / 测试 / 清除按钮，防止表单默认值覆盖数据库中的有效配置
-- AI 连通性测试：探测时长设 15s 上限并返回友好超时提示，避免同步探测拖过 HTTP Server WriteTimeout（30s）导致反向代理报 `connection termination` 而看不到真实错误；非 2xx 响应正文（如网关错误说明）纳入错误信息，前端对非 JSON 错误回退展示截断原文，不再吞掉真实原因
-- AI 区块操作按钮（保存 / 测试 / 清除）改为与通知渠道一致的 `channel-form__buttons` 容器布局，间距与对齐统一
-- 示例配置 `configs/reposentinel.example.yaml` 的 AI 标量字段改为注释展示，并说明显式设置会在管理台锁定，避免复制即用的部署再次误锁
-- AI 启动校验与管理台校验对齐：`ai.base_url` 同样拒绝 URL 内嵌凭据（userinfo）
-- 列表页底部「回到顶部」点击无效：桌面端页面滚动发生在 `.app-main` 容器（`.app-shell` 以 `overflow: hidden` 锁死文档滚动），原 `window.scrollTo` 滚动对象错误；现按实际滚动位置选择目标容器，移动端抽屉形态下回退 `window`
-- 渠道配置「订阅通知类型」与「接收定期汇总」勾选框被撑成巨大方块：`.field--plain input` 的文本输入框样式（`min-width: 12ch` / `min-height: 44px` / 边框 / 内边距）泄漏到 checkbox；选择器排除 `checkbox` / `radio`，勾选框恢复 16px 标准尺寸（与设置页、仓库页一致）
+- **功能**：新增 GitHub Star 仓库 Release 追踪与自动通知，支持英文 notes 翻译与 AI 更新速览，支持 500 仓库上限与双周期调度。
+- **功能**：新增安全告警差集对账，将 GitHub 源端已撤回的告警自动标记为「已撤回」，避免已解决告警长期待处理。
+- **优化**：AI 体系文案统称为「智能值守」，请求超时时间严格遵循配置值，消除硬编码截断。
+- **优化**：Star 增长曲线 Y 轴支持自适应缩放，大基数下小幅增长清晰可见，深色主题适配设计令牌。
+- **优化**：前端表单数字输入框统一为自由输入、失焦自动钳制，避免输入多位数时首位即被截断。
+- **修复**：修复 Star Release 轮询在条件请求命中 304 未修改时误将仓库标记为「无 Release」的 bug，并支持自动探测自愈。
+- **修复**：修复桌面端列表页「回到顶部」点击无效与渠道勾选框被文本样式意外撑大的布局问题。
+- **体验**：优化全站无障碍可访问性（键盘焦点循环、`aria-pressed` 状态标识），筛选与分页状态完整同步至 URL。
 
 ## [0.3.8] - 2026-08-05
-
-### Added
-
-- 可选 AI 集成（默认关闭）：OpenAI 兼容 Chat Completions 客户端，可通过 `REPOSENTINEL_AI_*` 配置，支持接入本地模型（Ollama 等）；AI 不可用时自动降级，不影响通知投递
-- 每日摘要 / 周报 / 月报正文由 LLM 生成自然语言总结（`ai.digest_enabled`），失败回退原模板
-- 实时安全告警（Dependabot / Code Scanning / Secret Scanning 新告警）通知附带 AI 影响分析与处理建议（`ai.triage_enabled`）
-- 每周 / 每月定期报告（默认关闭）：发送日与发送时刻经 `report.*` 系统设置配置，正文复用汇总模板并支持 AI 总结
-- settings API 新增 `report.weekly_enabled` / `report.weekly_day` / `report.monthly_enabled` / `report.monthly_day` 键
-- AI 配置可在管理台「关于与设置 → AI 集成」编辑：环境变量已设置字段在管理台锁定，API Key 经主密钥加密存库且不回显，保存后热生效无需重启
-
-### Changed
-
-- 通知渠道「接收每日汇总」文案更新为「接收定期汇总（日/周/月）」，勾选后同时接收每日、每周、每月报告
+- **功能**：新增可选的大模型（AI）智能集成，支持定期简报生成与实时安全告警智能分析。
+- **功能**：新增每周与每月定期报告调度，支持按星期和日期定时生成汇总。
+- **功能**：新增 Agent 协议发现（OpenAPI 3.1、OAuth 2.0 客户端凭据与 MCP 运行时网关）。
+- **优化**：AI 配置支持管理后台在线配置、密钥加密落库与热更新生效。
 
 ## [0.3.7] - 2026-07-30
-
-### Added
-
-- 历史数据保留策略：事件 / 终态投递 / Webhook Delivery 保留天数可在「关于与设置」配置（默认 90 / 30 / 30 天，0 表示禁用该类清理），后台每日自动清理
-- Issues / PR / Actions / 安全告警列表抽取共享骨架屏与功能开关守卫组件，加载中展示列表骨架而非空白
-
-### Fixed
-
-- 全局功能模块开关（Issues / PR / Actions / 安全告警）此前仅隐藏 UI，现同时拦截 Webhook 采集、对账同步与实时/摘要通知；仓库管理页对应能力在全局关闭时显示为关且不可改
-- 聚合窗口期间关闭全局功能开关时，已入桶事件在 flush 时按最新开关过滤，不再漏发合并通知
-- 应用装配失败路径未取消 worker 上下文导致的 goroutine 泄漏（`go vet` 已拦截）
-- 对账期间 issues / PR 全局功能开关全关时不再推进 issues 增量游标，重新开启后仍可拉回关窗期内的变更
-- 通知文案 HTML 转义统一为标准库 `html.EscapeString`（含单引号），修复合并消息与实时消息转义行为不一致
-- GitHub API 剩余配额头缺失或解析失败时不再误报「配额低」日志（原先剩余 0 会误触发）
-- 仓库 / Actions / 事件 / 安全告警 / 投递记录列表排序补 ID 次级键，批量同步产生相同时间戳时分页不再错位
-- HTTP Webhook 通道解析 429/503 响应的 `Retry-After` 响应头（秒或 HTTP 日期），按上游指引退避而非固定阶梯
-- GitHub 429 / 配额耗尽 403 返回携带上游建议等待时长的限流错误（`Retry-After` / `X-RateLimit-Reset`），token 签发端点同样归类
-- 对账与外部轮询遇限流停止本轮（等待时长在 2 分钟预算内先等待再继续），不再逐仓连环请求放大次限流
-- Actions 恢复事件此前永不触发：`LatestCompleted` 查询位于写入之后命中当前运行自身，现前移为写入前基线查询，失败后成功会正确标记 `recovered`
-- Installation Token 并发获取合并为单次签发请求（single-flight），Webhook 处理与后台同步并发触发时不再对 GitHub 签发端点惊群请求
-
-### Changed
-
-- 管理台体验：侧栏按全局功能隐藏入口；死信角标改挂「投递记录」；仪表盘 KPI 可点钻取并随功能开关显隐；接入进度条；渠道 target 回填且空 target 不覆盖；关于页分块保存并暴露超频窗口；仓库开关层级与归档确认；GitHub 页入站/出站双状态灯
-- Telegram 合并通知与每日汇总的 Actions 类别标签由「工作流」统一为「Actions」，与前端一致
+- **功能**：新增历史数据保留策略配置，支持事件、投递记录与 Webhook 日志按天自动清理。
+- **修复**：全局功能模块开关增加全链路拦截，关闭时同步停止采集与通知。
+- **优化**：工作项、运行流与告警列表抽取统一骨架屏，提升加载等待体验。
 
 ## [0.3.6] - 2026-07-29
-
-### Added
-
-- 列表本地忽略：Issue / PR / Actions / 安全告警可标记忽略（不回写 GitHub），支持「关注中 / 已忽略」切换
-- Issues / PR / Actions / 安全告警页增加按仓库筛选
-- 忽略 API：`PATCH /api/v1/work-items/{id}/ignored`、`PATCH /api/v1/workflow-runs/{id}/ignored`、`PATCH /api/v1/security-alerts/{id}/ignored`
-- 列表查询参数 `ignored=true|all`；默认排除已忽略项
-- 数据库迁移 `20260729000300_item_ignored`（PostgreSQL + SQLite）
-- 仪表盘区块（通知投递 / 最近事件 / 仓库与基线）支持折叠，状态写入 localStorage
-- 系统设置增加 Issues / PR / Actions / 安全告警全局功能模块开关
-- CI 构建工作流完成后自动清理 3 天前的历史运行记录（保留最近 3 条）
-- 投递记录页面（`/notifications/outbox`）
-- 开发规范文件 `CLAUDE.md`
-
-### Fixed
-
-- 侧边栏导航徽章数字被半透明规则污染导致看不清
-- 已归档仓库的历史 Issue / PR / Actions / 告警仍出现在列表与侧栏计数中
-- 仪表盘「仓库与基线」仍展示已归档仓库；动作按钮列不对齐
-- Actions 空状态未说明权限/事件/对账排查路径；请求失败时静默空白
-- 仪表盘 `open_issues` 计数误含 open PR
-- PostgreSQL `workflow_runs` 表 `github_run_id` / `github_workflow_id` 为 int4，GitHub run_id 溢出导致 Actions 数据全部入库失败
-- 侧边栏点击「投递记录」时「渠道配置」同时高亮（前缀匹配未精确）
-- 仓库下拉筛选仍显示已归档仓库
-- PR 页面审核/检查筛选按钮过多导致布局拥挤
-
-### Changed
-
-- 列表与仪表盘统计默认排除已归档仓库与已忽略项
-- 仪表盘区块顺序调整为：通知投递 → 最近事件 → 仓库与基线
-- 长标题单行截断、事件/投递行改为主内容 + 右侧动作布局
-- 「死信」文案统一改为「投递失败」
-- PR 页面审核状态与检查状态筛选改为下拉选择器
+- **功能**：支持工作项（Issue/PR）、工作流与安全告警的本地忽略标记，支持筛选查看。
+- **功能**：仪表盘通知投递、最近事件与仓库对账区块支持折叠并持久化状态。
+- **优化**：列表页新增按仓库名称筛选功能。
 
 ## [0.3.5] - 2026-07-29
-
-### Added
-
-- 仓库能力开关：单仓独立控制监控、Issues、PR、Actions、安全告警的开关
-- 仓库归档功能：管理台一键归档/取消归档，联动同步状态；归档自动关闭所有开关
-- 仓库管理页分开展示关注中/已归档仓库，默认显示关注中
-- 侧边栏 Issues / Pull Requests 拆分为独立页面，支持 Open/Closed 状态筛选，默认显示 Open
-- 安全告警页增加 Dependabot / Code Scanning / Secret Scanning 分类筛选，默认显示 Open
-- 已关闭/已忽略项目显示数量限制：系统设置可配置（默认 20 条），避免历史数据无限增长
-- 仓库管理页面：集中管理所有仓库的能力开关与归档状态
-- GitHub App 页面精简：表单指南和安装步骤改为折叠面板，默认收起
-- `PATCH /api/v1/repositories/{id}/settings` API 端点
-- 数据库迁移 `20260729000100_repo_capability_toggles`（PostgreSQL + SQLite）
-
-### Fixed
-
-- `workflow_run` Webhook 处理时 GitHub 偶发缺字段导致数据库写入失败
-- `mapStoreError` 吞掉原始错误信息，现在保留完整错误链便于排障
-- `handleActivateRepository` 未检查 Upsert 返回错误
-- 侧边栏随主内容滚动，改为固定定位
-
-### Changed
-
-- `Upsert` 不再覆盖用户配置的仓库能力开关，能力开关仅通过 `UpdateSettings` 修改
+- **功能**：新增仓库级细粒度能力开关，支持单仓独立配置监控、工作项、工作流与告警。
+- **功能**：支持仓库一键归档与取消归档，归档时自动联动关闭监控并停用同步。
+- **功能**：侧边栏 Issues 与 Pull Requests 拆分为独立页面，优化分类筛选。
 
 ## [0.3.4] - 2026-07-28
-
-### Fixed
-
-- 文档与工作流描述与上述标签规则一致
-
-### Changed
-
-- GHCR 标签：`main` → `main` + `main-<sha>`；`dev` → `dev` + `dev-<sha>`；正式 `v*` → `vX.Y.Z` + `latest`（双架构）
-- 补充项目协作文档：CONTRIBUTING、SECURITY、PR / Issue 模板、Dependabot、发布说明
+- **规范**：完善项目协作规范与安全策略文档，规范 Docker 镜像多架构构建与标签推送规则。
 
 ## [0.3.3] - 2026-07-28
-
-### Changed
-
-- Docker Compose 默认使用 `ghcr.io/silentely/repo-sentinel:latest`，部署无需本地构建
-- 用户文档去掉与内部草稿的交叉引用；部署说明以 GHCR 拉取为主
-
-### Fixed
-
-- 迁移失败时保留底层错误信息，便于排障
-- SQLite Atlas 迁移锁名按连接隔离，避免并行测试争锁导致 CI 失败
-
-### Notes
-
-- 本版曾尝试调整 GHCR 策略；最终标签规则以 **0.3.4** 为准（见上）
+- **部署**：Docker Compose 默认切换为官方 GHCR 镜像，优化生产部署体验。
+- **修复**：修复数据库迁移失败时底层错误信息丢失的问题。
 
 ## [0.3.2] - 2026-07-28
-
-### Added
-
-- 关于页「检查更新」：优先 GitHub HTML `releases/latest` 302 解析 tag，失败再回退 API JSON；可关；失败 soft-fail
-- `POST /api/v1/system/version/check` 与版本响应字段 `update_check_enabled`
-- `syncx` 外部仓轮询与 `digest` 每日摘要单元测试；聚合多实例时间桶幂等测试
-
-### Changed
-
-- 通知合并 Outbox 幂等键改为「渠道 + 仓 + 类别 + 时间桶」，多实例下重复合并通知可收敛
-- 出站 HTTP 客户端在拨号时 pin 解析后的公网 IP，降低 DNS rebinding 风险
-- 聚合窗口等可通过 `REPOSENTINEL_AGGREGATION_*` 配置
-
-### Fixed
-
-- 文档版本号与 `VERSION` 一致；运维手册标明 backup/restore、`/metrics` 已实现
+- **功能**：系统设置与关于页新增「检查更新」功能，支持一键探测新版本发布。
+- **测试**：完善外部仓库轮询、事件聚合与定时简报单元测试。
 
 ## [0.3.1] - 2026-07-28
-
-### Fixed
-
-- 修正 Ent 物理表名与 Atlas 迁移不一致（如 `notification_outbox`），恢复通知 Outbox 等写库路径
-- 修复通知聚合器在持锁时访问数据库可能导致的死锁风险
-- 出站 HTTP Webhook 禁止跟随重定向，并加强私网/元数据 SSRF 校验
-- 聚合通知 HTML 文本转义，避免特殊字符破坏 Telegram 解析
-- SQLite 备份改为参数化 `VACUUM INTO`，避免路径拼接
-- 补充 Webhook 相关 API 错误码中文说明
-
-### Added
-
-- 通知聚合与超频摘要、仓库同步调度、外部公开仓轮询、每日摘要
-- `doctor` / `backup` / `restore` CLI
-- GHCR 镜像构建工作流与 Prometheus `/metrics` 端点
-- 管理后台 Issues/PR、Actions、安全告警、GitHub App、关于页面
+- **修复**：修复 Ent 物理表名与 Atlas 迁移映射不一致导致的写库失败问题。
+- **修复**：修复通知聚合器潜在的并发死锁风险与出站重定向安全隐患。
+- **修复**：Telegram 通知文本增加 HTML 字符转义，防止特殊字符破坏渲染。
 
 ## [0.3.0] - 2026-07-28
-
-### Added
-
-- Webhook 验签接收、事件规范化、规则引擎、Telegram/HTTP 通知
-- 管理仪表盘与渠道配置
-- Docker Compose 与文档站
+- **功能**：完成 GitHub Webhook 验签接收、事件标准化、规则引擎评估与 Telegram/HTTP 通知。
+- **功能**：提供 Web 管理仪表盘与渠道配置界面。
 
 ## [0.2.0] - 2026-07-28
-
-### Added
-
-- 基础认证、配置、双数据库迁移与管理壳
+- **架构**：实现基础用户认证、会话管理、配置加载与 SQLite/PostgreSQL 双轨迁移。
 
 ## [0.1.0] - 2026-07-28
-
-### Added
-
-- 项目初始骨架
+- **初始化**：Repo-Sentinel 项目初始骨架搭建。
