@@ -1883,6 +1883,27 @@ a.status-item--link:focus-visible {
   white-space: nowrap;
 }
 
+/* 整行勾选项（渠道表单的定期汇总 / 机器人免打扰）：说明文案较长，必须整行占宽并允许换行。
+   复用 .channel-kinds__item 会带上 nowrap，窄屏下撑出横向滚动并覆盖保存按钮。 */
+.field--checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  cursor: pointer;
+  white-space: normal;
+}
+
+.field--checkbox input {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  accent-color: var(--accent);
+}
+
 .channel-kinds__item input {
   width: 16px;
   height: 16px;

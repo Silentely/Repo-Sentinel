@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -740,10 +741,10 @@ func TestCompleteRetriesTransientSuccess(t *testing.T) {
 	retryDelay = time.Millisecond
 	t.Cleanup(func() { retryDelay = old })
 
-	var calls int
+	var calls atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		if calls == 1 {
+		calls.Add(1)
+		if calls.Load() == 1 {
 			http.Error(w, "boom", http.StatusBadGateway)
 			return
 		}
@@ -759,8 +760,8 @@ func TestCompleteRetriesTransientSuccess(t *testing.T) {
 	if got != "ok" {
 		t.Fatalf("返回值异常: %q", got)
 	}
-	if calls != 2 {
-		t.Fatalf("期望 2 次尝试，实际 %d", calls)
+	if calls.Load() != 2 {
+		t.Fatalf("期望 2 次尝试，实际 %d", calls.Load())
 	}
 	out := buf.String()
 	if !strings.Contains(out, `msg="ai request retry"`) || !strings.Contains(out, "error_code=upstream_502") {
@@ -777,9 +778,9 @@ func TestCompleteRetriesExhausted(t *testing.T) {
 	retryDelay = time.Millisecond
 	t.Cleanup(func() { retryDelay = old })
 
-	var calls int
+	var calls atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
+		calls.Add(1)
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -788,8 +789,8 @@ func TestCompleteRetriesExhausted(t *testing.T) {
 	if _, err := c.Complete(t.Context(), "s", "u"); err == nil {
 		t.Fatal("重试用尽应失败")
 	}
-	if calls != 3 {
-		t.Fatalf("期望 3 次尝试（1+2），实际 %d", calls)
+	if calls.Load() != 3 {
+		t.Fatalf("期望 3 次尝试（1+2），实际 %d", calls.Load())
 	}
 	if !strings.Contains(buf.String(), `msg="ai request failed"`) {
 		t.Fatalf("最终失败应留痕 failed，实际: %s", buf.String())
@@ -846,9 +847,9 @@ func TestWithAttemptCountPreservesUnwrapChain(t *testing.T) {
 
 // TestCompleteRetriesDisabled 验证 Retries=0 不重试（直接构造默认即 0，行为向后兼容）。
 func TestCompleteRetriesDisabled(t *testing.T) {
-	var calls int
+	var calls atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
+		calls.Add(1)
 		http.Error(w, "boom", http.StatusBadGateway)
 	}))
 	defer srv.Close()
@@ -856,16 +857,16 @@ func TestCompleteRetriesDisabled(t *testing.T) {
 	if _, err := c.Complete(t.Context(), "s", "u"); err == nil {
 		t.Fatal("5xx 应失败")
 	}
-	if calls != 1 {
-		t.Fatalf("Retries=0 只应尝试 1 次，实际 %d", calls)
+	if calls.Load() != 1 {
+		t.Fatalf("Retries=0 只应尝试 1 次，实际 %d", calls.Load())
 	}
 }
 
 // TestCompleteRetriesNoRetry4xx 验证 4xx（确定性错误）不重试。
 func TestCompleteRetriesNoRetry4xx(t *testing.T) {
-	var calls int
+	var calls atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
+		calls.Add(1)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	}))
 	defer srv.Close()
@@ -873,8 +874,8 @@ func TestCompleteRetriesNoRetry4xx(t *testing.T) {
 	if _, err := c.Complete(t.Context(), "s", "u"); err == nil {
 		t.Fatal("401 应失败")
 	}
-	if calls != 1 {
-		t.Fatalf("4xx 不应重试，实际尝试 %d 次", calls)
+	if calls.Load() != 1 {
+		t.Fatalf("4xx 不应重试，实际尝试 %d 次", calls.Load())
 	}
 }
 
@@ -885,9 +886,9 @@ func TestCompleteRetriesContextExpiry(t *testing.T) {
 	retryDelay = 50 * time.Millisecond
 	t.Cleanup(func() { retryDelay = old })
 
-	var calls int
+	var calls atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
+		calls.Add(1)
 		http.Error(w, "boom", http.StatusBadGateway)
 	}))
 	defer srv.Close()
@@ -898,11 +899,11 @@ func TestCompleteRetriesContextExpiry(t *testing.T) {
 	if _, err := c.Complete(ctx, "s", "u"); err == nil {
 		t.Fatal("应失败")
 	}
-	if calls < 2 {
-		t.Fatalf("预算耗尽前应至少重试 1 次，实际尝试 %d", calls)
+	if calls.Load() < 2 {
+		t.Fatalf("预算耗尽前应至少重试 1 次，实际尝试 %d", calls.Load())
 	}
-	if calls > 3 {
-		t.Fatalf("预算到期应立即放弃，实际尝试 %d 次（应不超过 3）", calls)
+	if calls.Load() > 3 {
+		t.Fatalf("预算到期应立即放弃，实际尝试 %d 次（应不超过 3）", calls.Load())
 	}
 }
 

@@ -1,5 +1,10 @@
 //go:build ignore
 
+// Codegen 入口。注意：ent 生成的 JSON 字段类型随本地 Go 工具链漂移——
+// Go 1.27+ 会把 json.RawMessage 生成为 encoding/json/jsontext.Value，
+// 而 CI（go.mod 声明的工具链）无法编译该包（jsontext 在 1.26 处于 jsonv2 实验门后）。
+// 重新生成时请使用与 go.mod 一致的 Go 工具链（如 GOTOOLCHAIN=go1.26.4 go generate），
+// 并确认 diff 仅含预期的 schema 变更。
 package main
 
 import (

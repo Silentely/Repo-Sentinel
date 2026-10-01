@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json/jsontext"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -31,13 +31,13 @@ func (_u *SystemSettingUpdate) Where(ps ...predicate.SystemSetting) *SystemSetti
 }
 
 // SetValueJSON sets the "value_json" field.
-func (_u *SystemSettingUpdate) SetValueJSON(v jsontext.Value) *SystemSettingUpdate {
+func (_u *SystemSettingUpdate) SetValueJSON(v json.RawMessage) *SystemSettingUpdate {
 	_u.mutation.SetValueJSON(v)
 	return _u
 }
 
 // AppendValueJSON appends value to the "value_json" field.
-func (_u *SystemSettingUpdate) AppendValueJSON(v jsontext.Value) *SystemSettingUpdate {
+func (_u *SystemSettingUpdate) AppendValueJSON(v json.RawMessage) *SystemSettingUpdate {
 	_u.mutation.AppendValueJSON(v)
 	return _u
 }
@@ -146,13 +146,13 @@ type SystemSettingUpdateOne struct {
 }
 
 // SetValueJSON sets the "value_json" field.
-func (_u *SystemSettingUpdateOne) SetValueJSON(v jsontext.Value) *SystemSettingUpdateOne {
+func (_u *SystemSettingUpdateOne) SetValueJSON(v json.RawMessage) *SystemSettingUpdateOne {
 	_u.mutation.SetValueJSON(v)
 	return _u
 }
 
 // AppendValueJSON appends value to the "value_json" field.
-func (_u *SystemSettingUpdateOne) AppendValueJSON(v jsontext.Value) *SystemSettingUpdateOne {
+func (_u *SystemSettingUpdateOne) AppendValueJSON(v json.RawMessage) *SystemSettingUpdateOne {
 	_u.mutation.AppendValueJSON(v)
 	return _u
 }

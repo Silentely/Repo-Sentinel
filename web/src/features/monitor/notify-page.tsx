@@ -254,13 +254,13 @@ function ChannelForm({
         {renderKindChecks(kinds, setKinds)}
       </fieldset>
       <div className="field--plain">
-        <label className="channel-kinds__item">
+        <label className="field--checkbox">
           <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} />
           接收定期汇总（日/周/月）
         </label>
       </div>
       <div className="field--plain">
-        <label className="channel-kinds__item">
+        <label className="field--checkbox">
           <input
             type="checkbox"
             checked={ignoreBots}

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { ensureAuthenticated } from "./helpers";
 
 test.describe("工作项批量操作与实时事件流", () => {
-  test("工作项列表多选、悬浮操作栏展示、取消选择与批量忽略", async ({ page }) => {
+  test("工作项列表多选、悬浮操作栏展示、取消选择与批量归档", async ({ page }) => {
     await ensureAuthenticated(page);
 
     // Mock work items 数据
@@ -87,12 +87,12 @@ test.describe("工作项批量操作与实时事件流", () => {
     await expect(checkbox1).not.toBeChecked();
     await expect(checkbox2).not.toBeChecked();
 
-    // 6. 重新勾选并触发批量忽略
+    // 6. 重新勾选并触发批量归档（收件箱分诊流：Ignored 对用户呈现为「归档」）
     await checkbox1.click();
     await checkbox2.click();
     await expect(actionBar.getByText("已选择 2 项")).toBeVisible();
 
-    await actionBar.getByRole("button", { name: "批量忽略" }).click();
+    await actionBar.getByRole("button", { name: "批量归档" }).click();
 
     await expect(async () => {
       expect(batchIgnoreCalled).toBe(true);

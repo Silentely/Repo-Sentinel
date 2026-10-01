@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json/jsontext"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -1618,8 +1618,8 @@ type AuditLogMutation struct {
 	actor_id            *string
 	target_type         *string
 	target_id           *string
-	metadata_json       *jsontext.Value
-	appendmetadata_json jsontext.Value
+	metadata_json       *json.RawMessage
+	appendmetadata_json json.RawMessage
 	ip_address          *string
 	created_at          *time.Time
 	clearedFields       map[string]struct{}
@@ -1913,13 +1913,13 @@ func (m *AuditLogMutation) ResetTargetID() {
 }
 
 // SetMetadataJSON sets the "metadata_json" field.
-func (m *AuditLogMutation) SetMetadataJSON(j jsontext.Value) {
-	m.metadata_json = &j
+func (m *AuditLogMutation) SetMetadataJSON(jm json.RawMessage) {
+	m.metadata_json = &jm
 	m.appendmetadata_json = nil
 }
 
 // MetadataJSON returns the value of the "metadata_json" field in the mutation.
-func (m *AuditLogMutation) MetadataJSON() (r jsontext.Value, exists bool) {
+func (m *AuditLogMutation) MetadataJSON() (r json.RawMessage, exists bool) {
 	v := m.metadata_json
 	if v == nil {
 		return
@@ -1930,7 +1930,7 @@ func (m *AuditLogMutation) MetadataJSON() (r jsontext.Value, exists bool) {
 // OldMetadataJSON returns the old "metadata_json" field's value of the AuditLog entity.
 // If the AuditLog object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v jsontext.Value, err error) {
+func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v json.RawMessage, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldMetadataJSON is only allowed on UpdateOne operations")
 	}
@@ -1944,13 +1944,13 @@ func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v jsontext.Valu
 	return oldValue.MetadataJSON, nil
 }
 
-// AppendMetadataJSON adds j to the "metadata_json" field.
-func (m *AuditLogMutation) AppendMetadataJSON(j jsontext.Value) {
-	m.appendmetadata_json = append(m.appendmetadata_json, j...)
+// AppendMetadataJSON adds jm to the "metadata_json" field.
+func (m *AuditLogMutation) AppendMetadataJSON(jm json.RawMessage) {
+	m.appendmetadata_json = append(m.appendmetadata_json, jm...)
 }
 
 // AppendedMetadataJSON returns the list of values that were appended to the "metadata_json" field in this mutation.
-func (m *AuditLogMutation) AppendedMetadataJSON() (jsontext.Value, bool) {
+func (m *AuditLogMutation) AppendedMetadataJSON() (json.RawMessage, bool) {
 	if len(m.appendmetadata_json) == 0 {
 		return nil, false
 	}
@@ -2188,7 +2188,7 @@ func (m *AuditLogMutation) SetField(name string, value ent.Value) error {
 		m.SetTargetID(v)
 		return nil
 	case auditlog.FieldMetadataJSON:
-		v, ok := value.(jsontext.Value)
+		v, ok := value.(json.RawMessage)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -11850,8 +11850,8 @@ type SystemSettingMutation struct {
 	typ              string
 	id               *string
 	key              *string
-	value_json       *jsontext.Value
-	appendvalue_json jsontext.Value
+	value_json       *json.RawMessage
+	appendvalue_json json.RawMessage
 	updated_at       *time.Time
 	updated_by       *string
 	clearedFields    map[string]struct{}
@@ -12001,13 +12001,13 @@ func (m *SystemSettingMutation) ResetKey() {
 }
 
 // SetValueJSON sets the "value_json" field.
-func (m *SystemSettingMutation) SetValueJSON(j jsontext.Value) {
-	m.value_json = &j
+func (m *SystemSettingMutation) SetValueJSON(jm json.RawMessage) {
+	m.value_json = &jm
 	m.appendvalue_json = nil
 }
 
 // ValueJSON returns the value of the "value_json" field in the mutation.
-func (m *SystemSettingMutation) ValueJSON() (r jsontext.Value, exists bool) {
+func (m *SystemSettingMutation) ValueJSON() (r json.RawMessage, exists bool) {
 	v := m.value_json
 	if v == nil {
 		return
@@ -12018,7 +12018,7 @@ func (m *SystemSettingMutation) ValueJSON() (r jsontext.Value, exists bool) {
 // OldValueJSON returns the old "value_json" field's value of the SystemSetting entity.
 // If the SystemSetting object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v jsontext.Value, err error) {
+func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v json.RawMessage, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldValueJSON is only allowed on UpdateOne operations")
 	}
@@ -12032,13 +12032,13 @@ func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v jsontext.Va
 	return oldValue.ValueJSON, nil
 }
 
-// AppendValueJSON adds j to the "value_json" field.
-func (m *SystemSettingMutation) AppendValueJSON(j jsontext.Value) {
-	m.appendvalue_json = append(m.appendvalue_json, j...)
+// AppendValueJSON adds jm to the "value_json" field.
+func (m *SystemSettingMutation) AppendValueJSON(jm json.RawMessage) {
+	m.appendvalue_json = append(m.appendvalue_json, jm...)
 }
 
 // AppendedValueJSON returns the list of values that were appended to the "value_json" field in this mutation.
-func (m *SystemSettingMutation) AppendedValueJSON() (jsontext.Value, bool) {
+func (m *SystemSettingMutation) AppendedValueJSON() (json.RawMessage, bool) {
 	if len(m.appendvalue_json) == 0 {
 		return nil, false
 	}
@@ -12220,7 +12220,7 @@ func (m *SystemSettingMutation) SetField(name string, value ent.Value) error {
 		m.SetKey(v)
 		return nil
 	case systemsetting.FieldValueJSON:
-		v, ok := value.(jsontext.Value)
+		v, ok := value.(json.RawMessage)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
