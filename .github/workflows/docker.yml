@@ -83,6 +83,19 @@ jobs:
       - name: Gofmt check
         run: test -z "$(gofmt -l cmd internal migrations)"
 
+      # ent 产物随 Go 工具链漂移：Go 1.27+ 会把 JSON 字段生成为
+      # encoding/json/jsontext.Value，而本作业按 go.mod 使用 Go 1.26（jsontext 处于
+      # jsonv2 实验门后）无法编译。重跑 codegen 并断言零 diff，让漂移在 CI 当场暴露。
+      - name: Ent codegen freshness check
+        run: |
+          go generate ./internal/store/ent/...
+          if [ -n "$(git status --porcelain -- internal/store/ent)" ]; then
+            git status --porcelain -- internal/store/ent
+            git diff -- internal/store/ent
+            echo "::error::internal/store/ent 产物已过期（schema 变更或工具链漂移）。请用 go.mod 声明的 Go 版本重跑 go generate ./internal/store/ent/... 并提交产物。"
+            exit 1
+          fi
+
       - name: Go test
         run: go test -race ./...
         env:
