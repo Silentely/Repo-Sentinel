@@ -55,6 +55,9 @@ export function SetupPage({
 
   return (
     <main className="auth-shell auth-shell--setup">
+      <div className="auth-sky" aria-hidden="true">
+        <PixelCloud />
+      </div>
       <div className="auth-shell__theme">
         {/* 仓库入口：初始化页右上角 GitHub 图标直达源码/Issue。 */}
         <a

@@ -1609,6 +1609,7 @@ export function ReposPage() {
         isEmpty={displayed.length === 0}
         emptyState={
           <EmptyState
+            illustration={showArchived ? "campfire" : "watchtower"}
             title={showArchived ? "没有本系统归档的仓库" : "暂无关注的仓库"}
             description={
               showArchived

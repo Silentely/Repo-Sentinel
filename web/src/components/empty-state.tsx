@@ -1,8 +1,8 @@
 import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { PixelCampfire, PixelMailbox, PixelTree } from "./pixel-scenery";
+import { PixelCampfire, PixelMailbox, PixelPeacefulClearing, PixelTree, PixelWatchtower } from "./pixel-scenery";
 
-export type EmptyStateIllustration = "campfire" | "mailbox" | "tree" | "none" | ReactNode;
+export type EmptyStateIllustration = "campfire" | "mailbox" | "tree" | "watchtower" | "clearing" | "none" | ReactNode;
 
 export interface EmptyStateProps {
   eyebrow?: string;
@@ -19,6 +19,8 @@ function renderIllustration(ill: EmptyStateIllustration) {
   if (ill === "none") return null;
   if (ill === "mailbox") return <PixelMailbox />;
   if (ill === "tree") return <PixelTree />;
+  if (ill === "watchtower") return <PixelWatchtower />;
+  if (ill === "clearing") return <PixelPeacefulClearing />;
   if (ill === "campfire" || ill === undefined) return <PixelCampfire />;
   return ill;
 }

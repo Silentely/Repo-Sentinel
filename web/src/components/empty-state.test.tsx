@@ -17,6 +17,17 @@ describe("EmptyState 组件", () => {
     const { container } = render(<EmptyState title="空状态标题" description="" />);
     expect(container.querySelectorAll("p").length).toBe(0);
   });
+  it("支持渲染不同微缩像素小景插图（clearing, watchtower, mailbox, none）", () => {
+    const { container: clearingC } = render(<EmptyState title="迷路了" description="" illustration="clearing" />);
+    expect(clearingC.querySelector(".pixel-peaceful-clearing")).not.toBeNull();
+
+    const { container: towerC } = render(<EmptyState title="守望中" description="" illustration="watchtower" />);
+    expect(towerC.querySelector(".empty-state__illustration svg")).not.toBeNull();
+
+    const { container: noneC } = render(<EmptyState title="纯文本" description="" illustration="none" />);
+    expect(noneC.querySelector(".empty-state__illustration")).toBeNull();
+  });
+
 });
 
 describe("ErrorAlert 组件", () => {

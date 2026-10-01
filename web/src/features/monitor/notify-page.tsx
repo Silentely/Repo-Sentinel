@@ -400,7 +400,7 @@ export function NotifyPage() {
           query={channels}
           errorTitle="无法加载渠道"
           isEmpty={channelItems.length === 0}
-          emptyState={<EmptyState title="尚未配置渠道" description="请在下方添加 Telegram 或 HTTP Webhook 渠道。" />}
+          emptyState={<EmptyState title="尚未配置渠道" description="请在下方添加 Telegram 或 HTTP Webhook 渠道。" illustration="mailbox" />}
         >
           <ul className="event-list">
             {channelItems.map((ch) => (

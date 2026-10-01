@@ -54,6 +54,7 @@ export function RouteNotFoundFallback() {
       eyebrow="404"
       title="页面不存在"
       description="你访问的地址没有对应页面，可能是链接已过期或输入有误。"
+      illustration="clearing"
       action={<Link to="/">返回仪表盘</Link>}
     />
   );

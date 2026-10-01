@@ -301,7 +301,7 @@ export function GitHubPage() {
           const items = installations.data?.items;
           if (!items || items.length === 0) {
             return (
-              <EmptyState eyebrow="等待事件" title="尚未收到 Installation" description="请先在 GitHub 安装 App。" action={<a href={GITHUB_INSTALLATIONS} target="_blank" rel="noopener noreferrer" title="在新窗口打开">去 GitHub 安装 App</a>} />
+              <EmptyState eyebrow="等待事件" title="尚未收到 Installation" description="请先在 GitHub 安装 App。" illustration="watchtower" action={<a href={GITHUB_INSTALLATIONS} target="_blank" rel="noopener noreferrer" title="在新窗口打开">去 GitHub 安装 App</a>} />
             );
           }
           return (
