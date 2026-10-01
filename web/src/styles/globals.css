@@ -603,6 +603,38 @@ a.primary-button {
   border: 1.5px solid var(--border-subtle);
 }
 
+.freshness-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  border: 1.5px solid var(--border-subtle);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.freshness-badge--success {
+  color: var(--success-fg);
+  background: var(--success-bg);
+  border-color: var(--success);
+}
+
+.freshness-badge--warning {
+  color: var(--warning-fg);
+  background: var(--warning-bg);
+  border-color: var(--warning);
+}
+
+.freshness-badge--danger {
+  color: var(--danger-fg);
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
 .app-main {
   min-width: 0;
   overflow-y: auto;

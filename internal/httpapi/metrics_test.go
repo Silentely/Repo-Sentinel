@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
 func TestMetricsEndpointOptionalToken(t *testing.T) {
@@ -60,8 +62,8 @@ func TestMetricsEndpointOptionalToken(t *testing.T) {
 	}
 }
 
-// TestMetricsEndpointExposesOutboxQueueDepth 指标端点应暴露待投递/发送中队列深度：
-// 投递积压可监控（行始终存在，含 0 值）。
+// TestMetricsEndpointExposesOutboxQueueDepth 指标端点应暴露待传递/发送中队列深度：
+// 传递积压可监控（行始终存在，含 0 值）。
 func TestMetricsEndpointExposesOutboxQueueDepth(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{metricsEnabled: true})
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
@@ -92,6 +94,70 @@ func TestMetricsEndpointExposesSSEState(t *testing.T) {
 	if !strings.Contains(body, "reposentinel_sse_clients") ||
 		!strings.Contains(body, "reposentinel_sse_dropped_total") {
 		t.Fatalf("期望包含 SSE 指标行，body=%s", body)
+	}
+}
+
+// TestMetricsFreshness 验证活跃仓库同步时效遥测与 Prometheus reposentinel_sync_max_lag_seconds 输出。
+func TestMetricsFreshness(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{metricsEnabled: true})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	ctx := t.Context()
+	now := time.Now().UTC()
+	past400s := now.Add(-400 * time.Second)
+	past100s := now.Add(-100 * time.Second)
+
+	_, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-fresh-1", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "org", Name: "repo-1", FullName: "org/repo-1", LastSyncedAt: &past400s,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-fresh-2", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusBaseline,
+		Owner: "org", Name: "repo-2", FullName: "org/repo-2", LastSyncedAt: &past100s,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. 指标端点输出校验
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("metrics status=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "reposentinel_sync_max_lag_seconds") {
+		t.Fatalf("expected reposentinel_sync_max_lag_seconds in metrics, body=%s", body)
+	}
+
+	// 2. Dashboard API freshness 结构解析校验
+	resp := fixture.request(t, http.MethodGet, "/api/v1/dashboard", "", "127.0.0.1:45102", cookies, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("dashboard status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var stats store.DashboardStats
+	if err := json.Unmarshal(resp.Body.Bytes(), &stats); err != nil {
+		t.Fatal(err)
+	}
+	if stats.Freshness == nil {
+		t.Fatal("expected stats.Freshness to be non-nil")
+	}
+	if stats.Freshness.MaxLagSeconds < 400 {
+		t.Fatalf("expected max_lag_seconds >= 400, got %d", stats.Freshness.MaxLagSeconds)
+	}
+	if stats.Freshness.LaggingRepoCount != 1 {
+		t.Fatalf("expected lagging_repo_count == 1, got %d", stats.Freshness.LaggingRepoCount)
+	}
+	if stats.Freshness.MostLaggedRepoName != "org/repo-1" {
+		t.Fatalf("expected most_lagged_repo_name 'org/repo-1', got %s", stats.Freshness.MostLaggedRepoName)
+	}
+	if stats.Freshness.HasSyncError {
+		t.Fatalf("expected has_sync_error == false")
 	}
 }
 

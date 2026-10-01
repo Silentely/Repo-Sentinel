@@ -12,6 +12,7 @@ import {
   channelLabel,
   eventActionLabel,
   eventKindLabel,
+  formatDuration,
   outboxErrorHint,
   outboxStatusLabel,
   severityLabel,
@@ -26,6 +27,7 @@ import {
   retryOutbox,
   settingsQueryOptions,
   starTrendQueryOptions,
+  type SyncFreshnessSummary,
 } from "./api";
 const StarTrendChart = lazy(() =>
   import("./star-trend-chart").then((m) => ({ default: m.StarTrendChart })),
@@ -63,6 +65,40 @@ function writeOpenPanels(next: Record<PanelKey, boolean>) {
   } catch {
     // 隐私模式或配额满时静默忽略，不影响页面使用。
   }
+}
+
+function FreshnessBadge({ freshness }: { freshness?: SyncFreshnessSummary }) {
+  if (!freshness) return null;
+
+  const { has_sync_error, max_lag_seconds, most_lagged_repo_name, lagging_repo_count, as_of } = freshness;
+
+  let variant: "danger" | "warning" | "success" = "success";
+  let label = "● 实时监控中";
+
+  if (has_sync_error || max_lag_seconds > 300) {
+    variant = "danger";
+    label = max_lag_seconds > 300
+      ? `● 同步滞后 (${formatDuration(max_lag_seconds)})`
+      : "● 同步异常";
+  } else if (max_lag_seconds > 60) {
+    variant = "warning";
+    label = `● 对账延迟 (${formatDuration(max_lag_seconds)})`;
+  }
+
+  const title = most_lagged_repo_name
+    ? `最大滞后仓库: ${most_lagged_repo_name} (延迟 ${formatDuration(max_lag_seconds)})${lagging_repo_count > 0 ? `，共 ${lagging_repo_count} 个仓库延迟超 5 分钟` : ""}${has_sync_error ? " [存在同步错误]" : ""}${as_of ? ` · 采样时间: ${new Date(as_of).toLocaleTimeString()}` : ""}`
+    : `同步状态正常${has_sync_error ? " [存在同步错误]" : ""}${as_of ? ` · 采样时间: ${new Date(as_of).toLocaleTimeString()}` : ""}`;
+
+  return (
+    <span
+      className={`freshness-badge freshness-badge--${variant}`}
+      title={title}
+      data-testid="freshness-badge"
+      role="status"
+    >
+      {label}
+    </span>
+  );
 }
 
 export function DashboardPage() {
@@ -223,7 +259,10 @@ export function DashboardPage() {
     <>
       <section className="page-intro">
         <div>
-          <p className="eyebrow">值守概览</p>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+            <p className="eyebrow" style={{ margin: 0 }}>值守概览</p>
+            <FreshnessBadge freshness={stats?.freshness} />
+          </div>
           <h1>现在是否健康，今天发生了什么。</h1>
           <p>Webhook 入库后会在此汇总。仓库对账与基线放行请在「设置」中操作。</p>
         </div>

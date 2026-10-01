@@ -2210,6 +2210,61 @@ func (s *storeImpl) Dashboard(ctx context.Context) (DashboardStats, error) {
 		return stats, mapStoreError(err)
 	}
 	stats.ChannelsEnabled = channels
+
+	// 活跃仓库新鲜度遥测：过滤 sync_status IN ('active', 'baseline_sync') AND is_archived = false
+	activeRepos, err := s.client.Repository.Query().
+		Where(
+			repository.SyncStatusIn(SyncStatusActive, SyncStatusBaseline),
+			repository.IsArchivedEQ(false),
+		).
+		All(ctx)
+	if err != nil {
+		return stats, mapStoreError(err)
+	}
+
+	now := time.Now().UTC()
+	freshness := &SyncFreshnessSummary{
+		AsOf: now,
+	}
+	if len(activeRepos) > 0 {
+		var maxLag int64 = -1
+		var mostLaggedName string
+		var laggingCount int
+		var hasSyncError bool
+
+		for _, repo := range activeRepos {
+			if repo.LastSyncErrorCode != "" {
+				hasSyncError = true
+			}
+			var lag int64
+			if repo.LastSyncedAt != nil {
+				lag = int64(now.Sub(*repo.LastSyncedAt).Seconds())
+			} else if repo.BaselineStartedAt != nil {
+				lag = int64(now.Sub(*repo.BaselineStartedAt).Seconds())
+			} else if !repo.CreatedAt.IsZero() {
+				lag = int64(now.Sub(repo.CreatedAt).Seconds())
+			}
+			if lag < 0 {
+				lag = 0
+			}
+			if lag > 300 {
+				laggingCount++
+			}
+			if lag > maxLag {
+				maxLag = lag
+				mostLaggedName = repo.FullName
+			}
+		}
+		if maxLag < 0 {
+			maxLag = 0
+		}
+		freshness.MaxLagSeconds = maxLag
+		freshness.LaggingRepoCount = laggingCount
+		freshness.MostLaggedRepoName = mostLaggedName
+		freshness.HasSyncError = hasSyncError
+	}
+	stats.Freshness = freshness
+
 	s.dashboardCache.Set(stats)
 	return stats, nil
 }

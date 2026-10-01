@@ -2,6 +2,14 @@ import { queryOptions } from "@tanstack/react-query";
 
 import { apiRequest } from "../../lib/api/client";
 
+export interface SyncFreshnessSummary {
+  as_of: string;
+  max_lag_seconds: number;
+  lagging_repo_count: number;
+  most_lagged_repo_name?: string;
+  has_sync_error: boolean;
+}
+
 export interface DashboardStats {
   open_issues: number;
   open_pulls: number;
@@ -12,6 +20,7 @@ export interface DashboardStats {
   repos_active: number;
   repos_baseline: number;
   channels_enabled: number;
+  freshness?: SyncFreshnessSummary;
 }
 
 export interface Repository {

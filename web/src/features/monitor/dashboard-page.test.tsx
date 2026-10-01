@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { DashboardStats } from "./api";
+
 // 页面内链接与真实路由解耦：渲染为普通锚点即可。
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children }: { to: string; children?: ReactNode }) => <a href={to}>{children}</a>,
@@ -20,7 +22,7 @@ const fixtures = vi.hoisted(() => ({
     repos_active: 2,
     repos_baseline: 1,
     channels_enabled: 1,
-  },
+  } as DashboardStats,
   settings: {
     "feature.issues": true,
     "feature.pull_requests": true,
@@ -196,6 +198,23 @@ describe("仪表盘", () => {
     // 默认回到「超出展示上限」场景，截断相关的用例各自覆写。
     fixtures.events = makeEventsPage(20);
     fixtures.outbox = makeOutboxPage(20);
+    fixtures.dashboard = {
+      open_issues: 2,
+      open_pulls: 1,
+      failed_actions: 0,
+      open_security: 0,
+      events_24h: 3,
+      outbox_dead: 1,
+      repos_active: 2,
+      repos_baseline: 1,
+      channels_enabled: 1,
+      freshness: {
+        as_of: "2026-10-01T00:00:00Z",
+        max_lag_seconds: 15,
+        lagging_repo_count: 0,
+        has_sync_error: false,
+      },
+    };
     // Star 增长面板默认开启，feature.stars 相关用例按需覆写。
     delete (fixtures.settings as Record<string, unknown>)["feature.stars"];
   });
@@ -348,5 +367,62 @@ describe("仪表盘", () => {
     await waitFor(() => {
       expect(screen.queryByRole("region", { name: "Star 增长" })).toBeNull();
     });
+  });
+
+  it("渲染健康态势胶囊（绿色：实时监控中）", async () => {
+    fixtures.dashboard = {
+      ...fixtures.dashboard,
+      freshness: {
+        as_of: "2026-10-01T00:00:00Z",
+        max_lag_seconds: 15,
+        lagging_repo_count: 0,
+        has_sync_error: false,
+      },
+    };
+    renderPage();
+
+    const badge = await screen.findByTestId("freshness-badge");
+    expect(badge).toHaveTextContent("● 实时监控中");
+    expect(badge).toHaveClass("freshness-badge--success");
+    expect(badge).toHaveAttribute("title", expect.stringContaining("同步状态正常"));
+  });
+
+  it("渲染延迟态势胶囊（黄色：对账延迟）", async () => {
+    fixtures.dashboard = {
+      ...fixtures.dashboard,
+      freshness: {
+        as_of: "2026-10-01T00:00:00Z",
+        max_lag_seconds: 150,
+        lagging_repo_count: 0,
+        most_lagged_repo_name: "owner/repo-a",
+        has_sync_error: false,
+      },
+    };
+    renderPage();
+
+    const badge = await screen.findByTestId("freshness-badge");
+    expect(badge).toHaveTextContent("● 对账延迟 (2 分 30 秒)");
+    expect(badge).toHaveClass("freshness-badge--warning");
+    expect(badge).toHaveAttribute("title", expect.stringContaining("owner/repo-a"));
+  });
+
+  it("渲染滞后与异常态势胶囊（红色：同步滞后或错误）", async () => {
+    fixtures.dashboard = {
+      ...fixtures.dashboard,
+      freshness: {
+        as_of: "2026-10-01T00:00:00Z",
+        max_lag_seconds: 450,
+        lagging_repo_count: 1,
+        most_lagged_repo_name: "owner/repo-b",
+        has_sync_error: true,
+      },
+    };
+    renderPage();
+
+    const badge = await screen.findByTestId("freshness-badge");
+    expect(badge).toHaveTextContent("● 同步滞后 (7 分 30 秒)");
+    expect(badge).toHaveClass("freshness-badge--danger");
+    expect(badge).toHaveAttribute("title", expect.stringContaining("owner/repo-b"));
+    expect(badge).toHaveAttribute("title", expect.stringContaining("存在同步错误"));
   });
 });

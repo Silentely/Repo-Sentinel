@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatDuration,
   repoDisplayName,
   syncStatusLabel,
   outboxStatusLabel,
@@ -192,5 +193,30 @@ describe("repoDisplayName", () => {
   it("支持优先使用 full_name 或 owner/name 拼接", () => {
     expect(repoDisplayName({ full_name: "acme/repo" })).toBe("acme/repo");
     expect(repoDisplayName({ owner: "acme", name: "tool" })).toBe("acme/tool");
+  });
+});
+
+describe("formatDuration", () => {
+  it("0 或负数返回 0 秒", () => {
+    expect(formatDuration(0)).toBe("0 秒");
+    expect(formatDuration(-10)).toBe("0 秒");
+  });
+
+  it("秒级粒度", () => {
+    expect(formatDuration(45)).toBe("45 秒");
+  });
+
+  it("分钟与秒粒度", () => {
+    expect(formatDuration(120)).toBe("2 分钟");
+    expect(formatDuration(150)).toBe("2 分 30 秒");
+  });
+
+  it("小时与分粒度", () => {
+    expect(formatDuration(3600)).toBe("1 小时");
+    expect(formatDuration(3900)).toBe("1 小时 5 分");
+  });
+
+  it("天粒度", () => {
+    expect(formatDuration(86400 * 2)).toBe("2 天");
   });
 });

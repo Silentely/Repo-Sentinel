@@ -828,3 +828,67 @@ func TestListResolvesRepositoryFullName(t *testing.T) {
 		t.Fatalf("alert full name want o/active got %d rows %q", len(alerts), alerts[0].RepositoryFullName)
 	}
 }
+
+// TestDashboardFreshnessSummary 守护活跃仓库同步时效与新鲜度遥测聚合计算。
+func TestDashboardFreshnessSummary(t *testing.T) {
+	ctx := context.Background()
+	data := openTestStore(t)
+	now := time.Now().UTC()
+
+	lag600s := now.Add(-600 * time.Second)
+	lag120s := now.Add(-120 * time.Second)
+	lag9999s := now.Add(-9999 * time.Second)
+
+	// 1. 活跃仓库，延迟 600s（> 300s 判定为滞后），且包含同步错误码
+	_, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID: "fresh-act-1", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "org", Name: "repo-lagged", FullName: "org/repo-lagged",
+		LastSyncedAt: &lag600s, LastSyncErrorCode: "rate_limited",
+	})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	// 2. 基线仓库，延迟 120s（<= 300s，不计入滞后仓计数）
+	_, err = data.Repositories().Upsert(ctx, store.Repository{
+		ID: "fresh-base-1", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusBaseline,
+		Owner: "org", Name: "repo-normal", FullName: "org/repo-normal",
+		LastSyncedAt: &lag120s,
+	})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	// 3. 已归档仓库，延迟极大（但 is_archived = true，必须被排除）
+	_, err = data.Repositories().Upsert(ctx, store.Repository{
+		ID: "fresh-arc-1", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusArchived,
+		Owner: "org", Name: "repo-archived", FullName: "org/repo-archived",
+		IsArchived: true, LastSyncedAt: &lag9999s,
+	})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	stats, err := data.Dashboard(ctx)
+	if err != nil {
+		t.Fatalf("Dashboard: %v", err)
+	}
+	if stats.Freshness == nil {
+		t.Fatal("expected stats.Freshness not nil")
+	}
+	if stats.Freshness.MaxLagSeconds < 600 {
+		t.Fatalf("expected MaxLagSeconds >= 600, got %d", stats.Freshness.MaxLagSeconds)
+	}
+	if stats.Freshness.LaggingRepoCount != 1 {
+		t.Fatalf("expected LaggingRepoCount == 1, got %d", stats.Freshness.LaggingRepoCount)
+	}
+	if stats.Freshness.MostLaggedRepoName != "org/repo-lagged" {
+		t.Fatalf("expected MostLaggedRepoName == 'org/repo-lagged', got %s", stats.Freshness.MostLaggedRepoName)
+	}
+	if !stats.Freshness.HasSyncError {
+		t.Fatal("expected HasSyncError == true")
+	}
+	if stats.Freshness.AsOf.IsZero() {
+		t.Fatal("expected AsOf not zero")
+	}
+}

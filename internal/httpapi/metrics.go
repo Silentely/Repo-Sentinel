@@ -145,6 +145,9 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			writeMetric("reposentinel_outbox_dead_gauge", "Current dead-letter outbox count", "gauge", uint64(stats.OutboxDead))
 			writeMetric("reposentinel_repos_active", "Active repositories", "gauge", uint64(stats.ReposActive))
 			writeMetric("reposentinel_repos_baseline", "Repositories in baseline sync", "gauge", uint64(stats.ReposBaseline))
+			if stats.Freshness != nil {
+				writeMetric("reposentinel_sync_max_lag_seconds", "Maximum sync lag in seconds across active repositories", "gauge", uint64(max(int64(0), stats.Freshness.MaxLagSeconds)))
+			}
 		}
 		// 待投递队列深度：积压可监控（独立查询，失败不影响其他指标）。
 		if pending, err := s.dependencies.Store.Outbox().CountByStatus(r.Context(), store.OutboxPending); err == nil {

@@ -737,17 +737,27 @@ type CursorStore interface {
 	Upsert(context.Context, SyncCursor) (SyncCursor, error)
 }
 
+// SyncFreshnessSummary 活跃仓库同步新鲜度遥测聚合。
+type SyncFreshnessSummary struct {
+	AsOf               time.Time `json:"as_of"`
+	MaxLagSeconds      int64     `json:"max_lag_seconds"`
+	LaggingRepoCount   int       `json:"lagging_repo_count"`
+	MostLaggedRepoName string    `json:"most_lagged_repo_name,omitempty"`
+	HasSyncError       bool      `json:"has_sync_error"`
+}
+
 // DashboardStats 仪表盘聚合。
 type DashboardStats struct {
-	OpenIssues      int `json:"open_issues"`
-	OpenPulls       int `json:"open_pulls"`
-	FailedActions   int `json:"failed_actions"`
-	OpenSecurity    int `json:"open_security"`
-	Events24h       int `json:"events_24h"`
-	OutboxDead      int `json:"outbox_dead"`
-	ReposActive     int `json:"repos_active"`
-	ReposBaseline   int `json:"repos_baseline"`
-	ChannelsEnabled int `json:"channels_enabled"`
+	OpenIssues      int                   `json:"open_issues"`
+	OpenPulls       int                   `json:"open_pulls"`
+	FailedActions   int                   `json:"failed_actions"`
+	OpenSecurity    int                   `json:"open_security"`
+	Events24h       int                   `json:"events_24h"`
+	OutboxDead      int                   `json:"outbox_dead"`
+	ReposActive     int                   `json:"repos_active"`
+	ReposBaseline   int                   `json:"repos_baseline"`
+	ChannelsEnabled int                   `json:"channels_enabled"`
+	Freshness       *SyncFreshnessSummary `json:"freshness,omitempty"`
 }
 
 // failedConclusionSet 视为失败的 Workflow 结论集合（不可变，禁止外部修改）。

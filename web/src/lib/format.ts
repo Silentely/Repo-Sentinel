@@ -361,3 +361,22 @@ export function outboxErrorHint(errorCode: string): string {
       return "";
   }
 }
+
+/** 将秒数格式化为人类可读的时间跨度（如 45 秒、5 分钟、1 小时 20 分）。 */
+export function formatDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return "0 秒";
+  const totalSec = Math.round(seconds);
+  if (totalSec < 60) return `${totalSec} 秒`;
+  const minutes = Math.floor(totalSec / 60);
+  if (minutes < 60) {
+    const remSec = totalSec % 60;
+    return remSec > 0 ? `${minutes} 分 ${remSec} 秒` : `${minutes} 分钟`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remMin = minutes % 60;
+  if (hours < 24) {
+    return remMin > 0 ? `${hours} 小时 ${remMin} 分` : `${hours} 小时`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days} 天`;
+}

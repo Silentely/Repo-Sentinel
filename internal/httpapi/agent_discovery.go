@@ -983,6 +983,7 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 			"repos_active":     map[string]any{"type": "integer"},
 			"repos_baseline":   map[string]any{"type": "integer"},
 			"channels_enabled": map[string]any{"type": "integer"},
+			"freshness":        map[string]any{"type": "object"},
 		}),
 		"Repository": stringProps(map[string]any{
 			"id":              map[string]any{"type": "string"},
