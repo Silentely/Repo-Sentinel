@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { ErrorAlert } from "../../components/error-alert";
 import { GithubIcon } from "../../components/github-icon";
 import { ThemeToggle } from "../../components/theme-toggle";
-import { PixelAuthFlanks, PixelCloud, PixelSceneryGround } from "../../components/pixel-scenery";
+import { PixelAuthFlanks, PixelSceneryGround } from "../../components/pixel-scenery";
 import { ApiError, toApiError } from "../../lib/api/errors";
 import { AuthCardHeader, AuthField, applyZodErrors } from "./auth-card";
 import { createAdmin } from "./api";
@@ -126,6 +126,7 @@ export function SetupPage({
           <span>完成后将立即建立安全 Session。</span>
         </footer>
       </section>
+      <PixelAuthFlanks />
       <PixelSceneryGround />
     </main>
   );

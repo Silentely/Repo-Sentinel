@@ -41,6 +41,7 @@
 - 前端 Bot 兜底识别与后端 `botutil` 对齐：去掉 `bot-`/`bot_` 前缀与 `sonarcloud`/`stale` 两条后端不存在的规则。该函数仅在 `author_is_bot` 字段缺失（旧缓存/异常数据）时兜底，口径不一致会让 BOT 徽标与 `is:bot` 筛选对同一账号给出相反结论
 - 指令面板在二次确认态下点击遮罩等同「取消确认」：此前遮罩点击直接关闭面板，绕过二次确认丢弃待执行动作；非危险动作改 `await` 执行，异步拒绝不再逸出为未处理的 Promise
 - 通知渠道表单的长文案勾选项改整行换行排版：定期汇总与「机器人免打扰」此前复用订阅类型项的 `nowrap` 标签样式，窄屏（390px）下撑出 164px 横向滚动，并因溢出覆盖保存按钮导致点击被拦截；新增长文案勾选项样式（`white-space: normal` + 整行占宽），桌面端外观不变
+- 认证页（登录 / 初始化）接入 `PixelAuthFlanks`：左右两岸田园景致已写好组件与响应式样式（≤1040px 隐藏），但登录页与初始化页只加了导入未渲染，导致组件成为「已定义未显示」且两个 `PixelCloud`/`PixelAuthFlanks` 导入因未使用使 oxlint 报错打红 CI；现于两页 `<main className="auth-shell">` 内、`PixelSceneryGround` 之前挂载，并移除未使用的 `PixelCloud` 导入
 
 ### Changed
 
