@@ -34,8 +34,11 @@ type Aggregator struct {
 	mu sync.Mutex
 	// key: repoID|category
 	buckets map[string]*aggBucket
-	// burst: repoID -> timestamps
+	// burst: repoID|category -> 滑动窗口内的事件时间戳
 	bursts map[string][]time.Time
+	// burstNotified: repoID|category -> 最近一次已投递超频摘要的时间桶。
+	// 同桶内后续超频事件只计入窗口计数，不再重复写库与留痕。
+	burstNotified map[string]int64
 }
 
 type aggBucket struct {
@@ -60,6 +63,7 @@ func NewAggregator(st store.Store, window time.Duration, burstThreshold int, bur
 	return &Aggregator{
 		Store: st, Window: window, BurstThreshold: burstThreshold, BurstWindow: burstWindow,
 		buckets: make(map[string]*aggBucket), bursts: make(map[string][]time.Time),
+		burstNotified: make(map[string]int64),
 	}
 }
 
@@ -188,10 +192,19 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 		for k, ts := range a.bursts {
 			if len(ts) == 0 || now.Sub(ts[len(ts)-1]) > a.BurstWindow {
 				delete(a.bursts, k)
+				delete(a.burstNotified, k)
 			}
 		}
 	}
 	if len(filtered) > a.BurstThreshold {
+		// 一次告警风暴只发一条摘要：桶内已有摘要时仅更新窗口计数，不再重复写库与留痕。
+		// Outbox 幂等键只能兜底收敛，重复写库与重复 Warn 会让日志虚报入队次数。
+		bucket := timeBucket(now.UTC(), a.BurstWindow)
+		if a.burstNotified[key] == bucket {
+			a.mu.Unlock()
+			return nil
+		}
+		a.burstNotified[key] = bucket
 		sample := res.Event
 		// 标题带上仓库名：Telegram 推送预览只看标题，无仓库名时无法区分是哪个仓超频。
 		// repoFullName 为空（如聚合器单事件回放）时回退通用标题；写入前统一转义。
@@ -199,14 +212,26 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 		if repoFullName != "" {
 			title = "⚠️ 通知频率超限：" + repoFullName
 		}
+		eventsInWindow := len(filtered)
 		a.mu.Unlock()
 		// 降级：只写一条速率限制摘要（必须在锁外访问 Store）
+		enqueued, skipReason, err := a.enqueueBurstSummary(ctx, repoID, repoFullName, cat, title, sample)
+		if err != nil {
+			return err
+		}
 		if a.Logger != nil {
 			// 超频是异常流量信号：Warn 留痕便于审计与告警，摘要本身也会通知用户。
-			a.Logger.Warn("burst summary enqueued",
-				"repo", repoFullName, "category", cat, "events_in_window", len(filtered))
+			// 只有真正写入摘要才记 enqueued，其余情况带原因留痕，避免日志虚报入队。
+			if enqueued {
+				a.Logger.Warn("burst summary enqueued",
+					"repo", repoFullName, "category", cat, "events_in_window", eventsInWindow)
+			} else {
+				a.Logger.Warn("burst summary skipped",
+					"repo", repoFullName, "category", cat, "events_in_window", eventsInWindow,
+					"reason", skipReason)
+			}
 		}
-		return a.enqueueBurstSummary(ctx, repoID, repoFullName, cat, title, sample)
+		return nil
 	}
 
 	b, ok := a.buckets[key]
@@ -350,10 +375,13 @@ func renderMergedMessage(repoName, category string, events []*store.Event, windo
 	return title, body.String()
 }
 
-func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, cat, title string, sample *store.Event) error {
+// enqueueBurstSummary 写入超频摘要；返回是否真正落库，以及未落库的原因
+// （`no_channel` 无接收渠道，`duplicate` 同渠道同时间桶已被幂等收敛）。
+// 调用方据此区分「已入队」与「未入队」，避免日志虚报入队次数。
+func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, cat, title string, sample *store.Event) (bool, string, error) {
 	channels, err := a.Store.Channels().List(ctx)
 	if err != nil {
-		return err
+		return false, "", err
 	}
 	bucket := timeBucket(time.Now().UTC(), a.BurstWindow)
 	categoryCN := categoryDisplayName(cat)
@@ -362,6 +390,8 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 	safeRepo := htmlpkg.EscapeString(repoName)
 	safeCat := htmlpkg.EscapeString(categoryCN)
 	body := "<b>" + safeTitle + "</b>\n────────────────\n📦 仓库：<code>" + safeRepo + "</code>\n📋 类型：" + safeCat + "\n🔇 已降级为摘要模式，请在仪表盘查看详情\n⏰ 时间：" + now.Format("2006-01-02 15:04 UTC")
+	enqueued := false
+	duplicate := false
 	for _, ch := range channels {
 		// 以 sample 事件的类型判定渠道是否接收超频摘要。
 		if !ch.Enabled || !ch.AcceptsKind(sample.Kind) || ShouldSuppressBotEvent(ch, sample) {
@@ -383,11 +413,24 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 			// 有事件链接时附带跳转按钮，用户可从摘要直达原始事件。
 			HTMLURL: sample.HTMLURL,
 		})
-		if err != nil && !errors.Is(err, store.ErrConflict) {
-			return err
+		if err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				// 同渠道同时间桶已有摘要（多实例或本进程重复触发）：幂等收敛，不视为失败。
+				duplicate = true
+				continue
+			}
+			return false, "", err
 		}
+		enqueued = true
 	}
-	return nil
+	switch {
+	case enqueued:
+		return true, "", nil
+	case duplicate:
+		return false, "duplicate", nil
+	default:
+		return false, "no_channel", nil
+	}
 }
 
 // timeBucket 将时间对齐到窗口边界，供多实例 Outbox 幂等键使用。

@@ -3,6 +3,7 @@ package rules
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	htmlpkg "html"
 	"path/filepath"
 	"strings"
@@ -64,7 +65,7 @@ func TestEnqueueBurstSummaryCarriesLinkAndTime(t *testing.T) {
 		HTMLURL: "https://github.com/acme/demo/issues/1",
 	}
 	a := NewAggregator(data, 60*time.Second, 15, 5*time.Minute)
-	if err := a.enqueueBurstSummary(t.Context(), "repo-1", "acme/demo", "issue", "⚠️ 通知频率超限", sample); err != nil {
+	if _, _, err := a.enqueueBurstSummary(t.Context(), "repo-1", "acme/demo", "issue", "⚠️ 通知频率超限", sample); err != nil {
 		t.Fatal(err)
 	}
 	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{ChannelIDs: []string{ch.ID}})
@@ -307,7 +308,7 @@ func TestAggregatorBurstSuppressesBotWorkItemsPerChannel(t *testing.T) {
 
 	sample := &store.Event{ID: "bot-burst", Kind: store.WorkItemKindIssue, Action: "opened", SenderIsBot: true}
 	agg := NewAggregator(data, time.Minute, 3, time.Minute)
-	if err := agg.enqueueBurstSummary(ctx, "repo-1", "acme/demo", "issue", "burst", sample); err != nil {
+	if _, _, err := agg.enqueueBurstSummary(ctx, "repo-1", "acme/demo", "issue", "burst", sample); err != nil {
 		t.Fatal(err)
 	}
 	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
@@ -340,6 +341,103 @@ func TestAggregatorBurstLogsWarn(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "burst summary enqueued") || !strings.Contains(out, "acme/demo") || !strings.Contains(out, "events_in_window=") {
 		t.Fatalf("超频降级应 Warn 留痕，实际: %s", out)
+	}
+}
+
+// TestAggregatorBurstWindowDedup 复现线上告警风暴（18 条安全告警、阈值 15）：
+// 越过阈值后同窗口内的后续事件只计数，不得重复写摘要、也不得重复留痕，
+// 确保「日志条数 = 实际入队条数」。
+func TestAggregatorBurstWindowDedup(t *testing.T) {
+	data := openTestStore(t)
+	_ = seedChannel(t, data)
+	buf, logger := newRulesLogger(t)
+	// 超频窗口取 1 小时并避开小时边界：保证整段风暴落在同一时间桶内，
+	// 跨桶会被判定为两次独立超频，下面的重复投递断言就不再稳定。
+	if d := time.Until(time.Now().Truncate(time.Hour).Add(time.Hour)); d < 2*time.Second {
+		time.Sleep(d)
+	}
+	agg := NewAggregator(data, 300*time.Millisecond, 15, time.Hour)
+	agg.Logger = logger
+	repoID := ulid.Make().String()
+	ctx := context.Background()
+	send := func(prefix string, n int) {
+		t.Helper()
+		for i := 0; i < n; i++ {
+			ev := &store.Event{
+				ID: ulid.Make().String(), Kind: store.AlertKindDependabot, Action: "created",
+				Title: fmt.Sprintf("%s-%d", prefix, i+1), RepositoryID: &repoID,
+			}
+			if err := agg.Evaluate(ctx, normalizer.Result{Event: ev}, "acme/demo"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	send("alert", 18)
+	// 前 15 条进聚合桶（窗口结束投递），第 16 条起触发超频摘要：共 2 条 outbox。
+	out := waitOutboxCount(t, ctx, data, 2)
+	var digest, burst bool
+	for _, it := range out {
+		digest = digest || strings.Contains(it.Title, "安全告警 × 15（已聚合）")
+		burst = burst || strings.Contains(it.Title, "通知频率超限")
+	}
+	if !digest || !burst {
+		t.Fatalf("应同时产出聚合通知与超频摘要，实际: %+v", out)
+	}
+	if got := strings.Count(buf.String(), `msg="burst summary enqueued"`); got != 1 {
+		t.Fatalf("18 条告警只应留痕 1 次入队，实际 %d 次:\n%s", got, buf.String())
+	}
+
+	// 同一超频窗口内追加告警：不得新增 outbox，也不得新增留痕。
+	send("late", 3)
+	time.Sleep(500 * time.Millisecond)
+	after, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 2 {
+		t.Fatalf("同窗口追加告警不应新增 outbox，实际 %d", len(after))
+	}
+	if got := strings.Count(buf.String(), `msg="burst summary enqueued"`); got != 1 {
+		t.Fatalf("同窗口追加告警不应重复留痕，实际 %d 次:\n%s", got, buf.String())
+	}
+	if strings.Contains(buf.String(), "burst summary skipped") {
+		t.Fatalf("同窗口事件应在入队前被拦截，不应走到入队失败分支:\n%s", buf.String())
+	}
+}
+
+// TestEnqueueBurstSummarySkipReason 无接收渠道时摘要不入队：必须带原因留痕，
+// 不得记成已入队（否则运维按日志统计会高估超频降级量）。
+func TestEnqueueBurstSummarySkipReason(t *testing.T) {
+	data := openTestStore(t)
+	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: "ch-pr-only", ChannelType: store.ChannelTelegram, Name: "pr", Enabled: true,
+		Target: "1", EventKinds: []string{store.WorkItemKindPR},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agg := NewAggregator(data, time.Minute, 3, time.Minute)
+	sample := &store.Event{ID: "burst-nc", Kind: store.WorkItemKindIssue, Action: "opened"}
+	enqueued, reason, err := agg.enqueueBurstSummary(t.Context(), "repo-nc", "acme/demo", "issue", "burst", sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enqueued || reason != "no_channel" {
+		t.Fatalf("无渠道应返回 no_channel，got enqueued=%v reason=%q", enqueued, reason)
+	}
+
+	// 同渠道同时间桶重复写入：第二次应被幂等收敛并标记 duplicate。
+	if _, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: "ch-all", ChannelType: store.ChannelTelegram, Name: "all", Enabled: true, Target: "2",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if enqueued, reason, err := agg.enqueueBurstSummary(t.Context(), "repo-dup", "acme/demo", "issue", "burst", sample); err != nil || !enqueued || reason != "" {
+		t.Fatalf("首次写入应成功，got enqueued=%v reason=%q err=%v", enqueued, reason, err)
+	}
+	if enqueued, reason, err := agg.enqueueBurstSummary(t.Context(), "repo-dup", "acme/demo", "issue", "burst", sample); err != nil || enqueued || reason != "duplicate" {
+		t.Fatalf("同桶重复写入应返回 duplicate，got enqueued=%v reason=%q err=%v", enqueued, reason, err)
 	}
 }
 

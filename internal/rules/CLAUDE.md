@@ -27,6 +27,16 @@
 - `INFO triage ai used` — 分诊成功，附 duration_ms
 - `WARN triage ai fallback` — 失败回退（reason=`ai_error` / `empty_analysis`，附错误详情），正文保持原文
 
+## 超频摘要留痕
+
+`Aggregator` 检测到告警风暴（BurstWindow 内超过 BurstThreshold）时输出：
+
+- `WARN burst summary enqueued` — 摘要已写入 Outbox，附 events_in_window
+- `WARN burst summary skipped` — 摘要未入队，reason 区分 `duplicate`（同时间桶已被投递）/ `no_channel`（无接收渠道）
+
+同一时间桶内（默认 5 分钟）只尝试一次：桶内后续事件仅更新窗口计数，不重复写库与留痕，
+保证日志条数与实际入队条数一致（Outbox 幂等键只做多实例兜底收敛）。
+
 门禁：
 
 - 全局/仓库能力开关（`store.RepoAllowsKind` 等）
@@ -63,6 +73,7 @@ A: 使用 `store.IsFailureConclusion` 单一来源。
 
 | 日期 | 版本 / 范围 | 说明 |
 |------|------------|------|
+| 2026-10-02 | 超频摘要去重 | 同一超频窗口内的后续事件只更新计数，摘要只写一条，留痕次数与实际入队一致 |
 | 2026-09-25 | 性能与安全 | 优化消息聚合与纯文本标题组装性能；通知标题与正文 HTML 统一转义防注入 |
 | 2026-08-05 | 模块初始化 | 初始化模块 AI 上下文文档 |
 
