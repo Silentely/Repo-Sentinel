@@ -42,7 +42,7 @@ type Service struct {
 	// ReviewDebounceDelay PR 审查防抖窗口（默认 60s；<=0 时使用默认值；测试中可设为毫秒级）。
 	ReviewDebounceDelay time.Duration
 	// reviews 跟踪在途审查任务：同头互斥与停机排空（见 reviewTracker）。
-	reviews *reviewTracker
+	reviews   *reviewTracker
 	debouncer *reviewDebouncer
 }
 

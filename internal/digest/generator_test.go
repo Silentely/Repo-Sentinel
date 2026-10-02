@@ -995,14 +995,14 @@ func TestPeriodicReportGranularSubscriptions(t *testing.T) {
 
 	// Channel 1: Daily only
 	ch1, err := data.Channels().Upsert(ctx, store.NotificationChannel{
-		ID:                  ulid.Make().String(),
-		ChannelType:         store.ChannelTelegram,
-		Name:                "daily-only",
-		Enabled:             true,
-		Target:              "1",
-		DigestEnabled:       true,
-		ReceiveDailyDigest:  true,
-		ReceiveWeeklyReport: false,
+		ID:                   ulid.Make().String(),
+		ChannelType:          store.ChannelTelegram,
+		Name:                 "daily-only",
+		Enabled:              true,
+		Target:               "1",
+		DigestEnabled:        true,
+		ReceiveDailyDigest:   true,
+		ReceiveWeeklyReport:  false,
 		ReceiveMonthlyReport: false,
 	})
 	if err != nil {
@@ -1011,14 +1011,14 @@ func TestPeriodicReportGranularSubscriptions(t *testing.T) {
 
 	// Channel 2: Weekly only
 	ch2, err := data.Channels().Upsert(ctx, store.NotificationChannel{
-		ID:                  ulid.Make().String(),
-		ChannelType:         store.ChannelTelegram,
-		Name:                "weekly-only",
-		Enabled:             true,
-		Target:              "2",
-		DigestEnabled:       true,
-		ReceiveDailyDigest:  false,
-		ReceiveWeeklyReport: true,
+		ID:                   ulid.Make().String(),
+		ChannelType:          store.ChannelTelegram,
+		Name:                 "weekly-only",
+		Enabled:              true,
+		Target:               "2",
+		DigestEnabled:        true,
+		ReceiveDailyDigest:   false,
+		ReceiveWeeklyReport:  true,
 		ReceiveMonthlyReport: false,
 	})
 	if err != nil {

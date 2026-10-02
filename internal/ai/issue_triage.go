@@ -57,14 +57,14 @@ const maxIssueBodyChars = textutil.MaxBodyTextBytes
 
 // IssueTriageResult 保存单条 Issue 智能分诊与首响回复的结构化结果。
 type IssueTriageResult struct {
-	Category       string    `json:"category"`        // 类别：Bug Report / Feature Request / Question / Incomplete / Invalid
-	Priority       string    `json:"priority"`        // 优先级：P0 Blocker / P1 High / P2 Normal / P3 Low
-	Summary        string    `json:"summary"`         // 1-2 句核心诉求浓缩
-	MissingDetails []string  `json:"missing_details"` // 缺失的排查要素
-	SuggestedReply string    `json:"suggested_reply"` // 适合仓库维护者发给提问者的首响回复草稿
-	Confidence     int       `json:"confidence"`      // 置信度 (1-5)
+	Category       string    `json:"category"`         // 类别：Bug Report / Feature Request / Question / Incomplete / Invalid
+	Priority       string    `json:"priority"`         // 优先级：P0 Blocker / P1 High / P2 Normal / P3 Low
+	Summary        string    `json:"summary"`          // 1-2 句核心诉求浓缩
+	MissingDetails []string  `json:"missing_details"`  // 缺失的排查要素
+	SuggestedReply string    `json:"suggested_reply"`  // 适合仓库维护者发给提问者的首响回复草稿
+	Confidence     int       `json:"confidence"`       // 置信度 (1-5)
 	Labels         []string  `json:"labels,omitempty"` // 推荐标签（类别映射与优先级映射）
-	TriagedAt      time.Time `json:"triaged_at"`      // 分诊分析时间
+	TriagedAt      time.Time `json:"triaged_at"`       // 分诊分析时间
 }
 
 // IsIssueTriageEnabled 判定 Issue 智能分诊能力是否可用。

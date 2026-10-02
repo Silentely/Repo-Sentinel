@@ -25,18 +25,18 @@ const (
 // StoredConfig 是数据库中的可编辑 AI 配置（API Key 为密钥信封）。
 // bool/int 字段用指针区分「未设置」与「显式值」，支持 env 优先、DB 补缺语义。
 type StoredConfig struct {
-	Enabled                *bool  `json:"enabled,omitempty"`
-	BaseURL                string `json:"base_url,omitempty"`
-	Model                  string `json:"model,omitempty"`
-	TimeoutSec             *int64 `json:"timeout_sec,omitempty"`
-	MaxTokens              *int   `json:"max_tokens,omitempty"`
-	Retries                *int   `json:"retries,omitempty"`
-	APIKeyEnvelope         string `json:"api_key_envelope,omitempty"`
-	DigestEnabled          *bool  `json:"digest_enabled,omitempty"`
-	TriageEnabled          *bool  `json:"triage_enabled,omitempty"`
-	ReleaseSummaryEnabled  *bool  `json:"release_summary_enabled,omitempty"`
-	CodeReviewEnabled      *bool  `json:"code_review_enabled,omitempty"`
-	CodeReviewCommentOnPR  *bool  `json:"code_review_comment_on_pr,omitempty"`
+	Enabled                *bool             `json:"enabled,omitempty"`
+	BaseURL                string            `json:"base_url,omitempty"`
+	Model                  string            `json:"model,omitempty"`
+	TimeoutSec             *int64            `json:"timeout_sec,omitempty"`
+	MaxTokens              *int              `json:"max_tokens,omitempty"`
+	Retries                *int              `json:"retries,omitempty"`
+	APIKeyEnvelope         string            `json:"api_key_envelope,omitempty"`
+	DigestEnabled          *bool             `json:"digest_enabled,omitempty"`
+	TriageEnabled          *bool             `json:"triage_enabled,omitempty"`
+	ReleaseSummaryEnabled  *bool             `json:"release_summary_enabled,omitempty"`
+	CodeReviewEnabled      *bool             `json:"code_review_enabled,omitempty"`
+	CodeReviewCommentOnPR  *bool             `json:"code_review_comment_on_pr,omitempty"`
 	FailureAnalysisEnabled *bool             `json:"failure_analysis_enabled,omitempty"`
 	TriageLabelMappings    map[string]string `json:"triage_label_mappings,omitempty"`
 }

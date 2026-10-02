@@ -28,15 +28,15 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 			"secret_configured": ch.SecretEnvelope != "",
 			// 订阅配置：event_kinds 为 nil 表示订阅全部实时类型。
 			"event_kinds": ch.EventKinds, "digest_enabled": ch.DigestEnabled,
-			"receive_daily_digest": ch.ReceiveDailyDigest,
-			"receive_weekly_report": ch.ReceiveWeeklyReport,
+			"receive_daily_digest":   ch.ReceiveDailyDigest,
+			"receive_weekly_report":  ch.ReceiveWeeklyReport,
 			"receive_monthly_report": ch.ReceiveMonthlyReport,
-			"quiet_hours_enabled": ch.QuietHoursEnabled,
-			"quiet_hours_start": ch.QuietHoursStart,
-			"quiet_hours_end": ch.QuietHoursEnd,
-			"quiet_hours_tz": ch.QuietHoursTZ,
-			"ignore_bots": ch.IgnoreBots,
-			"updated_at":  ch.UpdatedAt,
+			"quiet_hours_enabled":    ch.QuietHoursEnabled,
+			"quiet_hours_start":      ch.QuietHoursStart,
+			"quiet_hours_end":        ch.QuietHoursEnd,
+			"quiet_hours_tz":         ch.QuietHoursTZ,
+			"ignore_bots":            ch.IgnoreBots,
+			"updated_at":             ch.UpdatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": masked})
@@ -54,11 +54,11 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name          string    `json:"name"`
-		Enabled       bool      `json:"enabled"`
-		Target        string    `json:"target"`
-		Secret        string    `json:"secret"`
-		AllowPrivate  bool      `json:"allow_private"`
+		Name                 string    `json:"name"`
+		Enabled              bool      `json:"enabled"`
+		Target               string    `json:"target"`
+		Secret               string    `json:"secret"`
+		AllowPrivate         bool      `json:"allow_private"`
 		EventKinds           *[]string `json:"event_kinds"`
 		DigestEnabled        *bool     `json:"digest_enabled"`
 		ReceiveDailyDigest   *bool     `json:"receive_daily_digest"`
@@ -265,32 +265,32 @@ func buildTestScenario(scenario string, now time.Time) (title, bodyText, htmlURL
 	switch strings.ToLower(strings.TrimSpace(scenario)) {
 	case "security_alert":
 		title = "🚨 [Alert] CVE-2026-8812 (Critical): RCE in org/api"
-		bodyText = fmt.Sprintf("🚨 <b>安全告警：CVE-2026-8812</b>\n────────────────\n" +
-			"<b>仓库:</b> org/api\n<b>严重等级:</b> CRITICAL\n<b>触发时刻:</b> %s\n" +
-			"────────────────\n" +
-			"🤖 告警分析\n" +
+		bodyText = fmt.Sprintf("🚨 <b>安全告警：CVE-2026-8812</b>\n────────────────\n"+
+			"<b>仓库:</b> org/api\n<b>严重等级:</b> CRITICAL\n<b>触发时刻:</b> %s\n"+
+			"────────────────\n"+
+			"🤖 告警分析\n"+
 			"检测到远程代码执行高危漏洞，受影响组件为 HTTP 路由分发器。建议立即升级依赖包至 2.4.1+ 并撤销相关凭证。", ts)
 		htmlURL = "https://github.com/org/api/security/advisories/GHSA-2026-test"
 	case "ci_failure":
 		title = "❌ [Actions] Build and Test failed on main #142"
-		bodyText = fmt.Sprintf("❌ <b>工作流构建失败</b>\n────────────────\n" +
-			"<b>仓库:</b> org/web\n<b>分支:</b> main\n<b>Run ID:</b> #142\n<b>发生时刻:</b> %s\n" +
-			"────────────────\n" +
-			"🤖 故障诊断\n" +
+		bodyText = fmt.Sprintf("❌ <b>工作流构建失败</b>\n────────────────\n"+
+			"<b>仓库:</b> org/web\n<b>分支:</b> main\n<b>Run ID:</b> #142\n<b>发生时刻:</b> %s\n"+
+			"────────────────\n"+
+			"🤖 故障诊断\n"+
 			"测试套件在 <code>pkg/auth/jwt_test.go:88</code> 断言失败：Token 过期校验逻辑产生漂移。建议排查时钟同步与租约时间。", ts)
 		htmlURL = "https://github.com/org/web/actions/runs/142"
 	case "periodic_digest":
 		title = fmt.Sprintf("📊 每日摘要 %s", now.Format("2006-01-02"))
-		bodyText = fmt.Sprintf("📊 <b>每日运维摘要</b>\n────────────────\n" +
-			"过去 24 小时监控活动汇总：\n" +
-			"• 新建 Issue: 3 条\n• 合并 PR: 5 个\n• 工作流执行: 18 次（1 次失败）\n" +
-			"────────────────\n" +
+		bodyText = fmt.Sprintf("📊 <b>每日运维摘要</b>\n────────────────\n"+
+			"过去 24 小时监控活动汇总：\n"+
+			"• 新建 Issue: 3 条\n• 合并 PR: 5 个\n• 工作流执行: 18 次（1 次失败）\n"+
+			"────────────────\n"+
 			"🤖 运维总结\n项目整体运行平稳，核心 PR #89 已并入主干，建议跟进已关闭的 2 个高优先级 Bug。\n生成于 %s", ts)
 		htmlURL = "https://github.com/org/api"
 	default:
 		title = "🔔 测试通知"
-		bodyText = fmt.Sprintf("🔔 <b>测试通知</b>\n────────────────\n" +
-			"来自 RepoSentinel 的测试消息，发送于 %s。\n" +
+		bodyText = fmt.Sprintf("🔔 <b>测试通知</b>\n────────────────\n"+
+			"来自 RepoSentinel 的测试消息，发送于 %s。\n"+
 			"如果您收到了这条消息，说明通知渠道配置正确！", ts)
 		htmlURL = ""
 	}

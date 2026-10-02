@@ -1671,7 +1671,7 @@ func channelFromEntity(e *entclient.NotificationChannel) NotificationChannel {
 		ReceiveDailyDigest: e.ReceiveDailyDigest, ReceiveWeeklyReport: e.ReceiveWeeklyReport, ReceiveMonthlyReport: e.ReceiveMonthlyReport,
 		QuietHoursEnabled: e.QuietHoursEnabled, QuietHoursStart: e.QuietHoursStart, QuietHoursEnd: e.QuietHoursEnd, QuietHoursTZ: e.QuietHoursTz,
 		IgnoreBots: e.IgnoreBots,
-		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
+		CreatedAt:  e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 }
 

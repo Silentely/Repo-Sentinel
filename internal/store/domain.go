@@ -417,17 +417,17 @@ type NotificationChannel struct {
 	// EventKinds 订阅的实时通知类型；nil 表示全部，空数组表示不订阅实时通知。
 	EventKinds []string `json:"event_kinds"`
 	// DigestEnabled 是否接收每日汇总。
-	DigestEnabled bool      `json:"digest_enabled"`
-	ReceiveDailyDigest bool   `json:"receive_daily_digest"`
-	ReceiveWeeklyReport bool  `json:"receive_weekly_report"`
-	ReceiveMonthlyReport bool `json:"receive_monthly_report"`
-	QuietHoursEnabled bool    `json:"quiet_hours_enabled"`
-	QuietHoursStart   string  `json:"quiet_hours_start"`
-	QuietHoursEnd     string  `json:"quiet_hours_end"`
-	QuietHoursTZ      string  `json:"quiet_hours_tz"`
-	IgnoreBots    bool      `json:"ignore_bots"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	DigestEnabled        bool      `json:"digest_enabled"`
+	ReceiveDailyDigest   bool      `json:"receive_daily_digest"`
+	ReceiveWeeklyReport  bool      `json:"receive_weekly_report"`
+	ReceiveMonthlyReport bool      `json:"receive_monthly_report"`
+	QuietHoursEnabled    bool      `json:"quiet_hours_enabled"`
+	QuietHoursStart      string    `json:"quiet_hours_start"`
+	QuietHoursEnd        string    `json:"quiet_hours_end"`
+	QuietHoursTZ         string    `json:"quiet_hours_tz"`
+	IgnoreBots           bool      `json:"ignore_bots"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // subscribableKinds 渠道可订阅的实时通知类型白名单（不可变，禁止外部修改）。
