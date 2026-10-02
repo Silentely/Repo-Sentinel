@@ -189,3 +189,88 @@ func TestNotificationChannelPeriodicAndQuietHoursRoundTrip(t *testing.T) {
 			got.QuietHoursEnabled, got.QuietHoursStart, got.QuietHoursEnd, got.QuietHoursTZ)
 	}
 }
+
+func TestNotificationChannelAllPeriodicReportsCanBeDisabled(t *testing.T) {
+	ctx := t.Context()
+	data := openTestStore(t)
+
+	// 父开关开启、三个子开关全部关闭是合法状态：更新路径必须原样保存，不能回填。
+	ch, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:                   ulid.Make().String(),
+		ChannelType:          store.ChannelTelegram,
+		Name:                 "tg-silent",
+		Enabled:              true,
+		Target:               "12345",
+		DigestEnabled:        true,
+		ReceiveDailyDigest:   true, // 先建一条正常记录
+		ReceiveWeeklyReport:  true,
+		ReceiveMonthlyReport: true,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// 更新为全部关闭（DigestEnabled 仍为 true）
+	ch.DigestEnabled = true
+	ch.ReceiveDailyDigest = false
+	ch.ReceiveWeeklyReport = false
+	ch.ReceiveMonthlyReport = false
+	saved, err := data.Channels().Upsert(ctx, ch)
+	if err != nil {
+		t.Fatalf("update all-off: %v", err)
+	}
+	if saved.ReceiveDailyDigest || saved.ReceiveWeeklyReport || saved.ReceiveMonthlyReport {
+		t.Fatalf("全部关闭被静默改写: daily=%v weekly=%v monthly=%v",
+			saved.ReceiveDailyDigest, saved.ReceiveWeeklyReport, saved.ReceiveMonthlyReport)
+	}
+
+	got, err := data.Channels().Get(ctx, ch.ID)
+	if err != nil {
+		t.Fatalf("re-get: %v", err)
+	}
+	if got.ReceiveDailyDigest || got.ReceiveWeeklyReport || got.ReceiveMonthlyReport {
+		t.Fatalf("落库后被静默改写: daily=%v weekly=%v monthly=%v",
+			got.ReceiveDailyDigest, got.ReceiveWeeklyReport, got.ReceiveMonthlyReport)
+	}
+}
+
+func TestNotificationChannelStorePersistsGivenFlagsOnCreate(t *testing.T) {
+	ctx := t.Context()
+	data := openTestStore(t)
+
+	// 新建且未显式设置子开关：store 原样落库（零值 false），不做隐式回填；
+	// 默认值由上层 HTTP 处理层补齐。否则「显式全关」与「未设置」无法区分。
+	ch, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:            ulid.Make().String(),
+		ChannelType:   store.ChannelTelegram,
+		Name:          "tg-legacy",
+		Enabled:       true,
+		Target:        "12345",
+		DigestEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create legacy: %v", err)
+	}
+	if ch.ReceiveDailyDigest || ch.ReceiveWeeklyReport || ch.ReceiveMonthlyReport {
+		t.Fatalf("store 不应隐式回填子开关: %+v", ch)
+	}
+
+	// 显式三个子开关全关则原样落库。
+	off, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:                   ulid.Make().String(),
+		ChannelType:          store.ChannelTelegram,
+		Name:                 "tg-off",
+		Enabled:              true,
+		Target:               "12346",
+		DigestEnabled:        true,
+		ReceiveDailyDigest:   false,
+		ReceiveWeeklyReport:  false,
+		ReceiveMonthlyReport: false,
+	})
+	if err != nil {
+		t.Fatalf("create all-off: %v", err)
+	}
+	if off.ReceiveDailyDigest || off.ReceiveWeeklyReport || off.ReceiveMonthlyReport {
+		t.Fatalf("新建显式全关被改写: %+v", off)
+	}
+}

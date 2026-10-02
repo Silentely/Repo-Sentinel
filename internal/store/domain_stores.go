@@ -1518,13 +1518,11 @@ type channelStore struct {
 	listCache *ttlValueCache[[]NotificationChannel]
 }
 
+// Upsert 原样落库渠道配置：日/周/月报告子开关不做隐式回填。
+// 由写入方显式给出取值（HTTP 处理层为新渠道补默认值、环境种子渠道显式开启），
+// 否则「父开关开启 + 三个子开关全部关闭」这类合法状态会被静默改写。
 func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (NotificationChannel, error) {
 	now := time.Now().UTC()
-	if in.DigestEnabled && !in.ReceiveDailyDigest && !in.ReceiveWeeklyReport && !in.ReceiveMonthlyReport {
-		in.ReceiveDailyDigest = true
-		in.ReceiveWeeklyReport = true
-		in.ReceiveMonthlyReport = true
-	}
 	if in.ID != "" {
 		if _, err := s.client.NotificationChannel.Get(ctx, in.ID); err == nil {
 			entity, err := s.client.NotificationChannel.UpdateOneID(in.ID).

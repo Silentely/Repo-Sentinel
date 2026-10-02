@@ -280,7 +280,20 @@ function ChannelForm({
       </fieldset>
       <div className="field--plain">
         <label className="field--checkbox">
-          <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={digest}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setDigest(next);
+              // 开启定期汇总时默认勾选三类报告：子开关全关会让「已开启」实际什么都不发。
+              if (next && !dailyDigest && !weeklyReport && !monthlyReport) {
+                setDailyDigest(true);
+                setWeeklyReport(true);
+                setMonthlyReport(true);
+              }
+            }}
+          />
           接收定期汇总（日/周/月）
         </label>
         {digest && (

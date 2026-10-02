@@ -110,7 +110,10 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	ch := store.NotificationChannel{
 		ChannelType: channelType, Name: name, Enabled: body.Enabled,
 		Target: target, AllowPrivate: body.AllowPrivate,
-		DigestEnabled: true, // 新渠道默认接收每日汇总
+		DigestEnabled:        true, // 新渠道默认接收定期报告
+		ReceiveDailyDigest:   true,
+		ReceiveWeeklyReport:  true,
+		ReceiveMonthlyReport: true,
 	}
 	if err == nil {
 		ch.ID = existing.ID

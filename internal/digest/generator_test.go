@@ -37,6 +37,7 @@ func seedTelegram(t *testing.T, data store.Store) {
 	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
 		ID: ulid.Make().String(), ChannelType: store.ChannelTelegram, Name: "tg",
 		Enabled: true, Target: "1", DigestEnabled: true,
+		ReceiveDailyDigest: true, ReceiveWeeklyReport: true, ReceiveMonthlyReport: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -367,6 +368,7 @@ func seedDigestChannel(t *testing.T, data store.Store, id string, ignoreBots boo
 	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
 		ID: id, ChannelType: store.ChannelTelegram, Name: id,
 		Enabled: true, Target: "1", DigestEnabled: true, IgnoreBots: ignoreBots,
+		ReceiveDailyDigest: true, ReceiveWeeklyReport: true, ReceiveMonthlyReport: true,
 	})
 	if err != nil {
 		t.Fatal(err)

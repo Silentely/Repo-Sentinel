@@ -168,6 +168,63 @@ describe("NotifyPage", () => {
     });
   });
 
+  it("开启定期汇总时自动勾选三类报告子开关并随保存一起提交", async () => {
+    fixtures.apiRequest.mockImplementation(async (path: string) => {
+      if (path.includes("/notifications/channels")) {
+        return {
+          items: [
+            {
+              id: "channel-telegram",
+              channel_type: "telegram",
+              name: "Telegram",
+              enabled: true,
+              target: "123456",
+              secret_configured: true,
+              event_kinds: null,
+              digest_enabled: false,
+              receive_daily_digest: false,
+              receive_weekly_report: false,
+              receive_monthly_report: false,
+            },
+          ],
+        };
+      }
+      if (path.includes("/system/settings")) return fixtures.settings;
+      return undefined;
+    });
+
+    renderPage();
+    const telegramForm = screen.getByRole("heading", { name: "Telegram" }).closest("section") as HTMLElement;
+    // 先等回填落定（Chat ID 来自服务端数据），再断言父开关状态，避免与 prefill 竞态。
+    await waitFor(() => {
+      expect(within(telegramForm).getByLabelText(/^Chat ID/)).toHaveValue("123456");
+    });
+    const parent = within(telegramForm).getByLabelText(/接收定期汇总/);
+    expect(parent).not.toBeChecked();
+
+    fireEvent.click(parent);
+    expect(parent).toBeChecked();
+    // 子开关全关时仅勾父开关会「已开启但什么都不发」，故一并勾选。
+    expect(within(telegramForm).getByLabelText("每日晨报")).toBeChecked();
+    expect(within(telegramForm).getByLabelText("每周质量简报")).toBeChecked();
+    expect(within(telegramForm).getByLabelText("每月大盘综述")).toBeChecked();
+
+    fireEvent.click(within(telegramForm).getByRole("button", { name: "保存 Telegram" }));
+
+    await waitFor(() => {
+      const call = fixtures.apiRequest.mock.calls.find((args: unknown[]) =>
+        (args[0] as string).includes("/notifications/channels/telegram") &&
+        (args[1] as RequestInit | undefined)?.method === "PUT",
+      );
+      expect(call).toBeDefined();
+      const body = JSON.parse((call?.[1] as RequestInit).body as string) as Record<string, unknown>;
+      expect(body.digest_enabled).toBe(true);
+      expect(body.receive_daily_digest).toBe(true);
+      expect(body.receive_weekly_report).toBe(true);
+      expect(body.receive_monthly_report).toBe(true);
+    });
+  });
+
   it("保存静默时段使用后端字段名且不发送未实现的高危绕过开关", async () => {
     renderPage();
     const telegramForm = screen.getByRole("heading", { name: "Telegram" }).closest("section") as HTMLElement;

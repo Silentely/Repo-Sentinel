@@ -120,6 +120,70 @@ func TestChannelScenariosAndQuietHoursAPI(t *testing.T) {
 	}
 }
 
+func TestChannelPeriodicReportFlagsViaAPI(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+	ctx := t.Context()
+
+	// 1. 新建仅带父开关：三个子开关按默认值补齐为 true。
+	putResp := fixture.request(
+		t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"tg-default","enabled":true,"target":"12345","digest_enabled":true}`,
+		"127.0.0.1:49101", cookies, headers,
+	)
+	if putResp.Code != http.StatusOK {
+		t.Fatalf("create telegram failed status=%d body=%s", putResp.Code, putResp.Body.String())
+	}
+	tg, err := fixture.store.Channels().GetEnabledByType(ctx, store.ChannelTelegram)
+	if err != nil {
+		t.Fatalf("get telegram channel: %v", err)
+	}
+	if !tg.ReceiveDailyDigest || !tg.ReceiveWeeklyReport || !tg.ReceiveMonthlyReport {
+		t.Fatalf("新建渠道应默认接收日/周/月报告: %+v", tg)
+	}
+
+	// 2. 新建时显式全关：合法状态，必须原样保存（换渠道类型以走新建分支）。
+	offResp := fixture.request(
+		t, http.MethodPut, "/api/v1/notifications/channels/http_webhook",
+		`{"name":"hook-off","enabled":true,"target":"https://example.com/hook",
+			"digest_enabled":true,"receive_daily_digest":false,"receive_weekly_report":false,"receive_monthly_report":false}`,
+		"127.0.0.1:49102", cookies, headers,
+	)
+	if offResp.Code != http.StatusOK {
+		t.Fatalf("create webhook failed status=%d body=%s", offResp.Code, offResp.Body.String())
+	}
+	hook, err := fixture.store.Channels().GetEnabledByType(ctx, store.ChannelHTTPWebhook)
+	if err != nil {
+		t.Fatalf("get webhook channel: %v", err)
+	}
+	if hook.ReceiveDailyDigest || hook.ReceiveWeeklyReport || hook.ReceiveMonthlyReport {
+		t.Fatalf("新建显式全关被静默改写: daily=%v weekly=%v monthly=%v",
+			hook.ReceiveDailyDigest, hook.ReceiveWeeklyReport, hook.ReceiveMonthlyReport)
+	}
+
+	// 3. 更新现有渠道为全关：同样必须保持。
+	updateResp := fixture.request(
+		t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"tg-default","enabled":true,"target":"12345",
+			"digest_enabled":true,"receive_daily_digest":false,"receive_weekly_report":false,"receive_monthly_report":false}`,
+		"127.0.0.1:49103", cookies, headers,
+	)
+	if updateResp.Code != http.StatusOK {
+		t.Fatalf("update telegram failed status=%d body=%s", updateResp.Code, updateResp.Body.String())
+	}
+	tgAfter, err := fixture.store.Channels().GetEnabledByType(ctx, store.ChannelTelegram)
+	if err != nil {
+		t.Fatalf("re-get telegram channel: %v", err)
+	}
+	if tgAfter.ReceiveDailyDigest || tgAfter.ReceiveWeeklyReport || tgAfter.ReceiveMonthlyReport {
+		t.Fatalf("更新为全关被静默改写: daily=%v weekly=%v monthly=%v",
+			tgAfter.ReceiveDailyDigest, tgAfter.ReceiveWeeklyReport, tgAfter.ReceiveMonthlyReport)
+	}
+}
+
 func TestChannelQuietHoursValidation(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
 	fixture.bootstrapAdmin(t)
