@@ -6,7 +6,7 @@ async function cleanupChannels(page: Page) {
   await page.evaluate(async () => {
     const csrf = (document.cookie.match(/(?:^|; )reposentinel_csrf=([^;]+)/) || [])[1] || "";
     const headers = { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrf) };
-    for (const type of ["http_webhook", "telegram", "feishu", "wecom", "dingtalk", "discord", "bark"]) {
+    for (const type of ["http_webhook", "telegram", "feishu", "wecom", "dingtalk", "discord", "bark", "slack"]) {
       await fetch(`/api/v1/notifications/channels/${type}`, {
         method: "DELETE",
         credentials: "include",
@@ -103,7 +103,7 @@ test.describe("通知渠道配置与交互", () => {
     await expect(channelRow).toHaveCount(0);
   });
 
-  test("多渠道协同配置：企业微信、飞书、钉钉、Discord 及 Bark 的表单保存与状态呈现", async ({ page }) => {
+  test("多渠道协同配置：企业微信、飞书、钉钉、Discord、Bark 及 Slack 的表单保存与状态呈现", async ({ page }) => {
     await ensureAuthenticated(page);
     await page.goto("/notifications");
     const currentSection = page.locator("section.onboarding-card").filter({ hasText: "当前渠道" });
@@ -140,8 +140,14 @@ test.describe("通知渠道配置与交互", () => {
     await barkSection.getByRole("button", { name: "保存 Bark (iOS)" }).click();
     await expect(currentSection.locator(".channel-row").filter({ hasText: "Bark (iOS)" })).toBeVisible();
 
-    // 综合断言：列表中所有 5 个渠道均处于「已启用」状态
-    for (const name of ["飞书 / Lark", "钉钉", "企业微信", "Discord", "Bark (iOS)"]) {
+    // 6. Slack 配置与生效断言（Block Kit 卡片渠道）
+    const slackSection = page.locator("section.channel-form").filter({ hasText: "Slack" });
+    await slackSection.getByLabel("Webhook URL").fill("https://hooks.slack.com/services/e2e/slack/token");
+    await slackSection.getByRole("button", { name: "保存 Slack" }).click();
+    await expect(currentSection.locator(".channel-row").filter({ hasText: "Slack" })).toBeVisible();
+
+    // 综合断言：列表中所有 6 个渠道均处于「已启用」状态
+    for (const name of ["飞书 / Lark", "钉钉", "企业微信", "Discord", "Bark (iOS)", "Slack"]) {
       const row = currentSection.locator(".channel-row").filter({ hasText: name });
       await expect(row).toBeVisible();
       await expect(row).toContainText("已启用");

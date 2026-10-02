@@ -33,6 +33,7 @@ const channelFilters = [
   { label: "钉钉", value: "dingtalk" },
   { label: "Discord", value: "discord" },
   { label: "Bark (iOS)", value: "bark" },
+  { label: "Slack", value: "slack" },
 ];
 
 interface BatchRetryResult {
