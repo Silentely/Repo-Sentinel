@@ -76,10 +76,11 @@ func TestServiceAICodeReviewFlow(t *testing.T) {
 	ghClient.BaseURL = fakeServer.URL
 
 	svc := &webhooksvc.Service{
-		Store:      data,
-		AI:         aiClient,
-		GitHub:     ghClient,
-		Background: ctx,
+		Store:               data,
+		AI:                  aiClient,
+		GitHub:              ghClient,
+		Background:          ctx,
+		ReviewDebounceDelay: 10 * time.Millisecond,
 	}
 
 	payload := `{
@@ -619,5 +620,129 @@ func TestServiceTriggerWorkItemReviewPrivateRepo(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected review setting persisted for private repo PR")
+	}
+}
+
+func TestServiceAICodeReviewDebounce(t *testing.T) {
+	data := openServiceStore(t)
+	seedActiveDemoRepo(t, data)
+	ctx := t.Context()
+
+	var aiCallCount atomic.Int32
+
+	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/50") && strings.HasPrefix(r.Header.Get("Accept"), "application/vnd.github.v3.diff"):
+			w.Header().Set("Content-Type", "application/vnd.github.v3.diff")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("diff --git a/app.go b/app.go\n+func LatestCommit() {}\n"))
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/chat/completions"):
+			aiCallCount.Add(1)
+
+			w.Header().Set("Content-Type", "application/json")
+			res := map[string]any{
+				"choices": []map[string]any{
+					{
+						"message": map[string]any{
+							"content": `{"summary":"防抖审查完成","score":90,"security_risks":[],"breaking_risks":[],"code_smells":[]}`,
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(res)
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer fakeServer.Close()
+
+	aiClient := &ai.Client{
+		Enabled:           true,
+		BaseURL:           fakeServer.URL,
+		Model:             "mock-model",
+		APIKey:            "mock-key",
+		CodeReviewEnabled: true,
+	}
+
+	ghClient := githubx.NewAppClient(1234, "")
+	ghClient.BaseURL = fakeServer.URL
+
+	svc := &webhooksvc.Service{
+		Store:               data,
+		AI:                  aiClient,
+		GitHub:              ghClient,
+		Background:          ctx,
+		ReviewDebounceDelay: 150 * time.Millisecond,
+	}
+
+	payload1 := `{
+		"action": "opened",
+		"number": 50,
+		"pull_request": {
+			"number": 50,
+			"title": "feat: initial commit",
+			"user": {"login": "octocat"},
+			"head": {"sha": "commit-sha-1"}
+		},
+		"repository": {
+			"owner": {"login": "acme"},
+			"name": "demo",
+			"full_name": "acme/demo"
+		}
+	}`
+
+	payload2 := `{
+		"action": "synchronize",
+		"number": 50,
+		"pull_request": {
+			"number": 50,
+			"title": "feat: quick amend commit",
+			"user": {"login": "octocat"},
+			"head": {"sha": "commit-sha-2"}
+		},
+		"repository": {
+			"owner": {"login": "acme"},
+			"name": "demo",
+			"full_name": "acme/demo"
+		}
+	}`
+
+	row1 := seedDelivery(t, data, "del-deb-1", "pull_request", []byte(payload1))
+	svc.Process(row1, "pull_request", "del-deb-1", []byte(payload1))
+
+	// 在 150ms 防抖窗口内触发第二次 push
+	time.Sleep(40 * time.Millisecond)
+	row2 := seedDelivery(t, data, "del-deb-2", "pull_request", []byte(payload2))
+	svc.Process(row2, "pull_request", "del-deb-2", []byte(payload2))
+
+	// 等待防抖窗口结束及异步落库
+	deadline := time.Now().Add(3 * time.Second)
+	var found bool
+	var reviewSetting store.SystemSetting
+	for time.Now().Before(deadline) {
+		item, err := data.WorkItems().GetByRepoNumber(ctx, "repo-demo", 50)
+		if err == nil {
+			setting, err := data.Settings().Get(ctx, "ai.pr_review."+item.ID)
+			if err == nil && len(setting.ValueJSON) > 0 {
+				reviewSetting = setting
+				found = true
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if !found {
+		t.Fatalf("expected ai.pr_review setting stored after debounce window, but timed out")
+	}
+
+	// 核心断言：AI 调用次数必须严格为 1 次（前序 commit-sha-1 被防抖成功吞吐覆盖）
+	if calls := aiCallCount.Load(); calls != 1 {
+		t.Fatalf("expected exactly 1 AI call after debouncing, got %d", calls)
+	}
+
+	// 最终入库的审查 head_sha 必须为最新的 commit-sha-2
+	if !strings.Contains(string(reviewSetting.ValueJSON), "commit-sha-2") {
+		t.Fatalf("expected review setting for latest commit-sha-2, got: %s", string(reviewSetting.ValueJSON))
 	}
 }

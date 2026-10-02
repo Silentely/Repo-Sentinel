@@ -68,6 +68,8 @@ type Client struct {
 	CodeReviewEnabled      bool
 	CodeReviewCommentOnPR  bool
 	FailureAnalysisEnabled bool
+	// TriageLabelMappings Issue 智能分诊标签自定义映射表（类别与优先级 -> GitHub 标签）。
+	TriageLabelMappings map[string]string
 
 	// HTTP 可注入自定义客户端（测试/代理场景）。
 	HTTP *http.Client
@@ -129,6 +131,7 @@ func (c *Client) Snapshot() Client {
 		CodeReviewEnabled:      c.CodeReviewEnabled,
 		CodeReviewCommentOnPR:  c.CodeReviewCommentOnPR,
 		FailureAnalysisEnabled: c.FailureAnalysisEnabled,
+		TriageLabelMappings:    cloneTriageMappings(c.TriageLabelMappings),
 		HTTP:                   c.HTTP,
 		Logger:                 c.Logger,
 	}
@@ -155,6 +158,7 @@ func (c *Client) Replace(next *Client) {
 	c.CodeReviewEnabled = next.CodeReviewEnabled
 	c.CodeReviewCommentOnPR = next.CodeReviewCommentOnPR
 	c.FailureAnalysisEnabled = next.FailureAnalysisEnabled
+	c.TriageLabelMappings = cloneTriageMappings(next.TriageLabelMappings)
 	if next.HTTP != nil {
 		c.HTTP = next.HTTP
 	}
@@ -720,4 +724,25 @@ func (c *Client) Ping(ctx context.Context) (time.Duration, error) {
 		return time.Since(start), err
 	}
 	return time.Since(start), nil
+}
+
+func cloneTriageMappings(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	cp := make(map[string]string, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	return cp
+}
+
+// TriageMappings 返回当前配置的自定义分诊标签映射副本。
+func (c *Client) TriageMappings() map[string]string {
+	if c == nil {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return cloneTriageMappings(c.TriageLabelMappings)
 }

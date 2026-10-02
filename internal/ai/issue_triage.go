@@ -63,6 +63,7 @@ type IssueTriageResult struct {
 	MissingDetails []string  `json:"missing_details"` // 缺失的排查要素
 	SuggestedReply string    `json:"suggested_reply"` // 适合仓库维护者发给提问者的首响回复草稿
 	Confidence     int       `json:"confidence"`      // 置信度 (1-5)
+	Labels         []string  `json:"labels,omitempty"` // 推荐标签（类别映射与优先级映射）
 	TriagedAt      time.Time `json:"triaged_at"`      // 分诊分析时间
 }
 
@@ -136,6 +137,7 @@ func (c *Client) TriageIssue(ctx context.Context, repo, title, author, body stri
 	if res.Confidence < 1 || res.Confidence > 5 {
 		return nil, fmt.Errorf("invalid issue triage confidence %d", res.Confidence)
 	}
+	res.Labels = DeriveTriageLabels(&res, c.TriageMappings())
 	res.TriagedAt = time.Now().UTC()
 	return &res, nil
 }
@@ -195,6 +197,12 @@ func FormatIssueTriage(res *IssueTriageResult) string {
 		sb.WriteString("\n")
 	}
 
+	if len(res.Labels) > 0 {
+		sb.WriteString("🏷️ 建议标签：")
+		sb.WriteString(strings.Join(res.Labels, ", "))
+		sb.WriteString("\n")
+	}
+
 	if len(res.MissingDetails) > 0 {
 		sb.WriteString("⚠️ 缺失要素：")
 		sb.WriteString(strings.Join(res.MissingDetails, "、"))
@@ -213,4 +221,42 @@ func FormatIssueTriage(res *IssueTriageResult) string {
 	}
 
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+// DefaultTriageLabelMappings 返回内置的默认 Issue 分诊类别与优先级对应的 GitHub 标签。
+func DefaultTriageLabelMappings() map[string]string {
+	return map[string]string{
+		"Bug Report":      "bug",
+		"Feature Request": "enhancement",
+		"Question":        "question",
+		"Incomplete":      "need-more-info",
+		"Invalid":         "invalid",
+		"P0 Blocker":      "priority: critical",
+		"P1 High":         "priority: high",
+		"P2 Normal":       "priority: normal",
+		"P3 Low":          "priority: low",
+	}
+}
+
+// DeriveTriageLabels 根据分诊结果与可选的自定义标签映射表计算推荐标签集合。
+func DeriveTriageLabels(res *IssueTriageResult, customMapping map[string]string) []string {
+	if res == nil {
+		return nil
+	}
+	mapping := DefaultTriageLabelMappings()
+	for k, v := range customMapping {
+		trimmedK := strings.TrimSpace(k)
+		trimmedV := strings.TrimSpace(v)
+		if trimmedK != "" && trimmedV != "" {
+			mapping[trimmedK] = trimmedV
+		}
+	}
+	var labels []string
+	if label, ok := mapping[res.Category]; ok && label != "" {
+		labels = append(labels, label)
+	}
+	if label, ok := mapping[res.Priority]; ok && label != "" {
+		labels = append(labels, label)
+	}
+	return labels
 }

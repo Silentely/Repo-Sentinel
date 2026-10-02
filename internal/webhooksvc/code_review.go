@@ -138,11 +138,8 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 		return
 	}
 
-	// 同一 PR 同一提交只允许一个审查任务在途，避免 webhook 重试重复消耗 AI 配额。
+	prefix := reviewKeyPrefix(fullName, prNum)
 	key := reviewKey(fullName, prNum, payload.PullRequest.Head.SHA)
-	if !s.reviews.acquire(key) {
-		return
-	}
 	var installationID int64
 	if payload.Installation != nil {
 		installationID = payload.Installation.ID
@@ -154,7 +151,7 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 		}
 		cancelLookup()
 	}
-	s.launchReview(key, prReviewRequest{
+	req := prReviewRequest{
 		fullName:       fullName,
 		owner:          owner,
 		repo:           repo,
@@ -166,6 +163,18 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 		installationID: installationID,
 		updatedBy:      "ai_code_review",
 		skipStored:     true,
+	}
+
+	delay := s.ReviewDebounceDelay
+	if delay <= 0 {
+		delay = defaultReviewDebounceDelay
+	}
+
+	s.getDebouncer().schedule(prefix, key, req, delay, func(firedKey string, firedReq prReviewRequest) {
+		if !s.tracker().acquire(firedKey) {
+			return
+		}
+		s.launchReview(firedKey, firedReq)
 	})
 }
 
@@ -258,7 +267,7 @@ func (s *Service) runPRReview(ctx context.Context, req prReviewRequest) (*ai.Cod
 // 停机取消都不应中断在途审查的持久化闭环），panic 兜底，失败统一 Warn 留痕。
 func (s *Service) launchReview(key string, req prReviewRequest) {
 	go func() {
-		defer s.reviews.release(key)
+		defer s.tracker().release(key)
 		defer func() {
 			if recovered := recover(); recovered != nil && s.Logger != nil {
 				s.Logger.Error("ai code review panic recovered", "repo", req.fullName, "pr", req.prNum, "error", recovered)
@@ -428,7 +437,8 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 	// 同一 PR 换 commit 后并发审查会各自消耗 AI 配额，并争抢同一 ai.pr_review.<itemID>
 	// 挂载点（后写覆盖先写）。代价是该 PR 的新 head SHA 需等在途任务结束后重试；
 	// 精确的同 SHA 去重仍由下方 acquire 负责。
-	if s.reviews.inFlightPrefix(reviewKeyPrefix(fullName, item.Number)) {
+	s.getDebouncer().cancel(reviewKeyPrefix(fullName, item.Number))
+	if s.tracker().inFlightPrefix(reviewKeyPrefix(fullName, item.Number)) {
 		return "", ErrReviewInProgress
 	}
 	installationID := s.resolveRepoInstallationID(ctx, repoRec)
@@ -451,7 +461,7 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 	}
 
 	key := reviewKey(fullName, item.Number, headSHA)
-	if !s.reviews.acquire(key) {
+	if !s.tracker().acquire(key) {
 		return "", ErrReviewInProgress
 	}
 	s.launchReview(key, prReviewRequest{

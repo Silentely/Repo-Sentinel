@@ -180,10 +180,10 @@ func classifySensitiveAsset(path string) string {
 	if strings.HasPrefix(clean, ".github/workflows/") || clean == ".gitlab-ci.yml" || strings.HasPrefix(clean, ".circleci/") {
 		return "⚙️ " + path + "（CI/CD 工作流变动，谨防 Actions 提权与 Secrets 泄漏）"
 	}
-	switch base {
+	switch strings.ToLower(base) {
 	case "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "go.sum",
 		"cargo.lock", "composer.lock", "pipfile.lock", "poetry.lock",
-		"gemfile.lock", "flake.lock", "bun.lockb":
+		"gemfile.lock", "flake.lock", "bun.lockb", "uv.lock", "pdm.lock":
 		return "📦 " + path + "（依赖锁定清单变动，谨防供应链依赖投毒与恶意包引入）"
 	}
 	if strings.Contains(clean, "/migrations/") || strings.HasPrefix(clean, "migrations/") ||
@@ -200,11 +200,11 @@ func classifySensitiveAsset(path string) string {
 }
 
 func isNoiseFile(path string) bool {
-	base := filepath.Base(path)
+	base := strings.ToLower(filepath.Base(path))
 	switch base {
 	case "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "go.sum",
-		"Cargo.lock", "composer.lock", "Pipfile.lock", "poetry.lock",
-		"Gemfile.lock", "flake.lock", "bun.lockb":
+		"cargo.lock", "composer.lock", "pipfile.lock", "poetry.lock",
+		"gemfile.lock", "flake.lock", "bun.lockb", "uv.lock", "pdm.lock":
 		return true
 	}
 	if strings.HasSuffix(path, ".min.js") || strings.HasSuffix(path, ".min.css") ||

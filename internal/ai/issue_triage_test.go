@@ -140,3 +140,63 @@ func TestTriageIssueRobustnessAndFallbacks(t *testing.T) {
 		}
 	})
 }
+
+func TestTriageLabelMappingsAndDerivation(t *testing.T) {
+	// 1. 默认标签映射完整性检查
+	defaults := DefaultTriageLabelMappings()
+	expectedKeys := []string{
+		"Bug Report", "Feature Request", "Question", "Incomplete", "Invalid",
+		"P0 Blocker", "P1 High", "P2 Normal", "P3 Low",
+	}
+	for _, key := range expectedKeys {
+		if _, ok := defaults[key]; !ok {
+			t.Errorf("DefaultTriageLabelMappings missing key %q", key)
+		}
+	}
+
+	// 2. 默认标签推导
+	res := &IssueTriageResult{
+		Category: "Bug Report",
+		Priority: "P1 High",
+	}
+	labels := DeriveTriageLabels(res, nil)
+	if len(labels) != 2 || labels[0] != "bug" || labels[1] != "priority: high" {
+		t.Errorf("DeriveTriageLabels(res, nil) = %v, want [bug, priority: high]", labels)
+	}
+
+	// 3. 自定义映射覆盖测试
+	custom := map[string]string{
+		"Bug Report": "type:defect",
+		"P1 High":    "severity:urgent",
+	}
+	customLabels := DeriveTriageLabels(res, custom)
+	if len(customLabels) != 2 || customLabels[0] != "type:defect" || customLabels[1] != "severity:urgent" {
+		t.Errorf("DeriveTriageLabels(res, custom) = %v, want [type:defect, severity:urgent]", customLabels)
+	}
+
+	// 4. 卡片格式化输出包含建议标签
+	res.Labels = customLabels
+	res.Summary = "登录无响应"
+	formatted := FormatIssueTriage(res)
+	if !strings.Contains(formatted, "🏷️ 建议标签：type:defect, severity:urgent") {
+		t.Errorf("FormatIssueTriage missing labels line, got: %s", formatted)
+	}
+
+	// 5. Client 运行时继承与快照测试
+	client := &Client{
+		Enabled:             true,
+		APIKey:              "key",
+		TriageEnabled:       true,
+		TriageLabelMappings: custom,
+	}
+	snap := client.Snapshot()
+	if snap.TriageLabelMappings["Bug Report"] != "type:defect" {
+		t.Errorf("Snapshot failed to copy TriageLabelMappings")
+	}
+
+	// 修改快照不得影响原始 client
+	snap.TriageLabelMappings["Bug Report"] = "changed"
+	if client.TriageMappings()["Bug Report"] != "type:defect" {
+		t.Errorf("Snapshot mutation mutated original client mappings")
+	}
+}

@@ -39,8 +39,11 @@ type Service struct {
 	OnBroadcast func(topic, resource, resourceID string)
 	// SlowThreshold 慢处理判定阈值；<=0 时用默认 slowWebhookThreshold。
 	SlowThreshold time.Duration
+	// ReviewDebounceDelay PR 审查防抖窗口（默认 60s；<=0 时使用默认值；测试中可设为毫秒级）。
+	ReviewDebounceDelay time.Duration
 	// reviews 跟踪在途审查任务：同头互斥与停机排空（见 reviewTracker）。
 	reviews *reviewTracker
+	debouncer *reviewDebouncer
 }
 
 // slowWebhookThreshold 单条 webhook 处理的慢阈值：超过说明规范化/评估路径存在
@@ -233,7 +236,30 @@ func (s *Service) logError(msg, deliveryID, eventType, code, repoName, errMsg st
 // StopReviews 进入审查停机排空状态：拒绝登记新的审查任务。
 // App.Close 在 WaitReviews 之前调用：先拒绝新任务，再等待在途任务清空，
 // 保证排空等待期间不会再有新任务并发登记后写已关闭的数据库。
-func (s *Service) StopReviews() { s.reviews.stop() }
+func (s *Service) StopReviews() {
+	if s.reviews != nil {
+		s.reviews.stop()
+	}
+	if s.debouncer != nil {
+		s.debouncer.stop()
+	}
+}
+
+func (s *Service) tracker() *reviewTracker {
+	if s.reviews != nil {
+		return s.reviews
+	}
+	s.reviews = &reviewTracker{}
+	return s.reviews
+}
+
+func (s *Service) getDebouncer() *reviewDebouncer {
+	if s.debouncer != nil {
+		return s.debouncer
+	}
+	s.debouncer = newReviewDebouncer()
+	return s.debouncer
+}
 
 // WaitReviews 等待在途的 PR 审查任务清空或直到传入 context 超时/取消。
 func (s *Service) WaitReviews(ctx context.Context) error {

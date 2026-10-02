@@ -739,3 +739,42 @@ func TestDeriveMaintainerVerdictLadder(t *testing.T) {
 		t.Errorf("存量报告兜底应渲染 Block Risk 徽章，got: %s", got)
 	}
 }
+
+func TestLockfileDiffPruningAndClassification(t *testing.T) {
+	cases := []struct {
+		file string
+		want bool
+	}{
+		{"uv.lock", true},
+		{"pdm.lock", true},
+		{"poetry.lock", true},
+		{"Cargo.lock", true},
+		{"go.sum", true},
+		{"package-lock.json", true},
+		{"pnpm-lock.yaml", true},
+		{"main.go", false},
+		{"service.py", false},
+	}
+
+	for _, tc := range cases {
+		if got := isNoiseFile(tc.file); got != tc.want {
+			t.Errorf("isNoiseFile(%q) = %v, want %v", tc.file, got, tc.want)
+		}
+		if tc.want {
+			asset := classifySensitiveAsset(tc.file)
+			if !strings.Contains(asset, "依赖锁定清单变动") {
+				t.Errorf("classifySensitiveAsset(%q) missing dependency lock warning, got %q", tc.file, asset)
+			}
+		}
+	}
+
+	// 验证包含巨大 lockfile 的 rawDiff 在 cleanAndPrioritizeDiff 后被精炼为摘要行
+	rawDiff := "diff --git a/uv.lock b/uv.lock\n--- a/uv.lock\n+++ b/uv.lock\n@@ -1,5 +1,6 @@\n+pkg==1.0.0\n-old==0.9.0\n"
+	cleaned, truncated := cleanAndPrioritizeDiff(rawDiff, 1000)
+	if truncated {
+		t.Errorf("expected not truncated, got true")
+	}
+	if !strings.Contains(cleaned, "依赖锁定文件/构建产物变更已自动精简") {
+		t.Errorf("expected lockfile diff to be pruned to summary line, got: %s", cleaned)
+	}
+}

@@ -37,7 +37,8 @@ type StoredConfig struct {
 	ReleaseSummaryEnabled  *bool  `json:"release_summary_enabled,omitempty"`
 	CodeReviewEnabled      *bool  `json:"code_review_enabled,omitempty"`
 	CodeReviewCommentOnPR  *bool  `json:"code_review_comment_on_pr,omitempty"`
-	FailureAnalysisEnabled *bool  `json:"failure_analysis_enabled,omitempty"`
+	FailureAnalysisEnabled *bool             `json:"failure_analysis_enabled,omitempty"`
+	TriageLabelMappings    map[string]string `json:"triage_label_mappings,omitempty"`
 }
 
 // RuntimeConfig 持有进程内可热更新的 AI 配置。
@@ -58,6 +59,7 @@ type RuntimeConfig struct {
 	CodeReviewEnabled      bool
 	CodeReviewCommentOnPR  bool
 	FailureAnalysisEnabled bool
+	TriageLabelMappings    map[string]string
 
 	// 字段来源：env | database | unset（仅状态展示，不回显密钥）。
 	EnabledSource                string
@@ -73,6 +75,7 @@ type RuntimeConfig struct {
 	CodeReviewEnabledSource      string
 	CodeReviewCommentOnPRSource  string
 	FailureAnalysisEnabledSource string
+	TriageLabelMappingsSource    string
 }
 
 // RuntimeFromEnv 从环境变量配置构建运行时基线并标记来源。
@@ -106,6 +109,7 @@ func RuntimeFromEnv(cfg config.AIConfig) *RuntimeConfig {
 		CodeReviewEnabledSource:      sourceLabel(!cfg.CodeReviewEnabled, "env"),
 		CodeReviewCommentOnPRSource:  sourceLabel(cfg.CodeReviewCommentOnPR, "env"),
 		FailureAnalysisEnabledSource: sourceLabel(!cfg.FailureAnalysisEnabled, "env"),
+		TriageLabelMappingsSource:    "unset",
 	}
 }
 
@@ -130,6 +134,7 @@ func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 		CodeReviewEnabled:            r.CodeReviewEnabled,
 		CodeReviewCommentOnPR:        r.CodeReviewCommentOnPR,
 		FailureAnalysisEnabled:       r.FailureAnalysisEnabled,
+		TriageLabelMappings:          cloneTriageMappings(r.TriageLabelMappings),
 		EnabledSource:                r.EnabledSource,
 		BaseURLSource:                r.BaseURLSource,
 		ModelSource:                  r.ModelSource,
@@ -143,6 +148,7 @@ func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 		CodeReviewEnabledSource:      r.CodeReviewEnabledSource,
 		CodeReviewCommentOnPRSource:  r.CodeReviewCommentOnPRSource,
 		FailureAnalysisEnabledSource: r.FailureAnalysisEnabledSource,
+		TriageLabelMappingsSource:    r.TriageLabelMappingsSource,
 	}
 }
 
@@ -166,6 +172,7 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.CodeReviewEnabled = next.CodeReviewEnabled
 	r.CodeReviewCommentOnPR = next.CodeReviewCommentOnPR
 	r.FailureAnalysisEnabled = next.FailureAnalysisEnabled
+	r.TriageLabelMappings = cloneTriageMappings(next.TriageLabelMappings)
 	r.EnabledSource = next.EnabledSource
 	r.BaseURLSource = next.BaseURLSource
 	r.ModelSource = next.ModelSource
@@ -179,6 +186,7 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.CodeReviewEnabledSource = next.CodeReviewEnabledSource
 	r.CodeReviewCommentOnPRSource = next.CodeReviewCommentOnPRSource
 	r.FailureAnalysisEnabledSource = next.FailureAnalysisEnabledSource
+	r.TriageLabelMappingsSource = next.TriageLabelMappingsSource
 }
 
 // Client 将当前运行时配置物化为可用的 AI 客户端。
@@ -198,6 +206,7 @@ func (r *RuntimeConfig) Client() *Client {
 		CodeReviewEnabled:      snap.CodeReviewEnabled,
 		CodeReviewCommentOnPR:  snap.CodeReviewCommentOnPR,
 		FailureAnalysisEnabled: snap.FailureAnalysisEnabled,
+		TriageLabelMappings:    snap.TriageLabelMappings,
 	}
 }
 
@@ -268,7 +277,7 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 	if err != nil {
 		return err
 	}
-	if stored == (StoredConfig{}) {
+	if stored.isEmpty() {
 		return nil
 	}
 
@@ -334,6 +343,10 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 		snap.FailureAnalysisEnabled = *stored.FailureAnalysisEnabled
 		snap.FailureAnalysisEnabledSource = "database"
 	}
+	if len(stored.TriageLabelMappings) > 0 {
+		snap.TriageLabelMappings = stored.TriageLabelMappings
+		snap.TriageLabelMappingsSource = "database"
+	}
 
 	rt.Replace(&snap)
 	return nil
@@ -345,4 +358,21 @@ func sourceLabel(ok bool, source string) string {
 		return source
 	}
 	return "unset"
+}
+
+func (s StoredConfig) isEmpty() bool {
+	return s.Enabled == nil &&
+		strings.TrimSpace(s.BaseURL) == "" &&
+		strings.TrimSpace(s.Model) == "" &&
+		s.TimeoutSec == nil &&
+		s.MaxTokens == nil &&
+		s.Retries == nil &&
+		strings.TrimSpace(s.APIKeyEnvelope) == "" &&
+		s.DigestEnabled == nil &&
+		s.TriageEnabled == nil &&
+		s.ReleaseSummaryEnabled == nil &&
+		s.CodeReviewEnabled == nil &&
+		s.CodeReviewCommentOnPR == nil &&
+		s.FailureAnalysisEnabled == nil &&
+		len(s.TriageLabelMappings) == 0
 }

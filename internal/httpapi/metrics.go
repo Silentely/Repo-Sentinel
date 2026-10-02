@@ -107,6 +107,21 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		b.Write(strconv.AppendUint(numBuf[:0], value, 10))
 		b.WriteString("\n")
 	}
+	writeFloatMetric := func(name, help, typ string, value float64) {
+		b.WriteString("# HELP ")
+		b.WriteString(name)
+		b.WriteString(" ")
+		b.WriteString(help)
+		b.WriteString("\n# TYPE ")
+		b.WriteString(name)
+		b.WriteString(" ")
+		b.WriteString(typ)
+		b.WriteString("\n")
+		b.WriteString(name)
+		b.WriteString(" ")
+		b.WriteString(strconv.FormatFloat(value, 'f', 6, 64))
+		b.WriteString("\n")
+	}
 
 	writeMetric("reposentinel_webhook_accepted_total", "Accepted GitHub webhook deliveries", "counter", metricWebhookAccepted.Load())
 	writeMetric("reposentinel_webhook_duplicate_total", "Duplicate GitHub webhook deliveries", "counter", metricWebhookDuplicate.Load())
@@ -131,6 +146,11 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	writeMetric("reposentinel_ai_request_duration_ms_sum", "Cumulative LLM call duration in ms", "counter", aiDurMS)
 	writeMetric("reposentinel_ai_prompt_tokens_total", "Prompt tokens consumed", "counter", aiPromptTok)
 	writeMetric("reposentinel_ai_completion_tokens_total", "Completion tokens consumed", "counter", aiCompTok)
+	writeMetric("reposentinel_ai_tokens_total", "Total tokens consumed across prompts and completions", "counter", aiPromptTok+aiCompTok)
+	estimatedMicroUSD := (aiPromptTok*15 + aiCompTok*60) / 100
+	writeMetric("reposentinel_ai_cost_estimated_microusds_total", "Estimated cumulative LLM cost in micro-USD (1 USD = 1,000,000 micro-USD)", "counter", estimatedMicroUSD)
+	estimatedUSD := float64(estimatedMicroUSD) / 1e6
+	writeFloatMetric("reposentinel_ai_cost_estimated_usd_total", "Estimated cumulative LLM cost in USD", "counter", estimatedUSD)
 	for _, code := range ai.SortedFailCodes(aiFailByCode) {
 		writeMetric("reposentinel_ai_requests_failed_"+code+"_total", "Failed LLM calls by error code", "counter", aiFailByCode[code])
 	}
