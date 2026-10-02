@@ -217,7 +217,11 @@ describe("NotifyPage", () => {
         (args[1] as RequestInit | undefined)?.method === "PUT",
       );
       expect(call).toBeDefined();
-      const body = JSON.parse((call?.[1] as RequestInit).body as string) as Record<string, unknown>;
+      if (!call) {
+        // 先收窄类型再取参数：可选链后直接取成员会被 lint 判定为空值隐患。
+        throw new Error("未找到渠道保存请求");
+      }
+      const body = JSON.parse((call[1] as RequestInit).body as string) as Record<string, unknown>;
       expect(body.digest_enabled).toBe(true);
       expect(body.receive_daily_digest).toBe(true);
       expect(body.receive_weekly_report).toBe(true);
@@ -241,7 +245,11 @@ describe("NotifyPage", () => {
         (args[1] as RequestInit | undefined)?.method === "PUT",
       );
       expect(call).toBeDefined();
-      const body = JSON.parse((call?.[1] as RequestInit).body as string) as Record<string, unknown>;
+      if (!call) {
+        // 先收窄类型再取参数：可选链后直接取成员会被 lint 判定为空值隐患。
+        throw new Error("未找到渠道保存请求");
+      }
+      const body = JSON.parse((call[1] as RequestInit).body as string) as Record<string, unknown>;
       expect(body.quiet_hours_tz).toBe("Asia/Shanghai");
       expect(body).not.toHaveProperty("quiet_hours_timezone");
       expect(body).not.toHaveProperty("quiet_hours_critical_bypass");
