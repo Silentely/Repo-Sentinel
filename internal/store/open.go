@@ -21,6 +21,7 @@ const databasePingTimeout = 5 * time.Second
 
 type storeImpl struct {
 	client  *entclient.Client
+	driver  dialect.Driver
 	pingFn  func(context.Context) error
 	closeFn func() error
 	// settingsCache 由全部 Settings() 调用共享，保证 webhook/scheduler/http 各 goroutine 读到一致缓存。
@@ -57,7 +58,7 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (Store, error) {
 	}
 
 	driver := entsql.OpenDB(entDialect, db)
-	return newStore(entclient.NewClient(entclient.Driver(driver)), db.PingContext, db.Close), nil
+	return newStore(entclient.NewClient(entclient.Driver(driver)), driver, db.PingContext, db.Close), nil
 }
 
 func openDatabase(cfg config.DatabaseConfig) (*sql.DB, string, string, error) {
@@ -186,12 +187,14 @@ func sqliteDSN(rawURL string) string {
 		"_pragma=journal_mode(WAL)",
 		"_pragma=busy_timeout(5000)",
 		"_pragma=synchronous(NORMAL)",
+		"_pragma=auto_vacuum(INCREMENTAL)",
 	}, "&")
 }
 
-func newStore(client *entclient.Client, pingFn func(context.Context) error, closeFn func() error) *storeImpl {
+func newStore(client *entclient.Client, driver dialect.Driver, pingFn func(context.Context) error, closeFn func() error) *storeImpl {
 	return &storeImpl{
 		client:         client,
+		driver:         driver,
 		pingFn:         pingFn,
 		closeFn:        closeFn,
 		settingsCache:  newSettingsCache(settingsCacheTTL),

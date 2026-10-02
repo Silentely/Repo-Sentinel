@@ -11,7 +11,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 )
 
-const cliUsageMessage = "可用命令: serve, version, config validate, admin reset-password, admin reset-2fa, doctor, healthcheck, backup, restore。"
+const cliUsageMessage = "可用命令: serve, version, config validate, admin reset-password, admin reset-2fa, secret rotate-keys, doctor, healthcheck, backup, restore。"
 
 // Application 是 serve 子命令需要的最小运行时接口。
 type Application interface {
@@ -25,6 +25,7 @@ type Dependencies struct {
 	BuildApp           func(context.Context, config.Config) (Application, error)
 	ResetAdminPassword func(context.Context, config.Config, string) error
 	ResetAdmin2FA      func(context.Context, config.Config) error
+	RotateKeys         func(context.Context, config.Config, app.RotateKeysOptions) (app.RotateKeysStats, error)
 	BuildInfo          func() buildinfo.Info
 }
 
@@ -61,13 +62,16 @@ func NewRunner(stdin io.Reader, stdout, stderr io.Writer, dependencies Dependenc
 	if dependencies.ResetAdmin2FA == nil {
 		dependencies.ResetAdmin2FA = app.ResetAdmin2FA
 	}
+	if dependencies.RotateKeys == nil {
+		dependencies.RotateKeys = app.RotateKeys
+	}
 	if dependencies.BuildInfo == nil {
 		dependencies.BuildInfo = buildinfo.Current
 	}
 	return Runner{stdin: stdin, stdout: stdout, stderr: stderr, dependencies: dependencies}
 }
 
-// Run 分派 serve/version/config/admin/doctor/healthcheck/backup/restore 子命令，并统一输出安全错误。
+// Run 分派 serve/version/config/admin/secret/doctor/healthcheck/backup/restore 子命令，并统一输出安全错误。
 func (r Runner) Run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return reportError(r.stderr, newCLIError("缺少命令，"+cliUsageMessage))
@@ -88,16 +92,24 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 		}
 	case "admin":
 		if len(args) < 2 {
-			err = newCLIError("admin 仅支持 reset-password 与 reset-2fa 子命令。")
+			err = newCLIError("admin 仅支持 reset-password、reset-2fa 与 re-encrypt-credentials 子命令。")
 		} else {
 			switch args[1] {
 			case "reset-password":
 				err = r.runAdminResetPassword(ctx, args[2:])
 			case "reset-2fa":
 				err = r.runAdminReset2FA(ctx, args[2:])
+			case "re-encrypt-credentials":
+				err = r.runSecretRotateKeys(ctx, args[2:])
 			default:
-				err = newCLIError("admin 仅支持 reset-password 与 reset-2fa 子命令。")
+				err = newCLIError("admin 仅支持 reset-password、reset-2fa 与 re-encrypt-credentials 子命令。")
 			}
+		}
+	case "secret":
+		if len(args) < 2 || args[1] != "rotate-keys" {
+			err = newCLIError("secret 仅支持 rotate-keys 子命令。")
+		} else {
+			err = r.runSecretRotateKeys(ctx, args[2:])
 		}
 	case "doctor":
 		err = r.runDoctor(ctx, args[1:])
@@ -143,4 +155,6 @@ func newFlagSet(name string) *flag.FlagSet {
 
 type nilReader struct{}
 
-func (nilReader) Read([]byte) (int, error) { return 0, io.EOF }
+func (nilReader) Read([]byte) (int, error) {
+	return 0, io.EOF
+}
