@@ -331,7 +331,7 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 		idem := idempotencyKey(ch.ID, idScope, variant)
 		eventID := sub[0].ID
 		nextAttempt := time.Now().UTC()
-		action, resumeAt := DecideQuietHours(ch, sub[0], nextAttempt)
+		action, resumeAt := DecideQuietHoursForEvents(ch, sub, nextAttempt)
 		if action == ActionDeferQuietHours {
 			nextAttempt = resumeAt
 		}
@@ -410,10 +410,15 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 		variant := "burst|" + idScope + "|" + cat + "|" + strconv.FormatInt(bucket, 10)
 		idem := idempotencyKey(ch.ID, idScope, variant)
 		eid := sample.ID
+		nextAttempt := time.Now().UTC()
+		action, resumeAt := DecideQuietHours(ch, sample, nextAttempt)
+		if action == ActionDeferQuietHours {
+			nextAttempt = resumeAt
+		}
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eid,
 			AggregateKey: idScope + "|burst", IdempotencyKey: idem,
-			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
+			Status: store.OutboxPending, NextAttemptAt: nextAttempt,
 			Title: title, BodyText: body, ParseMode: "HTML",
 			// 有事件链接时附带跳转按钮，用户可从摘要直达原始事件。
 			HTMLURL: sample.HTMLURL,

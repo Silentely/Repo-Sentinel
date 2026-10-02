@@ -1,5 +1,5 @@
 // RepoSentinel PWA Service Worker
-const CACHE_NAME = 'reposentinel-v1';
+const CACHE_NAME = 'reposentinel-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/favicon.svg',
@@ -58,6 +58,23 @@ self.addEventListener('fetch', (event) => {
   if (PRECACHE_ASSETS.includes(url.pathname)) {
     event.respondWith(
       caches.match(event.request).then((cached) => cached || fetch(event.request))
+    );
+    return;
+  }
+
+  // Vite 产出的 hash 静态资源在首次在线访问时缓存；离线导航返回缓存的
+  // index.html 后，入口 JS/CSS 仍可加载，避免只显示空 root 节点。
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.match(event.request).then(async (cached) => {
+        if (cached) return cached;
+        const response = await fetch(event.request);
+        if (response.ok) {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(event.request, response.clone());
+        }
+        return response;
+      }),
     );
   }
 });

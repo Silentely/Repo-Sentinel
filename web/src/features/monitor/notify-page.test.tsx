@@ -167,4 +167,27 @@ describe("NotifyPage", () => {
       })).toBe(true);
     });
   });
+
+  it("保存静默时段使用后端字段名且不发送未实现的高危绕过开关", async () => {
+    renderPage();
+    const telegramForm = screen.getByRole("heading", { name: "Telegram" }).closest("section") as HTMLElement;
+
+    await waitFor(() => {
+      expect(within(telegramForm).getByLabelText(/^Chat ID/)).toHaveValue("123456");
+    });
+
+    fireEvent.click(within(telegramForm).getByRole("button", { name: "保存 Telegram" }));
+
+    await waitFor(() => {
+      const call = fixtures.apiRequest.mock.calls.find((args: unknown[]) =>
+        (args[0] as string).includes("/notifications/channels/telegram") &&
+        (args[1] as RequestInit | undefined)?.method === "PUT",
+      );
+      expect(call).toBeDefined();
+      const body = JSON.parse((call?.[1] as RequestInit).body as string) as Record<string, unknown>;
+      expect(body.quiet_hours_tz).toBe("Asia/Shanghai");
+      expect(body).not.toHaveProperty("quiet_hours_timezone");
+      expect(body).not.toHaveProperty("quiet_hours_critical_bypass");
+    });
+  });
 });

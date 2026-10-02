@@ -30,6 +30,21 @@ func DecideQuietHours(ch store.NotificationChannel, ev *store.Event, now time.Ti
 	return decision.Action, decision.ResumeAt
 }
 
+// DecideQuietHoursForEvents 评估包含多条事件的聚合通知。
+// 聚合消息只要包含一条高危安全告警，就必须继承该告警的静默穿透权，
+// 不能只根据聚合列表中的第一条（可能是低危）事件决定投递时机。
+func DecideQuietHoursForEvents(ch store.NotificationChannel, events []*store.Event, now time.Time) (DeliveryAction, time.Time) {
+	for _, ev := range events {
+		if isCriticalSecurityAlert(ev) {
+			return ActionDeliverNow, time.Time{}
+		}
+	}
+	if len(events) == 0 {
+		return DecideQuietHours(ch, nil, now)
+	}
+	return DecideQuietHours(ch, events[0], now)
+}
+
 // EvaluateQuietHours 返回免打扰完整决策。
 func EvaluateQuietHours(ch store.NotificationChannel, ev *store.Event, now time.Time) DeliveryDecision {
 	if !ch.QuietHoursEnabled {

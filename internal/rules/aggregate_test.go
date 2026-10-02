@@ -83,6 +83,68 @@ func TestEnqueueBurstSummaryCarriesLinkAndTime(t *testing.T) {
 	}
 }
 
+func TestEnqueueBurstSummaryDefersDuringQuietHours(t *testing.T) {
+	data := openTestStore(t)
+	now := time.Now().UTC()
+	ch, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: "ch-burst-quiet", ChannelType: store.ChannelTelegram, Name: "tg", Enabled: true, Target: "chat-1",
+		QuietHoursEnabled: true,
+		QuietHoursStart:   now.Add(-time.Minute).Format("15:04"),
+		QuietHoursEnd:     now.Add(2 * time.Minute).Format("15:04"),
+		QuietHoursTZ:      "UTC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sample := &store.Event{ID: "ev-burst-quiet", Kind: store.WorkItemKindIssue, Action: "opened"}
+	a := NewAggregator(data, time.Minute, 15, 5*time.Minute)
+	if _, _, err := a.enqueueBurstSummary(t.Context(), "repo-1", "acme/demo", "issue", "⚠️ 通知频率超限", sample); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{ChannelIDs: []string{ch.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("期望 1 条 outbox，实际 %d", len(items))
+	}
+	if !items[0].NextAttemptAt.After(now) {
+		t.Fatalf("静默时段内的超频摘要应延迟，实际投递时间 %v，当前时间 %v", items[0].NextAttemptAt, now)
+	}
+}
+
+func TestEnqueueMergedSecurityUsesMostUrgentEventForQuietHours(t *testing.T) {
+	data := openTestStore(t)
+	now := time.Now().UTC()
+	ch, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: "ch-merged-security", ChannelType: store.ChannelTelegram, Name: "tg", Enabled: true, Target: "chat-1",
+		QuietHoursEnabled: true,
+		QuietHoursStart:   now.Add(-time.Minute).Format("15:04"),
+		QuietHoursEnd:     now.Add(2 * time.Minute).Format("15:04"),
+		QuietHoursTZ:      "UTC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := &store.Event{ID: "ev-low", Kind: store.AlertKindCodeScanning, Severity: "low", Title: "低危告警"}
+	critical := &store.Event{ID: "ev-critical", Kind: store.AlertKindCodeScanning, Severity: "critical", Title: "高危告警"}
+	a := NewAggregator(data, time.Minute, 15, 5*time.Minute)
+	b := &aggBucket{category: "security", repoID: "repo-1", repoName: "acme/demo", events: []*store.Event{first, critical}}
+	if err := a.enqueueMerged(t.Context(), b); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{ChannelIDs: []string{ch.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("期望 1 条 outbox，实际 %d", len(items))
+	}
+	if items[0].NextAttemptAt.After(now.Add(10 * time.Second)) {
+		t.Fatalf("包含高危告警的安全聚合不应延迟，实际投递时间 %v，当前时间 %v", items[0].NextAttemptAt, now)
+	}
+}
+
 // waitOutboxCount 轮询等待 outbox 达到期望数量（默认 5s 超时）。
 // 聚合 flush 由 time.AfterFunc 异步触发，固定 sleep 在 CI 高负载 / -race 下
 // 可能早于 flush 完成而误报 got 0，轮询可消除此类时序 flaky。

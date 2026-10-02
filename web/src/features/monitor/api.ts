@@ -137,8 +137,7 @@ export interface NotificationChannelRow {
   quiet_hours_enabled?: boolean;
   quiet_hours_start?: string;
   quiet_hours_end?: string;
-  quiet_hours_timezone?: string;
-  quiet_hours_critical_bypass?: boolean;
+  quiet_hours_tz?: string;
   updated_at?: string;
 }
 
@@ -275,8 +274,7 @@ export async function upsertChannel(
     quiet_hours_enabled?: boolean;
     quiet_hours_start?: string;
     quiet_hours_end?: string;
-    quiet_hours_timezone?: string;
-    quiet_hours_critical_bypass?: boolean;
+    quiet_hours_tz?: string;
   },
 ): Promise<void> {
   await apiRequest(`/api/v1/notifications/channels/${type}`, {

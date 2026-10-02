@@ -100,7 +100,6 @@ function ChannelForm({
   const [quietHoursStart, setQuietHoursStart] = useState("23:00");
   const [quietHoursEnd, setQuietHoursEnd] = useState("08:00");
   const [quietHoursTimezone, setQuietHoursTimezone] = useState("Asia/Shanghai");
-  const [quietHoursCriticalBypass, setQuietHoursCriticalBypass] = useState(true);
 
   const [testScenario, setTestScenario] = useState<TestScenario>("default");
 
@@ -122,10 +121,7 @@ function ChannelForm({
     setQuietHoursEnabled(channel.quiet_hours_enabled ?? false);
     if (channel.quiet_hours_start) setQuietHoursStart(channel.quiet_hours_start);
     if (channel.quiet_hours_end) setQuietHoursEnd(channel.quiet_hours_end);
-    if (channel.quiet_hours_timezone) setQuietHoursTimezone(channel.quiet_hours_timezone);
-    if (channel.quiet_hours_critical_bypass !== undefined) {
-      setQuietHoursCriticalBypass(channel.quiet_hours_critical_bypass);
-    }
+    if (channel.quiet_hours_tz) setQuietHoursTimezone(channel.quiet_hours_tz);
     // 预填目标值，避免「只改订阅」时表单为空误清空。
     if (channel.target) setTarget(channel.target);
   }, [channel, setKinds, setDigest, setTarget]);
@@ -151,8 +147,7 @@ function ChannelForm({
         quiet_hours_enabled: quietHoursEnabled,
         quiet_hours_start: quietHoursStart.trim(),
         quiet_hours_end: quietHoursEnd.trim(),
-        quiet_hours_timezone: quietHoursTimezone.trim(),
-        quiet_hours_critical_bypass: quietHoursCriticalBypass,
+        quiet_hours_tz: quietHoursTimezone.trim(),
       });
     },
     onSuccess: async () => {
@@ -358,14 +353,7 @@ function ChannelForm({
                 />
               </label>
             </div>
-            <label className="field--checkbox">
-              <input
-                type="checkbox"
-                checked={quietHoursCriticalBypass}
-                onChange={(e) => setQuietHoursCriticalBypass(e.target.checked)}
-              />
-              🛡️ 安全高危漏洞与阻断级故障突破静默，即时直发
-            </label>
+            <p className="field-hint">安全高危告警固定突破静默时段即时发送。</p>
           </div>
         )}
       </div>
