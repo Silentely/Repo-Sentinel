@@ -34,7 +34,7 @@
 
 ## 项目简介
 
-RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。它通过 GitHub App Webhook 实时接收 Issue、Pull Request、Actions 与安全告警，用 API 对账补漏，并把重要变化推送到 Telegram、企业微信、飞书、钉钉、Discord、Bark 或通用 HTTP Webhook。默认使用 SQLite，可选 PostgreSQL；单进程部署，管理后台嵌入同一二进制。
+RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。它通过 GitHub App Webhook 实时接收 Issue、Pull Request、Actions 与安全告警，用 API 对账补漏，并把重要变化推送到 Telegram、企业微信、飞书、钉钉、Discord、Bark、Slack 或通用 HTTP Webhook。默认使用 SQLite，可选 PostgreSQL；单进程部署，管理后台嵌入同一二进制。
 
 > 适合公网 VPS / 自建机房：一个容器（或一个二进制）即可完成值守，不依赖多用户 SaaS。
 
@@ -79,11 +79,11 @@ RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。�
 | **实时采集** | GitHub App Webhook：Issue / PR / star / watch / workflow_run / Dependabot / Code Scanning / Secret Scanning |
 | **安装与仓库** | installation / installation_repositories / repository 生命周期；自有仓与外部公开仓登记 |
 | **可靠入库** | Delivery 幂等、事件指纹、乱序陈旧写入丢弃、首次基线抑制通知洪流 |
-| **通知** | Outbox 持久化投递；多渠道矩阵（Telegram、飞书、企业微信、钉钉、Discord、Bark、自定义 Webhook）；失败重试与死信重试 |
-| **定期报告（可选）** | 每日摘要 + 每周/每月报告；正文可由 LLM 生成自然语言总结，失败自动回退模板 |
+| **通知** | Outbox 持久化投递；多渠道矩阵（Telegram、飞书、企业微信、钉钉、Discord、Bark、Slack、自定义 Webhook）；失败重试与死信重试 |
+| **定期报告（可选）** | 每日摘要 + 每周/每月报告，可按渠道独立订阅；正文可由 LLM 生成自然语言总结，失败自动回退模板 |
 | **AI 告警分诊（可选）** | 新安全告警通知附带 AI 影响分析与处理建议；默认关闭，支持 OpenAI 兼容端点（可接本地模型） |
 | **效能与分诊** | 维护者分诊收件箱（Inbox / Archived）与真人事件受控自动唤醒；前缀式高阶搜索语法（`is:open`、`author:` 等）；Cmd+K 全局指令面板与键盘快捷流 |
-| **智能降噪** | 机器账号精准识别（Bot）；渠道级 Issue/PR 免打扰抑制（安全告警严格豁免）；活跃仓对账时效遥测与态势胶囊 |
+| **智能降噪** | 机器账号精准识别（Bot）；渠道级 Issue/PR 免打扰抑制与免打扰静默时段（安全高危告警严格豁免）；活跃仓对账时效遥测与态势胶囊 |
 | **管理后台** | 仪表盘 KPI（含新鲜度遥测与 Star 增长曲线）、仓库与基线、最近事件、投递记录、渠道配置、Webhook 检查面板与回放、Actions CI 效能洞察、亮/暗主题 |
 | **安全基线** | 单管理员、Argon2id、Session + CSRF、主密钥 AES-GCM、敏感配置掩码 |
 | **运维** | 健康检查、`/metrics`、结构化日志、Docker/GHCR、Compose |

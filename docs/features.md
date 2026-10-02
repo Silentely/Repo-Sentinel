@@ -24,11 +24,13 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | 仓库能力开关 | 单仓独立开关：监控（总开关）、Issues、PR、Star/Watch、Actions、安全告警；关闭即停止采集、不建事件、不通知；归档联动关闭全部开关 |
 | 列表筛选与忽略 | 按仓库筛选；本地忽略长期打开项（不回写 GitHub）；事件流/每日汇总与资源列表默认排除归档仓与已忽略项 |
 | 基线与乱序 | 新仓基线抑制通知；陈旧 `source_updated_at` 丢弃回滚 |
-| 通知 | Outbox、多渠道（Telegram、飞书、企微、钉钉、Discord、Bark、HTTP Webhook）、死信重试、短时聚合与超频摘要 |
-| 渠道订阅 | 每渠道独立勾选订阅类型（Issue、PR、Star/Watch、Actions、Dependabot、Code Scanning、Secret Scanning，默认全部）与「每日汇总」开关（默认开），合并通知按订阅重建子集 |
+| 通知 | Outbox、多渠道（Telegram、飞书、企微、钉钉、Discord、Bark、Slack、HTTP Webhook）、死信重试、短时聚合与超频摘要 |
+| 渠道订阅 | 每渠道独立勾选订阅类型（Issue、PR、Star/Watch、Actions、Dependabot、Code Scanning、Secret Scanning，默认全部）与「定期汇总」开关，日/周/月报告可分别订阅（默认开），合并通知按订阅重建子集 |
+| 免打扰时段 | 渠道级静默时段（HH:MM 起止 + IANA 时区，默认 22:00–08:00 UTC），静默期内常规事件延迟到恢复时刻投递；Secret Scanning、Critical/High 级 Code Scanning 与 Dependabot 告警固定穿透即时送达 |
 | 全局功能模块 | Issues / PR / Actions / 安全告警 / Star / Watch / Star Release：关闭后停止采集、对账与实时/摘要通知；Issues/PR/Actions/安全告警关闭同时隐藏侧栏入口，Star 关闭同时隐藏仪表盘 Star 增长面板；仓库级开关在全局关闭时禁用 |
 | Star Release 追踪 | 匿名枚举指定用户公开 star 仓库（自动排除 fork/archived），ETag 条件请求轮询各仓最新 Release；新版本实时通知，可配 AI 中文总结；500 追踪上限、双周期可配置、unstar 自动停用、独立 `/starred-releases` 管理页 |
 | 管理后台 | 仪表盘（含 Star 增长曲线）、仓库管理、Issues/PR/Actions（含 CI 效能与耗时洞察）/安全告警、Webhook 检查与历史回放、Star Release 追踪、渠道配置、主题 |
+| 离线可用 | 管理后台注册 Service Worker：导航请求网络优先、断网回退应用外壳，静态资源本地缓存，弱网/断网仍可打开页面 |
 | 运维 CLI | `doctor` / `backup` / `restore`、配置校验、密码重置 |
 | 容器部署 | GHCR 镜像（`latest` 随正式 tag）、Compose 拉取部署、健康检查与 `/metrics` |
 | 历史数据保留 | 事件 / 终态投递 / Webhook Delivery 可配置保留天数，后台定期清理（0 禁用） |
