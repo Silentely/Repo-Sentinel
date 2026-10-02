@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -146,4 +147,29 @@ func loadLocation(tz string) *time.Location {
 		return time.UTC
 	}
 	return loc
+}
+
+// ValidateQuietHours 校验免打扰时段配置：起止时间须为 HH:MM、起止不得相同、时区须可解析。
+// 保存入口必须先拒绝非法配置：EvaluateQuietHours 对非法时段与时区只会静默降级
+// （时段非法即立即投递、时区非法即按 UTC 计算），用户会误以为静默已生效。
+func ValidateQuietHours(start, end, tz string) error {
+	startMin, okStart := parseTimeOfDay(start)
+	if !okStart {
+		return fmt.Errorf("quiet_hours_start_invalid")
+	}
+	endMin, okEnd := parseTimeOfDay(end)
+	if !okEnd {
+		return fmt.Errorf("quiet_hours_end_invalid")
+	}
+	if startMin == endMin {
+		return fmt.Errorf("quiet_hours_range_empty")
+	}
+	trimmedTZ := strings.TrimSpace(tz)
+	if trimmedTZ == "" {
+		return fmt.Errorf("quiet_hours_tz_empty")
+	}
+	if _, err := time.LoadLocation(trimmedTZ); err != nil {
+		return fmt.Errorf("quiet_hours_tz_invalid")
+	}
+	return nil
 }

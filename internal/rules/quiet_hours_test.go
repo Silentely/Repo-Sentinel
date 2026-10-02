@@ -107,6 +107,42 @@ func TestEvaluateQuietHours_SecurityBypass(t *testing.T) {
 	}
 }
 
+func TestValidateQuietHours(t *testing.T) {
+	valid := []struct {
+		name       string
+		start, end string
+		tz         string
+	}{
+		{"同日区间", "13:00", "15:00", "UTC"},
+		{"跨午夜区间", "22:00", "08:00", "Asia/Shanghai"},
+		{"单数字小时可接受", "8:00", "09:00", "UTC"},
+	}
+	for _, tc := range valid {
+		if err := rules.ValidateQuietHours(tc.start, tc.end, tc.tz); err != nil {
+			t.Fatalf("%s 应通过校验，got %v", tc.name, err)
+		}
+	}
+
+	invalid := []struct {
+		name       string
+		start, end string
+		tz         string
+	}{
+		{"起始小时越界", "24:00", "08:00", "UTC"},
+		{"起始为空", "", "08:00", "UTC"},
+		{"结束非数字", "22:00", "ab:00", "UTC"},
+		{"结束分钟越界", "22:00", "08:75", "UTC"},
+		{"起止相同", "08:00", "08:00", "UTC"},
+		{"时区为空", "22:00", "08:00", ""},
+		{"时区不存在", "22:00", "08:00", "Not/AZone"},
+	}
+	for _, tc := range invalid {
+		if err := rules.ValidateQuietHours(tc.start, tc.end, tc.tz); err == nil {
+			t.Fatalf("%s 应被拒绝（start=%q end=%q tz=%q）", tc.name, tc.start, tc.end, tc.tz)
+		}
+	}
+}
+
 func TestEngineEvaluate_QuietHoursOutboxScheduling(t *testing.T) {
 	ctx := t.Context()
 	st, err := store.Open(ctx, config.DatabaseConfig{

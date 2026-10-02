@@ -119,3 +119,48 @@ func TestChannelScenariosAndQuietHoursAPI(t *testing.T) {
 		t.Errorf("did not find CI scenario in outbox")
 	}
 }
+
+func TestChannelQuietHoursValidation(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{
+			"起始时间非法",
+			`{"name":"qh","enabled":true,"target":"12345","quiet_hours_enabled":true,
+				"quiet_hours_start":"25:00","quiet_hours_end":"08:00","quiet_hours_tz":"UTC"}`,
+		},
+		{
+			"起止时间相同",
+			`{"name":"qh","enabled":true,"target":"12345","quiet_hours_enabled":true,
+				"quiet_hours_start":"08:00","quiet_hours_end":"08:00","quiet_hours_tz":"UTC"}`,
+		},
+		{
+			"时区不存在",
+			`{"name":"qh","enabled":true,"target":"12345","quiet_hours_enabled":true,
+				"quiet_hours_start":"22:00","quiet_hours_end":"08:00","quiet_hours_tz":"Not/AZone"}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := fixture.request(
+				t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+				tc.body, "127.0.0.1:49201", cookies, headers,
+			)
+			if resp.Code != http.StatusBadRequest {
+				t.Fatalf("非法免打扰配置应返回 400，got status=%d body=%s", resp.Code, resp.Body.String())
+			}
+		})
+	}
+
+	// 非法配置被拒绝后不应留下渠道记录。
+	if _, err := fixture.store.Channels().GetEnabledByType(t.Context(), store.ChannelTelegram); err == nil {
+		t.Fatal("非法配置不应创建渠道")
+	}
+}

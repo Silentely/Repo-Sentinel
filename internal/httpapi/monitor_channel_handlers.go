@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/notify"
+	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/oklog/ulid/v2"
@@ -162,6 +163,23 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.QuietHoursTZ != nil {
 		ch.QuietHoursTZ = strings.TrimSpace(*body.QuietHoursTZ)
+	}
+	// 免打扰时段：为空时按 ent schema 默认值补齐（22:00/08:00/UTC），避免空串落库后
+	// 判定恒为「时段非法」而静默失效；非空则严格校验，把时区拼写错误当场报给用户。
+	if ch.QuietHoursEnabled {
+		if ch.QuietHoursStart == "" {
+			ch.QuietHoursStart = "22:00"
+		}
+		if ch.QuietHoursEnd == "" {
+			ch.QuietHoursEnd = "08:00"
+		}
+		if ch.QuietHoursTZ == "" {
+			ch.QuietHoursTZ = "UTC"
+		}
+		if err := rules.ValidateQuietHours(ch.QuietHoursStart, ch.QuietHoursEnd, ch.QuietHoursTZ); err != nil {
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"reason": err.Error()})
+			return
+		}
 	}
 	if body.IgnoreBots != nil {
 		ch.IgnoreBots = *body.IgnoreBots
