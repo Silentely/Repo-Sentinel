@@ -1,5 +1,5 @@
 // RepoSentinel PWA Service Worker
-const CACHE_NAME = 'reposentinel-v2';
+const CACHE_NAME = 'reposentinel-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/favicon.svg',
@@ -54,10 +54,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 静态预存资源：缓存优先
+  // 非哈希的预存资源（theme-init.js、manifest、图标）：路径固定，必须网络优先并回写缓存。
+  // 走缓存优先会让部署后的旧内容一直驻留到手动改 CACHE_NAME。
   if (PRECACHE_ASSETS.includes(url.pathname)) {
     event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          if (cached) {
+            return cached;
+          }
+          return new Response('', { status: 504, statusText: 'Offline' });
+        }),
     );
     return;
   }
