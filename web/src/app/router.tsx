@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import {
   createRootRouteWithContext,
   createRoute,
@@ -196,9 +196,12 @@ function SetupRoute() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const setup = useQuery(setupStatusQueryOptions);
+  // 创建成功后失效 setup-status 会立刻回填「无需初始化」，若再按该结果重定向，
+  // 会与 onCreated 的跳转竞态、把刚创建管理员的用户顶回登录页。用一次性标记跳过。
+  const justCreated = useRef(false);
 
   useEffect(() => {
-    if (setup.data && !setup.data.required) {
+    if (setup.data && !setup.data.required && !justCreated.current) {
       void navigate({ to: "/login", replace: true });
     }
   }, [navigate, setup.data]);
@@ -208,6 +211,7 @@ function SetupRoute() {
       <SetupPage
         setupAction={createAdmin}
         onCreated={() => {
+          justCreated.current = true;
           // 失效 setup-status 缓存：15s staleTime 内浏览器后退会命中旧缓存
           // 「required=true」被重定向回 /setup，再次提交得到后端 not_found。
           void queryClient.invalidateQueries({ queryKey: ["auth", "setup-status"] });
