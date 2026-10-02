@@ -78,7 +78,9 @@ export interface OutboxItem {
 }
 
 /** 通知渠道类型字面量（后端仅两种，收窄后无需再断言）。 */
-export type ChannelType = "telegram" | "http_webhook" | "feishu" | "wecom" | "dingtalk" | "discord" | "bark";
+export type ChannelType = "telegram" | "http_webhook" | "feishu" | "wecom" | "dingtalk" | "discord" | "bark" | "slack";
+
+export type TestScenario = "default" | "security_alert" | "ci_failure" | "periodic_digest";
 
 export interface WebhookDeliveryItem {
   id: string;
@@ -129,6 +131,14 @@ export interface NotificationChannelRow {
   event_kinds: string[] | null;
   digest_enabled: boolean;
   ignore_bots: boolean;
+  receive_daily_digest?: boolean;
+  receive_weekly_report?: boolean;
+  receive_monthly_report?: boolean;
+  quiet_hours_enabled?: boolean;
+  quiet_hours_start?: string;
+  quiet_hours_end?: string;
+  quiet_hours_timezone?: string;
+  quiet_hours_critical_bypass?: boolean;
   updated_at?: string;
 }
 
@@ -259,6 +269,14 @@ export async function upsertChannel(
     event_kinds?: string[];
     digest_enabled?: boolean;
     ignore_bots?: boolean;
+    receive_daily_digest?: boolean;
+    receive_weekly_report?: boolean;
+    receive_monthly_report?: boolean;
+    quiet_hours_enabled?: boolean;
+    quiet_hours_start?: string;
+    quiet_hours_end?: string;
+    quiet_hours_timezone?: string;
+    quiet_hours_critical_bypass?: boolean;
   },
 ): Promise<void> {
   await apiRequest(`/api/v1/notifications/channels/${type}`, {
@@ -267,10 +285,10 @@ export async function upsertChannel(
   });
 }
 
-export async function testChannel(type: ChannelType): Promise<{ status: string }> {
+export async function testChannel(type: ChannelType, scenario: TestScenario = "default"): Promise<{ status: string }> {
   return apiRequest(`/api/v1/notifications/channels/${type}/test`, {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify({ scenario }),
   });
 }
 

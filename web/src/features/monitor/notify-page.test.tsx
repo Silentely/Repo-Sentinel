@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fixtures = vi.hoisted(() => ({
@@ -32,7 +32,7 @@ const fixtures = vi.hoisted(() => ({
     "digest.local_time": "09:00",
     "admin.timezone": "UTC",
   },
-  apiRequest: vi.fn(async (path: string): Promise<unknown> => {
+  apiRequest: vi.fn(async (path: string, _options?: RequestInit): Promise<unknown> => {
     if (path.includes("/notifications/channels")) return fixtures.channels;
     if (path.includes("/system/settings")) return fixtures.settings;
     return undefined;
@@ -93,7 +93,9 @@ describe("NotifyPage", () => {
     expect(within(webhookRow).getByRole("button", { name: "测试" })).toBeEnabled();
     expect(within(telegramForm).getByRole("button", { name: "发送中…" })).toBeDisabled();
     expect(within(webhookForm).getByRole("button", { name: "🔔 发送测试通知" })).toBeEnabled();
-    resolveTest();
+    await act(async () => {
+      resolveTest();
+    });
   });
 
   it("订阅类型提供全选/清空快捷操作并统计已选数量", async () => {
@@ -138,5 +140,31 @@ describe("NotifyPage", () => {
 
     expect(writeText).toHaveBeenCalledWith("123456");
     expect(await within(telegramRow).findByText("已复制")).toBeInTheDocument();
+  });
+
+  it("支持 Slack 渠道配置与基于场景的测试通知触发", async () => {
+    renderPage();
+    const slackForm = screen.getByRole("heading", { name: "Slack" }).closest("section") as HTMLElement;
+    expect(slackForm).toBeInTheDocument();
+    expect(within(slackForm).getByText(/在 Slack App 或工作区中创建 Incoming Webhook/)).toBeInTheDocument();
+
+    // 默认测试场景选择下拉框
+    const telegramForm = screen.getByRole("heading", { name: "Telegram" }).closest("section") as HTMLElement;
+    const scenarioSelect = await within(telegramForm).findByLabelText("选择 Telegram 测试场景");
+    expect(scenarioSelect).toHaveValue("default");
+
+    fireEvent.change(scenarioSelect, { target: { value: "security_alert" } });
+    expect(scenarioSelect).toHaveValue("security_alert");
+
+    const testButton = within(telegramForm).getByRole("button", { name: "🔔 发送测试通知" });
+    fireEvent.click(testButton);
+
+    await waitFor(() => {
+      expect(fixtures.apiRequest.mock.calls.some((call: unknown[]) => {
+        const p = call[0] as string;
+        const opts = call[1] as RequestInit | undefined;
+        return p.includes("/channels/telegram/test") && typeof opts?.body === "string" && opts.body.includes("security_alert");
+      })).toBe(true);
+    });
   });
 });

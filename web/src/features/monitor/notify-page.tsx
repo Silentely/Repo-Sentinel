@@ -20,6 +20,7 @@ import {
   type ChannelType,
   type NotificationChannelRow,
   type SystemSettings,
+  type TestScenario,
 } from "./api";
 import { SUBSCRIBABLE_KINDS, subscriptionSummary, uiCheckedKinds } from "./notify-subscription";
 
@@ -57,7 +58,7 @@ interface ChannelFormProps {
   successMessage: string;
   // 当前渠道的测试请求状态与触发回调。
   testPending: boolean;
-  onTest: () => void;
+  onTest: (scenario?: TestScenario) => void;
   // 全局提示：成功写入消息并清空旧错误；失败只写错误。
   onNotice: (message: string) => void;
   onFail: (message: string) => void;
@@ -90,7 +91,18 @@ function ChannelForm({
   const [secret, setSecret] = useState("");
   const [kinds, setKinds] = useState<string[]>(() => SUBSCRIBABLE_KINDS.map((k) => k.value));
   const [digest, setDigest] = useState(true);
+  const [dailyDigest, setDailyDigest] = useState(true);
+  const [weeklyReport, setWeeklyReport] = useState(true);
+  const [monthlyReport, setMonthlyReport] = useState(true);
   const [ignoreBots, setIgnoreBots] = useState(false);
+
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
+  const [quietHoursStart, setQuietHoursStart] = useState("23:00");
+  const [quietHoursEnd, setQuietHoursEnd] = useState("08:00");
+  const [quietHoursTimezone, setQuietHoursTimezone] = useState("Asia/Shanghai");
+  const [quietHoursCriticalBypass, setQuietHoursCriticalBypass] = useState(true);
+
+  const [testScenario, setTestScenario] = useState<TestScenario>("default");
 
   // 仅在渠道记录就绪时回填一次（按实例 ID 记账），避免覆盖用户正在编辑的勾选；
   // 依赖完整（channel 与 setter 均入数组），不依赖禁用 exhaustive-deps。
@@ -103,7 +115,17 @@ function ChannelForm({
     prefilledIdRef.current = channel.id;
     setKinds(uiCheckedKinds(channel.event_kinds));
     setDigest(channel.digest_enabled);
+    setDailyDigest(channel.receive_daily_digest ?? true);
+    setWeeklyReport(channel.receive_weekly_report ?? true);
+    setMonthlyReport(channel.receive_monthly_report ?? true);
     setIgnoreBots(channel.ignore_bots ?? false);
+    setQuietHoursEnabled(channel.quiet_hours_enabled ?? false);
+    if (channel.quiet_hours_start) setQuietHoursStart(channel.quiet_hours_start);
+    if (channel.quiet_hours_end) setQuietHoursEnd(channel.quiet_hours_end);
+    if (channel.quiet_hours_timezone) setQuietHoursTimezone(channel.quiet_hours_timezone);
+    if (channel.quiet_hours_critical_bypass !== undefined) {
+      setQuietHoursCriticalBypass(channel.quiet_hours_critical_bypass);
+    }
     // 预填目标值，避免「只改订阅」时表单为空误清空。
     if (channel.target) setTarget(channel.target);
   }, [channel, setKinds, setDigest, setTarget]);
@@ -123,6 +145,14 @@ function ChannelForm({
         event_kinds: kinds,
         digest_enabled: digest,
         ignore_bots: ignoreBots,
+        receive_daily_digest: dailyDigest,
+        receive_weekly_report: weeklyReport,
+        receive_monthly_report: monthlyReport,
+        quiet_hours_enabled: quietHoursEnabled,
+        quiet_hours_start: quietHoursStart.trim(),
+        quiet_hours_end: quietHoursEnd.trim(),
+        quiet_hours_timezone: quietHoursTimezone.trim(),
+        quiet_hours_critical_bypass: quietHoursCriticalBypass,
       });
     },
     onSuccess: async () => {
@@ -258,6 +288,22 @@ function ChannelForm({
           <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} />
           接收定期汇总（日/周/月）
         </label>
+        {digest && (
+          <div style={{ marginLeft: "24px", marginTop: "6px", display: "flex", gap: "16px", flexWrap: "wrap" }}>
+            <label className="field--checkbox">
+              <input type="checkbox" checked={dailyDigest} onChange={(e) => setDailyDigest(e.target.checked)} />
+              每日晨报
+            </label>
+            <label className="field--checkbox">
+              <input type="checkbox" checked={weeklyReport} onChange={(e) => setWeeklyReport(e.target.checked)} />
+              每周质量简报
+            </label>
+            <label className="field--checkbox">
+              <input type="checkbox" checked={monthlyReport} onChange={(e) => setMonthlyReport(e.target.checked)} />
+              每月大盘综述
+            </label>
+          </div>
+        )}
       </div>
       <div className="field--plain">
         <label className="field--checkbox">
@@ -269,6 +315,60 @@ function ChannelForm({
           免打扰：忽略机器人常规动态（仅过滤常规 Issue/PR，安全告警与 CI 诊断严格不受影响）
         </label>
       </div>
+      <div className="field--plain">
+        <label className="field--checkbox">
+          <input
+            type="checkbox"
+            checked={quietHoursEnabled}
+            onChange={(e) => setQuietHoursEnabled(e.target.checked)}
+          />
+          🌙 开启免打扰静默时段（静默期内常规事件暂缓发送）
+        </label>
+        {quietHoursEnabled && (
+          <div style={{ marginLeft: "24px", marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+              <label>
+                <span className="muted" style={{ marginRight: "4px" }}>起始时间:</span>
+                <input
+                  type="text"
+                  size={6}
+                  value={quietHoursStart}
+                  onChange={(e) => setQuietHoursStart(e.target.value)}
+                  placeholder="23:00"
+                />
+              </label>
+              <label>
+                <span className="muted" style={{ marginRight: "4px" }}>结束时间:</span>
+                <input
+                  type="text"
+                  size={6}
+                  value={quietHoursEnd}
+                  onChange={(e) => setQuietHoursEnd(e.target.value)}
+                  placeholder="08:00"
+                />
+              </label>
+              <label>
+                <span className="muted" style={{ marginRight: "4px" }}>时区:</span>
+                <input
+                  type="text"
+                  size={14}
+                  value={quietHoursTimezone}
+                  onChange={(e) => setQuietHoursTimezone(e.target.value)}
+                  placeholder="Asia/Shanghai"
+                />
+              </label>
+            </div>
+            <label className="field--checkbox">
+              <input
+                type="checkbox"
+                checked={quietHoursCriticalBypass}
+                onChange={(e) => setQuietHoursCriticalBypass(e.target.checked)}
+              />
+              🛡️ 安全高危漏洞与阻断级故障突破静默，即时直发
+            </label>
+          </div>
+        )}
+      </div>
       <div className="channel-form__buttons">
         <button
           className="primary-button primary-button--inline"
@@ -279,14 +379,28 @@ function ChannelForm({
           {saveMut.isPending ? "保存中…" : `保存 ${title}`}
         </button>
         {channel?.enabled && (
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={testPending}
-            onClick={onTest}
-          >
-            {testPending ? "发送中…" : "🔔 发送测试通知"}
-          </button>
+          <div style={{ display: "inline-flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              aria-label={`选择 ${title} 测试场景`}
+              className="quiet-select"
+              value={testScenario}
+              onChange={(e) => setTestScenario(e.target.value as TestScenario)}
+              disabled={testPending}
+            >
+              <option value="default">默认测试通知</option>
+              <option value="security_alert">🛡️ 安全高危告警场景</option>
+              <option value="ci_failure">❌ CI 持续集成失败场景</option>
+              <option value="periodic_digest">📊 周期性质量简报场景</option>
+            </select>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={testPending}
+              onClick={() => onTest(testScenario)}
+            >
+              {testPending ? "发送中…" : "🔔 发送测试通知"}
+            </button>
+          </div>
         )}
       </div>
     </section>
@@ -314,6 +428,7 @@ export function NotifyPage() {
   const dingtalkCh = channelsByType.get("dingtalk");
   const discordCh = channelsByType.get("discord");
   const barkCh = channelsByType.get("bark");
+  const slackCh = channelsByType.get("slack");
   const digestTime = String(settings.data?.["digest.local_time"] ?? "09:00");
   const digestTz = String(settings.data?.["admin.timezone"] ?? "UTC");
 
@@ -325,9 +440,17 @@ export function NotifyPage() {
   };
 
   const testMut = useMutation({
-    mutationFn: (type: ChannelType) => testChannel(type),
-    onSuccess: (_data, type) => {
-      setMessage(`${channelLabel(type)} 测试通知已发送，请检查您的通知渠道。`);
+    mutationFn: ({ type, scenario }: { type: ChannelType; scenario?: TestScenario }) => testChannel(type, scenario),
+    onSuccess: (_data, { type, scenario }) => {
+      const scenarioText =
+        scenario === "security_alert"
+          ? "（安全高危场景）"
+          : scenario === "ci_failure"
+            ? "（CI 失败场景）"
+            : scenario === "periodic_digest"
+              ? "（周期简报场景）"
+              : "";
+      setMessage(`${channelLabel(type)} 测试通知已发送${scenarioText}，请检查您的通知渠道。`);
       setError("");
     },
     onError: (err) => {
@@ -366,7 +489,7 @@ export function NotifyPage() {
     setDeleteTarget(type);
   };
 
-  const testingType = testMut.isPending ? testMut.variables : undefined;
+  const testingType = testMut.isPending ? testMut.variables?.type : undefined;
   // 复制渠道目标（Chat ID / URL）：配置排查时便于粘贴；失败给出短暂反馈，不打断使用。
   const { isCopied: copiedTarget, copy: copyTarget } = useCopyFeedback();
 
@@ -406,7 +529,7 @@ export function NotifyPage() {
             {channelItems.map((ch) => (
               <li key={ch.id} className="channel-row">
                 <span className={`event-kind ${ch.enabled ? "status-sent" : "status-dead"}`}>
-                  {ch.channel_type === "telegram" ? "📱 " : ch.channel_type === "feishu" ? "🕊️ " : ch.channel_type === "wecom" ? "💬 " : ch.channel_type === "dingtalk" ? "🔔 " : ch.channel_type === "discord" ? "🎮 " : ch.channel_type === "bark" ? "📲 " : "🌐 "}{channelLabel(ch.channel_type)}
+                  {ch.channel_type === "telegram" ? "📱 " : ch.channel_type === "feishu" ? "🕊️ " : ch.channel_type === "wecom" ? "💬 " : ch.channel_type === "dingtalk" ? "🔔 " : ch.channel_type === "discord" ? "🎮 " : ch.channel_type === "bark" ? "📲 " : ch.channel_type === "slack" ? "💬 " : "🌐 "}{channelLabel(ch.channel_type)}
                 </span>
                 <strong>{ch.enabled ? "已启用" : "已禁用"}</strong>
                 <span className="channel-target">{ch.target || "（无目标）"}</span>
@@ -436,7 +559,7 @@ export function NotifyPage() {
                   <button
                     className="quiet-button"
                     type="button"
-                    onClick={() => testMut.mutate(ch.channel_type)}
+                    onClick={() => testMut.mutate({ type: ch.channel_type, scenario: "default" })}
                     disabled={testingType === ch.channel_type || !ch.enabled}
                   >
                     {testingType === ch.channel_type ? "发送中…" : "测试"}
@@ -476,7 +599,7 @@ export function NotifyPage() {
         emptyTargetError="请填写 Telegram Chat ID。"
         successMessage="Telegram 渠道已保存。"
         testPending={testingType === "telegram"}
-        onTest={() => testMut.mutate("telegram")}
+        onTest={(scenario) => testMut.mutate({ type: "telegram", scenario })}
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
         onSaved={invalidateAll}
@@ -508,7 +631,7 @@ export function NotifyPage() {
         emptyTargetError="请填写 HTTPS URL。"
         successMessage="HTTP Webhook 渠道已保存。"
         testPending={testingType === "http_webhook"}
-        onTest={() => testMut.mutate("http_webhook")}
+        onTest={(scenario) => testMut.mutate({ type: "http_webhook", scenario })}
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
         onSaved={invalidateAll}
@@ -534,7 +657,7 @@ export function NotifyPage() {
         emptyTargetError="请填写飞书机器人 Webhook 地址。"
         successMessage="飞书 / Lark 渠道已保存。"
         testPending={testingType === "feishu"}
-        onTest={() => testMut.mutate("feishu")}
+        onTest={(scenario) => testMut.mutate({ type: "feishu", scenario })}
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
         onSaved={invalidateAll}
@@ -560,7 +683,7 @@ export function NotifyPage() {
         emptyTargetError="请填写企业微信 Webhook 地址。"
         successMessage="企业微信渠道已保存。"
         testPending={testingType === "wecom"}
-        onTest={() => testMut.mutate("wecom")}
+        onTest={(scenario) => testMut.mutate({ type: "wecom", scenario })}
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
         onSaved={invalidateAll}
@@ -585,7 +708,7 @@ export function NotifyPage() {
         emptyTargetError="请填写钉钉 Webhook 地址。"
         successMessage="钉钉渠道已保存。"
         testPending={testingType === "dingtalk"}
-        onTest={() => testMut.mutate("dingtalk")}
+        onTest={(scenario) => testMut.mutate({ type: "dingtalk", scenario })}
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
         onSaved={invalidateAll}
@@ -611,7 +734,7 @@ export function NotifyPage() {
         emptyTargetError="请填写 Discord Webhook 地址。"
         successMessage="Discord 渠道已保存。"
         testPending={testingType === "discord"}
-        onTest={() => testMut.mutate("discord")}
+        onTest={(scenario) => testMut.mutate({ type: "discord", scenario })}
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
         onSaved={invalidateAll}
@@ -636,7 +759,33 @@ export function NotifyPage() {
         emptyTargetError="请填写 Bark 设备 Key 或 URL。"
         successMessage="Bark 渠道已保存。"
         testPending={testingType === "bark"}
-        onTest={() => testMut.mutate("bark")}
+        onTest={(scenario) => testMut.mutate({ type: "bark", scenario })}
+        onNotice={(msg) => { setMessage(msg); setError(""); }}
+        onFail={setError}
+        onSaved={invalidateAll}
+      />
+
+      {/* Slack 配置 */}
+      <ChannelForm
+        type="slack"
+        title="Slack"
+        hint={
+          <p className="field-hint">
+            在 Slack App 或工作区中创建 Incoming Webhook，将 Webhook URL 填入。支持 Slack Block Kit 富文本卡片与免打扰静默调度。
+          </p>
+        }
+        channel={slackCh}
+        settings={settings.data}
+        targetLabel="Webhook URL"
+        targetPlaceholder="https://hooks.slack.com/services/..."
+        showSecret={false}
+        secretLabel=""
+        secretPlaceholder=""
+        statusTargetLabel="Webhook URL"
+        emptyTargetError="请填写 Slack Webhook URL。"
+        successMessage="Slack 渠道已保存。"
+        testPending={testingType === "slack"}
+        onTest={(scenario) => testMut.mutate({ type: "slack", scenario })}
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
         onSaved={invalidateAll}

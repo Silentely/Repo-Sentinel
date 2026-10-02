@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -126,7 +126,9 @@ describe("登录页", () => {
 
     expect(loginAction).toHaveBeenCalledTimes(1);
     expect(submit).toBeDisabled();
-    resolveLogin?.();
+    await act(async () => {
+      resolveLogin?.();
+    });
   });
 });
 

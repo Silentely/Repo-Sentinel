@@ -96,6 +96,8 @@ export function channelLabel(channelType?: string): string {
       return "Discord";
     case "bark":
       return "Bark (iOS)";
+    case "slack":
+      return "Slack";
     default:
       return channelType || "";
   }

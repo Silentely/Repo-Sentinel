@@ -30,3 +30,11 @@ createRoot(root).render(
     <AppProviders />
   </StrictMode>,
 );
+
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // 忽略离线或注册失败
+    });
+  });
+}

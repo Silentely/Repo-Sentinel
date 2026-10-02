@@ -1,8 +1,12 @@
 import "@testing-library/jest-dom/vitest";
+import { configure } from "@testing-library/dom";
 
 // Configure React 19 act environment for Vitest fake timer testing
 // @ts-expect-error React 18/19 act test flag
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// 提升异步查询默认超时，避免并发多测试文件 CPU 抖动偶发超时
+configure({ asyncUtilTimeout: 8000 });
 
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
