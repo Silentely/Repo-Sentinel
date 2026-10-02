@@ -383,6 +383,60 @@ func (w *Worker) sendBark(ctx context.Context, ch store.NotificationChannel, sec
 	return w.postJSONChannel(ctx, ch, target, "bark", payload)
 }
 
+// sendSlack 发送 Slack Incoming Webhook 消息（Block Kit 格式）。
+func (w *Worker) sendSlack(ctx context.Context, ch store.NotificationChannel, secret string, item store.NotificationOutbox) error {
+	target := strings.TrimSpace(ch.Target)
+	if err := validateWebhookURL(target, ch.AllowPrivate); err != nil {
+		return err
+	}
+
+	headerText := truncateRunes(item.Title, 150)
+	plainBody := truncateRunes(htmlToPlainText(item.BodyText), 2800)
+
+	blocks := []any{
+		map[string]any{
+			"type": "header",
+			"text": map[string]any{
+				"type":  "plain_text",
+				"text":  headerText,
+				"emoji": true,
+			},
+		},
+		map[string]any{
+			"type": "section",
+			"text": map[string]any{
+				"type": "mrkdwn",
+				"text": plainBody,
+			},
+		},
+	}
+
+	if item.HTMLURL != "" {
+		blocks = append(blocks, map[string]any{
+			"type": "actions",
+			"elements": []any{
+				map[string]any{
+					"type": "button",
+					"text": map[string]any{
+						"type":  "plain_text",
+						"text":  store.GitHubViewLabel,
+						"emoji": true,
+					},
+					"url":       item.HTMLURL,
+					"action_id": "view_on_github",
+				},
+			},
+		})
+	}
+
+	payload := map[string]any{
+		"text":   truncateRunes(item.Title, 200),
+		"blocks": blocks,
+	}
+
+	return w.postJSONChannel(ctx, ch, target, "slack", payload)
+}
+
 // postJSONChannel 通用 JSON 投递辅助方法。
 func (w *Worker) postJSONChannel(ctx context.Context, ch store.NotificationChannel, targetURL, channelTag string, payload any) error {
 	raw, err := json.Marshal(payload)

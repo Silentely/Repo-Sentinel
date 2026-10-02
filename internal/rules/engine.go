@@ -104,9 +104,14 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			continue
 		}
 		idem := idempotencyKey(ch.ID, res.Event.ID, "realtime")
+		nextAttempt := time.Now().UTC()
+		action, resumeAt := DecideQuietHours(ch, res.Event, nextAttempt)
+		if action == ActionDeferQuietHours {
+			nextAttempt = resumeAt
+		}
 		if _, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &res.Event.ID,
-			IdempotencyKey: idem, Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
+			IdempotencyKey: idem, Status: store.OutboxPending, NextAttemptAt: nextAttempt,
 			Title: title, BodyText: body, HTMLURL: htmlURL, BodyJSON: map[string]any{
 				"event_id": res.Event.ID, "kind": res.Event.Kind, "action": res.Event.Action,
 				"repository": repoFullName,

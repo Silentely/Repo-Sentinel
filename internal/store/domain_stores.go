@@ -1520,6 +1520,11 @@ type channelStore struct {
 
 func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (NotificationChannel, error) {
 	now := time.Now().UTC()
+	if in.DigestEnabled && !in.ReceiveDailyDigest && !in.ReceiveWeeklyReport && !in.ReceiveMonthlyReport {
+		in.ReceiveDailyDigest = true
+		in.ReceiveWeeklyReport = true
+		in.ReceiveMonthlyReport = true
+	}
 	if in.ID != "" {
 		if _, err := s.client.NotificationChannel.Get(ctx, in.ID); err == nil {
 			entity, err := s.client.NotificationChannel.UpdateOneID(in.ID).
@@ -1530,6 +1535,13 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 				SetAllowPrivate(in.AllowPrivate).
 				SetEventKinds(in.EventKinds).
 				SetDigestEnabled(in.DigestEnabled).
+				SetReceiveDailyDigest(in.ReceiveDailyDigest).
+				SetReceiveWeeklyReport(in.ReceiveWeeklyReport).
+				SetReceiveMonthlyReport(in.ReceiveMonthlyReport).
+				SetQuietHoursEnabled(in.QuietHoursEnabled).
+				SetQuietHoursStart(in.QuietHoursStart).
+				SetQuietHoursEnd(in.QuietHoursEnd).
+				SetQuietHoursTz(in.QuietHoursTZ).
 				SetIgnoreBots(in.IgnoreBots).
 				SetUpdatedAt(now).
 				Save(ctx)
@@ -1553,6 +1565,13 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 		SetAllowPrivate(in.AllowPrivate).
 		SetEventKinds(in.EventKinds).
 		SetDigestEnabled(in.DigestEnabled).
+		SetReceiveDailyDigest(in.ReceiveDailyDigest).
+		SetReceiveWeeklyReport(in.ReceiveWeeklyReport).
+		SetReceiveMonthlyReport(in.ReceiveMonthlyReport).
+		SetQuietHoursEnabled(in.QuietHoursEnabled).
+		SetQuietHoursStart(in.QuietHoursStart).
+		SetQuietHoursEnd(in.QuietHoursEnd).
+		SetQuietHoursTz(in.QuietHoursTZ).
 		SetIgnoreBots(in.IgnoreBots).
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
@@ -1648,7 +1667,10 @@ func channelFromEntity(e *entclient.NotificationChannel) NotificationChannel {
 	return NotificationChannel{
 		ID: e.ID, ChannelType: e.ChannelType, Name: e.Name, Enabled: e.Enabled,
 		Target: e.Target, SecretEnvelope: e.SecretEnvelope, AllowPrivate: e.AllowPrivate,
-		EventKinds: e.EventKinds, DigestEnabled: e.DigestEnabled, IgnoreBots: e.IgnoreBots,
+		EventKinds: e.EventKinds, DigestEnabled: e.DigestEnabled,
+		ReceiveDailyDigest: e.ReceiveDailyDigest, ReceiveWeeklyReport: e.ReceiveWeeklyReport, ReceiveMonthlyReport: e.ReceiveMonthlyReport,
+		QuietHoursEnabled: e.QuietHoursEnabled, QuietHoursStart: e.QuietHoursStart, QuietHoursEnd: e.QuietHoursEnd, QuietHoursTZ: e.QuietHoursTz,
+		IgnoreBots: e.IgnoreBots,
 		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 }
@@ -2070,6 +2092,9 @@ func (s *storeImpl) CleanupRetention(ctx context.Context, policy RetentionPolicy
 			return result, err
 		}
 		result.WebhookDeliveriesDeleted = n
+	}
+	if s.driver != nil && s.driver.Dialect() == "sqlite" && (result.EventsDeleted > 0 || result.OutboxDeleted > 0 || result.WebhookDeliveriesDeleted > 0) {
+		_ = s.driver.Exec(ctx, "PRAGMA incremental_vacuum(50)", []any{}, nil)
 	}
 	return result, nil
 }

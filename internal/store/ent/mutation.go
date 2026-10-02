@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"sync"
@@ -1618,8 +1618,8 @@ type AuditLogMutation struct {
 	actor_id            *string
 	target_type         *string
 	target_id           *string
-	metadata_json       *json.RawMessage
-	appendmetadata_json json.RawMessage
+	metadata_json       *jsontext.Value
+	appendmetadata_json jsontext.Value
 	ip_address          *string
 	created_at          *time.Time
 	clearedFields       map[string]struct{}
@@ -1913,13 +1913,13 @@ func (m *AuditLogMutation) ResetTargetID() {
 }
 
 // SetMetadataJSON sets the "metadata_json" field.
-func (m *AuditLogMutation) SetMetadataJSON(jm json.RawMessage) {
-	m.metadata_json = &jm
+func (m *AuditLogMutation) SetMetadataJSON(j jsontext.Value) {
+	m.metadata_json = &j
 	m.appendmetadata_json = nil
 }
 
 // MetadataJSON returns the value of the "metadata_json" field in the mutation.
-func (m *AuditLogMutation) MetadataJSON() (r json.RawMessage, exists bool) {
+func (m *AuditLogMutation) MetadataJSON() (r jsontext.Value, exists bool) {
 	v := m.metadata_json
 	if v == nil {
 		return
@@ -1930,7 +1930,7 @@ func (m *AuditLogMutation) MetadataJSON() (r json.RawMessage, exists bool) {
 // OldMetadataJSON returns the old "metadata_json" field's value of the AuditLog entity.
 // If the AuditLog object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v json.RawMessage, err error) {
+func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldMetadataJSON is only allowed on UpdateOne operations")
 	}
@@ -1944,13 +1944,13 @@ func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v json.RawMessa
 	return oldValue.MetadataJSON, nil
 }
 
-// AppendMetadataJSON adds jm to the "metadata_json" field.
-func (m *AuditLogMutation) AppendMetadataJSON(jm json.RawMessage) {
-	m.appendmetadata_json = append(m.appendmetadata_json, jm...)
+// AppendMetadataJSON adds j to the "metadata_json" field.
+func (m *AuditLogMutation) AppendMetadataJSON(j jsontext.Value) {
+	m.appendmetadata_json = append(m.appendmetadata_json, j...)
 }
 
 // AppendedMetadataJSON returns the list of values that were appended to the "metadata_json" field in this mutation.
-func (m *AuditLogMutation) AppendedMetadataJSON() (json.RawMessage, bool) {
+func (m *AuditLogMutation) AppendedMetadataJSON() (jsontext.Value, bool) {
 	if len(m.appendmetadata_json) == 0 {
 		return nil, false
 	}
@@ -2188,7 +2188,7 @@ func (m *AuditLogMutation) SetField(name string, value ent.Value) error {
 		m.SetTargetID(v)
 		return nil
 	case auditlog.FieldMetadataJSON:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -4577,25 +4577,32 @@ func (m *GitHubInstallationMutation) ResetEdge(name string) error {
 // NotificationChannelMutation represents an operation that mutates the NotificationChannel nodes in the graph.
 type NotificationChannelMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *string
-	channel_type      *string
-	name              *string
-	enabled           *bool
-	target            *string
-	secret_envelope   *string
-	allow_private     *bool
-	event_kinds       *[]string
-	appendevent_kinds []string
-	digest_enabled    *bool
-	ignore_bots       *bool
-	created_at        *time.Time
-	updated_at        *time.Time
-	clearedFields     map[string]struct{}
-	done              bool
-	oldValue          func(context.Context) (*NotificationChannel, error)
-	predicates        []predicate.NotificationChannel
+	op                     Op
+	typ                    string
+	id                     *string
+	channel_type           *string
+	name                   *string
+	enabled                *bool
+	target                 *string
+	secret_envelope        *string
+	allow_private          *bool
+	event_kinds            *[]string
+	appendevent_kinds      []string
+	digest_enabled         *bool
+	receive_daily_digest   *bool
+	receive_weekly_report  *bool
+	receive_monthly_report *bool
+	quiet_hours_enabled    *bool
+	quiet_hours_start      *string
+	quiet_hours_end        *string
+	quiet_hours_tz         *string
+	ignore_bots            *bool
+	created_at             *time.Time
+	updated_at             *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*NotificationChannel, error)
+	predicates             []predicate.NotificationChannel
 }
 
 var _ ent.Mutation = (*NotificationChannelMutation)(nil)
@@ -5019,6 +5026,258 @@ func (m *NotificationChannelMutation) ResetDigestEnabled() {
 	m.digest_enabled = nil
 }
 
+// SetReceiveDailyDigest sets the "receive_daily_digest" field.
+func (m *NotificationChannelMutation) SetReceiveDailyDigest(b bool) {
+	m.receive_daily_digest = &b
+}
+
+// ReceiveDailyDigest returns the value of the "receive_daily_digest" field in the mutation.
+func (m *NotificationChannelMutation) ReceiveDailyDigest() (r bool, exists bool) {
+	v := m.receive_daily_digest
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReceiveDailyDigest returns the old "receive_daily_digest" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldReceiveDailyDigest(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReceiveDailyDigest is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReceiveDailyDigest requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReceiveDailyDigest: %w", err)
+	}
+	return oldValue.ReceiveDailyDigest, nil
+}
+
+// ResetReceiveDailyDigest resets all changes to the "receive_daily_digest" field.
+func (m *NotificationChannelMutation) ResetReceiveDailyDigest() {
+	m.receive_daily_digest = nil
+}
+
+// SetReceiveWeeklyReport sets the "receive_weekly_report" field.
+func (m *NotificationChannelMutation) SetReceiveWeeklyReport(b bool) {
+	m.receive_weekly_report = &b
+}
+
+// ReceiveWeeklyReport returns the value of the "receive_weekly_report" field in the mutation.
+func (m *NotificationChannelMutation) ReceiveWeeklyReport() (r bool, exists bool) {
+	v := m.receive_weekly_report
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReceiveWeeklyReport returns the old "receive_weekly_report" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldReceiveWeeklyReport(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReceiveWeeklyReport is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReceiveWeeklyReport requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReceiveWeeklyReport: %w", err)
+	}
+	return oldValue.ReceiveWeeklyReport, nil
+}
+
+// ResetReceiveWeeklyReport resets all changes to the "receive_weekly_report" field.
+func (m *NotificationChannelMutation) ResetReceiveWeeklyReport() {
+	m.receive_weekly_report = nil
+}
+
+// SetReceiveMonthlyReport sets the "receive_monthly_report" field.
+func (m *NotificationChannelMutation) SetReceiveMonthlyReport(b bool) {
+	m.receive_monthly_report = &b
+}
+
+// ReceiveMonthlyReport returns the value of the "receive_monthly_report" field in the mutation.
+func (m *NotificationChannelMutation) ReceiveMonthlyReport() (r bool, exists bool) {
+	v := m.receive_monthly_report
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReceiveMonthlyReport returns the old "receive_monthly_report" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldReceiveMonthlyReport(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReceiveMonthlyReport is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReceiveMonthlyReport requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReceiveMonthlyReport: %w", err)
+	}
+	return oldValue.ReceiveMonthlyReport, nil
+}
+
+// ResetReceiveMonthlyReport resets all changes to the "receive_monthly_report" field.
+func (m *NotificationChannelMutation) ResetReceiveMonthlyReport() {
+	m.receive_monthly_report = nil
+}
+
+// SetQuietHoursEnabled sets the "quiet_hours_enabled" field.
+func (m *NotificationChannelMutation) SetQuietHoursEnabled(b bool) {
+	m.quiet_hours_enabled = &b
+}
+
+// QuietHoursEnabled returns the value of the "quiet_hours_enabled" field in the mutation.
+func (m *NotificationChannelMutation) QuietHoursEnabled() (r bool, exists bool) {
+	v := m.quiet_hours_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuietHoursEnabled returns the old "quiet_hours_enabled" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldQuietHoursEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuietHoursEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuietHoursEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuietHoursEnabled: %w", err)
+	}
+	return oldValue.QuietHoursEnabled, nil
+}
+
+// ResetQuietHoursEnabled resets all changes to the "quiet_hours_enabled" field.
+func (m *NotificationChannelMutation) ResetQuietHoursEnabled() {
+	m.quiet_hours_enabled = nil
+}
+
+// SetQuietHoursStart sets the "quiet_hours_start" field.
+func (m *NotificationChannelMutation) SetQuietHoursStart(s string) {
+	m.quiet_hours_start = &s
+}
+
+// QuietHoursStart returns the value of the "quiet_hours_start" field in the mutation.
+func (m *NotificationChannelMutation) QuietHoursStart() (r string, exists bool) {
+	v := m.quiet_hours_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuietHoursStart returns the old "quiet_hours_start" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldQuietHoursStart(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuietHoursStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuietHoursStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuietHoursStart: %w", err)
+	}
+	return oldValue.QuietHoursStart, nil
+}
+
+// ResetQuietHoursStart resets all changes to the "quiet_hours_start" field.
+func (m *NotificationChannelMutation) ResetQuietHoursStart() {
+	m.quiet_hours_start = nil
+}
+
+// SetQuietHoursEnd sets the "quiet_hours_end" field.
+func (m *NotificationChannelMutation) SetQuietHoursEnd(s string) {
+	m.quiet_hours_end = &s
+}
+
+// QuietHoursEnd returns the value of the "quiet_hours_end" field in the mutation.
+func (m *NotificationChannelMutation) QuietHoursEnd() (r string, exists bool) {
+	v := m.quiet_hours_end
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuietHoursEnd returns the old "quiet_hours_end" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldQuietHoursEnd(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuietHoursEnd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuietHoursEnd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuietHoursEnd: %w", err)
+	}
+	return oldValue.QuietHoursEnd, nil
+}
+
+// ResetQuietHoursEnd resets all changes to the "quiet_hours_end" field.
+func (m *NotificationChannelMutation) ResetQuietHoursEnd() {
+	m.quiet_hours_end = nil
+}
+
+// SetQuietHoursTz sets the "quiet_hours_tz" field.
+func (m *NotificationChannelMutation) SetQuietHoursTz(s string) {
+	m.quiet_hours_tz = &s
+}
+
+// QuietHoursTz returns the value of the "quiet_hours_tz" field in the mutation.
+func (m *NotificationChannelMutation) QuietHoursTz() (r string, exists bool) {
+	v := m.quiet_hours_tz
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuietHoursTz returns the old "quiet_hours_tz" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldQuietHoursTz(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuietHoursTz is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuietHoursTz requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuietHoursTz: %w", err)
+	}
+	return oldValue.QuietHoursTz, nil
+}
+
+// ResetQuietHoursTz resets all changes to the "quiet_hours_tz" field.
+func (m *NotificationChannelMutation) ResetQuietHoursTz() {
+	m.quiet_hours_tz = nil
+}
+
 // SetIgnoreBots sets the "ignore_bots" field.
 func (m *NotificationChannelMutation) SetIgnoreBots(b bool) {
 	m.ignore_bots = &b
@@ -5161,7 +5420,7 @@ func (m *NotificationChannelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationChannelMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 18)
 	if m.channel_type != nil {
 		fields = append(fields, notificationchannel.FieldChannelType)
 	}
@@ -5185,6 +5444,27 @@ func (m *NotificationChannelMutation) Fields() []string {
 	}
 	if m.digest_enabled != nil {
 		fields = append(fields, notificationchannel.FieldDigestEnabled)
+	}
+	if m.receive_daily_digest != nil {
+		fields = append(fields, notificationchannel.FieldReceiveDailyDigest)
+	}
+	if m.receive_weekly_report != nil {
+		fields = append(fields, notificationchannel.FieldReceiveWeeklyReport)
+	}
+	if m.receive_monthly_report != nil {
+		fields = append(fields, notificationchannel.FieldReceiveMonthlyReport)
+	}
+	if m.quiet_hours_enabled != nil {
+		fields = append(fields, notificationchannel.FieldQuietHoursEnabled)
+	}
+	if m.quiet_hours_start != nil {
+		fields = append(fields, notificationchannel.FieldQuietHoursStart)
+	}
+	if m.quiet_hours_end != nil {
+		fields = append(fields, notificationchannel.FieldQuietHoursEnd)
+	}
+	if m.quiet_hours_tz != nil {
+		fields = append(fields, notificationchannel.FieldQuietHoursTz)
 	}
 	if m.ignore_bots != nil {
 		fields = append(fields, notificationchannel.FieldIgnoreBots)
@@ -5219,6 +5499,20 @@ func (m *NotificationChannelMutation) Field(name string) (ent.Value, bool) {
 		return m.EventKinds()
 	case notificationchannel.FieldDigestEnabled:
 		return m.DigestEnabled()
+	case notificationchannel.FieldReceiveDailyDigest:
+		return m.ReceiveDailyDigest()
+	case notificationchannel.FieldReceiveWeeklyReport:
+		return m.ReceiveWeeklyReport()
+	case notificationchannel.FieldReceiveMonthlyReport:
+		return m.ReceiveMonthlyReport()
+	case notificationchannel.FieldQuietHoursEnabled:
+		return m.QuietHoursEnabled()
+	case notificationchannel.FieldQuietHoursStart:
+		return m.QuietHoursStart()
+	case notificationchannel.FieldQuietHoursEnd:
+		return m.QuietHoursEnd()
+	case notificationchannel.FieldQuietHoursTz:
+		return m.QuietHoursTz()
 	case notificationchannel.FieldIgnoreBots:
 		return m.IgnoreBots()
 	case notificationchannel.FieldCreatedAt:
@@ -5250,6 +5544,20 @@ func (m *NotificationChannelMutation) OldField(ctx context.Context, name string)
 		return m.OldEventKinds(ctx)
 	case notificationchannel.FieldDigestEnabled:
 		return m.OldDigestEnabled(ctx)
+	case notificationchannel.FieldReceiveDailyDigest:
+		return m.OldReceiveDailyDigest(ctx)
+	case notificationchannel.FieldReceiveWeeklyReport:
+		return m.OldReceiveWeeklyReport(ctx)
+	case notificationchannel.FieldReceiveMonthlyReport:
+		return m.OldReceiveMonthlyReport(ctx)
+	case notificationchannel.FieldQuietHoursEnabled:
+		return m.OldQuietHoursEnabled(ctx)
+	case notificationchannel.FieldQuietHoursStart:
+		return m.OldQuietHoursStart(ctx)
+	case notificationchannel.FieldQuietHoursEnd:
+		return m.OldQuietHoursEnd(ctx)
+	case notificationchannel.FieldQuietHoursTz:
+		return m.OldQuietHoursTz(ctx)
 	case notificationchannel.FieldIgnoreBots:
 		return m.OldIgnoreBots(ctx)
 	case notificationchannel.FieldCreatedAt:
@@ -5320,6 +5628,55 @@ func (m *NotificationChannelMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDigestEnabled(v)
+		return nil
+	case notificationchannel.FieldReceiveDailyDigest:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReceiveDailyDigest(v)
+		return nil
+	case notificationchannel.FieldReceiveWeeklyReport:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReceiveWeeklyReport(v)
+		return nil
+	case notificationchannel.FieldReceiveMonthlyReport:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReceiveMonthlyReport(v)
+		return nil
+	case notificationchannel.FieldQuietHoursEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuietHoursEnabled(v)
+		return nil
+	case notificationchannel.FieldQuietHoursStart:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuietHoursStart(v)
+		return nil
+	case notificationchannel.FieldQuietHoursEnd:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuietHoursEnd(v)
+		return nil
+	case notificationchannel.FieldQuietHoursTz:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuietHoursTz(v)
 		return nil
 	case notificationchannel.FieldIgnoreBots:
 		v, ok := value.(bool)
@@ -5423,6 +5780,27 @@ func (m *NotificationChannelMutation) ResetField(name string) error {
 		return nil
 	case notificationchannel.FieldDigestEnabled:
 		m.ResetDigestEnabled()
+		return nil
+	case notificationchannel.FieldReceiveDailyDigest:
+		m.ResetReceiveDailyDigest()
+		return nil
+	case notificationchannel.FieldReceiveWeeklyReport:
+		m.ResetReceiveWeeklyReport()
+		return nil
+	case notificationchannel.FieldReceiveMonthlyReport:
+		m.ResetReceiveMonthlyReport()
+		return nil
+	case notificationchannel.FieldQuietHoursEnabled:
+		m.ResetQuietHoursEnabled()
+		return nil
+	case notificationchannel.FieldQuietHoursStart:
+		m.ResetQuietHoursStart()
+		return nil
+	case notificationchannel.FieldQuietHoursEnd:
+		m.ResetQuietHoursEnd()
+		return nil
+	case notificationchannel.FieldQuietHoursTz:
+		m.ResetQuietHoursTz()
 		return nil
 	case notificationchannel.FieldIgnoreBots:
 		m.ResetIgnoreBots()
@@ -11850,8 +12228,8 @@ type SystemSettingMutation struct {
 	typ              string
 	id               *string
 	key              *string
-	value_json       *json.RawMessage
-	appendvalue_json json.RawMessage
+	value_json       *jsontext.Value
+	appendvalue_json jsontext.Value
 	updated_at       *time.Time
 	updated_by       *string
 	clearedFields    map[string]struct{}
@@ -12001,13 +12379,13 @@ func (m *SystemSettingMutation) ResetKey() {
 }
 
 // SetValueJSON sets the "value_json" field.
-func (m *SystemSettingMutation) SetValueJSON(jm json.RawMessage) {
-	m.value_json = &jm
+func (m *SystemSettingMutation) SetValueJSON(j jsontext.Value) {
+	m.value_json = &j
 	m.appendvalue_json = nil
 }
 
 // ValueJSON returns the value of the "value_json" field in the mutation.
-func (m *SystemSettingMutation) ValueJSON() (r json.RawMessage, exists bool) {
+func (m *SystemSettingMutation) ValueJSON() (r jsontext.Value, exists bool) {
 	v := m.value_json
 	if v == nil {
 		return
@@ -12018,7 +12396,7 @@ func (m *SystemSettingMutation) ValueJSON() (r json.RawMessage, exists bool) {
 // OldValueJSON returns the old "value_json" field's value of the SystemSetting entity.
 // If the SystemSetting object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v json.RawMessage, err error) {
+func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldValueJSON is only allowed on UpdateOne operations")
 	}
@@ -12032,13 +12410,13 @@ func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v json.RawMes
 	return oldValue.ValueJSON, nil
 }
 
-// AppendValueJSON adds jm to the "value_json" field.
-func (m *SystemSettingMutation) AppendValueJSON(jm json.RawMessage) {
-	m.appendvalue_json = append(m.appendvalue_json, jm...)
+// AppendValueJSON adds j to the "value_json" field.
+func (m *SystemSettingMutation) AppendValueJSON(j jsontext.Value) {
+	m.appendvalue_json = append(m.appendvalue_json, j...)
 }
 
 // AppendedValueJSON returns the list of values that were appended to the "value_json" field in this mutation.
-func (m *SystemSettingMutation) AppendedValueJSON() (json.RawMessage, bool) {
+func (m *SystemSettingMutation) AppendedValueJSON() (jsontext.Value, bool) {
 	if len(m.appendvalue_json) == 0 {
 		return nil, false
 	}
@@ -12220,7 +12598,7 @@ func (m *SystemSettingMutation) SetField(name string, value ent.Value) error {
 		m.SetKey(v)
 		return nil
 	case systemsetting.FieldValueJSON:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}

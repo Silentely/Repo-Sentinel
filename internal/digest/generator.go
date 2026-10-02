@@ -356,6 +356,15 @@ func (g *Generator) enqueue(
 		if !ch.Enabled || !ch.DigestEnabled {
 			continue
 		}
+		if prefix == "digest" && !ch.ReceiveDailyDigest {
+			continue
+		}
+		if prefix == "report|weekly" && !ch.ReceiveWeeklyReport {
+			continue
+		}
+		if prefix == "report|monthly" && !ch.ReceiveMonthlyReport {
+			continue
+		}
 		variant := 0
 		if ch.IgnoreBots && botFiltered {
 			variant = 1

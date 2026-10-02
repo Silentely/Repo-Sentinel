@@ -145,6 +145,104 @@ func (_u *NotificationChannelUpdate) SetNillableDigestEnabled(v *bool) *Notifica
 	return _u
 }
 
+// SetReceiveDailyDigest sets the "receive_daily_digest" field.
+func (_u *NotificationChannelUpdate) SetReceiveDailyDigest(v bool) *NotificationChannelUpdate {
+	_u.mutation.SetReceiveDailyDigest(v)
+	return _u
+}
+
+// SetNillableReceiveDailyDigest sets the "receive_daily_digest" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableReceiveDailyDigest(v *bool) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetReceiveDailyDigest(*v)
+	}
+	return _u
+}
+
+// SetReceiveWeeklyReport sets the "receive_weekly_report" field.
+func (_u *NotificationChannelUpdate) SetReceiveWeeklyReport(v bool) *NotificationChannelUpdate {
+	_u.mutation.SetReceiveWeeklyReport(v)
+	return _u
+}
+
+// SetNillableReceiveWeeklyReport sets the "receive_weekly_report" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableReceiveWeeklyReport(v *bool) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetReceiveWeeklyReport(*v)
+	}
+	return _u
+}
+
+// SetReceiveMonthlyReport sets the "receive_monthly_report" field.
+func (_u *NotificationChannelUpdate) SetReceiveMonthlyReport(v bool) *NotificationChannelUpdate {
+	_u.mutation.SetReceiveMonthlyReport(v)
+	return _u
+}
+
+// SetNillableReceiveMonthlyReport sets the "receive_monthly_report" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableReceiveMonthlyReport(v *bool) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetReceiveMonthlyReport(*v)
+	}
+	return _u
+}
+
+// SetQuietHoursEnabled sets the "quiet_hours_enabled" field.
+func (_u *NotificationChannelUpdate) SetQuietHoursEnabled(v bool) *NotificationChannelUpdate {
+	_u.mutation.SetQuietHoursEnabled(v)
+	return _u
+}
+
+// SetNillableQuietHoursEnabled sets the "quiet_hours_enabled" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableQuietHoursEnabled(v *bool) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetQuietHoursEnabled(*v)
+	}
+	return _u
+}
+
+// SetQuietHoursStart sets the "quiet_hours_start" field.
+func (_u *NotificationChannelUpdate) SetQuietHoursStart(v string) *NotificationChannelUpdate {
+	_u.mutation.SetQuietHoursStart(v)
+	return _u
+}
+
+// SetNillableQuietHoursStart sets the "quiet_hours_start" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableQuietHoursStart(v *string) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetQuietHoursStart(*v)
+	}
+	return _u
+}
+
+// SetQuietHoursEnd sets the "quiet_hours_end" field.
+func (_u *NotificationChannelUpdate) SetQuietHoursEnd(v string) *NotificationChannelUpdate {
+	_u.mutation.SetQuietHoursEnd(v)
+	return _u
+}
+
+// SetNillableQuietHoursEnd sets the "quiet_hours_end" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableQuietHoursEnd(v *string) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetQuietHoursEnd(*v)
+	}
+	return _u
+}
+
+// SetQuietHoursTz sets the "quiet_hours_tz" field.
+func (_u *NotificationChannelUpdate) SetQuietHoursTz(v string) *NotificationChannelUpdate {
+	_u.mutation.SetQuietHoursTz(v)
+	return _u
+}
+
+// SetNillableQuietHoursTz sets the "quiet_hours_tz" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableQuietHoursTz(v *string) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetQuietHoursTz(*v)
+	}
+	return _u
+}
+
 // SetIgnoreBots sets the "ignore_bots" field.
 func (_u *NotificationChannelUpdate) SetIgnoreBots(v bool) *NotificationChannelUpdate {
 	_u.mutation.SetIgnoreBots(v)
@@ -245,6 +343,27 @@ func (_u *NotificationChannelUpdate) sqlSave(ctx context.Context) (_node int, er
 	}
 	if value, ok := _u.mutation.DigestEnabled(); ok {
 		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ReceiveDailyDigest(); ok {
+		_spec.SetField(notificationchannel.FieldReceiveDailyDigest, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ReceiveWeeklyReport(); ok {
+		_spec.SetField(notificationchannel.FieldReceiveWeeklyReport, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ReceiveMonthlyReport(); ok {
+		_spec.SetField(notificationchannel.FieldReceiveMonthlyReport, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.QuietHoursEnabled(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.QuietHoursStart(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursStart, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.QuietHoursEnd(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursEnd, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.QuietHoursTz(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursTz, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.IgnoreBots(); ok {
 		_spec.SetField(notificationchannel.FieldIgnoreBots, field.TypeBool, value)
@@ -388,6 +507,104 @@ func (_u *NotificationChannelUpdateOne) SetNillableDigestEnabled(v *bool) *Notif
 	return _u
 }
 
+// SetReceiveDailyDigest sets the "receive_daily_digest" field.
+func (_u *NotificationChannelUpdateOne) SetReceiveDailyDigest(v bool) *NotificationChannelUpdateOne {
+	_u.mutation.SetReceiveDailyDigest(v)
+	return _u
+}
+
+// SetNillableReceiveDailyDigest sets the "receive_daily_digest" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableReceiveDailyDigest(v *bool) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetReceiveDailyDigest(*v)
+	}
+	return _u
+}
+
+// SetReceiveWeeklyReport sets the "receive_weekly_report" field.
+func (_u *NotificationChannelUpdateOne) SetReceiveWeeklyReport(v bool) *NotificationChannelUpdateOne {
+	_u.mutation.SetReceiveWeeklyReport(v)
+	return _u
+}
+
+// SetNillableReceiveWeeklyReport sets the "receive_weekly_report" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableReceiveWeeklyReport(v *bool) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetReceiveWeeklyReport(*v)
+	}
+	return _u
+}
+
+// SetReceiveMonthlyReport sets the "receive_monthly_report" field.
+func (_u *NotificationChannelUpdateOne) SetReceiveMonthlyReport(v bool) *NotificationChannelUpdateOne {
+	_u.mutation.SetReceiveMonthlyReport(v)
+	return _u
+}
+
+// SetNillableReceiveMonthlyReport sets the "receive_monthly_report" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableReceiveMonthlyReport(v *bool) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetReceiveMonthlyReport(*v)
+	}
+	return _u
+}
+
+// SetQuietHoursEnabled sets the "quiet_hours_enabled" field.
+func (_u *NotificationChannelUpdateOne) SetQuietHoursEnabled(v bool) *NotificationChannelUpdateOne {
+	_u.mutation.SetQuietHoursEnabled(v)
+	return _u
+}
+
+// SetNillableQuietHoursEnabled sets the "quiet_hours_enabled" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableQuietHoursEnabled(v *bool) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetQuietHoursEnabled(*v)
+	}
+	return _u
+}
+
+// SetQuietHoursStart sets the "quiet_hours_start" field.
+func (_u *NotificationChannelUpdateOne) SetQuietHoursStart(v string) *NotificationChannelUpdateOne {
+	_u.mutation.SetQuietHoursStart(v)
+	return _u
+}
+
+// SetNillableQuietHoursStart sets the "quiet_hours_start" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableQuietHoursStart(v *string) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetQuietHoursStart(*v)
+	}
+	return _u
+}
+
+// SetQuietHoursEnd sets the "quiet_hours_end" field.
+func (_u *NotificationChannelUpdateOne) SetQuietHoursEnd(v string) *NotificationChannelUpdateOne {
+	_u.mutation.SetQuietHoursEnd(v)
+	return _u
+}
+
+// SetNillableQuietHoursEnd sets the "quiet_hours_end" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableQuietHoursEnd(v *string) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetQuietHoursEnd(*v)
+	}
+	return _u
+}
+
+// SetQuietHoursTz sets the "quiet_hours_tz" field.
+func (_u *NotificationChannelUpdateOne) SetQuietHoursTz(v string) *NotificationChannelUpdateOne {
+	_u.mutation.SetQuietHoursTz(v)
+	return _u
+}
+
+// SetNillableQuietHoursTz sets the "quiet_hours_tz" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableQuietHoursTz(v *string) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetQuietHoursTz(*v)
+	}
+	return _u
+}
+
 // SetIgnoreBots sets the "ignore_bots" field.
 func (_u *NotificationChannelUpdateOne) SetIgnoreBots(v bool) *NotificationChannelUpdateOne {
 	_u.mutation.SetIgnoreBots(v)
@@ -518,6 +735,27 @@ func (_u *NotificationChannelUpdateOne) sqlSave(ctx context.Context) (_node *Not
 	}
 	if value, ok := _u.mutation.DigestEnabled(); ok {
 		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ReceiveDailyDigest(); ok {
+		_spec.SetField(notificationchannel.FieldReceiveDailyDigest, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ReceiveWeeklyReport(); ok {
+		_spec.SetField(notificationchannel.FieldReceiveWeeklyReport, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ReceiveMonthlyReport(); ok {
+		_spec.SetField(notificationchannel.FieldReceiveMonthlyReport, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.QuietHoursEnabled(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.QuietHoursStart(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursStart, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.QuietHoursEnd(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursEnd, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.QuietHoursTz(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursTz, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.IgnoreBots(); ok {
 		_spec.SetField(notificationchannel.FieldIgnoreBots, field.TypeBool, value)

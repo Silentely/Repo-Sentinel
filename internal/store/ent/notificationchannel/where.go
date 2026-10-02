@@ -99,6 +99,41 @@ func DigestEnabled(v bool) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldDigestEnabled, v))
 }
 
+// ReceiveDailyDigest applies equality check predicate on the "receive_daily_digest" field. It's identical to ReceiveDailyDigestEQ.
+func ReceiveDailyDigest(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldReceiveDailyDigest, v))
+}
+
+// ReceiveWeeklyReport applies equality check predicate on the "receive_weekly_report" field. It's identical to ReceiveWeeklyReportEQ.
+func ReceiveWeeklyReport(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldReceiveWeeklyReport, v))
+}
+
+// ReceiveMonthlyReport applies equality check predicate on the "receive_monthly_report" field. It's identical to ReceiveMonthlyReportEQ.
+func ReceiveMonthlyReport(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldReceiveMonthlyReport, v))
+}
+
+// QuietHoursEnabled applies equality check predicate on the "quiet_hours_enabled" field. It's identical to QuietHoursEnabledEQ.
+func QuietHoursEnabled(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldQuietHoursEnabled, v))
+}
+
+// QuietHoursStart applies equality check predicate on the "quiet_hours_start" field. It's identical to QuietHoursStartEQ.
+func QuietHoursStart(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldQuietHoursStart, v))
+}
+
+// QuietHoursEnd applies equality check predicate on the "quiet_hours_end" field. It's identical to QuietHoursEndEQ.
+func QuietHoursEnd(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursTz applies equality check predicate on the "quiet_hours_tz" field. It's identical to QuietHoursTzEQ.
+func QuietHoursTz(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldQuietHoursTz, v))
+}
+
 // IgnoreBots applies equality check predicate on the "ignore_bots" field. It's identical to IgnoreBotsEQ.
 func IgnoreBots(v bool) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldIgnoreBots, v))
@@ -412,6 +447,241 @@ func DigestEnabledEQ(v bool) predicate.NotificationChannel {
 // DigestEnabledNEQ applies the NEQ predicate on the "digest_enabled" field.
 func DigestEnabledNEQ(v bool) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldNEQ(FieldDigestEnabled, v))
+}
+
+// ReceiveDailyDigestEQ applies the EQ predicate on the "receive_daily_digest" field.
+func ReceiveDailyDigestEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldReceiveDailyDigest, v))
+}
+
+// ReceiveDailyDigestNEQ applies the NEQ predicate on the "receive_daily_digest" field.
+func ReceiveDailyDigestNEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldReceiveDailyDigest, v))
+}
+
+// ReceiveWeeklyReportEQ applies the EQ predicate on the "receive_weekly_report" field.
+func ReceiveWeeklyReportEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldReceiveWeeklyReport, v))
+}
+
+// ReceiveWeeklyReportNEQ applies the NEQ predicate on the "receive_weekly_report" field.
+func ReceiveWeeklyReportNEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldReceiveWeeklyReport, v))
+}
+
+// ReceiveMonthlyReportEQ applies the EQ predicate on the "receive_monthly_report" field.
+func ReceiveMonthlyReportEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldReceiveMonthlyReport, v))
+}
+
+// ReceiveMonthlyReportNEQ applies the NEQ predicate on the "receive_monthly_report" field.
+func ReceiveMonthlyReportNEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldReceiveMonthlyReport, v))
+}
+
+// QuietHoursEnabledEQ applies the EQ predicate on the "quiet_hours_enabled" field.
+func QuietHoursEnabledEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldQuietHoursEnabled, v))
+}
+
+// QuietHoursEnabledNEQ applies the NEQ predicate on the "quiet_hours_enabled" field.
+func QuietHoursEnabledNEQ(v bool) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldQuietHoursEnabled, v))
+}
+
+// QuietHoursStartEQ applies the EQ predicate on the "quiet_hours_start" field.
+func QuietHoursStartEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldQuietHoursStart, v))
+}
+
+// QuietHoursStartNEQ applies the NEQ predicate on the "quiet_hours_start" field.
+func QuietHoursStartNEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldQuietHoursStart, v))
+}
+
+// QuietHoursStartIn applies the In predicate on the "quiet_hours_start" field.
+func QuietHoursStartIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldIn(FieldQuietHoursStart, vs...))
+}
+
+// QuietHoursStartNotIn applies the NotIn predicate on the "quiet_hours_start" field.
+func QuietHoursStartNotIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNotIn(FieldQuietHoursStart, vs...))
+}
+
+// QuietHoursStartGT applies the GT predicate on the "quiet_hours_start" field.
+func QuietHoursStartGT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGT(FieldQuietHoursStart, v))
+}
+
+// QuietHoursStartGTE applies the GTE predicate on the "quiet_hours_start" field.
+func QuietHoursStartGTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGTE(FieldQuietHoursStart, v))
+}
+
+// QuietHoursStartLT applies the LT predicate on the "quiet_hours_start" field.
+func QuietHoursStartLT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLT(FieldQuietHoursStart, v))
+}
+
+// QuietHoursStartLTE applies the LTE predicate on the "quiet_hours_start" field.
+func QuietHoursStartLTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLTE(FieldQuietHoursStart, v))
+}
+
+// QuietHoursStartContains applies the Contains predicate on the "quiet_hours_start" field.
+func QuietHoursStartContains(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContains(FieldQuietHoursStart, v))
+}
+
+// QuietHoursStartHasPrefix applies the HasPrefix predicate on the "quiet_hours_start" field.
+func QuietHoursStartHasPrefix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasPrefix(FieldQuietHoursStart, v))
+}
+
+// QuietHoursStartHasSuffix applies the HasSuffix predicate on the "quiet_hours_start" field.
+func QuietHoursStartHasSuffix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasSuffix(FieldQuietHoursStart, v))
+}
+
+// QuietHoursStartEqualFold applies the EqualFold predicate on the "quiet_hours_start" field.
+func QuietHoursStartEqualFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEqualFold(FieldQuietHoursStart, v))
+}
+
+// QuietHoursStartContainsFold applies the ContainsFold predicate on the "quiet_hours_start" field.
+func QuietHoursStartContainsFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContainsFold(FieldQuietHoursStart, v))
+}
+
+// QuietHoursEndEQ applies the EQ predicate on the "quiet_hours_end" field.
+func QuietHoursEndEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursEndNEQ applies the NEQ predicate on the "quiet_hours_end" field.
+func QuietHoursEndNEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursEndIn applies the In predicate on the "quiet_hours_end" field.
+func QuietHoursEndIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldIn(FieldQuietHoursEnd, vs...))
+}
+
+// QuietHoursEndNotIn applies the NotIn predicate on the "quiet_hours_end" field.
+func QuietHoursEndNotIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNotIn(FieldQuietHoursEnd, vs...))
+}
+
+// QuietHoursEndGT applies the GT predicate on the "quiet_hours_end" field.
+func QuietHoursEndGT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGT(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursEndGTE applies the GTE predicate on the "quiet_hours_end" field.
+func QuietHoursEndGTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGTE(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursEndLT applies the LT predicate on the "quiet_hours_end" field.
+func QuietHoursEndLT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLT(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursEndLTE applies the LTE predicate on the "quiet_hours_end" field.
+func QuietHoursEndLTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLTE(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursEndContains applies the Contains predicate on the "quiet_hours_end" field.
+func QuietHoursEndContains(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContains(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursEndHasPrefix applies the HasPrefix predicate on the "quiet_hours_end" field.
+func QuietHoursEndHasPrefix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasPrefix(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursEndHasSuffix applies the HasSuffix predicate on the "quiet_hours_end" field.
+func QuietHoursEndHasSuffix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasSuffix(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursEndEqualFold applies the EqualFold predicate on the "quiet_hours_end" field.
+func QuietHoursEndEqualFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEqualFold(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursEndContainsFold applies the ContainsFold predicate on the "quiet_hours_end" field.
+func QuietHoursEndContainsFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContainsFold(FieldQuietHoursEnd, v))
+}
+
+// QuietHoursTzEQ applies the EQ predicate on the "quiet_hours_tz" field.
+func QuietHoursTzEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldQuietHoursTz, v))
+}
+
+// QuietHoursTzNEQ applies the NEQ predicate on the "quiet_hours_tz" field.
+func QuietHoursTzNEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldQuietHoursTz, v))
+}
+
+// QuietHoursTzIn applies the In predicate on the "quiet_hours_tz" field.
+func QuietHoursTzIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldIn(FieldQuietHoursTz, vs...))
+}
+
+// QuietHoursTzNotIn applies the NotIn predicate on the "quiet_hours_tz" field.
+func QuietHoursTzNotIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNotIn(FieldQuietHoursTz, vs...))
+}
+
+// QuietHoursTzGT applies the GT predicate on the "quiet_hours_tz" field.
+func QuietHoursTzGT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGT(FieldQuietHoursTz, v))
+}
+
+// QuietHoursTzGTE applies the GTE predicate on the "quiet_hours_tz" field.
+func QuietHoursTzGTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGTE(FieldQuietHoursTz, v))
+}
+
+// QuietHoursTzLT applies the LT predicate on the "quiet_hours_tz" field.
+func QuietHoursTzLT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLT(FieldQuietHoursTz, v))
+}
+
+// QuietHoursTzLTE applies the LTE predicate on the "quiet_hours_tz" field.
+func QuietHoursTzLTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLTE(FieldQuietHoursTz, v))
+}
+
+// QuietHoursTzContains applies the Contains predicate on the "quiet_hours_tz" field.
+func QuietHoursTzContains(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContains(FieldQuietHoursTz, v))
+}
+
+// QuietHoursTzHasPrefix applies the HasPrefix predicate on the "quiet_hours_tz" field.
+func QuietHoursTzHasPrefix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasPrefix(FieldQuietHoursTz, v))
+}
+
+// QuietHoursTzHasSuffix applies the HasSuffix predicate on the "quiet_hours_tz" field.
+func QuietHoursTzHasSuffix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasSuffix(FieldQuietHoursTz, v))
+}
+
+// QuietHoursTzEqualFold applies the EqualFold predicate on the "quiet_hours_tz" field.
+func QuietHoursTzEqualFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEqualFold(FieldQuietHoursTz, v))
+}
+
+// QuietHoursTzContainsFold applies the ContainsFold predicate on the "quiet_hours_tz" field.
+func QuietHoursTzContainsFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContainsFold(FieldQuietHoursTz, v))
 }
 
 // IgnoreBotsEQ applies the EQ predicate on the "ignore_bots" field.

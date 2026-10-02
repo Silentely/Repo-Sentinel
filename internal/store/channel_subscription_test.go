@@ -153,3 +153,39 @@ func TestNotificationChannelGetByType(t *testing.T) {
 		t.Fatalf("GetByType expected enabled channel ID %s, got %s (err: %v)", enabledCh.ID, gotEnabled.ID, err)
 	}
 }
+
+func TestNotificationChannelPeriodicAndQuietHoursRoundTrip(t *testing.T) {
+	ctx := t.Context()
+	data := openTestStore(t)
+
+	ch, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:                   ulid.Make().String(),
+		ChannelType:          store.ChannelSlack,
+		Name:                 "slack-ops",
+		Enabled:              true,
+		Target:               "https://hooks.slack.com/services/T/B/X",
+		ReceiveDailyDigest:   true,
+		ReceiveWeeklyReport:  false,
+		ReceiveMonthlyReport: true,
+		QuietHoursEnabled:    true,
+		QuietHoursStart:      "23:00",
+		QuietHoursEnd:        "07:30",
+		QuietHoursTZ:         "Asia/Shanghai",
+	})
+	if err != nil {
+		t.Fatalf("upsert slack channel: %v", err)
+	}
+
+	got, err := data.Channels().Get(ctx, ch.ID)
+	if err != nil {
+		t.Fatalf("get slack channel: %v", err)
+	}
+	if !got.ReceiveDailyDigest || got.ReceiveWeeklyReport || !got.ReceiveMonthlyReport {
+		t.Fatalf("unexpected periodic flags: daily=%v, weekly=%v, monthly=%v",
+			got.ReceiveDailyDigest, got.ReceiveWeeklyReport, got.ReceiveMonthlyReport)
+	}
+	if !got.QuietHoursEnabled || got.QuietHoursStart != "23:00" || got.QuietHoursEnd != "07:30" || got.QuietHoursTZ != "Asia/Shanghai" {
+		t.Fatalf("unexpected quiet hours: enabled=%v, start=%s, end=%s, tz=%s",
+			got.QuietHoursEnabled, got.QuietHoursStart, got.QuietHoursEnd, got.QuietHoursTZ)
+	}
+}

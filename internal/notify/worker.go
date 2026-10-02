@@ -272,6 +272,8 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 		return ch.ChannelType, w.sendDiscord(ctx, ch, secret, item)
 	case store.ChannelBark:
 		return ch.ChannelType, w.sendBark(ctx, ch, secret, item)
+	case store.ChannelSlack:
+		return ch.ChannelType, w.sendSlack(ctx, ch, secret, item)
 	default:
 		return ch.ChannelType, fmt.Errorf("unknown_channel")
 	}

@@ -116,6 +116,104 @@ func (_c *NotificationChannelCreate) SetNillableDigestEnabled(v *bool) *Notifica
 	return _c
 }
 
+// SetReceiveDailyDigest sets the "receive_daily_digest" field.
+func (_c *NotificationChannelCreate) SetReceiveDailyDigest(v bool) *NotificationChannelCreate {
+	_c.mutation.SetReceiveDailyDigest(v)
+	return _c
+}
+
+// SetNillableReceiveDailyDigest sets the "receive_daily_digest" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableReceiveDailyDigest(v *bool) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetReceiveDailyDigest(*v)
+	}
+	return _c
+}
+
+// SetReceiveWeeklyReport sets the "receive_weekly_report" field.
+func (_c *NotificationChannelCreate) SetReceiveWeeklyReport(v bool) *NotificationChannelCreate {
+	_c.mutation.SetReceiveWeeklyReport(v)
+	return _c
+}
+
+// SetNillableReceiveWeeklyReport sets the "receive_weekly_report" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableReceiveWeeklyReport(v *bool) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetReceiveWeeklyReport(*v)
+	}
+	return _c
+}
+
+// SetReceiveMonthlyReport sets the "receive_monthly_report" field.
+func (_c *NotificationChannelCreate) SetReceiveMonthlyReport(v bool) *NotificationChannelCreate {
+	_c.mutation.SetReceiveMonthlyReport(v)
+	return _c
+}
+
+// SetNillableReceiveMonthlyReport sets the "receive_monthly_report" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableReceiveMonthlyReport(v *bool) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetReceiveMonthlyReport(*v)
+	}
+	return _c
+}
+
+// SetQuietHoursEnabled sets the "quiet_hours_enabled" field.
+func (_c *NotificationChannelCreate) SetQuietHoursEnabled(v bool) *NotificationChannelCreate {
+	_c.mutation.SetQuietHoursEnabled(v)
+	return _c
+}
+
+// SetNillableQuietHoursEnabled sets the "quiet_hours_enabled" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableQuietHoursEnabled(v *bool) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetQuietHoursEnabled(*v)
+	}
+	return _c
+}
+
+// SetQuietHoursStart sets the "quiet_hours_start" field.
+func (_c *NotificationChannelCreate) SetQuietHoursStart(v string) *NotificationChannelCreate {
+	_c.mutation.SetQuietHoursStart(v)
+	return _c
+}
+
+// SetNillableQuietHoursStart sets the "quiet_hours_start" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableQuietHoursStart(v *string) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetQuietHoursStart(*v)
+	}
+	return _c
+}
+
+// SetQuietHoursEnd sets the "quiet_hours_end" field.
+func (_c *NotificationChannelCreate) SetQuietHoursEnd(v string) *NotificationChannelCreate {
+	_c.mutation.SetQuietHoursEnd(v)
+	return _c
+}
+
+// SetNillableQuietHoursEnd sets the "quiet_hours_end" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableQuietHoursEnd(v *string) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetQuietHoursEnd(*v)
+	}
+	return _c
+}
+
+// SetQuietHoursTz sets the "quiet_hours_tz" field.
+func (_c *NotificationChannelCreate) SetQuietHoursTz(v string) *NotificationChannelCreate {
+	_c.mutation.SetQuietHoursTz(v)
+	return _c
+}
+
+// SetNillableQuietHoursTz sets the "quiet_hours_tz" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableQuietHoursTz(v *string) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetQuietHoursTz(*v)
+	}
+	return _c
+}
+
 // SetIgnoreBots sets the "ignore_bots" field.
 func (_c *NotificationChannelCreate) SetIgnoreBots(v bool) *NotificationChannelCreate {
 	_c.mutation.SetIgnoreBots(v)
@@ -207,6 +305,34 @@ func (_c *NotificationChannelCreate) defaults() {
 		v := notificationchannel.DefaultDigestEnabled
 		_c.mutation.SetDigestEnabled(v)
 	}
+	if _, ok := _c.mutation.ReceiveDailyDigest(); !ok {
+		v := notificationchannel.DefaultReceiveDailyDigest
+		_c.mutation.SetReceiveDailyDigest(v)
+	}
+	if _, ok := _c.mutation.ReceiveWeeklyReport(); !ok {
+		v := notificationchannel.DefaultReceiveWeeklyReport
+		_c.mutation.SetReceiveWeeklyReport(v)
+	}
+	if _, ok := _c.mutation.ReceiveMonthlyReport(); !ok {
+		v := notificationchannel.DefaultReceiveMonthlyReport
+		_c.mutation.SetReceiveMonthlyReport(v)
+	}
+	if _, ok := _c.mutation.QuietHoursEnabled(); !ok {
+		v := notificationchannel.DefaultQuietHoursEnabled
+		_c.mutation.SetQuietHoursEnabled(v)
+	}
+	if _, ok := _c.mutation.QuietHoursStart(); !ok {
+		v := notificationchannel.DefaultQuietHoursStart
+		_c.mutation.SetQuietHoursStart(v)
+	}
+	if _, ok := _c.mutation.QuietHoursEnd(); !ok {
+		v := notificationchannel.DefaultQuietHoursEnd
+		_c.mutation.SetQuietHoursEnd(v)
+	}
+	if _, ok := _c.mutation.QuietHoursTz(); !ok {
+		v := notificationchannel.DefaultQuietHoursTz
+		_c.mutation.SetQuietHoursTz(v)
+	}
 	if _, ok := _c.mutation.IgnoreBots(); !ok {
 		v := notificationchannel.DefaultIgnoreBots
 		_c.mutation.SetIgnoreBots(v)
@@ -235,6 +361,27 @@ func (_c *NotificationChannelCreate) check() error {
 	}
 	if _, ok := _c.mutation.DigestEnabled(); !ok {
 		return &ValidationError{Name: "digest_enabled", err: errors.New(`ent: missing required field "NotificationChannel.digest_enabled"`)}
+	}
+	if _, ok := _c.mutation.ReceiveDailyDigest(); !ok {
+		return &ValidationError{Name: "receive_daily_digest", err: errors.New(`ent: missing required field "NotificationChannel.receive_daily_digest"`)}
+	}
+	if _, ok := _c.mutation.ReceiveWeeklyReport(); !ok {
+		return &ValidationError{Name: "receive_weekly_report", err: errors.New(`ent: missing required field "NotificationChannel.receive_weekly_report"`)}
+	}
+	if _, ok := _c.mutation.ReceiveMonthlyReport(); !ok {
+		return &ValidationError{Name: "receive_monthly_report", err: errors.New(`ent: missing required field "NotificationChannel.receive_monthly_report"`)}
+	}
+	if _, ok := _c.mutation.QuietHoursEnabled(); !ok {
+		return &ValidationError{Name: "quiet_hours_enabled", err: errors.New(`ent: missing required field "NotificationChannel.quiet_hours_enabled"`)}
+	}
+	if _, ok := _c.mutation.QuietHoursStart(); !ok {
+		return &ValidationError{Name: "quiet_hours_start", err: errors.New(`ent: missing required field "NotificationChannel.quiet_hours_start"`)}
+	}
+	if _, ok := _c.mutation.QuietHoursEnd(); !ok {
+		return &ValidationError{Name: "quiet_hours_end", err: errors.New(`ent: missing required field "NotificationChannel.quiet_hours_end"`)}
+	}
+	if _, ok := _c.mutation.QuietHoursTz(); !ok {
+		return &ValidationError{Name: "quiet_hours_tz", err: errors.New(`ent: missing required field "NotificationChannel.quiet_hours_tz"`)}
 	}
 	if _, ok := _c.mutation.IgnoreBots(); !ok {
 		return &ValidationError{Name: "ignore_bots", err: errors.New(`ent: missing required field "NotificationChannel.ignore_bots"`)}
@@ -311,6 +458,34 @@ func (_c *NotificationChannelCreate) createSpec() (*NotificationChannel, *sqlgra
 	if value, ok := _c.mutation.DigestEnabled(); ok {
 		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)
 		_node.DigestEnabled = value
+	}
+	if value, ok := _c.mutation.ReceiveDailyDigest(); ok {
+		_spec.SetField(notificationchannel.FieldReceiveDailyDigest, field.TypeBool, value)
+		_node.ReceiveDailyDigest = value
+	}
+	if value, ok := _c.mutation.ReceiveWeeklyReport(); ok {
+		_spec.SetField(notificationchannel.FieldReceiveWeeklyReport, field.TypeBool, value)
+		_node.ReceiveWeeklyReport = value
+	}
+	if value, ok := _c.mutation.ReceiveMonthlyReport(); ok {
+		_spec.SetField(notificationchannel.FieldReceiveMonthlyReport, field.TypeBool, value)
+		_node.ReceiveMonthlyReport = value
+	}
+	if value, ok := _c.mutation.QuietHoursEnabled(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursEnabled, field.TypeBool, value)
+		_node.QuietHoursEnabled = value
+	}
+	if value, ok := _c.mutation.QuietHoursStart(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursStart, field.TypeString, value)
+		_node.QuietHoursStart = value
+	}
+	if value, ok := _c.mutation.QuietHoursEnd(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursEnd, field.TypeString, value)
+		_node.QuietHoursEnd = value
+	}
+	if value, ok := _c.mutation.QuietHoursTz(); ok {
+		_spec.SetField(notificationchannel.FieldQuietHoursTz, field.TypeString, value)
+		_node.QuietHoursTz = value
 	}
 	if value, ok := _c.mutation.IgnoreBots(); ok {
 		_spec.SetField(notificationchannel.FieldIgnoreBots, field.TypeBool, value)

@@ -34,6 +34,20 @@ type NotificationChannel struct {
 	EventKinds []string `json:"event_kinds,omitempty"`
 	// DigestEnabled holds the value of the "digest_enabled" field.
 	DigestEnabled bool `json:"digest_enabled,omitempty"`
+	// ReceiveDailyDigest holds the value of the "receive_daily_digest" field.
+	ReceiveDailyDigest bool `json:"receive_daily_digest,omitempty"`
+	// ReceiveWeeklyReport holds the value of the "receive_weekly_report" field.
+	ReceiveWeeklyReport bool `json:"receive_weekly_report,omitempty"`
+	// ReceiveMonthlyReport holds the value of the "receive_monthly_report" field.
+	ReceiveMonthlyReport bool `json:"receive_monthly_report,omitempty"`
+	// QuietHoursEnabled holds the value of the "quiet_hours_enabled" field.
+	QuietHoursEnabled bool `json:"quiet_hours_enabled,omitempty"`
+	// QuietHoursStart holds the value of the "quiet_hours_start" field.
+	QuietHoursStart string `json:"quiet_hours_start,omitempty"`
+	// QuietHoursEnd holds the value of the "quiet_hours_end" field.
+	QuietHoursEnd string `json:"quiet_hours_end,omitempty"`
+	// QuietHoursTz holds the value of the "quiet_hours_tz" field.
+	QuietHoursTz string `json:"quiet_hours_tz,omitempty"`
 	// IgnoreBots holds the value of the "ignore_bots" field.
 	IgnoreBots bool `json:"ignore_bots,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -50,9 +64,9 @@ func (*NotificationChannel) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case notificationchannel.FieldEventKinds:
 			values[i] = new([]byte)
-		case notificationchannel.FieldEnabled, notificationchannel.FieldAllowPrivate, notificationchannel.FieldDigestEnabled, notificationchannel.FieldIgnoreBots:
+		case notificationchannel.FieldEnabled, notificationchannel.FieldAllowPrivate, notificationchannel.FieldDigestEnabled, notificationchannel.FieldReceiveDailyDigest, notificationchannel.FieldReceiveWeeklyReport, notificationchannel.FieldReceiveMonthlyReport, notificationchannel.FieldQuietHoursEnabled, notificationchannel.FieldIgnoreBots:
 			values[i] = new(sql.NullBool)
-		case notificationchannel.FieldID, notificationchannel.FieldChannelType, notificationchannel.FieldName, notificationchannel.FieldTarget, notificationchannel.FieldSecretEnvelope:
+		case notificationchannel.FieldID, notificationchannel.FieldChannelType, notificationchannel.FieldName, notificationchannel.FieldTarget, notificationchannel.FieldSecretEnvelope, notificationchannel.FieldQuietHoursStart, notificationchannel.FieldQuietHoursEnd, notificationchannel.FieldQuietHoursTz:
 			values[i] = new(sql.NullString)
 		case notificationchannel.FieldCreatedAt, notificationchannel.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -126,6 +140,48 @@ func (_m *NotificationChannel) assignValues(columns []string, values []any) erro
 				return fmt.Errorf("unexpected type %T for field digest_enabled", values[i])
 			} else if value.Valid {
 				_m.DigestEnabled = value.Bool
+			}
+		case notificationchannel.FieldReceiveDailyDigest:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field receive_daily_digest", values[i])
+			} else if value.Valid {
+				_m.ReceiveDailyDigest = value.Bool
+			}
+		case notificationchannel.FieldReceiveWeeklyReport:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field receive_weekly_report", values[i])
+			} else if value.Valid {
+				_m.ReceiveWeeklyReport = value.Bool
+			}
+		case notificationchannel.FieldReceiveMonthlyReport:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field receive_monthly_report", values[i])
+			} else if value.Valid {
+				_m.ReceiveMonthlyReport = value.Bool
+			}
+		case notificationchannel.FieldQuietHoursEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field quiet_hours_enabled", values[i])
+			} else if value.Valid {
+				_m.QuietHoursEnabled = value.Bool
+			}
+		case notificationchannel.FieldQuietHoursStart:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field quiet_hours_start", values[i])
+			} else if value.Valid {
+				_m.QuietHoursStart = value.String
+			}
+		case notificationchannel.FieldQuietHoursEnd:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field quiet_hours_end", values[i])
+			} else if value.Valid {
+				_m.QuietHoursEnd = value.String
+			}
+		case notificationchannel.FieldQuietHoursTz:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field quiet_hours_tz", values[i])
+			} else if value.Valid {
+				_m.QuietHoursTz = value.String
 			}
 		case notificationchannel.FieldIgnoreBots:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -204,6 +260,27 @@ func (_m *NotificationChannel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("digest_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DigestEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("receive_daily_digest=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ReceiveDailyDigest))
+	builder.WriteString(", ")
+	builder.WriteString("receive_weekly_report=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ReceiveWeeklyReport))
+	builder.WriteString(", ")
+	builder.WriteString("receive_monthly_report=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ReceiveMonthlyReport))
+	builder.WriteString(", ")
+	builder.WriteString("quiet_hours_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.QuietHoursEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("quiet_hours_start=")
+	builder.WriteString(_m.QuietHoursStart)
+	builder.WriteString(", ")
+	builder.WriteString("quiet_hours_end=")
+	builder.WriteString(_m.QuietHoursEnd)
+	builder.WriteString(", ")
+	builder.WriteString("quiet_hours_tz=")
+	builder.WriteString(_m.QuietHoursTz)
 	builder.WriteString(", ")
 	builder.WriteString("ignore_bots=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IgnoreBots))

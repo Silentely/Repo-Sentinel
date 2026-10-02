@@ -98,8 +98,36 @@ func init() {
 	notificationchannelDescDigestEnabled := notificationchannelFields[8].Descriptor()
 	// notificationchannel.DefaultDigestEnabled holds the default value on creation for the digest_enabled field.
 	notificationchannel.DefaultDigestEnabled = notificationchannelDescDigestEnabled.Default.(bool)
+	// notificationchannelDescReceiveDailyDigest is the schema descriptor for receive_daily_digest field.
+	notificationchannelDescReceiveDailyDigest := notificationchannelFields[9].Descriptor()
+	// notificationchannel.DefaultReceiveDailyDigest holds the default value on creation for the receive_daily_digest field.
+	notificationchannel.DefaultReceiveDailyDigest = notificationchannelDescReceiveDailyDigest.Default.(bool)
+	// notificationchannelDescReceiveWeeklyReport is the schema descriptor for receive_weekly_report field.
+	notificationchannelDescReceiveWeeklyReport := notificationchannelFields[10].Descriptor()
+	// notificationchannel.DefaultReceiveWeeklyReport holds the default value on creation for the receive_weekly_report field.
+	notificationchannel.DefaultReceiveWeeklyReport = notificationchannelDescReceiveWeeklyReport.Default.(bool)
+	// notificationchannelDescReceiveMonthlyReport is the schema descriptor for receive_monthly_report field.
+	notificationchannelDescReceiveMonthlyReport := notificationchannelFields[11].Descriptor()
+	// notificationchannel.DefaultReceiveMonthlyReport holds the default value on creation for the receive_monthly_report field.
+	notificationchannel.DefaultReceiveMonthlyReport = notificationchannelDescReceiveMonthlyReport.Default.(bool)
+	// notificationchannelDescQuietHoursEnabled is the schema descriptor for quiet_hours_enabled field.
+	notificationchannelDescQuietHoursEnabled := notificationchannelFields[12].Descriptor()
+	// notificationchannel.DefaultQuietHoursEnabled holds the default value on creation for the quiet_hours_enabled field.
+	notificationchannel.DefaultQuietHoursEnabled = notificationchannelDescQuietHoursEnabled.Default.(bool)
+	// notificationchannelDescQuietHoursStart is the schema descriptor for quiet_hours_start field.
+	notificationchannelDescQuietHoursStart := notificationchannelFields[13].Descriptor()
+	// notificationchannel.DefaultQuietHoursStart holds the default value on creation for the quiet_hours_start field.
+	notificationchannel.DefaultQuietHoursStart = notificationchannelDescQuietHoursStart.Default.(string)
+	// notificationchannelDescQuietHoursEnd is the schema descriptor for quiet_hours_end field.
+	notificationchannelDescQuietHoursEnd := notificationchannelFields[14].Descriptor()
+	// notificationchannel.DefaultQuietHoursEnd holds the default value on creation for the quiet_hours_end field.
+	notificationchannel.DefaultQuietHoursEnd = notificationchannelDescQuietHoursEnd.Default.(string)
+	// notificationchannelDescQuietHoursTz is the schema descriptor for quiet_hours_tz field.
+	notificationchannelDescQuietHoursTz := notificationchannelFields[15].Descriptor()
+	// notificationchannel.DefaultQuietHoursTz holds the default value on creation for the quiet_hours_tz field.
+	notificationchannel.DefaultQuietHoursTz = notificationchannelDescQuietHoursTz.Default.(string)
 	// notificationchannelDescIgnoreBots is the schema descriptor for ignore_bots field.
-	notificationchannelDescIgnoreBots := notificationchannelFields[9].Descriptor()
+	notificationchannelDescIgnoreBots := notificationchannelFields[16].Descriptor()
 	// notificationchannel.DefaultIgnoreBots holds the default value on creation for the ignore_bots field.
 	notificationchannel.DefaultIgnoreBots = notificationchannelDescIgnoreBots.Default.(bool)
 	notificationoutboxFields := schema.NotificationOutbox{}.Fields()

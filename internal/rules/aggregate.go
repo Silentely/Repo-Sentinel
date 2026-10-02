@@ -330,10 +330,15 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 		variant := "agg|" + idScope + "|" + b.category + "|" + strconv.FormatInt(bucket, 10)
 		idem := idempotencyKey(ch.ID, idScope, variant)
 		eventID := sub[0].ID
+		nextAttempt := time.Now().UTC()
+		action, resumeAt := DecideQuietHours(ch, sub[0], nextAttempt)
+		if action == ActionDeferQuietHours {
+			nextAttempt = resumeAt
+		}
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eventID,
 			AggregateKey: idScope + "|" + b.category, IdempotencyKey: idem,
-			Status: store.OutboxPending, NextAttemptAt: time.Now().UTC(),
+			Status: store.OutboxPending, NextAttemptAt: nextAttempt,
 			Title: title, BodyText: body, ParseMode: "HTML",
 			BodyJSON: map[string]any{"aggregate": true, "count": len(sub), "category": b.category, "bucket": bucket},
 		})

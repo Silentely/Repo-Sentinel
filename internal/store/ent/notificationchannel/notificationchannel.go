@@ -27,6 +27,20 @@ const (
 	FieldEventKinds = "event_kinds"
 	// FieldDigestEnabled holds the string denoting the digest_enabled field in the database.
 	FieldDigestEnabled = "digest_enabled"
+	// FieldReceiveDailyDigest holds the string denoting the receive_daily_digest field in the database.
+	FieldReceiveDailyDigest = "receive_daily_digest"
+	// FieldReceiveWeeklyReport holds the string denoting the receive_weekly_report field in the database.
+	FieldReceiveWeeklyReport = "receive_weekly_report"
+	// FieldReceiveMonthlyReport holds the string denoting the receive_monthly_report field in the database.
+	FieldReceiveMonthlyReport = "receive_monthly_report"
+	// FieldQuietHoursEnabled holds the string denoting the quiet_hours_enabled field in the database.
+	FieldQuietHoursEnabled = "quiet_hours_enabled"
+	// FieldQuietHoursStart holds the string denoting the quiet_hours_start field in the database.
+	FieldQuietHoursStart = "quiet_hours_start"
+	// FieldQuietHoursEnd holds the string denoting the quiet_hours_end field in the database.
+	FieldQuietHoursEnd = "quiet_hours_end"
+	// FieldQuietHoursTz holds the string denoting the quiet_hours_tz field in the database.
+	FieldQuietHoursTz = "quiet_hours_tz"
 	// FieldIgnoreBots holds the string denoting the ignore_bots field in the database.
 	FieldIgnoreBots = "ignore_bots"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -48,6 +62,13 @@ var Columns = []string{
 	FieldAllowPrivate,
 	FieldEventKinds,
 	FieldDigestEnabled,
+	FieldReceiveDailyDigest,
+	FieldReceiveWeeklyReport,
+	FieldReceiveMonthlyReport,
+	FieldQuietHoursEnabled,
+	FieldQuietHoursStart,
+	FieldQuietHoursEnd,
+	FieldQuietHoursTz,
 	FieldIgnoreBots,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -76,6 +97,20 @@ var (
 	DefaultAllowPrivate bool
 	// DefaultDigestEnabled holds the default value on creation for the "digest_enabled" field.
 	DefaultDigestEnabled bool
+	// DefaultReceiveDailyDigest holds the default value on creation for the "receive_daily_digest" field.
+	DefaultReceiveDailyDigest bool
+	// DefaultReceiveWeeklyReport holds the default value on creation for the "receive_weekly_report" field.
+	DefaultReceiveWeeklyReport bool
+	// DefaultReceiveMonthlyReport holds the default value on creation for the "receive_monthly_report" field.
+	DefaultReceiveMonthlyReport bool
+	// DefaultQuietHoursEnabled holds the default value on creation for the "quiet_hours_enabled" field.
+	DefaultQuietHoursEnabled bool
+	// DefaultQuietHoursStart holds the default value on creation for the "quiet_hours_start" field.
+	DefaultQuietHoursStart string
+	// DefaultQuietHoursEnd holds the default value on creation for the "quiet_hours_end" field.
+	DefaultQuietHoursEnd string
+	// DefaultQuietHoursTz holds the default value on creation for the "quiet_hours_tz" field.
+	DefaultQuietHoursTz string
 	// DefaultIgnoreBots holds the default value on creation for the "ignore_bots" field.
 	DefaultIgnoreBots bool
 )
@@ -121,6 +156,41 @@ func ByAllowPrivate(opts ...sql.OrderTermOption) OrderOption {
 // ByDigestEnabled orders the results by the digest_enabled field.
 func ByDigestEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDigestEnabled, opts...).ToFunc()
+}
+
+// ByReceiveDailyDigest orders the results by the receive_daily_digest field.
+func ByReceiveDailyDigest(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReceiveDailyDigest, opts...).ToFunc()
+}
+
+// ByReceiveWeeklyReport orders the results by the receive_weekly_report field.
+func ByReceiveWeeklyReport(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReceiveWeeklyReport, opts...).ToFunc()
+}
+
+// ByReceiveMonthlyReport orders the results by the receive_monthly_report field.
+func ByReceiveMonthlyReport(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReceiveMonthlyReport, opts...).ToFunc()
+}
+
+// ByQuietHoursEnabled orders the results by the quiet_hours_enabled field.
+func ByQuietHoursEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuietHoursEnabled, opts...).ToFunc()
+}
+
+// ByQuietHoursStart orders the results by the quiet_hours_start field.
+func ByQuietHoursStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuietHoursStart, opts...).ToFunc()
+}
+
+// ByQuietHoursEnd orders the results by the quiet_hours_end field.
+func ByQuietHoursEnd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuietHoursEnd, opts...).ToFunc()
+}
+
+// ByQuietHoursTz orders the results by the quiet_hours_tz field.
+func ByQuietHoursTz(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuietHoursTz, opts...).ToFunc()
 }
 
 // ByIgnoreBots orders the results by the ignore_bots field.

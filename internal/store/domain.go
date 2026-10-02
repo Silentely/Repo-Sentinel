@@ -48,6 +48,7 @@ const (
 	ChannelDingTalk    = "dingtalk"
 	ChannelDiscord     = "discord"
 	ChannelBark        = "bark"
+	ChannelSlack       = "slack"
 
 	OutboxPending   = "pending"
 	OutboxSending   = "sending"
@@ -64,7 +65,7 @@ const (
 // IsValidChannelType 校验渠道类型白名单。
 func IsValidChannelType(channelType string) bool {
 	switch channelType {
-	case ChannelTelegram, ChannelHTTPWebhook, ChannelFeishu, ChannelWeCom, ChannelDingTalk, ChannelDiscord, ChannelBark:
+	case ChannelTelegram, ChannelHTTPWebhook, ChannelFeishu, ChannelWeCom, ChannelDingTalk, ChannelDiscord, ChannelBark, ChannelSlack:
 		return true
 	default:
 		return false
@@ -417,6 +418,13 @@ type NotificationChannel struct {
 	EventKinds []string `json:"event_kinds"`
 	// DigestEnabled 是否接收每日汇总。
 	DigestEnabled bool      `json:"digest_enabled"`
+	ReceiveDailyDigest bool   `json:"receive_daily_digest"`
+	ReceiveWeeklyReport bool  `json:"receive_weekly_report"`
+	ReceiveMonthlyReport bool `json:"receive_monthly_report"`
+	QuietHoursEnabled bool    `json:"quiet_hours_enabled"`
+	QuietHoursStart   string  `json:"quiet_hours_start"`
+	QuietHoursEnd     string  `json:"quiet_hours_end"`
+	QuietHoursTZ      string  `json:"quiet_hours_tz"`
 	IgnoreBots    bool      `json:"ignore_bots"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`

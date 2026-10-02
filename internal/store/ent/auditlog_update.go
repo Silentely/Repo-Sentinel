@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 
@@ -100,13 +100,13 @@ func (_u *AuditLogUpdate) SetNillableTargetID(v *string) *AuditLogUpdate {
 }
 
 // SetMetadataJSON sets the "metadata_json" field.
-func (_u *AuditLogUpdate) SetMetadataJSON(v json.RawMessage) *AuditLogUpdate {
+func (_u *AuditLogUpdate) SetMetadataJSON(v jsontext.Value) *AuditLogUpdate {
 	_u.mutation.SetMetadataJSON(v)
 	return _u
 }
 
 // AppendMetadataJSON appends value to the "metadata_json" field.
-func (_u *AuditLogUpdate) AppendMetadataJSON(v json.RawMessage) *AuditLogUpdate {
+func (_u *AuditLogUpdate) AppendMetadataJSON(v jsontext.Value) *AuditLogUpdate {
 	_u.mutation.AppendMetadataJSON(v)
 	return _u
 }
@@ -283,13 +283,13 @@ func (_u *AuditLogUpdateOne) SetNillableTargetID(v *string) *AuditLogUpdateOne {
 }
 
 // SetMetadataJSON sets the "metadata_json" field.
-func (_u *AuditLogUpdateOne) SetMetadataJSON(v json.RawMessage) *AuditLogUpdateOne {
+func (_u *AuditLogUpdateOne) SetMetadataJSON(v jsontext.Value) *AuditLogUpdateOne {
 	_u.mutation.SetMetadataJSON(v)
 	return _u
 }
 
 // AppendMetadataJSON appends value to the "metadata_json" field.
-func (_u *AuditLogUpdateOne) AppendMetadataJSON(v json.RawMessage) *AuditLogUpdateOne {
+func (_u *AuditLogUpdateOne) AppendMetadataJSON(v jsontext.Value) *AuditLogUpdateOne {
 	_u.mutation.AppendMetadataJSON(v)
 	return _u
 }

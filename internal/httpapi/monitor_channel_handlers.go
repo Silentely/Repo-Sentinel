@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -27,6 +28,13 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 			"secret_configured": ch.SecretEnvelope != "",
 			// 订阅配置：event_kinds 为 nil 表示订阅全部实时类型。
 			"event_kinds": ch.EventKinds, "digest_enabled": ch.DigestEnabled,
+			"receive_daily_digest": ch.ReceiveDailyDigest,
+			"receive_weekly_report": ch.ReceiveWeeklyReport,
+			"receive_monthly_report": ch.ReceiveMonthlyReport,
+			"quiet_hours_enabled": ch.QuietHoursEnabled,
+			"quiet_hours_start": ch.QuietHoursStart,
+			"quiet_hours_end": ch.QuietHoursEnd,
+			"quiet_hours_tz": ch.QuietHoursTZ,
 			"ignore_bots": ch.IgnoreBots,
 			"updated_at":  ch.UpdatedAt,
 		})
@@ -51,9 +59,16 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		Target        string    `json:"target"`
 		Secret        string    `json:"secret"`
 		AllowPrivate  bool      `json:"allow_private"`
-		EventKinds    *[]string `json:"event_kinds"`
-		DigestEnabled *bool     `json:"digest_enabled"`
-		IgnoreBots    *bool     `json:"ignore_bots"`
+		EventKinds           *[]string `json:"event_kinds"`
+		DigestEnabled        *bool     `json:"digest_enabled"`
+		ReceiveDailyDigest   *bool     `json:"receive_daily_digest"`
+		ReceiveWeeklyReport  *bool     `json:"receive_weekly_report"`
+		ReceiveMonthlyReport *bool     `json:"receive_monthly_report"`
+		QuietHoursEnabled    *bool     `json:"quiet_hours_enabled"`
+		QuietHoursStart      *string   `json:"quiet_hours_start"`
+		QuietHoursEnd        *string   `json:"quiet_hours_end"`
+		QuietHoursTZ         *string   `json:"quiet_hours_tz"`
+		IgnoreBots           *bool     `json:"ignore_bots"`
 	}
 	if !s.decodeRequestJSON(w, r, &body) {
 		return
@@ -105,6 +120,13 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		// 请求未携带订阅配置时保留现值。
 		ch.EventKinds = existing.EventKinds
 		ch.DigestEnabled = existing.DigestEnabled
+		ch.ReceiveDailyDigest = existing.ReceiveDailyDigest
+		ch.ReceiveWeeklyReport = existing.ReceiveWeeklyReport
+		ch.ReceiveMonthlyReport = existing.ReceiveMonthlyReport
+		ch.QuietHoursEnabled = existing.QuietHoursEnabled
+		ch.QuietHoursStart = existing.QuietHoursStart
+		ch.QuietHoursEnd = existing.QuietHoursEnd
+		ch.QuietHoursTZ = existing.QuietHoursTZ
 		ch.IgnoreBots = existing.IgnoreBots
 		// 目标留空时保留已有 Chat ID / URL，避免「只改订阅」误清空。
 		if target == "" {
@@ -119,6 +141,27 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.DigestEnabled != nil {
 		ch.DigestEnabled = *body.DigestEnabled
+	}
+	if body.ReceiveDailyDigest != nil {
+		ch.ReceiveDailyDigest = *body.ReceiveDailyDigest
+	}
+	if body.ReceiveWeeklyReport != nil {
+		ch.ReceiveWeeklyReport = *body.ReceiveWeeklyReport
+	}
+	if body.ReceiveMonthlyReport != nil {
+		ch.ReceiveMonthlyReport = *body.ReceiveMonthlyReport
+	}
+	if body.QuietHoursEnabled != nil {
+		ch.QuietHoursEnabled = *body.QuietHoursEnabled
+	}
+	if body.QuietHoursStart != nil {
+		ch.QuietHoursStart = strings.TrimSpace(*body.QuietHoursStart)
+	}
+	if body.QuietHoursEnd != nil {
+		ch.QuietHoursEnd = strings.TrimSpace(*body.QuietHoursEnd)
+	}
+	if body.QuietHoursTZ != nil {
+		ch.QuietHoursTZ = strings.TrimSpace(*body.QuietHoursTZ)
 	}
 	if body.IgnoreBots != nil {
 		ch.IgnoreBots = *body.IgnoreBots
@@ -217,6 +260,43 @@ func (s *server) handleRetryAllOutboxDead(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"status": "queued", "retried": n})
 }
 
+func buildTestScenario(scenario string, now time.Time) (title, bodyText, htmlURL string) {
+	ts := now.Format("2006-01-02 15:04 UTC")
+	switch strings.ToLower(strings.TrimSpace(scenario)) {
+	case "security_alert":
+		title = "🚨 [Alert] CVE-2026-8812 (Critical): RCE in org/api"
+		bodyText = fmt.Sprintf("🚨 <b>安全告警：CVE-2026-8812</b>\n────────────────\n" +
+			"<b>仓库:</b> org/api\n<b>严重等级:</b> CRITICAL\n<b>触发时刻:</b> %s\n" +
+			"────────────────\n" +
+			"🤖 告警分析\n" +
+			"检测到远程代码执行高危漏洞，受影响组件为 HTTP 路由分发器。建议立即升级依赖包至 2.4.1+ 并撤销相关凭证。", ts)
+		htmlURL = "https://github.com/org/api/security/advisories/GHSA-2026-test"
+	case "ci_failure":
+		title = "❌ [Actions] Build and Test failed on main #142"
+		bodyText = fmt.Sprintf("❌ <b>工作流构建失败</b>\n────────────────\n" +
+			"<b>仓库:</b> org/web\n<b>分支:</b> main\n<b>Run ID:</b> #142\n<b>发生时刻:</b> %s\n" +
+			"────────────────\n" +
+			"🤖 故障诊断\n" +
+			"测试套件在 <code>pkg/auth/jwt_test.go:88</code> 断言失败：Token 过期校验逻辑产生漂移。建议排查时钟同步与租约时间。", ts)
+		htmlURL = "https://github.com/org/web/actions/runs/142"
+	case "periodic_digest":
+		title = fmt.Sprintf("📊 每日摘要 %s", now.Format("2006-01-02"))
+		bodyText = fmt.Sprintf("📊 <b>每日运维摘要</b>\n────────────────\n" +
+			"过去 24 小时监控活动汇总：\n" +
+			"• 新建 Issue: 3 条\n• 合并 PR: 5 个\n• 工作流执行: 18 次（1 次失败）\n" +
+			"────────────────\n" +
+			"🤖 运维总结\n项目整体运行平稳，核心 PR #89 已并入主干，建议跟进已关闭的 2 个高优先级 Bug。\n生成于 %s", ts)
+		htmlURL = "https://github.com/org/api"
+	default:
+		title = "🔔 测试通知"
+		bodyText = fmt.Sprintf("🔔 <b>测试通知</b>\n────────────────\n" +
+			"来自 RepoSentinel 的测试消息，发送于 %s。\n" +
+			"如果您收到了这条消息，说明通知渠道配置正确！", ts)
+		htmlURL = ""
+	}
+	return title, bodyText, htmlURL
+}
+
 func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
 	channelType := strings.TrimSpace(chi.URLParam(r, "type"))
 	if !validChannelType(channelType) {
@@ -228,27 +308,37 @@ func (s *server) handleTestChannel(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
-	// 幂等键必须唯一：idempotency_key 有 NOT NULL + UNIQUE 约束，
-	// 留空会让第二次测试通知撞唯一索引返回 409。
+
+	var reqBody struct {
+		Scenario string `json:"scenario"`
+	}
+	if r.Body != nil && r.ContentLength > 0 {
+		_ = json.NewDecoder(r.Body).Decode(&reqBody)
+	}
+
 	now := time.Now().UTC()
+	title, bodyText, htmlURL := buildTestScenario(reqBody.Scenario, now)
+
 	_, err = s.dependencies.Store.Outbox().Create(r.Context(), store.NotificationOutbox{
-		ID: ulid.Make().String(), ChannelID: ch.ID,
+		ID:             ulid.Make().String(),
+		ChannelID:      ch.ID,
 		IdempotencyKey: "test|" + ulid.Make().String(),
-		Status:         store.OutboxPending, NextAttemptAt: now,
-		Title: "🔔 测试通知",
-		// 正文带发送时刻（UTC，与规则通知时间格式一致）：多条测试通知时
-		// 用户能确认收到的是哪一条，而不是内容完全相同的重复消息。
-		BodyText: fmt.Sprintf(
-			"🔔 <b>测试通知</b>\n────────────────\n来自 RepoSentinel 的测试消息，发送于 %s。\n如果您收到了这条消息，说明通知渠道配置正确！",
-			now.Format("2006-01-02 15:04 UTC"),
-		),
-		ParseMode: "HTML",
+		Status:         store.OutboxPending,
+		NextAttemptAt:  now,
+		Title:          title,
+		BodyText:       bodyText,
+		HTMLURL:        htmlURL,
+		ParseMode:      "HTML",
 	})
 	if err != nil {
 		s.writeMappedError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "queued", "channel_type": channelType})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":       "queued",
+		"channel_type": channelType,
+		"scenario":     reqBody.Scenario,
+	})
 }
 
 func (s *server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {

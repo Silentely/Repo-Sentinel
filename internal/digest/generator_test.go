@@ -988,3 +988,94 @@ func TestBuildReportBody_EscapesRepoPrefixAndTitle(t *testing.T) {
 		t.Fatalf("title 必须完成 HTML 转义，got: %s", body)
 	}
 }
+
+func TestPeriodicReportGranularSubscriptions(t *testing.T) {
+	ctx := t.Context()
+	data := openDigestStore(t)
+
+	// Channel 1: Daily only
+	ch1, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:                  ulid.Make().String(),
+		ChannelType:         store.ChannelTelegram,
+		Name:                "daily-only",
+		Enabled:             true,
+		Target:              "1",
+		DigestEnabled:       true,
+		ReceiveDailyDigest:  true,
+		ReceiveWeeklyReport: false,
+		ReceiveMonthlyReport: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Channel 2: Weekly only
+	ch2, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:                  ulid.Make().String(),
+		ChannelType:         store.ChannelTelegram,
+		Name:                "weekly-only",
+		Enabled:             true,
+		Target:              "2",
+		DigestEnabled:       true,
+		ReceiveDailyDigest:  false,
+		ReceiveWeeklyReport: true,
+		ReceiveMonthlyReport: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 8, 3, 9, 15, 0, 0, time.UTC) // Monday
+	if _, err := data.Events().Create(ctx, store.Event{
+		ID:                ulid.Make().String(),
+		Source:            "github",
+		Kind:              store.WorkItemKindIssue,
+		Action:            "opened",
+		Title:             "Issue 1",
+		OccurredAt:        now.Add(-2 * time.Hour),
+		DedupeFingerprint: "fp-1",
+		CreatedAt:         now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	g := &Generator{Store: data}
+	// Run daily digest
+	if err := g.RunOnce(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+
+	outbox, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outbox) != 1 || outbox[0].ChannelID != ch1.ID {
+		t.Fatalf("expected 1 daily outbox for ch1, got %d items", len(outbox))
+	}
+
+	// Enable weekly in settings
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{Key: settingWeeklyEnabled, ValueJSON: json.RawMessage("true")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.RunWeekly(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+
+	outbox, _, err = data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Total 2 outbox entries: 1 daily (ch1), 1 weekly (ch2)
+	if len(outbox) != 2 {
+		t.Fatalf("expected 2 outbox items total, got %d", len(outbox))
+	}
+	foundWeeklyCh2 := false
+	for _, item := range outbox {
+		if item.ChannelID == ch2.ID && strings.Contains(item.Title, "每周报告") {
+			foundWeeklyCh2 = true
+		}
+	}
+	if !foundWeeklyCh2 {
+		t.Fatalf("expected weekly outbox for ch2")
+	}
+}
