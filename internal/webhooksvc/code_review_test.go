@@ -266,6 +266,115 @@ func TestServiceTriggerWorkItemReviewAndHighRiskAlert(t *testing.T) {
 	}
 }
 
+func TestServiceTriggerWorkItemReviewQuietHoursDefersAlert(t *testing.T) {
+	data := openServiceStore(t)
+	seedActiveDemoRepo(t, data)
+	ctx := t.Context()
+
+	// 免打扰时段取「当前时刻 ±1 小时」：无论是否跨午夜都必然覆盖当前时间。
+	now := time.Now().UTC()
+	start := now.Add(-time.Hour).Format("15:04")
+	end := now.Add(time.Hour).Format("15:04")
+	if _, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID: "ch-qh-pr", ChannelType: store.ChannelHTTPWebhook, Name: "qh-hook",
+		Target: "https://example.com/webhook", Enabled: true,
+		EventKinds:        []string{store.WorkItemKindPR},
+		DigestEnabled:     true,
+		QuietHoursEnabled: true, QuietHoursStart: start, QuietHoursEnd: end, QuietHoursTZ: "UTC",
+	}); err != nil {
+		t.Fatalf("upsert channel failed: %v", err)
+	}
+
+	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/42") &&
+			strings.HasPrefix(r.Header.Get("Accept"), "application/vnd.github.v3.diff"):
+			w.Header().Set("Content-Type", "application/vnd.github.v3.diff")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("diff --git a/vuln.go b/vuln.go\n+eval(userInput)\n"))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/42"):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"head":{"sha":"cafebabe1234"}}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/chat/completions"):
+			w.Header().Set("Content-Type", "application/json")
+			res := map[string]any{
+				"choices": []map[string]any{
+					{
+						"message": map[string]any{
+							"content": `{"summary":"存在高危漏洞","score":45,"security_risks":["代码注入危险"],"breaking_risks":[],"code_smells":[]}`,
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(res)
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer fakeServer.Close()
+
+	aiClient := &ai.Client{
+		Enabled:           true,
+		BaseURL:           fakeServer.URL,
+		Model:             "mock-model",
+		APIKey:            "mock-key",
+		CodeReviewEnabled: true,
+	}
+	ghClient := githubx.NewAppClient(1234, "")
+	ghClient.BaseURL = fakeServer.URL
+
+	svc := &webhooksvc.Service{
+		Store:      data,
+		AI:         aiClient,
+		GitHub:     ghClient,
+		Background: ctx,
+	}
+
+	wi, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID:              "wi-qh-42",
+		RepositoryID:    "repo-demo",
+		Kind:            store.WorkItemKindPR,
+		Number:          42,
+		Title:           "feat: dangerous eval",
+		Author:          "hacker",
+		State:           "open",
+		SourceUpdatedAt: now,
+	}, nil)
+	if err != nil {
+		t.Fatalf("upsert work item failed: %v", err)
+	}
+
+	if _, err := svc.TriggerWorkItemReview(ctx, wi.ID); err != nil {
+		t.Fatalf("TriggerWorkItemReview failed: %v", err)
+	}
+
+	// 审查结论通知与规则通知一致：静默时段内应延迟到恢复时刻投递。
+	var alert *store.NotificationOutbox
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		items, _, err := data.Outbox().List(ctx, store.ListFilter{})
+		if err != nil {
+			t.Fatalf("list outbox failed: %v", err)
+		}
+		if len(items) > 0 {
+			alert = &items[0]
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if alert == nil {
+		t.Fatal("expected review alert in outbox")
+	}
+	if !strings.Contains(alert.Title, "代码审查") {
+		t.Fatalf("unexpected alert title: %s", alert.Title)
+	}
+	if !alert.NextAttemptAt.After(now.Add(30 * time.Minute)) {
+		t.Fatalf("静默时段内的审查通知应延迟投递，NextAttemptAt=%v（当前时刻 %v）", alert.NextAttemptAt, now)
+	}
+}
+
 func TestServiceTriggerWorkItemReviewEdgeCases(t *testing.T) {
 	data := openServiceStore(t)
 	seedActiveDemoRepo(t, data)

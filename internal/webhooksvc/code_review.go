@@ -13,6 +13,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/botutil"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
+	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
@@ -641,13 +642,19 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		if !ch.Enabled || !ch.AcceptsKind(store.WorkItemKindPR) {
 			continue
 		}
+		// 审查结论属于常规事件，同样受渠道免打扰时段约束：静默期内延迟到恢复时刻投递，
+		// 避免"静默时段只对规则通知生效、AI 审查照常打扰"的行为不一致。
+		nextAttempt := now
+		if action, resumeAt := rules.DecideQuietHours(ch, nil, now); action == rules.ActionDeferQuietHours {
+			nextAttempt = resumeAt
+		}
 		idem := ch.ID + ":ai_review:" + item.ID + ":" + shaKey
 		if _, err := s.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID:             ulid.Make().String(),
 			ChannelID:      ch.ID,
 			IdempotencyKey: idem,
 			Status:         store.OutboxPending,
-			NextAttemptAt:  now,
+			NextAttemptAt:  nextAttempt,
 			Title:          title,
 			BodyText:       body,
 			HTMLURL:        htmlURL,
