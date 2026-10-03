@@ -1,7 +1,6 @@
 package githubx
 
 import (
-	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
@@ -252,15 +251,10 @@ func (c *AppClient) fetchInstallationToken(ctx context.Context, installationID i
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode == http.StatusTooManyRequests {
-		// 429：次限流，按 Retry-After 响应头给出等待时长。
-		return "", time.Time{}, &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
+	if ok, rle := parseRateLimitError(resp, body); ok {
+		return "", time.Time{}, rle
 	}
 	if resp.StatusCode == http.StatusForbidden {
-		// 403 需区分限流与权限/配置错误：主限流响应携带 X-RateLimit-Remaining: 0。
-		if resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")) {
-			return "", time.Time{}, &RateLimitError{RetryAfter: resetDelta(resp.Header.Get("X-RateLimit-Reset"))}
-		}
 		return "", time.Time{}, fmt.Errorf("installation_token_http_%d", resp.StatusCode)
 	}
 	if resp.StatusCode >= 300 {
@@ -376,16 +370,8 @@ func (c *AppClient) doJSONReq(ctx context.Context, method, path, token, ifNoneMa
 	if resp.StatusCode == http.StatusNotModified {
 		return rateRemaining, link, etag, errNotModified
 	}
-	if resp.StatusCode == http.StatusTooManyRequests {
-		// 429：次限流，按 Retry-After 响应头给出等待时长。
-		return rateRemaining, link, etag, &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
-	}
-	if resp.StatusCode == http.StatusForbidden {
-		// 403 需区分限流与权限/功能未开启：主限流响应携带 X-RateLimit-Remaining: 0。
-		if resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")) {
-			return rateRemaining, link, etag, &RateLimitError{RetryAfter: resetDelta(resp.Header.Get("X-RateLimit-Reset"))}
-		}
-		return rateRemaining, link, etag, statusError(resp.StatusCode, body)
+	if ok, rle := parseRateLimitError(resp, body); ok {
+		return rateRemaining, link, etag, rle
 	}
 	if resp.StatusCode >= 300 {
 		return rateRemaining, link, etag, statusError(resp.StatusCode, body)

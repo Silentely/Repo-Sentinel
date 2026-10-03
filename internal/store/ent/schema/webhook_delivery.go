@@ -31,7 +31,8 @@ func (WebhookDelivery) Fields() []ent.Field {
 func (WebhookDelivery) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("delivery_id").Unique(),
-		index.Fields("status"),
+		index.Fields("status", "received_at", "id"),
+		index.Fields("event_type", "received_at", "id"),
 		index.Fields("received_at"),
 	}
 }

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"golang.org/x/sync/singleflight"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/botutil"
@@ -34,6 +36,8 @@ type Reconciler struct {
 
 	// reconcileAllBusy 全量对账互斥（跨调度器与 HTTP 触发共享）：防重入。
 	reconcileAllBusy atomic.Bool
+	// repoSingleFlight 单仓对账并发互斥：防止调度器、HTTP 手动触发、MCP 并发对账同一仓库产生竞态与 API 放大。
+	repoSingleFlight singleflight.Group
 }
 
 // maxPages 返回单仓单资源翻页预算：未显式配置时取 3。
@@ -47,6 +51,13 @@ func (r *Reconciler) maxPages() int {
 
 // ReconcileRepository 对单仓执行增量或基线同步。
 func (r *Reconciler) ReconcileRepository(ctx context.Context, repo store.Repository) error {
+	_, err, _ := r.repoSingleFlight.Do(repo.ID, func() (any, error) {
+		return nil, r.reconcileRepositoryInternal(ctx, repo)
+	})
+	return err
+}
+
+func (r *Reconciler) reconcileRepositoryInternal(ctx context.Context, repo store.Repository) error {
 	if repo.Type != store.RepositoryTypeInstallation {
 		return nil
 	}

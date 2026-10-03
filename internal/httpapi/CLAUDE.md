@@ -1,16 +1,11 @@
-# httpapi
-
-[根目录](../../CLAUDE.md) > [internal](../CLAUDE.md) > **httpapi**
-
-## 模块职责
-
-HTTP 管理面：Chi 路由、认证/CSRF 中间件、JSON 错误约定、Prometheus metrics、SPA 回退、管理 REST API，以及面向 AI Agent 的发现端点（sitemap/robots/Content-Signals、RFC 8288 Link 头、RFC 9727 API 目录、OpenAPI、OAuth 2.0 client-credentials、RFC 9728 受保护资源、auth.md、MCP Streamable HTTP、Agent Skills 索引、Markdown 协商）。Webhook 业务编排委托 `webhooksvc`。
-
-## 入口与启动
-
-- `httpapi.New(Dependencies) http.Handler` — 由 `app.Build` 调用
-- Cookie 名：`reposentinel_session` / `reposentinel_csrf`；写请求头 `X-CSRF-Token`
-- Agent 访问令牌：`Authorization: Bearer <JWT>`（OAuth client_credentials 签发）
+全流程：
+```
+requestID -> realIP -> accessLog -> recovery -> securityHeaders -> agentLinkHeaders
+  -> [公开/Agent端点直接匹配]
+  -> [受保护路由] -> authMiddleware -> storeGuardMiddleware -> [业务handler]
+  -> [写操作路由] -> csrfMiddleware -> [业务handler]
+  -> [未匹配] -> spaHandler
+```
 
 全局中间件顺序：requestID → realIP → accessLog → recovery → securityHeaders → agentLinkHeaders。
 SPA 兜底外层包 Markdown 协商中间件（`Accept: text/markdown` 返回站点 markdown 说明）。
@@ -49,6 +44,7 @@ SPA 兜底外层包 Markdown 协商中间件（`Accept: text/markdown` 返回站
 | POST | `/mcp` | MCP Streamable HTTP 网关（JSON-RPC 2.0） |
 | GET | `/api/v1/auth/session` | 当前会话（仅 Session） |
 | GET | `/api/v1/system/version` | 版本信息 |
+| GET | `/api/v1/system/health` | 系统健康与运维诊断（DB连接、Uptime、内存与协程） |
 | GET | `/api/v1/dashboard` | KPI |
 | GET | `/api/v1/repositories` | 仓库列表 |
 | GET | `/api/v1/work-items` | Issue/PR |
@@ -88,25 +84,3 @@ A: HTTP 层验签入库后，规范化/通知在 Background 上异步执行（`w
 
 **Q: 全量对账会并发吗？**  
 A: `reconcileAllRunning` atomic 防重入。
-
-## 相关文件清单
-
-- `server.go` — 路由注册
-- `agent_discovery.go` — sitemap/robots/auth.md/OpenAPI/well-known/MCP Card/Skills 索引与 Markdown 协商
-- `oauth.go` — OAuth 2.0 client-credentials 令牌端点、JWKS、Bearer 校验
-- `mcp.go` — MCP Streamable HTTP 网关（JSON-RPC 2.0 + 只读工具）
-- `*_handlers.go` — 各域 handler
-- `middleware.go`、`security_headers.go`、`spa.go`、`json.go`、`errors.go`、`metrics.go`
-
-## 变更记录 (Changelog)
-
-| 日期 | 版本 / 范围 | 说明 |
-|------|------------|------|
-| 2026-09-28 | 安全加固 | 优化外部公开仓添加查重防降级；第二因子采用独立限流器；收拢 Agent OAuth 作用域与 MCP 写权限 |
-| 2026-09-25 | 性能与审计 | 优化请求参数解析与时间序列化性能；补齐渠道配置与仓库激活的审计留痕 |
-| 2026-09-23 | 健壮性优化 | 统一审计日志写入；修正 Actions 洞察采样窗口；修复 2FA 开启端点会话未校验先落库问题 |
-| 2026-09-16 | 功能扩展 | 新增 PR 审查端点与 MCP 运维写工具 |
-| 2026-08-06 | 协议扩展 | 新增 Agent 发现端点、OAuth 客户端凭据鉴权与 MCP 流式网关 |
-| 2026-08-05 | 模块初始化 | 初始化模块 AI 上下文文档 |
-
-> 完整历史变更请查阅根目录 [`CHANGELOG.md`](../../CHANGELOG.md)。

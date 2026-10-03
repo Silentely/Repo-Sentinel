@@ -513,9 +513,14 @@ var (
 				Columns: []*schema.Column{WebhookDeliveriesColumns[1]},
 			},
 			{
-				Name:    "webhookdelivery_status",
+				Name:    "webhookdelivery_status_received_at_id",
 				Unique:  false,
-				Columns: []*schema.Column{WebhookDeliveriesColumns[5]},
+				Columns: []*schema.Column{WebhookDeliveriesColumns[5], WebhookDeliveriesColumns[8], WebhookDeliveriesColumns[0]},
+			},
+			{
+				Name:    "webhookdelivery_event_type_received_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{WebhookDeliveriesColumns[2], WebhookDeliveriesColumns[8], WebhookDeliveriesColumns[0]},
 			},
 			{
 				Name:    "webhookdelivery_received_at",

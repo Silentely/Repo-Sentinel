@@ -185,7 +185,7 @@ func sqliteDSN(rawURL string) string {
 	return rawURL + separator + strings.Join([]string{
 		"_pragma=foreign_keys(1)",
 		"_pragma=journal_mode(WAL)",
-		"_pragma=busy_timeout(5000)",
+		"_pragma=busy_timeout(10000)",
 		"_pragma=synchronous(NORMAL)",
 		"_pragma=auto_vacuum(INCREMENTAL)",
 	}, "&")

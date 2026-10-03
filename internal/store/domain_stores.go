@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -543,6 +544,11 @@ func (s *webhookDeliveryStore) DeleteOlderThan(ctx context.Context, cutoff time.
 	total := 0
 	cutoffUTC := cutoff.UTC()
 	for {
+		select {
+		case <-ctx.Done():
+			return total, ctx.Err()
+		default:
+		}
 		ids, err := s.client.WebhookDelivery.Query().
 			Where(webhookdelivery.ReceivedAtLT(cutoffUTC)).
 			Limit(retentionBatchSize).
@@ -564,6 +570,7 @@ func (s *webhookDeliveryStore) DeleteOlderThan(ctx context.Context, cutoff time.
 		if len(ids) < retentionBatchSize {
 			break
 		}
+		runtime.Gosched()
 	}
 	return total, nil
 }
@@ -1444,6 +1451,11 @@ func (s *eventStore) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int
 	total := 0
 	cutoffUTC := cutoff.UTC()
 	for {
+		select {
+		case <-ctx.Done():
+			return total, ctx.Err()
+		default:
+		}
 		ids, err := s.client.Event.Query().
 			Where(event.CreatedAtLT(cutoffUTC)).
 			Limit(retentionBatchSize).
@@ -1465,6 +1477,7 @@ func (s *eventStore) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int
 		if len(ids) < retentionBatchSize {
 			break
 		}
+		runtime.Gosched()
 	}
 	return total, nil
 }
@@ -1958,6 +1971,11 @@ func (s *outboxStore) DeleteTerminalOlderThan(ctx context.Context, cutoff time.T
 	total := 0
 	cutoffUTC := cutoff.UTC()
 	for {
+		select {
+		case <-ctx.Done():
+			return total, ctx.Err()
+		default:
+		}
 		ids, err := s.client.NotificationOutbox.Query().
 			Where(
 				notificationoutbox.StatusIn(OutboxSent, OutboxDead, OutboxCancelled),
@@ -1982,6 +2000,7 @@ func (s *outboxStore) DeleteTerminalOlderThan(ctx context.Context, cutoff time.T
 		if len(ids) < retentionBatchSize {
 			break
 		}
+		runtime.Gosched()
 	}
 	return total, nil
 }

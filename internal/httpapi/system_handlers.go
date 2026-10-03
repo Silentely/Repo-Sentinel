@@ -3,8 +3,10 @@ package httpapi
 import (
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
@@ -141,4 +143,48 @@ func (s *server) localVersion() versionResponse {
 		HTTPAddr:           s.dependencies.Config.HTTP.Addr,
 		GitHub:             ghStatus,
 	}
+}
+
+type systemHealthResponse struct {
+	DatabaseOK     bool   `json:"database_ok"`
+	DatabaseDriver string `json:"database_driver"`
+	Goroutines     int    `json:"goroutines"`
+	MemoryAllocMB  uint64 `json:"memory_alloc_mb"`
+	MemorySysMB    uint64 `json:"memory_sys_mb"`
+	UptimeSeconds  int64  `json:"uptime_seconds"`
+}
+
+func (s *server) handleSystemHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	dbOK := true
+	if s.dependencies.Store != nil {
+		if err := s.dependencies.Store.PingQuick(r.Context()); err != nil {
+			dbOK = false
+		}
+	} else {
+		dbOK = false
+	}
+
+	var uptime int64
+	if !s.startedAt.IsZero() {
+		uptime = int64(time.Since(s.startedAt).Seconds())
+	}
+
+	res := systemHealthResponse{
+		DatabaseOK:     dbOK,
+		DatabaseDriver: s.dependencies.Config.Database.Driver,
+		Goroutines:     runtime.NumGoroutine(),
+		MemoryAllocMB:  mem.Alloc / (1024 * 1024),
+		MemorySysMB:    mem.Sys / (1024 * 1024),
+		UptimeSeconds:  uptime,
+	}
+
+	status := http.StatusOK
+	if !dbOK {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, res)
 }

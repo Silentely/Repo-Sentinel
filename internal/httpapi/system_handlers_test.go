@@ -182,3 +182,33 @@ func (c *mutableReadyChecker) Set(err error) {
 	defer c.mu.Unlock()
 	c.err = err
 }
+
+func TestSystemHealthRequiresAuthAndReturnsStats(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+
+	unauthorized := fixture.request(t, http.MethodGet, "/api/v1/system/health", "", "127.0.0.1:43191", nil, nil)
+	assertAPIError(t, unauthorized, http.StatusUnauthorized, "unauthorized")
+
+	cookies := fixture.login(t, httpTestPassword)
+	response := fixture.request(t, http.MethodGet, "/api/v1/system/health", "", "127.0.0.1:43192", cookies, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("health status=%d body=%s", response.Code, response.Body.String())
+	}
+	var res systemHealthResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if !res.DatabaseOK {
+		t.Fatalf("expected DatabaseOK=true, got false")
+	}
+	if res.DatabaseDriver != "sqlite" {
+		t.Fatalf("expected driver sqlite, got %s", res.DatabaseDriver)
+	}
+	if res.Goroutines <= 0 {
+		t.Fatalf("expected goroutines > 0, got %d", res.Goroutines)
+	}
+	if res.UptimeSeconds < 0 {
+		t.Fatalf("expected uptime >= 0, got %d", res.UptimeSeconds)
+	}
+}

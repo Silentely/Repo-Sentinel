@@ -30,7 +30,7 @@ func TestSQLite打开强制连接池与Pragma(t *testing.T) {
 		want   int
 	}{
 		{pragma: "foreign_keys", want: 1},
-		{pragma: "busy_timeout", want: 5000},
+		{pragma: "busy_timeout", want: 10000},
 		{pragma: "synchronous", want: 1},
 	}
 	for _, check := range checks {

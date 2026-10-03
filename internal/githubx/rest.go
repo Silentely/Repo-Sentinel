@@ -506,10 +506,8 @@ func (c *AppClient) GetPRDiff(ctx context.Context, token, owner, repo string, pr
 	if readErr != nil {
 		return "", readErr
 	}
-	if resp.StatusCode == http.StatusTooManyRequests ||
-		(resp.StatusCode == http.StatusForbidden &&
-			(resp.Header.Get("X-RateLimit-Remaining") == "0" || bytes.Contains(body, []byte("rate limit")))) {
-		return "", &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}
+	if ok, rle := parseRateLimitError(resp, body); ok {
+		return "", rle
 	}
 	if resp.StatusCode >= 300 {
 		return "", statusError(resp.StatusCode, body)

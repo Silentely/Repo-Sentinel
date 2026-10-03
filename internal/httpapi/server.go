@@ -109,6 +109,7 @@ type server struct {
 	totpTickets     *auth.TOTPTicketManager
 	sseHub          *SSEHub
 	chatOpsExecutor ChatOpsActionExecutor
+	startedAt       time.Time
 }
 
 // safeGo 以后台 goroutine 执行 fn；panic 只记录日志，不拖垮整个进程。
@@ -239,6 +240,7 @@ func New(dependencies Dependencies) http.Handler {
 		webhookSvc:      webhookService,
 		sseHub:          sseHub,
 		chatOpsExecutor: dependencies.ChatOpsExecutor,
+		startedAt:       time.Now(),
 	}
 	if s.chatOpsExecutor == nil && dependencies.GitHubRuntime != nil {
 		s.chatOpsExecutor = &GitHubChatOpsExecutor{Store: dependencies.Store, Client: dependencies.GitHubRuntime.Client}
@@ -296,6 +298,7 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/auth/session", s.handleSession)
 			protected.Get("/events/stream", s.handleEventStream)
 			protected.Get("/system/version", s.handleVersion)
+			protected.Get("/system/health", s.handleSystemHealth)
 			protected.Get("/dashboard", s.handleDashboard)
 			protected.Get("/stats/star-trend", s.handleStarTrend)
 			protected.Get("/repositories", s.handleListRepositories)
