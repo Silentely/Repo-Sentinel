@@ -792,10 +792,32 @@ a.primary-button {
   margin-bottom: 30px;
 }
 
+.page-intro__status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.page-intro__status .eyebrow {
+  margin-bottom: 0;
+}
+
 .page-intro h1 {
   margin: 4px 0 8px;
   font-size: clamp(1.7rem, 3vw, 2.35rem);
   letter-spacing: -0.04em;
+}
+
+.page-intro h1::after {
+  display: block;
+  width: 3.5rem;
+  height: 4px;
+  margin-top: 14px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 2px 2px 0 var(--shadow-neo);
+  content: "";
 }
 
 .page-intro p:last-child {
@@ -811,6 +833,10 @@ a.primary-button {
   border-radius: 18px;
   background: var(--bg-surface);
   box-shadow: 5px 5px 0 var(--shadow-neo);
+}
+
+.status-card {
+  background: color-mix(in oklch, var(--bg-surface) 90%, var(--bg-panel-warm));
 }
 
 .status-grid {
@@ -836,6 +862,11 @@ a.primary-button {
   background: var(--bg-surface);
   box-shadow: 3px 3px 0 var(--shadow-neo);
   transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.status-grid--secondary .status-item {
+  border-style: dashed;
+  background: color-mix(in oklch, var(--bg-surface) 72%, var(--bg-muted));
 }
 
 a.status-item--link {
@@ -891,9 +922,13 @@ a.status-item--link:focus-visible {
   list-style: none;
   margin: 0.75rem 0 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.setup-progress__item:last-child {
+  grid-column: 1 / -1;
 }
 
 .setup-progress__item {
@@ -1036,6 +1071,10 @@ a.status-item--link:focus-visible {
   margin: 0 0 18px;
   color: var(--text-secondary);
   font-size: 0.86rem;
+}
+
+.setup-progress {
+  border-left: 6px solid var(--accent);
 }
 
 .onboarding-card + .onboarding-card {
@@ -1641,6 +1680,22 @@ a.status-item--link:focus-visible {
 
   .page-intro {
     display: block;
+  }
+
+  .page-intro__status {
+    flex-wrap: wrap;
+  }
+
+  .page-intro h1::after {
+    margin-top: 10px;
+  }
+
+  .setup-progress__list {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-progress__item:last-child {
+    grid-column: auto;
   }
 
   /* 统计卡 320px 宽自动降为单列，更大屏幕保持两列网格 */

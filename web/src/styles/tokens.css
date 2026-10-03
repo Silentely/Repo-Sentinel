@@ -54,8 +54,8 @@
   --bg-canvas: #131211;
   --bg-surface: #1e1c19;
   --bg-muted: #282520;
-  --bg-panel-warm: #2c2515;
-  --bg-panel-warm-light: #231f13;
+  --bg-panel-warm: #12383b;
+  --bg-panel-warm-light: #172b2d;
 
   /* 终端边框与深黑硬阴影 */
   --ink: #f2ede4;
@@ -68,9 +68,9 @@
   --text-secondary: #c4bcab;
   --text-muted: #8f8573;
 
-  --accent: #ff6838;
-  --accent-hover: #ff855f;
-  --accent-fg: #131211;
+  --accent: #22d3ee;
+  --accent-hover: #67e8f9;
+  --accent-fg: #06252a;
 
   --success: #4ade80;
   --success-bg: #143820;

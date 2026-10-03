@@ -259,8 +259,8 @@ export function DashboardPage() {
     <>
       <section className="page-intro">
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-            <p className="eyebrow" style={{ margin: 0 }}>值守概览</p>
+          <div className="page-intro__status">
+            <p className="eyebrow">值守概览</p>
             <FreshnessBadge freshness={stats?.freshness} />
           </div>
           <h1>现在是否健康，今天发生了什么。</h1>
@@ -536,4 +536,3 @@ function Metric({ label, value, to, loading }: { label: string; value?: number; 
   }
   return <div className="status-item">{inner}</div>;
 }
-
