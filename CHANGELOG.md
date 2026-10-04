@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Dependencies
+
+- Updated modernc.org/sqlite from 1.59.0 to 1.60.1
+
 ## [0.6.1] - 2026-09-23
 
 ### Changed
