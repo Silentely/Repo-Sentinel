@@ -290,26 +290,15 @@ func TestWebhook拒绝日志携带Delivery上下文(t *testing.T) {
 	}
 }
 
-func TestWebhook合法签名接受投递并入库accepted(t *testing.T) {
+func TestWebhook缺少后台调度时返回503并保留accepted(t *testing.T) {
 	fixture := newWebhookTestFixture(t, webhookTestOptions{runtimeSecret: webhookTestSecret})
 	body := issueOpenedPayload(t, 1, time.Now().UTC())
 
 	resp := fixture.postWebhook(t, body, signedHeaders(webhookTestSecret, "delivery-accept-1", "issues", body))
-	if resp.Code != http.StatusAccepted {
-		t.Fatalf("状态码=%d，期望 202；响应=%s", resp.Code, resp.Body.String())
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("状态码=%d，期望 503；响应=%s", resp.Code, resp.Body.String())
 	}
-	var ack struct {
-		Status     string `json:"status"`
-		DeliveryID string `json:"delivery_id"`
-	}
-	if err := json.Unmarshal(resp.Body.Bytes(), &ack); err != nil {
-		t.Fatalf("响应不是合法 JSON: %v", err)
-	}
-	if ack.Status != "accepted" || ack.DeliveryID != "delivery-accept-1" {
-		t.Fatalf("响应=(%q, %q)，期望 accepted/delivery-accept-1", ack.Status, ack.DeliveryID)
-	}
-
-	// Background 为 nil 时异步处理直接返回，行稳定停留在 accepted，可同步断言。
+	// 没有后台调度能力时拒绝确认，但保留 accepted 行供 GitHub 重试或恢复 worker 接管。
 	got, err := fixture.store.WebhookDeliveries().GetByDeliveryID(context.Background(), "delivery-accept-1")
 	if err != nil {
 		t.Fatalf("查询 delivery 失败: %v", err)
@@ -325,8 +314,8 @@ func TestWebhook合法签名接受投递并入库accepted(t *testing.T) {
 	fixtureCfg := newWebhookTestFixture(t, webhookTestOptions{configSecret: webhookTestSecret})
 	bodyCfg := issueOpenedPayload(t, 2, time.Now().UTC())
 	respCfg := fixtureCfg.postWebhook(t, bodyCfg, signedHeaders(webhookTestSecret, "delivery-accept-2", "issues", bodyCfg))
-	if respCfg.Code != http.StatusAccepted {
-		t.Fatalf("Config 分支状态码=%d，期望 202；响应=%s", respCfg.Code, respCfg.Body.String())
+	if respCfg.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Config 分支状态码=%d，期望 503；响应=%s", respCfg.Code, respCfg.Body.String())
 	}
 	gotCfg, err := fixtureCfg.store.WebhookDeliveries().GetByDeliveryID(context.Background(), "delivery-accept-2")
 	if err != nil || gotCfg.Status != store.DeliveryAccepted {
@@ -340,22 +329,12 @@ func TestWebhook重复投递去重仅保留一行(t *testing.T) {
 	headers := signedHeaders(webhookTestSecret, "delivery-dup", "issues", body)
 
 	first := fixture.postWebhook(t, body, headers)
-	if first.Code != http.StatusAccepted {
-		t.Fatalf("首次投递状态码=%d，期望 202；响应=%s", first.Code, first.Body.String())
+	if first.Code != http.StatusServiceUnavailable {
+		t.Fatalf("首次投递状态码=%d，期望 503；响应=%s", first.Code, first.Body.String())
 	}
 	second := fixture.postWebhook(t, body, headers)
-	if second.Code != http.StatusAccepted {
-		t.Fatalf("重复投递状态码=%d，期望 202；响应=%s", second.Code, second.Body.String())
-	}
-	var ack struct {
-		Status     string `json:"status"`
-		DeliveryID string `json:"delivery_id"`
-	}
-	if err := json.Unmarshal(second.Body.Bytes(), &ack); err != nil {
-		t.Fatalf("响应不是合法 JSON: %v", err)
-	}
-	if ack.Status != "duplicate" || ack.DeliveryID != "delivery-dup" {
-		t.Fatalf("重复投递响应=(%q, %q)，期望 duplicate/delivery-dup", ack.Status, ack.DeliveryID)
+	if second.Code != http.StatusServiceUnavailable {
+		t.Fatalf("重复投递状态码=%d，期望 503；响应=%s", second.Code, second.Body.String())
 	}
 
 	// GetByDeliveryID 走 ent Only：恰好一行才会成功返回，多行会报错。

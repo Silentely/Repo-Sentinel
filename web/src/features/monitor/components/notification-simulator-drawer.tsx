@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { CheckCircle2, ChevronRight, Play, Sparkles, X, XCircle, AlertCircle } from "lucide-react";
+import { CheckCircle2, Play, Sparkles, X, XCircle, AlertCircle } from "lucide-react";
 
 import { useModalLayer } from "../../../lib/use-modal-layer";
-import { dryRunRules, type DryRunParams, type DryRunResponse } from "../api";
+import { dryRunRules, type DryRunParams } from "../api";
 
 const PRESET_PAYLOADS: Record<string, { action: string; repo: string; branch: string; payload: string }> = {
   pull_request: {
@@ -81,10 +81,11 @@ export function NotificationSimulatorDrawer({
 }) {
   const panelRef = useModalLayer<HTMLElement>({ open, onClose });
   const [eventType, setEventType] = useState("pull_request");
-  const [action, setAction] = useState(PRESET_PAYLOADS.pull_request.action);
-  const [repo, setRepo] = useState(PRESET_PAYLOADS.pull_request.repo);
-  const [branch, setBranch] = useState(PRESET_PAYLOADS.pull_request.branch);
-  const [payloadRaw, setPayloadRaw] = useState(PRESET_PAYLOADS.pull_request.payload);
+  const defaultPreset = PRESET_PAYLOADS.pull_request!;
+  const [action, setAction] = useState(defaultPreset.action);
+  const [repo, setRepo] = useState(defaultPreset.repo);
+  const [branch, setBranch] = useState(defaultPreset.branch);
+  const [payloadRaw, setPayloadRaw] = useState(defaultPreset.payload);
 
   const dryRunMutation = useMutation({
     mutationFn: (params: DryRunParams) => dryRunRules(params),

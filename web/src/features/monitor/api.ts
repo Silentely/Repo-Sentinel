@@ -138,6 +138,9 @@ export interface NotificationChannelRow {
   quiet_hours_start?: string;
   quiet_hours_end?: string;
   quiet_hours_tz?: string;
+  repo_pattern?: string;
+  branch_filter?: string;
+  min_severity?: string;
   updated_at?: string;
 }
 
@@ -275,6 +278,9 @@ export async function upsertChannel(
     quiet_hours_start?: string;
     quiet_hours_end?: string;
     quiet_hours_tz?: string;
+    repo_pattern?: string;
+    branch_filter?: string;
+    min_severity?: string;
   },
 ): Promise<void> {
   await apiRequest(`/api/v1/notifications/channels/${type}`, {

@@ -10,6 +10,7 @@ import (
 	htmlpkg "html"
 	"io"
 	"log/slog"
+	urlpkg "net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -47,9 +48,9 @@ func (e *Engine) checkAndRecordAIBudget(ctx context.Context, estTokens int, estC
 	throttled, err := e.Store.Settings().UpdateAIBudgetUsageAtomic(ctx, todayKey, estTokens, estCostCents, budgetLimit)
 	if err != nil {
 		if e.Logger != nil {
-			e.Logger.Warn("ai budget update failed, failing open", "error", err.Error())
+			e.Logger.Warn("ai budget update failed, failing closed", "error", err.Error())
 		}
-		return false
+		return true
 	}
 	return throttled
 }
@@ -373,6 +374,9 @@ func (e *Engine) releaseAnalysis(ctx context.Context, ev *store.Event, repo stri
 	if !hasSubscribedChannel(channels, ev.Kind) {
 		return skip("no_subscribed_channel")
 	}
+	if e.checkAndRecordAIBudget(ctx, 500, 2) {
+		return skip("ai_budget_throttled")
+	}
 	ctx, reqID := ai.EnsureRequestID(ctx)
 	ctx, cancel := context.WithTimeout(ctx, e.AI.EffectiveTimeout())
 	defer cancel()
@@ -425,6 +429,9 @@ func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, r
 	}
 	if !hasSubscribedChannel(channels, ev.Kind) {
 		return skip("no_subscribed_channel")
+	}
+	if e.checkAndRecordAIBudget(ctx, 500, 2) {
+		return skip("ai_budget_throttled")
 	}
 
 	ctx, reqID := ai.EnsureRequestID(ctx)
@@ -540,6 +547,9 @@ func (e *Engine) issueAnalysis(ctx context.Context, ev *store.Event, repo string
 	}
 	if !hasSubscribedChannel(channels, ev.Kind) {
 		return skip("no_subscribed_channel")
+	}
+	if e.checkAndRecordAIBudget(ctx, 400, 2) {
+		return skip("ai_budget_throttled")
 	}
 
 	parentCtx := ctx
@@ -778,7 +788,7 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		b.WriteString("\n")
 	}
 
-	if link := strings.TrimSpace(ev.HTMLURL); link != "" {
+	if link := safeHTTPURL(ev.HTMLURL); link != "" {
 		b.WriteString("────────────────\n<a href=\"")
 		b.WriteString(htmlpkg.EscapeString(link))
 		b.WriteString("\">")
@@ -787,6 +797,18 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		htmlURL = link
 	}
 	return title, b.String(), htmlURL
+}
+
+func safeHTTPURL(raw string) string {
+	link := strings.TrimSpace(raw)
+	if link == "" {
+		return ""
+	}
+	u, err := urlpkg.Parse(link)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return link
 }
 
 // statusDisplay / workflowConclusionEmoji / actionDisplayName / severityDisplayName /

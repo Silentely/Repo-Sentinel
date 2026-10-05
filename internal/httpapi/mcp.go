@@ -392,7 +392,13 @@ func (s *server) mcpTools() []mcpTool {
 				if err != nil {
 					return nil, err
 				}
-				claimToken, _, _ := s.dependencies.Store.WebhookDeliveries().ClaimWebhookForProcessing(ctx, newRecord.ID, s.getWorkerID(), 3*time.Minute)
+				claimToken, ok, err := s.dependencies.Store.WebhookDeliveries().ClaimWebhookForProcessing(ctx, newRecord.ID, s.getWorkerID(), 3*time.Minute)
+				if err != nil {
+					return nil, err
+				}
+				if !ok {
+					return nil, fmt.Errorf("webhook replay claim unavailable")
+				}
 				s.processWebhookAsync(newRecord.ID, newRecord.EventType, newRecord.DeliveryID, claimToken, newRecord.Payload)
 				return map[string]any{
 					"status":      "replayed",

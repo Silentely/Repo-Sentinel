@@ -832,7 +832,7 @@ func TestServiceAICodeReviewDebounce(t *testing.T) {
 		item, err := data.WorkItems().GetByRepoNumber(ctx, "repo-demo", 50)
 		if err == nil {
 			setting, err := data.Settings().Get(ctx, "ai.pr_review."+item.ID)
-			if err == nil && len(setting.ValueJSON) > 0 {
+			if err == nil && strings.Contains(string(setting.ValueJSON), "commit-sha-2") {
 				reviewSetting = setting
 				found = true
 				break

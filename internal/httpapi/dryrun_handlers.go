@@ -74,6 +74,12 @@ func (s *dryRunRepoStore) Upsert(ctx context.Context, repo store.Repository) (st
 	return repo, nil
 }
 
+func (s *dryRunRepoStore) UpdateSyncStatus(context.Context, string, string) error { return nil }
+func (s *dryRunRepoStore) UpdateSettings(context.Context, string, store.RepositorySettings) error {
+	return nil
+}
+func (s *dryRunRepoStore) DeleteRepository(context.Context, string) error { return nil }
+
 func (w *dryRunStoreWrapper) Repositories() store.RepositoryStore {
 	if w.Store == nil {
 		return &dryRunRepoStore{}
@@ -87,6 +93,24 @@ type dryRunWorkItemStore struct {
 
 func (s *dryRunWorkItemStore) UpsertIfNewer(ctx context.Context, item store.WorkItem, known *store.WorkItem) (store.WorkItem, bool, error) {
 	return item, true, nil
+}
+
+func (s *dryRunWorkItemStore) SetIgnored(context.Context, string, bool) error { return nil }
+func (s *dryRunWorkItemStore) MarkMerged(context.Context, string, int) error  { return nil }
+
+type dryRunInstallationStore struct {
+	store.InstallationStore
+}
+
+func (s *dryRunInstallationStore) Upsert(ctx context.Context, in store.GitHubInstallation) (store.GitHubInstallation, error) {
+	return in, nil
+}
+
+func (w *dryRunStoreWrapper) Installations() store.InstallationStore {
+	if w.Store == nil {
+		return &dryRunInstallationStore{}
+	}
+	return &dryRunInstallationStore{InstallationStore: w.Store.Installations()}
 }
 
 func (w *dryRunStoreWrapper) WorkItems() store.WorkItemStore {
@@ -222,7 +246,18 @@ func (s *server) handleRulesDryRun(w http.ResponseWriter, r *http.Request) {
 	} else if req.Payload != nil {
 		payloadBytes, _ = json.Marshal(req.Payload)
 	} else {
-		payloadBytes = []byte(`{"action":"` + req.Action + `","repository":{"full_name":"` + repoFullName + `"}}`)
+		payload := map[string]any{
+			"action":     req.Action,
+			"repository": map[string]any{"full_name": repoFullName},
+		}
+		if req.Branch != "" {
+			payload["pull_request"] = map[string]any{"head": map[string]any{"ref": req.Branch}}
+			if eventType == "workflow_run" {
+				delete(payload, "pull_request")
+				payload["workflow_run"] = map[string]any{"head_branch": req.Branch}
+			}
+		}
+		payloadBytes, _ = json.Marshal(payload)
 	}
 
 	dryStore := &dryRunStoreWrapper{

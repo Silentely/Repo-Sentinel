@@ -3383,12 +3383,13 @@ RETURNING id`
 			}
 
 			var id string
+			now := time.Now().UTC()
 			err = tx.QueryRowContext(ctx, `SELECT id FROM notification_outbox
-WHERE status IN ('pending', 'sending')
-  AND next_attempt_at <= CURRENT_TIMESTAMP
-  AND (locked_until IS NULL OR locked_until <= CURRENT_TIMESTAMP)
-ORDER BY next_attempt_at ASC, id ASC
-LIMIT 1`).Scan(&id)
+	WHERE status IN ('pending', 'sending')
+	  AND next_attempt_at <= ?
+	  AND (locked_until IS NULL OR locked_until <= ?)
+	ORDER BY next_attempt_at ASC, id ASC
+	LIMIT 1`, now, now).Scan(&id)
 			if err != nil {
 				_ = tx.Rollback()
 				if errors.Is(err, sql.ErrNoRows) {
@@ -3403,7 +3404,7 @@ SET status = 'sending',
     locked_until = datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds'),
     attempt_count = attempt_count + 1,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = ? AND status IN ('pending', 'sending') AND (locked_until IS NULL OR locked_until <= CURRENT_TIMESTAMP)`, claimToken, ttlSecs, id)
+	WHERE id = ? AND status IN ('pending', 'sending') AND (locked_until IS NULL OR locked_until <= ?)`, claimToken, ttlSecs, id, now)
 			if err != nil {
 				_ = tx.Rollback()
 				return nil, "", fmt.Errorf("%w: update claim candidate: %v", errDatabaseOperation, err)

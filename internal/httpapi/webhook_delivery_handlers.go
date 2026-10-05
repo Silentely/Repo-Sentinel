@@ -114,7 +114,15 @@ func (s *server) handleReplayWebhookDelivery(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	claimToken, _, _ := s.dependencies.Store.WebhookDeliveries().ClaimWebhookForProcessing(r.Context(), newRecord.ID, s.getWorkerID(), 3*time.Minute)
+	claimToken, ok, err := s.dependencies.Store.WebhookDeliveries().ClaimWebhookForProcessing(r.Context(), newRecord.ID, s.getWorkerID(), 3*time.Minute)
+	if err != nil || !ok {
+		if err != nil {
+			s.writeMappedError(w, r, err)
+		} else {
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
+		}
+		return
+	}
 	s.processWebhookAsync(newRecord.ID, newRecord.EventType, newRecord.DeliveryID, claimToken, newRecord.Payload)
 
 	writeJSON(w, http.StatusOK, map[string]any{

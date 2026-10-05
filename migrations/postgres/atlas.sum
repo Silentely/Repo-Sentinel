@@ -1,4 +1,4 @@
-h1:eO5oF/b7U/Kcp2/7T4klRjYx//HKqw6Ct3/Gt+Wn190=
+h1:51JX7NK7fsarDUI2DV0gZEQ4SYeouRwax7c8OZjuioo=
 20260727000100_initial.sql h1:flTt/4EIbVVbivWtwkV6G8WDC6zLDOE9jCd2zvrlRBo=
 20260728000100_domain_core.sql h1:MHOJX9iFWZGdoa92CJbhfOydpQcb/HW9BSXS+oPnpKU=
 20260729000100_repo_capability_toggles.sql h1:F00DXUB6k5F9Pi7eQ9wELVPUwCDIEkmw0gUpJp4RmeI=
@@ -21,4 +21,4 @@ h1:eO5oF/b7U/Kcp2/7T4klRjYx//HKqw6Ct3/Gt+Wn190=
 20261005000050_webhook_claim_fields.sql h1:vBQ97URRMj15eW38xcZSORULkyckDWXzMxoOvltFVz0=
 20261005000100_system_leases.sql h1:GbVt1kJW22mgnY8PI3vmpXIofdnkfWCOtzVGM1HHQj4=
 20261005000200_outbox_claim_tokens.sql h1:gdnleneDM9KIxE5yWutPZwQo6A7wDoWoLfLr5xaMZto=
-20261005000300_channel_routing_and_mute.sql h1:tmqXaUHVI2p7BPRV5tRZZKipL/CAZSVv9hUt+2ZqG1Q=
+20261005000300_channel_routing_and_mute.sql h1:MAxIlgUd64dOi4O9uxvyQ7Sl2xhZispcxC1YTC131dM=

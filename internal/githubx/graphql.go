@@ -193,9 +193,10 @@ func (c *AppClient) FetchPullRequestsBatch(ctx context.Context, token, owner, re
 				// 若存在分页，递归拉取剩余 contexts
 				if commit.StatusCheckRollup.Contexts.PageInfo.HasNextPage && commit.StatusCheckRollup.Contexts.PageInfo.EndCursor != "" {
 					extra, err := c.fetchRemainingPRContexts(ctx, token, owner, repo, commit.Oid, commit.StatusCheckRollup.Contexts.PageInfo.EndCursor)
-					if err == nil {
-						contextsList = append(contextsList, extra...)
+					if err != nil {
+						return nil, fmt.Errorf("fetch pull request check contexts: %w", err)
 					}
+					contextsList = append(contextsList, extra...)
 				}
 				pr.Contexts = contextsList
 			}

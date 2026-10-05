@@ -101,14 +101,22 @@ func (w *Worker) Run(ctx context.Context, interval time.Duration) {
 }
 
 func (w *Worker) tick(ctx context.Context) {
-	items, err := w.Store.Outbox().ClaimDue(ctx, time.Now().UTC(), 2*time.Minute, claimBatchSize)
-	if err != nil {
-		if w.Logger != nil {
-			// 领取失败必须携带真实错误，否则数据库抖动时只有 error_code 无法区分
-			// 是连接、锁还是迁移问题。
-			w.Logger.Error("outbox claim failed", "error_code", "database_unavailable", "error", err.Error())
+	items := make([]store.NotificationOutbox, 0, claimBatchSize)
+	for len(items) < claimBatchSize {
+		item, token, err := w.Store.Outbox().ClaimOne(ctx, "notify-worker", 2*time.Minute)
+		if err != nil {
+			if w.Logger != nil {
+				// 领取失败必须携带真实错误，否则数据库抖动时只有 error_code 无法区分
+				// 是连接、锁还是迁移问题。
+				w.Logger.Error("outbox claim failed", "error_code", "database_unavailable", "error", err.Error())
+			}
+			return
 		}
-		return
+		if item == nil {
+			break
+		}
+		item.ClaimToken = &token
+		items = append(items, *item)
 	}
 	if len(items) == 0 {
 		return
@@ -185,7 +193,16 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 			w.handleFailure(ctx, item, err)
 			continue
 		}
-		transitioned, err := w.Store.Outbox().MarkSent(ctx, item.ID)
+		token := ""
+		if item.ClaimToken != nil {
+			token = *item.ClaimToken
+		}
+		var transition store.TransitionResult
+		if token != "" {
+			transition, err = w.Store.Outbox().MarkSentWithToken(ctx, item.ID, token)
+		} else {
+			transition.Applied, err = w.Store.Outbox().MarkSent(ctx, item.ID)
+		}
 		if err != nil {
 			// 标记失败会让条目下次 ClaimDue 被重新投递：记录日志便于排查重复通知来源。
 			if w.Logger != nil {
@@ -201,7 +218,7 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 			// 标记未落库不算投递成功，不触发 sent 指标。
 			continue
 		}
-		if !transitioned {
+		if !transition.Applied {
 			// 状态已被并发投递推进到终态：外部发送虽成功，但本条没有完成
 			// 数据库状态迁移，不重复记录成功日志或 sent 指标。
 			if w.Logger != nil {

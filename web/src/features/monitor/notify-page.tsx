@@ -150,6 +150,9 @@ function ChannelForm({
         quiet_hours_start: quietHoursStart.trim(),
         quiet_hours_end: quietHoursEnd.trim(),
         quiet_hours_tz: quietHoursTimezone.trim(),
+        repo_pattern: channel?.repo_pattern,
+        branch_filter: channel?.branch_filter,
+        min_severity: channel?.min_severity,
       });
     },
     onSuccess: async () => {
@@ -505,6 +508,9 @@ export function NotifyPage() {
           <h1>配置投递渠道</h1>
           <p>每种渠道最多启用 1 个实例。订阅类型决定实时推送；定期汇总时刻在「设置」配置。</p>
         </div>
+        <button type="button" className="secondary-button" onClick={() => setSimulatorOpen(true)}>
+          <Sparkles size={16} aria-hidden="true" /> 通知效果模拟器
+        </button>
       </section>
 
       {message ? <p className="success-banner" role="status">{message}</p> : null}
@@ -814,6 +820,7 @@ export function NotifyPage() {
         }}
         onCancel={() => setDeleteTarget(null)}
       />
+      <NotificationSimulatorDrawer open={simulatorOpen} onClose={() => setSimulatorOpen(false)} />
     </>
   );
 }

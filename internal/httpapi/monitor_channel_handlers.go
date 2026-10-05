@@ -37,6 +37,9 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 			"quiet_hours_end":        ch.QuietHoursEnd,
 			"quiet_hours_tz":         ch.QuietHoursTZ,
 			"ignore_bots":            ch.IgnoreBots,
+			"repo_pattern":           ch.RepoPattern,
+			"branch_filter":          ch.BranchFilter,
+			"min_severity":           ch.MinSeverity,
 			"updated_at":             ch.UpdatedAt,
 		})
 	}
@@ -70,6 +73,9 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		QuietHoursEnd        *string   `json:"quiet_hours_end"`
 		QuietHoursTZ         *string   `json:"quiet_hours_tz"`
 		IgnoreBots           *bool     `json:"ignore_bots"`
+		RepoPattern          *string   `json:"repo_pattern"`
+		BranchFilter         *string   `json:"branch_filter"`
+		MinSeverity          *string   `json:"min_severity"`
 	}
 	if !s.decodeRequestJSON(w, r, &body) {
 		return
@@ -132,6 +138,9 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		ch.QuietHoursEnd = existing.QuietHoursEnd
 		ch.QuietHoursTZ = existing.QuietHoursTZ
 		ch.IgnoreBots = existing.IgnoreBots
+		ch.RepoPattern = existing.RepoPattern
+		ch.BranchFilter = existing.BranchFilter
+		ch.MinSeverity = existing.MinSeverity
 		// 目标留空时保留已有 Chat ID / URL，避免「只改订阅」误清空。
 		if target == "" {
 			ch.Target = existing.Target
@@ -186,6 +195,15 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.IgnoreBots != nil {
 		ch.IgnoreBots = *body.IgnoreBots
+	}
+	if body.RepoPattern != nil {
+		ch.RepoPattern = strings.TrimSpace(*body.RepoPattern)
+	}
+	if body.BranchFilter != nil {
+		ch.BranchFilter = strings.TrimSpace(*body.BranchFilter)
+	}
+	if body.MinSeverity != nil {
+		ch.MinSeverity = strings.TrimSpace(*body.MinSeverity)
 	}
 	if secret != "" {
 		if s.dependencies.KeyRing == nil {

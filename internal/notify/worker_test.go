@@ -164,6 +164,10 @@ func (failingOutboxStore) ClaimDue(context.Context, time.Time, time.Duration, in
 	return nil, errors.New("claim boom: database locked")
 }
 
+func (failingOutboxStore) ClaimOne(context.Context, string, time.Duration) (*store.NotificationOutbox, string, error) {
+	return nil, "", errors.New("claim boom: database locked")
+}
+
 func TestTruncateLogTitleAndHTMLPlainText(t *testing.T) {
 	rawTitle := "  Title with\nmultiple  lines   and   spaces  "
 	truncated := truncateLogTitle(rawTitle)

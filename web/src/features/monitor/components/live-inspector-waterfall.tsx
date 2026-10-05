@@ -58,6 +58,7 @@ export function LiveInspectorWaterfall({ maxItems = 8 }: { maxItems?: number }) 
 
         if (existingIdx >= 0) {
           const item = prev[existingIdx];
+          if (!item) return prev;
           const updatedStages = { ...item.stages, [stage]: stageInfo };
           const maxDur = Math.max(item.totalDurationMs, durationMs);
           const nextItem: LiveDeliveryItem = {
