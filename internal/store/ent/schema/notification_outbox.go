@@ -24,6 +24,7 @@ func (NotificationOutbox) Fields() []ent.Field {
 		field.Int("attempt_count").Default(0),
 		field.Time("next_attempt_at"),
 		field.Time("locked_until").Optional().Nillable(),
+		field.String("claim_token").Optional().Nillable(),
 		field.String("last_error_code").Default(""),
 		field.String("title").Default(""),
 		field.String("body_text"),

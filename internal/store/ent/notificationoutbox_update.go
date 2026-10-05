@@ -159,6 +159,26 @@ func (_u *NotificationOutboxUpdate) ClearLockedUntil() *NotificationOutboxUpdate
 	return _u
 }
 
+// SetClaimToken sets the "claim_token" field.
+func (_u *NotificationOutboxUpdate) SetClaimToken(v string) *NotificationOutboxUpdate {
+	_u.mutation.SetClaimToken(v)
+	return _u
+}
+
+// SetNillableClaimToken sets the "claim_token" field if the given value is not nil.
+func (_u *NotificationOutboxUpdate) SetNillableClaimToken(v *string) *NotificationOutboxUpdate {
+	if v != nil {
+		_u.SetClaimToken(*v)
+	}
+	return _u
+}
+
+// ClearClaimToken clears the value of the "claim_token" field.
+func (_u *NotificationOutboxUpdate) ClearClaimToken() *NotificationOutboxUpdate {
+	_u.mutation.ClearClaimToken()
+	return _u
+}
+
 // SetLastErrorCode sets the "last_error_code" field.
 func (_u *NotificationOutboxUpdate) SetLastErrorCode(v string) *NotificationOutboxUpdate {
 	_u.mutation.SetLastErrorCode(v)
@@ -328,6 +348,12 @@ func (_u *NotificationOutboxUpdate) sqlSave(ctx context.Context) (_node int, err
 	}
 	if _u.mutation.LockedUntilCleared() {
 		_spec.ClearField(notificationoutbox.FieldLockedUntil, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ClaimToken(); ok {
+		_spec.SetField(notificationoutbox.FieldClaimToken, field.TypeString, value)
+	}
+	if _u.mutation.ClaimTokenCleared() {
+		_spec.ClearField(notificationoutbox.FieldClaimToken, field.TypeString)
 	}
 	if value, ok := _u.mutation.LastErrorCode(); ok {
 		_spec.SetField(notificationoutbox.FieldLastErrorCode, field.TypeString, value)
@@ -501,6 +527,26 @@ func (_u *NotificationOutboxUpdateOne) SetNillableLockedUntil(v *time.Time) *Not
 // ClearLockedUntil clears the value of the "locked_until" field.
 func (_u *NotificationOutboxUpdateOne) ClearLockedUntil() *NotificationOutboxUpdateOne {
 	_u.mutation.ClearLockedUntil()
+	return _u
+}
+
+// SetClaimToken sets the "claim_token" field.
+func (_u *NotificationOutboxUpdateOne) SetClaimToken(v string) *NotificationOutboxUpdateOne {
+	_u.mutation.SetClaimToken(v)
+	return _u
+}
+
+// SetNillableClaimToken sets the "claim_token" field if the given value is not nil.
+func (_u *NotificationOutboxUpdateOne) SetNillableClaimToken(v *string) *NotificationOutboxUpdateOne {
+	if v != nil {
+		_u.SetClaimToken(*v)
+	}
+	return _u
+}
+
+// ClearClaimToken clears the value of the "claim_token" field.
+func (_u *NotificationOutboxUpdateOne) ClearClaimToken() *NotificationOutboxUpdateOne {
+	_u.mutation.ClearClaimToken()
 	return _u
 }
 
@@ -703,6 +749,12 @@ func (_u *NotificationOutboxUpdateOne) sqlSave(ctx context.Context) (_node *Noti
 	}
 	if _u.mutation.LockedUntilCleared() {
 		_spec.ClearField(notificationoutbox.FieldLockedUntil, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ClaimToken(); ok {
+		_spec.SetField(notificationoutbox.FieldClaimToken, field.TypeString, value)
+	}
+	if _u.mutation.ClaimTokenCleared() {
+		_spec.ClearField(notificationoutbox.FieldClaimToken, field.TypeString)
 	}
 	if value, ok := _u.mutation.LastErrorCode(); ok {
 		_spec.SetField(notificationoutbox.FieldLastErrorCode, field.TypeString, value)

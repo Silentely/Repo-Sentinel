@@ -27,6 +27,8 @@ const (
 	FieldNextAttemptAt = "next_attempt_at"
 	// FieldLockedUntil holds the string denoting the locked_until field in the database.
 	FieldLockedUntil = "locked_until"
+	// FieldClaimToken holds the string denoting the claim_token field in the database.
+	FieldClaimToken = "claim_token"
 	// FieldLastErrorCode holds the string denoting the last_error_code field in the database.
 	FieldLastErrorCode = "last_error_code"
 	// FieldTitle holds the string denoting the title field in the database.
@@ -58,6 +60,7 @@ var Columns = []string{
 	FieldAttemptCount,
 	FieldNextAttemptAt,
 	FieldLockedUntil,
+	FieldClaimToken,
 	FieldLastErrorCode,
 	FieldTitle,
 	FieldBodyText,
@@ -141,6 +144,11 @@ func ByNextAttemptAt(opts ...sql.OrderTermOption) OrderOption {
 // ByLockedUntil orders the results by the locked_until field.
 func ByLockedUntil(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLockedUntil, opts...).ToFunc()
+}
+
+// ByClaimToken orders the results by the claim_token field.
+func ByClaimToken(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClaimToken, opts...).ToFunc()
 }
 
 // ByLastErrorCode orders the results by the last_error_code field.

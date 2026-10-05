@@ -146,19 +146,19 @@ func init() {
 	// notificationoutbox.DefaultAttemptCount holds the default value on creation for the attempt_count field.
 	notificationoutbox.DefaultAttemptCount = notificationoutboxDescAttemptCount.Default.(int)
 	// notificationoutboxDescLastErrorCode is the schema descriptor for last_error_code field.
-	notificationoutboxDescLastErrorCode := notificationoutboxFields[9].Descriptor()
+	notificationoutboxDescLastErrorCode := notificationoutboxFields[10].Descriptor()
 	// notificationoutbox.DefaultLastErrorCode holds the default value on creation for the last_error_code field.
 	notificationoutbox.DefaultLastErrorCode = notificationoutboxDescLastErrorCode.Default.(string)
 	// notificationoutboxDescTitle is the schema descriptor for title field.
-	notificationoutboxDescTitle := notificationoutboxFields[10].Descriptor()
+	notificationoutboxDescTitle := notificationoutboxFields[11].Descriptor()
 	// notificationoutbox.DefaultTitle holds the default value on creation for the title field.
 	notificationoutbox.DefaultTitle = notificationoutboxDescTitle.Default.(string)
 	// notificationoutboxDescRepositoryFullName is the schema descriptor for repository_full_name field.
-	notificationoutboxDescRepositoryFullName := notificationoutboxFields[13].Descriptor()
+	notificationoutboxDescRepositoryFullName := notificationoutboxFields[14].Descriptor()
 	// notificationoutbox.DefaultRepositoryFullName holds the default value on creation for the repository_full_name field.
 	notificationoutbox.DefaultRepositoryFullName = notificationoutboxDescRepositoryFullName.Default.(string)
 	// notificationoutboxDescParseMode is the schema descriptor for parse_mode field.
-	notificationoutboxDescParseMode := notificationoutboxFields[14].Descriptor()
+	notificationoutboxDescParseMode := notificationoutboxFields[15].Descriptor()
 	// notificationoutbox.DefaultParseMode holds the default value on creation for the parse_mode field.
 	notificationoutbox.DefaultParseMode = notificationoutboxDescParseMode.Default.(string)
 	repositoryFields := schema.Repository{}.Fields()

@@ -1,4 +1,4 @@
-h1:tJylBmhyXZRpwcW967nb46zfuVQGYIvnkth+OaKfUCM=
+h1:PHqVqoJz9yugdh49VLAD/kNhsrDDIcf2J4+ruzRfg6o=
 20260727000100_initial.sql h1:IZH3NW1MvYSmhBbiJfrMsVfIafVUkDEcDjJ1nVWiU8k=
 20260728000100_domain_core.sql h1:lmdbx1mJCthTGw+1leGYhe2yoMZ7MRLqoCfOGYBdbcQ=
 20260729000100_repo_capability_toggles.sql h1:r6Qv4zeU5Sn70i93B+7E3HP+TOQQpu5Tt72s5w8Hq7c=
@@ -16,3 +16,4 @@ h1:tJylBmhyXZRpwcW967nb46zfuVQGYIvnkth+OaKfUCM=
 20261003000100_webhook_delivery_indexes.sql h1:7WwiY+vji62CwWVJIAVibG0aoKHITd/bKsTNWCTZr4E=
 20261005000050_webhook_claim_fields.sql h1:BNSLbu7Zs3y2Jeiye08XthZdTJQTXrRDi5gEEL6DktE=
 20261005000100_system_leases.sql h1:QGjiBSmKeUJZEPmL2vQ6PA/Nz8Q04Q30138RzgsA024=
+20261005000200_outbox_claim_tokens.sql h1:Wa/O2SYWHT8DSwF3OCekwqf0nydx8GmM689zDmre+f0=

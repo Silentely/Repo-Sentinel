@@ -228,6 +228,7 @@ var (
 		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
 		{Name: "next_attempt_at", Type: field.TypeTime},
 		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
+		{Name: "claim_token", Type: field.TypeString, Nullable: true},
 		{Name: "last_error_code", Type: field.TypeString, Default: ""},
 		{Name: "title", Type: field.TypeString, Default: ""},
 		{Name: "body_text", Type: field.TypeString},
@@ -256,7 +257,7 @@ var (
 			{
 				Name:    "notificationoutbox_status_repository_full_name",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationOutboxColumns[5], NotificationOutboxColumns[13]},
+				Columns: []*schema.Column{NotificationOutboxColumns[5], NotificationOutboxColumns[14]},
 			},
 			{
 				Name:    "notificationoutbox_channel_id_status",
@@ -266,7 +267,7 @@ var (
 			{
 				Name:    "notificationoutbox_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationOutboxColumns[15]},
+				Columns: []*schema.Column{NotificationOutboxColumns[16]},
 			},
 		},
 	}

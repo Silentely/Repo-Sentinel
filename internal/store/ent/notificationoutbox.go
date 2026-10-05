@@ -34,6 +34,8 @@ type NotificationOutbox struct {
 	NextAttemptAt time.Time `json:"next_attempt_at,omitempty"`
 	// LockedUntil holds the value of the "locked_until" field.
 	LockedUntil *time.Time `json:"locked_until,omitempty"`
+	// ClaimToken holds the value of the "claim_token" field.
+	ClaimToken *string `json:"claim_token,omitempty"`
 	// LastErrorCode holds the value of the "last_error_code" field.
 	LastErrorCode string `json:"last_error_code,omitempty"`
 	// Title holds the value of the "title" field.
@@ -62,7 +64,7 @@ func (*NotificationOutbox) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case notificationoutbox.FieldAttemptCount:
 			values[i] = new(sql.NullInt64)
-		case notificationoutbox.FieldID, notificationoutbox.FieldChannelID, notificationoutbox.FieldEventID, notificationoutbox.FieldAggregateKey, notificationoutbox.FieldIdempotencyKey, notificationoutbox.FieldStatus, notificationoutbox.FieldLastErrorCode, notificationoutbox.FieldTitle, notificationoutbox.FieldBodyText, notificationoutbox.FieldRepositoryFullName, notificationoutbox.FieldParseMode:
+		case notificationoutbox.FieldID, notificationoutbox.FieldChannelID, notificationoutbox.FieldEventID, notificationoutbox.FieldAggregateKey, notificationoutbox.FieldIdempotencyKey, notificationoutbox.FieldStatus, notificationoutbox.FieldClaimToken, notificationoutbox.FieldLastErrorCode, notificationoutbox.FieldTitle, notificationoutbox.FieldBodyText, notificationoutbox.FieldRepositoryFullName, notificationoutbox.FieldParseMode:
 			values[i] = new(sql.NullString)
 		case notificationoutbox.FieldNextAttemptAt, notificationoutbox.FieldLockedUntil, notificationoutbox.FieldCreatedAt, notificationoutbox.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -136,6 +138,13 @@ func (_m *NotificationOutbox) assignValues(columns []string, values []any) error
 			} else if value.Valid {
 				_m.LockedUntil = new(time.Time)
 				*_m.LockedUntil = value.Time
+			}
+		case notificationoutbox.FieldClaimToken:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field claim_token", values[i])
+			} else if value.Valid {
+				_m.ClaimToken = new(string)
+				*_m.ClaimToken = value.String
 			}
 		case notificationoutbox.FieldLastErrorCode:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -249,6 +258,11 @@ func (_m *NotificationOutbox) String() string {
 	if v := _m.LockedUntil; v != nil {
 		builder.WriteString("locked_until=")
 		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.ClaimToken; v != nil {
+		builder.WriteString("claim_token=")
+		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
 	builder.WriteString("last_error_code=")

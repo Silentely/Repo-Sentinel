@@ -242,7 +242,7 @@ func (s *storeImpl) StarredTrackers() StarredTrackerStore {
 func (s *storeImpl) Channels() ChannelStore {
 	return &channelStore{client: s.client, listCache: s.channelsCache}
 }
-func (s *storeImpl) Outbox() OutboxStore  { return &outboxStore{client: s.client} }
+func (s *storeImpl) Outbox() OutboxStore  { return &outboxStore{client: s.client, driver: s.driver} }
 func (s *storeImpl) Cursors() CursorStore { return &cursorStore{client: s.client} }
 func (s *storeImpl) Leases() LeaseStore   { return &leaseStore{client: s.client, driver: s.driver} }
 func (s *storeImpl) PingQuick(ctx context.Context) error {

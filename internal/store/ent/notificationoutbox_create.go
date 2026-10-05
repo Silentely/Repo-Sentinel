@@ -108,6 +108,20 @@ func (_c *NotificationOutboxCreate) SetNillableLockedUntil(v *time.Time) *Notifi
 	return _c
 }
 
+// SetClaimToken sets the "claim_token" field.
+func (_c *NotificationOutboxCreate) SetClaimToken(v string) *NotificationOutboxCreate {
+	_c.mutation.SetClaimToken(v)
+	return _c
+}
+
+// SetNillableClaimToken sets the "claim_token" field if the given value is not nil.
+func (_c *NotificationOutboxCreate) SetNillableClaimToken(v *string) *NotificationOutboxCreate {
+	if v != nil {
+		_c.SetClaimToken(*v)
+	}
+	return _c
+}
+
 // SetLastErrorCode sets the "last_error_code" field.
 func (_c *NotificationOutboxCreate) SetLastErrorCode(v string) *NotificationOutboxCreate {
 	_c.mutation.SetLastErrorCode(v)
@@ -366,6 +380,10 @@ func (_c *NotificationOutboxCreate) createSpec() (*NotificationOutbox, *sqlgraph
 	if value, ok := _c.mutation.LockedUntil(); ok {
 		_spec.SetField(notificationoutbox.FieldLockedUntil, field.TypeTime, value)
 		_node.LockedUntil = &value
+	}
+	if value, ok := _c.mutation.ClaimToken(); ok {
+		_spec.SetField(notificationoutbox.FieldClaimToken, field.TypeString, value)
+		_node.ClaimToken = &value
 	}
 	if value, ok := _c.mutation.LastErrorCode(); ok {
 		_spec.SetField(notificationoutbox.FieldLastErrorCode, field.TypeString, value)

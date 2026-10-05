@@ -5880,6 +5880,7 @@ type NotificationOutboxMutation struct {
 	addattempt_count     *int
 	next_attempt_at      *time.Time
 	locked_until         *time.Time
+	claim_token          *string
 	last_error_code      *string
 	title                *string
 	body_text            *string
@@ -6332,6 +6333,55 @@ func (m *NotificationOutboxMutation) ResetLockedUntil() {
 	delete(m.clearedFields, notificationoutbox.FieldLockedUntil)
 }
 
+// SetClaimToken sets the "claim_token" field.
+func (m *NotificationOutboxMutation) SetClaimToken(s string) {
+	m.claim_token = &s
+}
+
+// ClaimToken returns the value of the "claim_token" field in the mutation.
+func (m *NotificationOutboxMutation) ClaimToken() (r string, exists bool) {
+	v := m.claim_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimToken returns the old "claim_token" field's value of the NotificationOutbox entity.
+// If the NotificationOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationOutboxMutation) OldClaimToken(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimToken: %w", err)
+	}
+	return oldValue.ClaimToken, nil
+}
+
+// ClearClaimToken clears the value of the "claim_token" field.
+func (m *NotificationOutboxMutation) ClearClaimToken() {
+	m.claim_token = nil
+	m.clearedFields[notificationoutbox.FieldClaimToken] = struct{}{}
+}
+
+// ClaimTokenCleared returns if the "claim_token" field was cleared in this mutation.
+func (m *NotificationOutboxMutation) ClaimTokenCleared() bool {
+	_, ok := m.clearedFields[notificationoutbox.FieldClaimToken]
+	return ok
+}
+
+// ResetClaimToken resets all changes to the "claim_token" field.
+func (m *NotificationOutboxMutation) ResetClaimToken() {
+	m.claim_token = nil
+	delete(m.clearedFields, notificationoutbox.FieldClaimToken)
+}
+
 // SetLastErrorCode sets the "last_error_code" field.
 func (m *NotificationOutboxMutation) SetLastErrorCode(s string) {
 	m.last_error_code = &s
@@ -6667,7 +6717,7 @@ func (m *NotificationOutboxMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationOutboxMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.channel_id != nil {
 		fields = append(fields, notificationoutbox.FieldChannelID)
 	}
@@ -6691,6 +6741,9 @@ func (m *NotificationOutboxMutation) Fields() []string {
 	}
 	if m.locked_until != nil {
 		fields = append(fields, notificationoutbox.FieldLockedUntil)
+	}
+	if m.claim_token != nil {
+		fields = append(fields, notificationoutbox.FieldClaimToken)
 	}
 	if m.last_error_code != nil {
 		fields = append(fields, notificationoutbox.FieldLastErrorCode)
@@ -6740,6 +6793,8 @@ func (m *NotificationOutboxMutation) Field(name string) (ent.Value, bool) {
 		return m.NextAttemptAt()
 	case notificationoutbox.FieldLockedUntil:
 		return m.LockedUntil()
+	case notificationoutbox.FieldClaimToken:
+		return m.ClaimToken()
 	case notificationoutbox.FieldLastErrorCode:
 		return m.LastErrorCode()
 	case notificationoutbox.FieldTitle:
@@ -6781,6 +6836,8 @@ func (m *NotificationOutboxMutation) OldField(ctx context.Context, name string) 
 		return m.OldNextAttemptAt(ctx)
 	case notificationoutbox.FieldLockedUntil:
 		return m.OldLockedUntil(ctx)
+	case notificationoutbox.FieldClaimToken:
+		return m.OldClaimToken(ctx)
 	case notificationoutbox.FieldLastErrorCode:
 		return m.OldLastErrorCode(ctx)
 	case notificationoutbox.FieldTitle:
@@ -6861,6 +6918,13 @@ func (m *NotificationOutboxMutation) SetField(name string, value ent.Value) erro
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLockedUntil(v)
+		return nil
+	case notificationoutbox.FieldClaimToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimToken(v)
 		return nil
 	case notificationoutbox.FieldLastErrorCode:
 		v, ok := value.(string)
@@ -6969,6 +7033,9 @@ func (m *NotificationOutboxMutation) ClearedFields() []string {
 	if m.FieldCleared(notificationoutbox.FieldLockedUntil) {
 		fields = append(fields, notificationoutbox.FieldLockedUntil)
 	}
+	if m.FieldCleared(notificationoutbox.FieldClaimToken) {
+		fields = append(fields, notificationoutbox.FieldClaimToken)
+	}
 	if m.FieldCleared(notificationoutbox.FieldBodyJSON) {
 		fields = append(fields, notificationoutbox.FieldBodyJSON)
 	}
@@ -6991,6 +7058,9 @@ func (m *NotificationOutboxMutation) ClearField(name string) error {
 		return nil
 	case notificationoutbox.FieldLockedUntil:
 		m.ClearLockedUntil()
+		return nil
+	case notificationoutbox.FieldClaimToken:
+		m.ClearClaimToken()
 		return nil
 	case notificationoutbox.FieldBodyJSON:
 		m.ClearBodyJSON()
@@ -7026,6 +7096,9 @@ func (m *NotificationOutboxMutation) ResetField(name string) error {
 		return nil
 	case notificationoutbox.FieldLockedUntil:
 		m.ResetLockedUntil()
+		return nil
+	case notificationoutbox.FieldClaimToken:
+		m.ResetClaimToken()
 		return nil
 	case notificationoutbox.FieldLastErrorCode:
 		m.ResetLastErrorCode()

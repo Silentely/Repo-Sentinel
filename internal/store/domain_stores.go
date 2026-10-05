@@ -2210,7 +2210,20 @@ func releaseRepositoryOf(bodyJSON map[string]any) string {
 	return strings.TrimSpace(repo)
 }
 
-type outboxStore struct{ client *entclient.Client }
+type outboxStore struct {
+	client *entclient.Client
+	driver dialect.Driver
+}
+
+func (s *outboxStore) getDB() *sql.DB {
+	if s.driver == nil {
+		return nil
+	}
+	if sqlDriver, ok := s.driver.(*entsql.Driver); ok {
+		return sqlDriver.DB()
+	}
+	return nil
+}
 
 func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (NotificationOutbox, error) {
 	if in.ID == "" {
@@ -2247,6 +2260,7 @@ func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (Notifi
 		c.SetEventID(*in.EventID)
 	}
 	c.SetNillableLockedUntil(in.LockedUntil)
+	c.SetNillableClaimToken(in.ClaimToken)
 	entity, err := c.Save(ctx)
 	if err != nil {
 		return NotificationOutbox{}, mapStoreError(err)
@@ -2496,7 +2510,7 @@ func outboxFromEntity(e *entclient.NotificationOutbox) NotificationOutbox {
 	out := NotificationOutbox{
 		ID: e.ID, ChannelID: e.ChannelID, EventID: e.EventID, AggregateKey: e.AggregateKey,
 		IdempotencyKey: e.IdempotencyKey, Status: e.Status, AttemptCount: e.AttemptCount,
-		NextAttemptAt: e.NextAttemptAt, LockedUntil: e.LockedUntil, LastErrorCode: e.LastErrorCode,
+		NextAttemptAt: e.NextAttemptAt, LockedUntil: e.LockedUntil, ClaimToken: e.ClaimToken, LastErrorCode: e.LastErrorCode,
 		Title: e.Title, BodyText: e.BodyText, BodyJSON: e.BodyJSON, ParseMode: e.ParseMode,
 		RepositoryFullName: e.RepositoryFullName,
 		CreatedAt:          e.CreatedAt, UpdatedAt: e.UpdatedAt,
@@ -3253,4 +3267,202 @@ WHERE task_name = ? AND holder_id = ? AND fencing_token = ?`, taskName, holderID
 		return rows > 0, nil
 	}
 	return false, errors.New("db driver not available")
+}
+
+func (s *outboxStore) ClaimOne(ctx context.Context, workerID string, timeout time.Duration) (*NotificationOutbox, string, error) {
+	if timeout <= 0 {
+		timeout = 1 * time.Minute
+	}
+	ttlSecs := int(timeout.Seconds())
+	if ttlSecs < 1 {
+		ttlSecs = 1
+	}
+
+	db := s.getDB()
+	isPG := s.driver != nil && s.driver.Dialect() == dialect.Postgres
+
+	if db != nil && isPG {
+		claimToken := newID()
+		query := `UPDATE notification_outbox
+SET status = 'sending',
+    claim_token = $1,
+    locked_until = now() + make_interval(secs => $2),
+    attempt_count = attempt_count + 1,
+    updated_at = now()
+WHERE id = (
+    SELECT id FROM notification_outbox
+    WHERE status IN ('pending', 'sending')
+      AND next_attempt_at <= now()
+      AND (locked_until IS NULL OR locked_until <= now())
+    ORDER BY next_attempt_at ASC, id ASC
+    FOR UPDATE SKIP LOCKED
+    LIMIT 1
+)
+RETURNING id`
+		var id string
+		err := db.QueryRowContext(ctx, query, claimToken, ttlSecs).Scan(&id)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, "", nil
+			}
+			return nil, "", fmt.Errorf("%w: claim outbox: %v", errDatabaseOperation, err)
+		}
+		entity, err := s.client.NotificationOutbox.Get(ctx, id)
+		if err != nil {
+			return nil, "", mapStoreError(err)
+		}
+		item := outboxFromEntity(entity)
+		return &item, claimToken, nil
+	}
+
+	if db != nil {
+		// SQLite: transaction with retry loop
+		for retry := 0; retry < 5; retry++ {
+			claimToken := newID()
+			tx, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				return nil, "", fmt.Errorf("%w: begin outbox claim tx: %v", errDatabaseOperation, err)
+			}
+
+			var id string
+			err = tx.QueryRowContext(ctx, `SELECT id FROM notification_outbox
+WHERE status IN ('pending', 'sending')
+  AND next_attempt_at <= CURRENT_TIMESTAMP
+  AND (locked_until IS NULL OR locked_until <= CURRENT_TIMESTAMP)
+ORDER BY next_attempt_at ASC, id ASC
+LIMIT 1`).Scan(&id)
+			if err != nil {
+				_ = tx.Rollback()
+				if errors.Is(err, sql.ErrNoRows) {
+					return nil, "", nil
+				}
+				return nil, "", fmt.Errorf("%w: select claim candidate: %v", errDatabaseOperation, err)
+			}
+
+			res, err := tx.ExecContext(ctx, `UPDATE notification_outbox
+SET status = 'sending',
+    claim_token = ?,
+    locked_until = datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds'),
+    attempt_count = attempt_count + 1,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ? AND status IN ('pending', 'sending') AND (locked_until IS NULL OR locked_until <= CURRENT_TIMESTAMP)`, claimToken, ttlSecs, id)
+			if err != nil {
+				_ = tx.Rollback()
+				return nil, "", fmt.Errorf("%w: update claim candidate: %v", errDatabaseOperation, err)
+			}
+			rows, err := res.RowsAffected()
+			if err != nil || rows == 0 {
+				_ = tx.Rollback()
+				continue // retry with another candidate
+			}
+
+			if err := tx.Commit(); err != nil {
+				return nil, "", fmt.Errorf("%w: commit outbox claim: %v", errDatabaseOperation, err)
+			}
+
+			entity, err := s.client.NotificationOutbox.Get(ctx, id)
+			if err != nil {
+				return nil, "", mapStoreError(err)
+			}
+			item := outboxFromEntity(entity)
+			return &item, claimToken, nil
+		}
+		return nil, "", nil
+	}
+
+	return nil, "", errors.New("db driver not available")
+}
+
+func (s *outboxStore) MarkSentWithToken(ctx context.Context, id, claimToken string) (TransitionResult, error) {
+	now := time.Now().UTC()
+	n, err := s.client.NotificationOutbox.Update().
+		Where(
+			notificationoutbox.IDEQ(id),
+			notificationoutbox.ClaimTokenEQ(claimToken),
+			notificationoutbox.StatusIn(OutboxPending, OutboxSending),
+		).
+		SetStatus(OutboxSent).
+		ClearLockedUntil().
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return TransitionResult{}, mapStoreError(err)
+	}
+	if n == 1 {
+		return TransitionResult{Applied: true, Stale: false}, nil
+	}
+
+	exists, err := s.client.NotificationOutbox.Query().Where(notificationoutbox.IDEQ(id)).Exist(ctx)
+	if err != nil {
+		return TransitionResult{}, mapStoreError(err)
+	}
+	if !exists {
+		return TransitionResult{Applied: false, Stale: false}, ErrNotFound
+	}
+	return TransitionResult{Applied: false, Stale: true}, nil
+}
+
+func (s *outboxStore) MarkFailedWithToken(ctx context.Context, id, claimToken, lastErr string, nextRetryAt *time.Time) (TransitionResult, error) {
+	now := time.Now().UTC()
+	next := now.Add(30 * time.Second)
+	if nextRetryAt != nil && !nextRetryAt.IsZero() {
+		next = nextRetryAt.UTC()
+	}
+	n, err := s.client.NotificationOutbox.Update().
+		Where(
+			notificationoutbox.IDEQ(id),
+			notificationoutbox.ClaimTokenEQ(claimToken),
+			notificationoutbox.StatusIn(OutboxPending, OutboxSending),
+		).
+		SetStatus(OutboxPending).
+		SetNextAttemptAt(next).
+		SetLastErrorCode(lastErr).
+		ClearLockedUntil().
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return TransitionResult{}, mapStoreError(err)
+	}
+	if n == 1 {
+		return TransitionResult{Applied: true, Stale: false}, nil
+	}
+
+	exists, err := s.client.NotificationOutbox.Query().Where(notificationoutbox.IDEQ(id)).Exist(ctx)
+	if err != nil {
+		return TransitionResult{}, mapStoreError(err)
+	}
+	if !exists {
+		return TransitionResult{Applied: false, Stale: false}, ErrNotFound
+	}
+	return TransitionResult{Applied: false, Stale: true}, nil
+}
+
+func (s *outboxStore) MarkDeadWithToken(ctx context.Context, id, claimToken, finalErr string) (TransitionResult, error) {
+	now := time.Now().UTC()
+	n, err := s.client.NotificationOutbox.Update().
+		Where(
+			notificationoutbox.IDEQ(id),
+			notificationoutbox.ClaimTokenEQ(claimToken),
+			notificationoutbox.StatusIn(OutboxPending, OutboxSending),
+		).
+		SetStatus(OutboxDead).
+		SetLastErrorCode(finalErr).
+		ClearLockedUntil().
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return TransitionResult{}, mapStoreError(err)
+	}
+	if n == 1 {
+		return TransitionResult{Applied: true, Stale: false}, nil
+	}
+
+	exists, err := s.client.NotificationOutbox.Query().Where(notificationoutbox.IDEQ(id)).Exist(ctx)
+	if err != nil {
+		return TransitionResult{}, mapStoreError(err)
+	}
+	if !exists {
+		return TransitionResult{Applied: false, Stale: false}, ErrNotFound
+	}
+	return TransitionResult{Applied: false, Stale: true}, nil
 }

@@ -481,6 +481,7 @@ type NotificationOutbox struct {
 	AttemptCount   int            `json:"attempt_count"`
 	NextAttemptAt  time.Time      `json:"next_attempt_at"`
 	LockedUntil    *time.Time     `json:"locked_until,omitempty"`
+	ClaimToken     *string        `json:"claim_token,omitempty"`
 	LastErrorCode  string         `json:"last_error_code,omitempty"`
 	Title          string         `json:"title"`
 	BodyText       string         `json:"body_text,omitempty"`
@@ -742,6 +743,10 @@ type OutboxStore interface {
 	RetryAllDead(context.Context, []string, time.Time) (int, error)
 	// DeleteTerminalOlderThan 删除已终态（sent/dead）且 created_at 早于 cutoff 的传递记录。
 	DeleteTerminalOlderThan(ctx context.Context, cutoff time.Time) (int, error)
+	ClaimOne(ctx context.Context, workerID string, timeout time.Duration) (*NotificationOutbox, string, error)
+	MarkSentWithToken(ctx context.Context, id, claimToken string) (TransitionResult, error)
+	MarkFailedWithToken(ctx context.Context, id, claimToken, lastErr string, nextRetryAt *time.Time) (TransitionResult, error)
+	MarkDeadWithToken(ctx context.Context, id, claimToken, finalErr string) (TransitionResult, error)
 }
 
 // RetentionPolicy 历史数据保留策略（天）。某字段为 0 表示跳过该类清理。

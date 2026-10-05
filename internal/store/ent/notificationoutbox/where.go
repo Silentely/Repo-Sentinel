@@ -104,6 +104,11 @@ func LockedUntil(v time.Time) predicate.NotificationOutbox {
 	return predicate.NotificationOutbox(sql.FieldEQ(FieldLockedUntil, v))
 }
 
+// ClaimToken applies equality check predicate on the "claim_token" field. It's identical to ClaimTokenEQ.
+func ClaimToken(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldEQ(FieldClaimToken, v))
+}
+
 // LastErrorCode applies equality check predicate on the "last_error_code" field. It's identical to LastErrorCodeEQ.
 func LastErrorCode(v string) predicate.NotificationOutbox {
 	return predicate.NotificationOutbox(sql.FieldEQ(FieldLastErrorCode, v))
@@ -602,6 +607,81 @@ func LockedUntilIsNil() predicate.NotificationOutbox {
 // LockedUntilNotNil applies the NotNil predicate on the "locked_until" field.
 func LockedUntilNotNil() predicate.NotificationOutbox {
 	return predicate.NotificationOutbox(sql.FieldNotNull(FieldLockedUntil))
+}
+
+// ClaimTokenEQ applies the EQ predicate on the "claim_token" field.
+func ClaimTokenEQ(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldEQ(FieldClaimToken, v))
+}
+
+// ClaimTokenNEQ applies the NEQ predicate on the "claim_token" field.
+func ClaimTokenNEQ(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldNEQ(FieldClaimToken, v))
+}
+
+// ClaimTokenIn applies the In predicate on the "claim_token" field.
+func ClaimTokenIn(vs ...string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldIn(FieldClaimToken, vs...))
+}
+
+// ClaimTokenNotIn applies the NotIn predicate on the "claim_token" field.
+func ClaimTokenNotIn(vs ...string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldNotIn(FieldClaimToken, vs...))
+}
+
+// ClaimTokenGT applies the GT predicate on the "claim_token" field.
+func ClaimTokenGT(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldGT(FieldClaimToken, v))
+}
+
+// ClaimTokenGTE applies the GTE predicate on the "claim_token" field.
+func ClaimTokenGTE(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldGTE(FieldClaimToken, v))
+}
+
+// ClaimTokenLT applies the LT predicate on the "claim_token" field.
+func ClaimTokenLT(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldLT(FieldClaimToken, v))
+}
+
+// ClaimTokenLTE applies the LTE predicate on the "claim_token" field.
+func ClaimTokenLTE(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldLTE(FieldClaimToken, v))
+}
+
+// ClaimTokenContains applies the Contains predicate on the "claim_token" field.
+func ClaimTokenContains(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldContains(FieldClaimToken, v))
+}
+
+// ClaimTokenHasPrefix applies the HasPrefix predicate on the "claim_token" field.
+func ClaimTokenHasPrefix(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldHasPrefix(FieldClaimToken, v))
+}
+
+// ClaimTokenHasSuffix applies the HasSuffix predicate on the "claim_token" field.
+func ClaimTokenHasSuffix(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldHasSuffix(FieldClaimToken, v))
+}
+
+// ClaimTokenIsNil applies the IsNil predicate on the "claim_token" field.
+func ClaimTokenIsNil() predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldIsNull(FieldClaimToken))
+}
+
+// ClaimTokenNotNil applies the NotNil predicate on the "claim_token" field.
+func ClaimTokenNotNil() predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldNotNull(FieldClaimToken))
+}
+
+// ClaimTokenEqualFold applies the EqualFold predicate on the "claim_token" field.
+func ClaimTokenEqualFold(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldEqualFold(FieldClaimToken, v))
+}
+
+// ClaimTokenContainsFold applies the ContainsFold predicate on the "claim_token" field.
+func ClaimTokenContainsFold(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldContainsFold(FieldClaimToken, v))
 }
 
 // LastErrorCodeEQ applies the EQ predicate on the "last_error_code" field.

@@ -457,27 +457,37 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 
 func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbox, err error) {
 	code := deliveryErrorCode(err)
+	var token string
+	if item.ClaimToken != nil {
+		token = *item.ClaimToken
+	}
 	// 配置/数据类确定性错误：重试不可能成功（脏渠道类型、缺 Token/Chat ID、密钥问题），
 	// 直接进入死信，避免无意义重试打满 8 次后才暴露（最长约 30 小时）。
 	if isPermanentDeliveryError(code) {
-		w.markDead(ctx, item.ID, code)
+		w.markDead(ctx, item.ID, code, token)
 		return
 	}
 	var ra *retryAfterError
 	if errors.As(err, &ra) {
 		// 限流退避同样受重试上限约束，否则目标长期 429 时条目会无限重投。
 		if item.AttemptCount >= maxAttempts {
-			w.markDead(ctx, item.ID, code)
+			w.markDead(ctx, item.ID, code, token)
 			return
 		}
-		if _, err := w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(time.Duration(ra.seconds)*time.Second), code); err != nil && w.Logger != nil {
-			// 重试时间写失败会让条目停留 sending 直到锁超时，记日志便于排查。
-			w.Logger.Error("outbox retry mark failed", "outbox_id", item.ID, "error_code", "outbox_mark_failed", "error", err.Error())
+		retryAt := time.Now().UTC().Add(time.Duration(ra.seconds) * time.Second)
+		var markErr error
+		if token != "" {
+			_, markErr = w.Store.Outbox().MarkFailedWithToken(ctx, item.ID, token, code, &retryAt)
+		} else {
+			_, markErr = w.Store.Outbox().MarkRetry(ctx, item.ID, retryAt, code)
+		}
+		if markErr != nil && w.Logger != nil {
+			w.Logger.Error("outbox retry mark failed", "outbox_id", item.ID, "error_code", "outbox_mark_failed", "error", markErr.Error())
 		}
 		return
 	}
 	if item.AttemptCount >= maxAttempts {
-		w.markDead(ctx, item.ID, code)
+		w.markDead(ctx, item.ID, code, token)
 		return
 	}
 	idx := item.AttemptCount - 1
@@ -487,16 +497,35 @@ func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbo
 	if idx >= len(defaultBackoff) {
 		idx = len(defaultBackoff) - 1
 	}
-	if _, err := w.Store.Outbox().MarkRetry(ctx, item.ID, time.Now().UTC().Add(defaultBackoff[idx]), code); err != nil && w.Logger != nil {
-		w.Logger.Error("outbox retry mark failed", "outbox_id", item.ID, "error_code", "outbox_mark_failed", "error", err.Error())
+	retryAt := time.Now().UTC().Add(defaultBackoff[idx])
+	var markErr error
+	if token != "" {
+		_, markErr = w.Store.Outbox().MarkFailedWithToken(ctx, item.ID, token, code, &retryAt)
+	} else {
+		_, markErr = w.Store.Outbox().MarkRetry(ctx, item.ID, retryAt, code)
+	}
+	if markErr != nil && w.Logger != nil {
+		w.Logger.Error("outbox retry mark failed", "outbox_id", item.ID, "error_code", "outbox_mark_failed", "error", markErr.Error())
 	}
 }
 
 // markDead 将条目转入死信并触发指标回调。
-// 只有真的写入了 dead 行才触发 OnDead：写失败与守卫拒绝（行已被并发投递推进到终态）
+// 只有真的写入了 dead 行才触发 OnDead：写失败与守卫拒绝（行已被并发传递推进到终态）
 // 都没有落库，此时计指标会出现「死信计数有值但列表查不到」的矛盾。
-func (w *Worker) markDead(ctx context.Context, id, code string) {
-	transitioned, err := w.Store.Outbox().MarkDead(ctx, id, code)
+func (w *Worker) markDead(ctx context.Context, id, code string, claimToken ...string) {
+	var token string
+	if len(claimToken) > 0 {
+		token = claimToken[0]
+	}
+	var transitioned bool
+	var err error
+	if token != "" {
+		res, markErr := w.Store.Outbox().MarkDeadWithToken(ctx, id, token, code)
+		err = markErr
+		transitioned = res.Applied
+	} else {
+		transitioned, err = w.Store.Outbox().MarkDead(ctx, id, code)
+	}
 	if err != nil {
 		// 死信写失败会让条目无限重投：必须记录，便于人工介入。
 		if w.Logger != nil {
@@ -505,7 +534,7 @@ func (w *Worker) markDead(ctx context.Context, id, code string) {
 		return
 	}
 	if !transitioned {
-		// 该行已由并发投递推进到终态（guard 拒绝），本条不再改变状态。
+		// 该行已由并发传递推进到终态（guard 拒绝），本条不再改变状态。
 		if w.Logger != nil {
 			w.Logger.Warn("outbox dead mark skipped", "outbox_id", id, "error_code", "outbox_state_advanced")
 		}
