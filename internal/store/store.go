@@ -162,6 +162,9 @@ type SettingsStore interface {
 	// GetMany 批量读取设置：仅返回存在的键，缺失的键不返回也不报错。
 	GetMany(context.Context, ...string) ([]SystemSetting, error)
 	Upsert(context.Context, SystemSetting) (SystemSetting, error)
+	// UpdateAIBudgetUsageAtomic 原子累加当日 AI 预算用量，并返回是否触发软限流熔断。
+	// 双轨方言安全实现，显式补齐 updated_by = 'ai_budget' 哨兵值。
+	UpdateAIBudgetUsageAtomic(ctx context.Context, todayKey string, tokens int, costCents int, budgetLimitCents int) (isThrottled bool, err error)
 }
 
 // AuditStore 仅提供追加与只读查询，不暴露更新或删除。

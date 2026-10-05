@@ -811,6 +811,7 @@ func deriveMaintainerVerdict(res *CodeReviewResult) string {
 
 // ReviewPR 对指定 PR Diff 进行安全审计与代码审查。
 func (c *Client) ReviewPR(ctx context.Context, repo, title, author, diff string) (*CodeReviewResult, error) {
+	ctx = WithTaskType(ctx, TaskTypePRReview)
 	// 在截断前扫描全量 Diff 的启发式安全信号（防止超长 PR 截断丢弃低优先级文档中的钓鱼链接或垃圾特征）
 	heuristics := scanDiffHeuristics(diff)
 

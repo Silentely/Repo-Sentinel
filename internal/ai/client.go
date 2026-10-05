@@ -53,6 +53,10 @@ type Client struct {
 	APIKey string
 	// Model 模型名；为空时使用缺省 gpt-4o-mini。
 	Model string
+	// FastModel 轻量任务路由模型（Issue 分诊、Release 总结等）；为空时回退至 Model。
+	FastModel string
+	// HeavyModel 深度代码任务路由模型（PR 代码审查等）；为空时回退至 Model。
+	HeavyModel string
 	// Timeout 单次请求超时上限；为空时使用 30s。
 	Timeout time.Duration
 	// MaxTokens 输出 token 上限；为空时使用 800。
@@ -122,6 +126,8 @@ func (c *Client) Snapshot() Client {
 		BaseURL:                c.BaseURL,
 		APIKey:                 c.APIKey,
 		Model:                  c.Model,
+		FastModel:              c.FastModel,
+		HeavyModel:             c.HeavyModel,
 		Timeout:                c.Timeout,
 		MaxTokens:              c.MaxTokens,
 		Retries:                c.Retries,
@@ -149,6 +155,8 @@ func (c *Client) Replace(next *Client) {
 	c.BaseURL = next.BaseURL
 	c.APIKey = next.APIKey
 	c.Model = next.Model
+	c.FastModel = next.FastModel
+	c.HeavyModel = next.HeavyModel
 	c.Timeout = next.Timeout
 	c.MaxTokens = next.MaxTokens
 	c.Retries = next.Retries
@@ -482,7 +490,7 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 		return "", ErrNotConfigured
 	}
 	logger := s.Logger
-	model := s.model()
+	model := s.RouteModelForTask(TaskTypeFromContext(ctx))
 	reqID := RequestIDFromContext(ctx)
 	if reqID == "" {
 		reqID = NewRequestID()
@@ -745,4 +753,51 @@ func (c *Client) TriageMappings() map[string]string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return cloneTriageMappings(c.TriageLabelMappings)
+}
+
+const (
+	TaskTypeIssueTriage  = "issue_triage"
+	TaskTypeReleaseNotes = "release_notes"
+	TaskTypePRReview     = "pr_review"
+)
+
+// RouteModelForTask 根据任务类型智能路由至 FastModel 或 HeavyModel。
+type taskTypeKey struct{}
+
+// WithTaskType 将特定任务类型注入 Context。
+func WithTaskType(ctx context.Context, taskType string) context.Context {
+	return context.WithValue(ctx, taskTypeKey{}, taskType)
+}
+
+// TaskTypeFromContext 从 Context 中提取任务类型。
+func TaskTypeFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(taskTypeKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
+
+func (c *Client) RouteModelForTask(taskType string) string {
+	if c == nil {
+		return DefaultModel
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	switch taskType {
+	case TaskTypeIssueTriage, TaskTypeReleaseNotes:
+		if c.FastModel != "" {
+			return c.FastModel
+		}
+	case TaskTypePRReview:
+		if c.HeavyModel != "" {
+			return c.HeavyModel
+		}
+	}
+	if c.Model != "" {
+		return c.Model
+	}
+	return DefaultModel
 }

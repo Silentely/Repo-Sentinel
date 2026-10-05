@@ -207,7 +207,7 @@ func newStore(client *entclient.Client, driver dialect.Driver, pingFn func(conte
 func (s *storeImpl) Admins() AdminStore     { return &adminStore{client: s.client} }
 func (s *storeImpl) Sessions() SessionStore { return &sessionStore{client: s.client} }
 func (s *storeImpl) Settings() SettingsStore {
-	return &settingsStore{client: s.client, cache: s.settingsCache}
+	return &settingsStore{client: s.client, driver: s.driver, cache: s.settingsCache}
 }
 func (s *storeImpl) Audits() AuditStore               { return &auditStore{client: s.client} }
 func (s *storeImpl) Installations() InstallationStore { return &installationStore{client: s.client} }

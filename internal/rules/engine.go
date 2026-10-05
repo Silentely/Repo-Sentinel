@@ -10,6 +10,7 @@ import (
 	htmlpkg "html"
 	"io"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,27 @@ type Engine struct {
 	Logger *slog.Logger
 	// GitHub 可选；用于拉取 CI Job 失败详情等上下文。
 	GitHub *githubx.AppClient
+}
+
+func (e *Engine) checkAndRecordAIBudget(ctx context.Context, estTokens int, estCostCents int) bool {
+	if e.Store == nil {
+		return false
+	}
+	todayKey := "ai_budget:" + time.Now().UTC().Format("2006-01-02")
+	budgetLimit := 500 // 默认 500 美分 ($5.00)
+	if raw := os.Getenv("REPOSENTINEL_AI_DAILY_BUDGET_CENTS"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			budgetLimit = v
+		}
+	}
+	throttled, err := e.Store.Settings().UpdateAIBudgetUsageAtomic(ctx, todayKey, estTokens, estCostCents, budgetLimit)
+	if err != nil {
+		if e.Logger != nil {
+			e.Logger.Warn("ai budget update failed, failing open", "error", err.Error())
+		}
+		return false
+	}
+	return throttled
 }
 
 // logNotifySkipped 记录"事件已入库但未产生实时通知"的决策留痕（Debug）：
@@ -279,6 +301,12 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 	// 无订阅渠道时不发起 AI 请求，避免无效费用；原因同样留痕。
 	if !hasSubscribedChannel(channels, ev.Kind) {
 		return skip("no_subscribed_channel")
+	}
+	if e.checkAndRecordAIBudget(ctx, 300, 1) {
+		if e.Logger != nil {
+			e.Logger.Warn("triage ai fallback", "event_id", ev.ID, "reason", "ai_budget_throttled")
+		}
+		return ""
 	}
 	// 为本次 AI 决策注入请求关联 ID：参与度日志与 ai 层调用日志共用同一 req_id。
 	ctx, reqID := ai.EnsureRequestID(ctx)

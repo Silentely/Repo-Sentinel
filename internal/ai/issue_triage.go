@@ -79,6 +79,7 @@ func (c *Client) IsIssueTriageEnabled() bool {
 
 // TriageIssue 对新创建的 GitHub Issue 进行意图识别、完整度检查与首响建议生成。
 func (c *Client) TriageIssue(ctx context.Context, repo, title, author, body string) (*IssueTriageResult, error) {
+	ctx = WithTaskType(ctx, TaskTypeIssueTriage)
 	if c == nil {
 		return nil, ErrNotConfigured
 	}

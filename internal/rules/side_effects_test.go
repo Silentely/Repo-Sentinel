@@ -73,6 +73,12 @@ func (m *memSettingsStore) GetMany(ctx context.Context, keys ...string) ([]store
 	return list, nil
 }
 
+func (m *memSettingsStore) UpdateAIBudgetUsageAtomic(ctx context.Context, todayKey string, tokens int, costCents int, budgetLimitCents int) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return false, nil
+}
+
 // TestSideEffects_Concurrency 验证并发 10 次调用 ExecuteWithReceipt 时，底层网络执行函数仅被调用 1 次。
 func TestSideEffects_Concurrency(t *testing.T) {
 	memStore := newMemSettingsStore()

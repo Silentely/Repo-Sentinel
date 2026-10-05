@@ -2,17 +2,30 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math"
 
+	"entgo.io/ent/dialect"
 	entclient "github.com/Silentely/Repo-Sentinel/internal/store/ent"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
+	"github.com/oklog/ulid/v2"
 )
 
 type settingsStore struct {
 	client *entclient.Client
+	driver dialect.Driver
 	// cache 进程内短 TTL 缓存（由 storeImpl 共享同一实例）；测试直构时为 nil。
 	cache *settingsCache
+}
+
+func (s *settingsStore) getDB() *sql.DB {
+	type hasDB interface{ DB() *sql.DB }
+	if d, ok := s.driver.(hasDB); ok {
+		return d.DB()
+	}
+	return nil
 }
 
 func (s *settingsStore) Get(ctx context.Context, key string) (SystemSetting, error) {
@@ -204,4 +217,85 @@ func SettingString(ctx context.Context, settings SettingsStore, key, defaultVal 
 		return defaultVal
 	}
 	return v
+}
+
+// UpdateAIBudgetUsageAtomic 原子累加当日 AI 预算用量，并返回是否触发软限流熔断。
+// 双轨方言安全实现，显式补齐 updated_by = 'ai_budget' 哨兵值。
+func (s *settingsStore) UpdateAIBudgetUsageAtomic(ctx context.Context, todayKey string, tokens int, costCents int, budgetLimitCents int) (bool, error) {
+	db := s.getDB()
+	id := ulid.Make().String()
+	var isThrottled bool
+
+	if db != nil {
+		if s.driver != nil && s.driver.Dialect() == dialect.Postgres {
+			query := "INSERT INTO system_settings (id, key, value_json, updated_by, updated_at) " +
+				"VALUES ($1, $2, jsonb_build_object('calls', 1, 'tokens_est', $3::int, 'cost_est_cents', $4::int, 'is_throttled', ($4 >= $5)), 'ai_budget', now()) " +
+				"ON CONFLICT (key) DO UPDATE " +
+				"SET value_json = jsonb_set(" +
+				"      jsonb_set(" +
+				"        jsonb_set(" +
+				"          jsonb_set(system_settings.value_json, '{calls}', " +
+				"            ((COALESCE(system_settings.value_json->>'calls', '0')::int + 1)::text)::jsonb), " +
+				"          '{tokens_est}', " +
+				"            ((COALESCE(system_settings.value_json->>'tokens_est', '0')::int + $3)::text)::jsonb), " +
+				"        '{cost_est_cents}', " +
+				"          ((COALESCE(system_settings.value_json->>'cost_est_cents', '0')::int + $4)::text)::jsonb), " +
+				"      '{is_throttled}', " +
+				"        (((COALESCE(system_settings.value_json->>'cost_est_cents', '0')::int + $4) >= $5)::text)::jsonb), " +
+				"    updated_by = 'ai_budget', " +
+				"    updated_at = now() " +
+				"RETURNING (value_json->>'is_throttled')::boolean;"
+			row := db.QueryRowContext(ctx, query, id, todayKey, tokens, costCents, budgetLimitCents)
+			var rawVal any
+			if err := row.Scan(&rawVal); err != nil {
+				return false, mapStoreError(err)
+			}
+			isThrottled = parseBoolScan(rawVal)
+		} else {
+			query := "INSERT INTO system_settings (id, key, value_json, updated_by, updated_at) " +
+				"VALUES (?, ?, json_object('calls', 1, 'tokens_est', ?, 'cost_est_cents', ?, 'is_throttled', ? >= ?), 'ai_budget', CURRENT_TIMESTAMP) " +
+				"ON CONFLICT (key) DO UPDATE " +
+				"SET value_json = json_set(" +
+				"      value_json, " +
+				"      '$.calls', COALESCE(json_extract(value_json, '$.calls'), 0) + 1, " +
+				"      '$.tokens_est', COALESCE(json_extract(value_json, '$.tokens_est'), 0) + ?, " +
+				"      '$.cost_est_cents', COALESCE(json_extract(value_json, '$.cost_est_cents'), 0) + ?, " +
+				"      '$.is_throttled', (COALESCE(json_extract(value_json, '$.cost_est_cents'), 0) + ?) >= ? " +
+				"    ), " +
+				"    updated_by = 'ai_budget', " +
+				"    updated_at = CURRENT_TIMESTAMP " +
+				"RETURNING json_extract(value_json, '$.is_throttled');"
+			row := db.QueryRowContext(ctx, query, id, todayKey, tokens, costCents, costCents, budgetLimitCents, tokens, costCents, costCents, budgetLimitCents)
+			var rawVal any
+			if err := row.Scan(&rawVal); err != nil {
+				return false, mapStoreError(err)
+			}
+			isThrottled = parseBoolScan(rawVal)
+		}
+	} else {
+		return false, fmt.Errorf("underlying sql.DB unavailable")
+	}
+
+	if s.cache != nil {
+		s.cache.Invalidate(todayKey)
+	}
+	return isThrottled, nil
+}
+
+func parseBoolScan(v any) bool {
+	switch val := v.(type) {
+	case bool:
+		return val
+	case int64:
+		return val != 0
+	case int:
+		return val != 0
+	case string:
+		return val == "true" || val == "1" || val == "t"
+	case []byte:
+		s := string(val)
+		return s == "true" || s == "1" || s == "t"
+	default:
+		return false
+	}
 }

@@ -41,6 +41,7 @@ const maxReleaseNotesChars = 8000
 // SummarizeEvents 生成定期报告（日/周/月）的自然语言总结。
 // repoNames 为仓库 ID → full_name 的映射（可为 nil）；任一错误时调用方应回退模板正文。
 func (c *Client) SummarizeEvents(ctx context.Context, events []store.Event, repoNames map[string]string, period string) (string, error) {
+	ctx = WithTaskType(ctx, TaskTypeReleaseNotes)
 	if len(events) == 0 {
 		return "", nil
 	}
@@ -55,6 +56,7 @@ func (c *Client) SummarizeEvents(ctx context.Context, events []store.Event, repo
 // TriageAlert 生成单条安全告警的影响分析与处理建议。
 // 调用方忽略错误并保持原通知正文。
 func (c *Client) TriageAlert(ctx context.Context, ev store.Event, repo string) (string, error) {
+	ctx = WithTaskType(ctx, TaskTypeIssueTriage)
 	user := fmt.Sprintf("告警类型：%s\n仓库：%s\n标题：%s\n严重度：%s\n规则/依赖：%s\n链接：%s",
 		store.KindDisplayName(ev.Kind), repo, ev.Title, ev.Severity, store.PayloadString(ev.PayloadSummary, "rule_or_dependency"), ev.HTMLURL)
 	out, err := c.Complete(ctx, triageSystemPrompt, user)
@@ -66,6 +68,7 @@ func (c *Client) TriageAlert(ctx context.Context, ev store.Event, repo string) (
 
 // DiagnoseWorkflowFailure 分析 GitHub Actions 工作流失败原因并给出诊断建议。
 func (c *Client) DiagnoseWorkflowFailure(ctx context.Context, repo, workflowName, branch, conclusion string, failedSteps []string) (string, error) {
+	ctx = WithTaskType(ctx, TaskTypeIssueTriage)
 	user := fmt.Sprintf("仓库：%s\n工作流：%s\n分支：%s\n失败结论：%s\n失败 Job/步骤：%s",
 		repo, workflowName, branch, conclusion, renderFailedSteps(failedSteps))
 	return c.Complete(ctx, workflowFailureSystemPrompt, user)
