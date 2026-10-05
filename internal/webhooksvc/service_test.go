@@ -139,7 +139,7 @@ func TestProcessNormalizeFailureMarksFailed(t *testing.T) {
 	svc := newService(data, nil, t.Context())
 	rowID := seedDelivery(t, data, "delivery-bad", "issues", []byte(`{not json`))
 
-	svc.Process(rowID, "issues", "delivery-bad", []byte(`{not json`))
+	svc.Process(rowID, "issues", "delivery-bad", "", []byte(`{not json`))
 
 	got := mustGetDelivery(t, data, "delivery-bad")
 	if got.Status != store.DeliveryFailed || got.ErrorCode != "normalize_failed" {
@@ -156,7 +156,7 @@ func TestProcessIssueOpenedMarksProcessed(t *testing.T) {
 	payload := issueOpenedPayload(t)
 	rowID := seedDelivery(t, data, "delivery-ok", "issues", payload)
 
-	svc.Process(rowID, "issues", "delivery-ok", payload)
+	svc.Process(rowID, "issues", "delivery-ok", "", payload)
 
 	got := mustGetDelivery(t, data, "delivery-ok")
 	if got.Status != store.DeliveryProcessed {
@@ -175,7 +175,7 @@ func TestProcessEvaluatorErrorMarksFailed(t *testing.T) {
 	payload := issueOpenedPayload(t)
 	rowID := seedDelivery(t, data, "delivery-rule", "issues", payload)
 
-	svc.Process(rowID, "issues", "delivery-rule", payload)
+	svc.Process(rowID, "issues", "delivery-rule", "", payload)
 
 	got := mustGetDelivery(t, data, "delivery-rule")
 	if got.Status != store.DeliveryFailed || got.ErrorCode != "rule_failed" {
@@ -197,7 +197,7 @@ func TestProcessRuleErrorLogCarriesRepo(t *testing.T) {
 	}
 	payload := issueOpenedPayload(t)
 	rowID := seedDelivery(t, data, "delivery-rule-log", "issues", payload)
-	svc.Process(rowID, "issues", "delivery-rule-log", payload)
+	svc.Process(rowID, "issues", "delivery-rule-log", "", payload)
 
 	logs := logBuffer.String()
 	if !strings.Contains(logs, "rule evaluate failed") {
@@ -225,7 +225,7 @@ func TestProcessFailureInvokesOnFailed(t *testing.T) {
 		bad := []byte(`{not-json`)
 		rowID := seedDelivery(t, data, "delivery-bad", "issues", bad)
 
-		svc.Process(rowID, "issues", "delivery-bad", bad)
+		svc.Process(rowID, "issues", "delivery-bad", "", bad)
 
 		if called != 1 {
 			t.Fatalf("规范化失败应触发 OnFailed 一次，实际 %d", called)
@@ -245,7 +245,7 @@ func TestProcessFailureInvokesOnFailed(t *testing.T) {
 		payload := issueOpenedPayload(t)
 		rowID := seedDelivery(t, data, "delivery-rule-cb", "issues", payload)
 
-		svc.Process(rowID, "issues", "delivery-rule-cb", payload)
+		svc.Process(rowID, "issues", "delivery-rule-cb", "", payload)
 
 		if called != 1 {
 			t.Fatalf("规则评估失败应触发 OnFailed 一次，实际 %d", called)
@@ -297,7 +297,7 @@ func TestProcessSuccessLogCarriesStaleDiscarded(t *testing.T) {
 	}
 	rowID := seedDelivery(t, data, "delivery-stale", "issues", payload)
 
-	svc.Process(rowID, "issues", "delivery-stale", payload)
+	svc.Process(rowID, "issues", "delivery-stale", "", payload)
 
 	logs := logBuffer.String()
 	if !strings.Contains(logs, `"msg":"github webhook processed"`) {
@@ -324,7 +324,7 @@ func TestProcessSlowLogsWarn(t *testing.T) {
 	payload := issueOpenedPayload(t)
 	rowID := seedDelivery(t, data, "delivery-slow", "issues", payload)
 
-	svc.Process(rowID, "issues", "delivery-slow", payload)
+	svc.Process(rowID, "issues", "delivery-slow", "", payload)
 
 	logs := logBuffer.String()
 	for _, want := range []string{`"msg":"webhook process slow"`, `"delivery_id":"delivery-slow"`, `"repo":"acme/demo"`, `"error_code":"webhook_slow"`, `"duration_ms":`} {
@@ -363,7 +363,7 @@ func TestProcessSuccessLogCarriesEventID(t *testing.T) {
 	payload := issueOpenedPayload(t)
 	rowID := seedDelivery(t, data, "delivery-event-id", "issues", payload)
 
-	svc.Process(rowID, "issues", "delivery-event-id", payload)
+	svc.Process(rowID, "issues", "delivery-event-id", "", payload)
 
 	logs := logBuffer.String()
 	if !strings.Contains(logs, `"event_kind":"issue"`) || !strings.Contains(logs, `"event_id":"`) {
@@ -380,7 +380,7 @@ func TestProcessBaselineSuppressSkipsEvaluator(t *testing.T) {
 	payload := issueOpenedPayload(t)
 	rowID := seedDelivery(t, data, "delivery-baseline", "issues", payload)
 
-	svc.Process(rowID, "issues", "delivery-baseline", payload)
+	svc.Process(rowID, "issues", "delivery-baseline", "", payload)
 
 	got := mustGetDelivery(t, data, "delivery-baseline")
 	if got.Status != store.DeliveryProcessed {
@@ -399,7 +399,7 @@ func TestProcessNilBackgroundReturns(t *testing.T) {
 	payload := issueOpenedPayload(t)
 	rowID := seedDelivery(t, data, "delivery-nobg", "issues", payload)
 
-	svc.Process(rowID, "issues", "delivery-nobg", payload)
+	svc.Process(rowID, "issues", "delivery-nobg", "", payload)
 
 	got := mustGetDelivery(t, data, "delivery-nobg")
 	if got.Status != store.DeliveryAccepted {
@@ -415,10 +415,10 @@ func TestProcessDuplicateFingerprintNoPanic(t *testing.T) {
 	payload := issueOpenedPayload(t)
 
 	firstID := seedDelivery(t, data, "delivery-first", "issues", payload)
-	svc.Process(firstID, "issues", "delivery-first", payload)
+	svc.Process(firstID, "issues", "delivery-first", "", payload)
 
 	secondID := seedDelivery(t, data, "delivery-second", "issues", payload)
-	svc.Process(secondID, "issues", "delivery-second", payload)
+	svc.Process(secondID, "issues", "delivery-second", "", payload)
 
 	if got := mustGetDelivery(t, data, "delivery-second"); got.Status != store.DeliveryProcessed {
 		t.Fatalf("重复载荷第二次处理应 processed，got status=%s code=%s", got.Status, got.ErrorCode)
@@ -434,7 +434,7 @@ func TestProcessSlowEvaluateStillMarksProcessed(t *testing.T) {
 	payload := issueOpenedPayload(t)
 	rowID := seedDelivery(t, data, "delivery-slow", "issues", payload)
 
-	svc.Process(rowID, "issues", "delivery-slow", payload)
+	svc.Process(rowID, "issues", "delivery-slow", "", payload)
 
 	got := mustGetDelivery(t, data, "delivery-slow")
 	if got.Status != store.DeliveryProcessed {

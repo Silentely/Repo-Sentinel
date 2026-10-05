@@ -392,7 +392,8 @@ func (s *server) mcpTools() []mcpTool {
 				if err != nil {
 					return nil, err
 				}
-				s.processWebhookAsync(newRecord.ID, newRecord.EventType, newRecord.DeliveryID, newRecord.Payload)
+				claimToken, _, _ := s.dependencies.Store.WebhookDeliveries().ClaimWebhookForProcessing(ctx, newRecord.ID, s.getWorkerID(), 3*time.Minute)
+				s.processWebhookAsync(newRecord.ID, newRecord.EventType, newRecord.DeliveryID, claimToken, newRecord.Payload)
 				return map[string]any{
 					"status":      "replayed",
 					"id":          newRecord.ID,

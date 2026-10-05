@@ -100,7 +100,7 @@ func TestServiceAICodeReviewFlow(t *testing.T) {
 	}`
 
 	rowID := seedDelivery(t, data, "gh-del-pr-1", "pull_request", []byte(payload))
-	svc.Process(rowID, "pull_request", "gh-del-pr-1", []byte(payload))
+	svc.Process(rowID, "pull_request", "gh-del-pr-1", "", []byte(payload))
 
 	// 等待后台异步审查与写库完成
 	deadline := time.Now().Add(4 * time.Second)
@@ -547,7 +547,7 @@ func TestServiceAICodeReviewBotPR(t *testing.T) {
 	}`
 
 	rowID := seedDelivery(t, data, "gh-del-bot-pr", "pull_request", []byte(payload))
-	svc.Process(rowID, "pull_request", "gh-del-bot-pr", []byte(payload))
+	svc.Process(rowID, "pull_request", "gh-del-bot-pr", "", []byte(payload))
 
 	// 验证工作项被正常写入，但未自动生成审查设置
 	item, err := data.WorkItems().GetByRepoNumber(ctx, "repo-demo", 43)
@@ -817,12 +817,12 @@ func TestServiceAICodeReviewDebounce(t *testing.T) {
 	}`
 
 	row1 := seedDelivery(t, data, "del-deb-1", "pull_request", []byte(payload1))
-	svc.Process(row1, "pull_request", "del-deb-1", []byte(payload1))
+	svc.Process(row1, "pull_request", "del-deb-1", "", []byte(payload1))
 
 	// 在 150ms 防抖窗口内触发第二次 push
 	time.Sleep(40 * time.Millisecond)
 	row2 := seedDelivery(t, data, "del-deb-2", "pull_request", []byte(payload2))
-	svc.Process(row2, "pull_request", "del-deb-2", []byte(payload2))
+	svc.Process(row2, "pull_request", "del-deb-2", "", []byte(payload2))
 
 	// 等待防抖窗口结束及异步落库
 	deadline := time.Now().Add(3 * time.Second)

@@ -114,7 +114,8 @@ func (s *server) handleReplayWebhookDelivery(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	s.processWebhookAsync(newRecord.ID, newRecord.EventType, newRecord.DeliveryID, newRecord.Payload)
+	claimToken, _, _ := s.dependencies.Store.WebhookDeliveries().ClaimWebhookForProcessing(r.Context(), newRecord.ID, s.getWorkerID(), 3*time.Minute)
+	s.processWebhookAsync(newRecord.ID, newRecord.EventType, newRecord.DeliveryID, claimToken, newRecord.Payload)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":      "replayed",

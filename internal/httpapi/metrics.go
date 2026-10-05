@@ -21,6 +21,7 @@ var (
 	metricWebhookFailed     atomic.Uint64
 	metricOutboxSent        atomic.Uint64
 	metricOutboxDead        atomic.Uint64
+	metricWebhookDeadLetter atomic.Uint64
 	metricReconcileRuns     atomic.Uint64
 )
 
@@ -41,6 +42,9 @@ func MetricsIncOutboxSent() { metricOutboxSent.Add(1) }
 
 // MetricsIncOutboxDead 记录通知进入死信。
 func MetricsIncOutboxDead() { metricOutboxDead.Add(1) }
+
+// MetricsIncWebhookDeadLetter 记录 Webhook 进入死信。
+func MetricsIncWebhookDeadLetter() { metricWebhookDeadLetter.Add(1) }
 
 // MetricsIncReconcileRuns 记录对账执行次数。
 func MetricsIncReconcileRuns() { metricReconcileRuns.Add(1) }
@@ -127,6 +131,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	writeMetric("reposentinel_webhook_duplicate_total", "Duplicate GitHub webhook deliveries", "counter", metricWebhookDuplicate.Load())
 	writeMetric("reposentinel_webhook_invalid_signature_total", "Webhook signature failures", "counter", metricWebhookInvalidSig.Load())
 	writeMetric("reposentinel_webhook_failed_total", "Webhook deliveries that failed processing", "counter", metricWebhookFailed.Load())
+	writeMetric("reposentinel_webhook_dead_letter_total", "Webhook deliveries moved to dead letter queue", "counter", metricWebhookDeadLetter.Load())
 	writeMetric("reposentinel_outbox_sent_total", "Successfully delivered notifications", "counter", metricOutboxSent.Load())
 	writeMetric("reposentinel_outbox_dead_total", "Notifications moved to dead letter", "counter", metricOutboxDead.Load())
 	writeMetric("reposentinel_reconcile_runs_total", "Reconcile job executions", "counter", metricReconcileRuns.Load())

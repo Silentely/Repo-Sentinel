@@ -26,6 +26,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/webhooksvc"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/oklog/ulid/v2"
 )
 
 const (
@@ -110,6 +111,17 @@ type server struct {
 	sseHub          *SSEHub
 	chatOpsExecutor ChatOpsActionExecutor
 	startedAt       time.Time
+	workerID        string
+}
+
+func (s *server) getWorkerID() string {
+	if s == nil {
+		return "worker-" + ulid.Make().String()
+	}
+	if s.workerID == "" {
+		s.workerID = "worker-" + ulid.Make().String()
+	}
+	return s.workerID
 }
 
 // safeGo 以后台 goroutine 执行 fn；panic 只记录日志，不拖垮整个进程。
@@ -158,11 +170,18 @@ func (s *server) getTrustedProxies() []*net.IPNet {
 // ctx 为 nil 时其 Done 通道永不就绪，等价于始终等待；关闭期间返回 false 不再排队。
 // webhookSem 未装配（直接构造的测试 server）时不限制并发。
 func (s *server) acquireWebhookSlot(ctx context.Context) bool {
+	if ctx != nil && ctx.Err() != nil {
+		return false
+	}
 	if s.webhookSem == nil {
 		return true
 	}
 	select {
 	case s.webhookSem <- struct{}{}:
+		if ctx != nil && ctx.Err() != nil {
+			<-s.webhookSem
+			return false
+		}
 		return true
 	case <-ctx.Done():
 		return false
@@ -180,13 +199,13 @@ func (s *server) releaseWebhookSlot() {
 // processWebhookAsync 后台执行 webhook 管线（规范化 → 通知 → 状态机），带并发限流。
 // 超出并发上限的投递排队等待而非丢弃；实例关闭期间不再排队新工作，
 // 已入队行的状态标记仍由 Process 内部脱离取消的 context 完成。
-func (s *server) processWebhookAsync(rowID, eventType, deliveryID string, body []byte) {
+func (s *server) processWebhookAsync(rowID, eventType, deliveryID, claimToken string, body []byte) {
 	s.safeGo("webhook_process", func() {
 		if s.acquireWebhookSlot(s.dependencies.Background) {
 			defer s.releaseWebhookSlot()
-			s.webhookSvc.Process(rowID, eventType, deliveryID, body)
+			s.webhookSvc.Process(rowID, eventType, deliveryID, claimToken, body)
 		} else if s.webhookSvc != nil {
-			s.webhookSvc.MarkFailed(rowID, deliveryID, eventType, "shutdown_canceled")
+			s.webhookSvc.MarkFailed(rowID, deliveryID, eventType, "shutdown_canceled", claimToken)
 		}
 	})
 }
@@ -241,6 +260,10 @@ func New(dependencies Dependencies) http.Handler {
 		sseHub:          sseHub,
 		chatOpsExecutor: dependencies.ChatOpsExecutor,
 		startedAt:       time.Now(),
+		workerID:        "worker-" + ulid.Make().String(),
+	}
+	if s.dependencies.Background != nil && s.dependencies.Store != nil {
+		s.startOrphanRecoveryWorker(s.dependencies.Background)
 	}
 	if s.chatOpsExecutor == nil && dependencies.GitHubRuntime != nil {
 		s.chatOpsExecutor = &GitHubChatOpsExecutor{Store: dependencies.Store, Client: dependencies.GitHubRuntime.Client}

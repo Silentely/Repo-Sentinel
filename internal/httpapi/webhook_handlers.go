@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -98,6 +99,17 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var claimToken string
+	if s.dependencies.Background != nil {
+		token, ok, err := s.dependencies.Store.WebhookDeliveries().ClaimWebhookForProcessing(r.Context(), delivery.ID, s.getWorkerID(), 3*time.Minute)
+		if err != nil && s.dependencies.Logger != nil {
+			s.dependencies.Logger.Warn("failed to claim webhook delivery", "delivery_id", deliveryID, "error", err.Error())
+		}
+		if ok {
+			claimToken = token
+		}
+	}
+
 	// 尽快 202，后台规范化（带并发限流，见 processWebhookAsync）。
 	MetricsIncWebhookAccepted()
 	s.dependencies.Logger.Info(
@@ -111,7 +123,7 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		"delivery_id": deliveryID,
 	})
 
-	s.processWebhookAsync(delivery.ID, eventType, deliveryID, body)
+	s.processWebhookAsync(delivery.ID, eventType, deliveryID, claimToken, body)
 }
 
 // respondWebhookDuplicate 处理重复投递：GitHub 可能重发同一 delivery_id。
@@ -130,12 +142,15 @@ func (s *server) respondWebhookDuplicate(w http.ResponseWriter, existing *store.
 		"event_type", eventType,
 		"row_status", status,
 	)
-	if existing != nil && existing.Status == store.DeliveryAccepted && time.Since(existing.ReceivedAt) > 2*time.Minute {
-		// 正常处理在秒级完成：停留 accepted 超 2 分钟说明后台未消费（崩溃/关闭），重放恢复。
-		s.dependencies.Logger.Warn("webhook accepted row replayed",
-			"delivery_id", deliveryID, "event_type", existing.EventType,
-			"error_code", "accepted_replay", "age_ms", time.Since(existing.ReceivedAt).Milliseconds())
-		s.processWebhookAsync(existing.ID, existing.EventType, existing.DeliveryID, existing.Payload)
+	if existing != nil && (existing.Status == store.DeliveryAccepted || existing.Status == store.DeliveryProcessing) && time.Since(existing.ReceivedAt) > 2*time.Minute {
+		// 正常处理在秒级完成：停留 accepted/processing 超 2 分钟说明后台未消费（崩溃/关闭），通过 CAS Claim 重放恢复。
+		claimToken, ok, err := s.dependencies.Store.WebhookDeliveries().ClaimWebhookForProcessing(context.Background(), existing.ID, s.getWorkerID(), 3*time.Minute)
+		if err == nil && ok {
+			s.dependencies.Logger.Warn("webhook accepted row replayed",
+				"delivery_id", deliveryID, "event_type", existing.EventType,
+				"error_code", "accepted_replay", "age_ms", time.Since(existing.ReceivedAt).Milliseconds())
+			s.processWebhookAsync(existing.ID, existing.EventType, existing.DeliveryID, claimToken, existing.Payload)
+		}
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"status":      "duplicate",

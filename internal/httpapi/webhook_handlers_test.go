@@ -173,7 +173,7 @@ func waitForDeliverySettled(t *testing.T, st store.Store, deliveryID string, tim
 	deadline := time.Now().Add(timeout)
 	for {
 		got, err := st.WebhookDeliveries().GetByDeliveryID(ctx, deliveryID)
-		if err == nil && got.Status != store.DeliveryAccepted {
+		if err == nil && (got.Status == store.DeliveryProcessed || got.Status == store.DeliveryFailed || got.Status == store.DeliveryDeadLetter) {
 			return got
 		}
 		if time.Now().After(deadline) {
@@ -562,7 +562,7 @@ func TestWebhook关闭期状态标记不受Background取消影响(t *testing.T) 
 		Evaluator:  fixture.srv.dependencies.Aggregator,
 		Background: fixture.srv.dependencies.Background,
 	}
-	svc.Process(row.ID, "issues", "delivery-shutdown-mark", body)
+	svc.Process(row.ID, "issues", "delivery-shutdown-mark", "", body)
 
 	got, err := fixture.store.WebhookDeliveries().GetByDeliveryID(context.Background(), "delivery-shutdown-mark")
 	if err != nil {
