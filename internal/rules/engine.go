@@ -93,6 +93,14 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			body = body + "\n────────────────\n🤖 Issue 智能分析与回复建议\n" + htmlpkg.EscapeString(issueTriage)
 		}
 	}
+	var chatOpsToken string
+	if res.Event.Kind == store.WorkflowRunKind && store.IsFailureConclusion(res.Event.WorkflowConclusion) && res.Event.WorkflowRunID != nil && res.Event.RepositoryID != nil {
+		runIDStr := strconv.FormatInt(*res.Event.WorkflowRunID, 10)
+		if tokenID, err := CreateChatOpsToken(ctx, e.Store, "workflow_rerun", *res.Event.RepositoryID, runIDStr, "", 2*time.Hour); err == nil {
+			chatOpsToken = tokenID
+		}
+	}
+
 	for _, ch := range channels {
 		// 渠道未订阅该事件类型时跳过。
 		if !ch.Enabled || !ch.AcceptsKind(res.Event.Kind) {
@@ -110,13 +118,18 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		if action == ActionDeferQuietHours {
 			nextAttempt = resumeAt
 		}
+		bodyJSON := map[string]any{
+			"event_id": res.Event.ID, "kind": res.Event.Kind, "action": res.Event.Action,
+			"repository": repoFullName,
+		}
+		if chatOpsToken != "" {
+			bodyJSON["chatops_token"] = chatOpsToken
+			bodyJSON["chatops_action"] = "workflow_rerun"
+		}
 		if _, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &res.Event.ID,
 			IdempotencyKey: idem, Status: store.OutboxPending, NextAttemptAt: nextAttempt,
-			Title: title, BodyText: body, HTMLURL: htmlURL, BodyJSON: map[string]any{
-				"event_id": res.Event.ID, "kind": res.Event.Kind, "action": res.Event.Action,
-				"repository": repoFullName,
-			},
+			Title: title, BodyText: body, HTMLURL: htmlURL, BodyJSON: bodyJSON,
 			ParseMode: "HTML",
 		}); err != nil && !errors.Is(err, store.ErrConflict) {
 			return err

@@ -185,7 +185,8 @@ type httpTestOptions struct {
 	// 需与 aiRuntime 同源（默认值一致），避免 RuntimeFromEnv 把零值误判为 env 锁定。
 	aiConfig config.AIConfig
 	// starPoller 装配到 Dependencies.StarredPoller，供 star release 追踪 API 测试。
-	starPoller *syncx.StarredReleasePoller
+	starPoller      *syncx.StarredReleasePoller
+	chatOpsExecutor ChatOpsActionExecutor
 }
 
 type httpTestFixture struct {
@@ -283,16 +284,17 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 			BuildChannel: "test",
 			GoVersion:    "go1.26.4",
 		},
-		Ready:         ready,
-		Logger:        logger,
-		SchemaVersion: "202607270001",
-		Frontend:      options.frontend,
-		KeyRing:       options.keyRing,
-		GitHubRuntime: ghRuntime,
-		UpdateChecker: options.updateChecker,
-		AI:            options.aiClient,
-		AIRuntime:     options.aiRuntime,
-		StarredPoller: options.starPoller,
+		Ready:           ready,
+		Logger:          logger,
+		SchemaVersion:   "202607270001",
+		Frontend:        options.frontend,
+		KeyRing:         options.keyRing,
+		GitHubRuntime:   ghRuntime,
+		UpdateChecker:   options.updateChecker,
+		AI:              options.aiClient,
+		AIRuntime:       options.aiRuntime,
+		StarredPoller:   options.starPoller,
+		ChatOpsExecutor: options.chatOpsExecutor,
 	}
 	return &httpTestFixture{
 		handler:        New(dependencies),

@@ -13,21 +13,12 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
+	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
-	"github.com/oklog/ulid/v2"
 )
 
 // ChatOpsActionData represents the payload for an interactive button action.
-type ChatOpsActionData struct {
-	ID         string    `json:"id"`
-	Action     string    `json:"action"` // e.g. "workflow_rerun"
-	RepoID     string    `json:"repo_id"`
-	RunID      string    `json:"run_id"`
-	ActorID    string    `json:"actor_id,omitempty"`
-	ExpiresAt  time.Time `json:"expires_at"`
-	Consumed   bool      `json:"consumed,omitempty"`
-	ConsumedAt time.Time `json:"consumed_at,omitempty"`
-}
+type ChatOpsActionData = rules.ChatOpsActionData
 
 // ChatOpsActionExecutor 执行已经完成校验与消费的 ChatOps 动作。
 type ChatOpsActionExecutor interface {
@@ -70,120 +61,32 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 			return fmt.Errorf("load installation token: %w", err)
 		}
 	}
-	return e.Client.RerunWorkflow(ctx, token, parts[0], parts[1], runID)
+	var settingsStore store.SettingsStore
+	if e.Store != nil {
+		settingsStore = e.Store.Settings()
+	}
+	return rules.ExecuteWithReceipt(ctx, settingsStore, "workflow_rerun", action.RepoID, action.RunID, "v1", strconv.FormatInt(runID, 10), func() (string, error) {
+		err := e.Client.RerunWorkflow(ctx, token, parts[0], parts[1], runID)
+		if err != nil {
+			return "", err
+		}
+		return action.RunID, nil
+	})
 }
 
 // CreateChatOpsToken stores a single-use action token with a specified TTL.
 func CreateChatOpsToken(ctx context.Context, st store.Store, action, repoID, runID, actorID string, ttl time.Duration) (string, error) {
-	if st == nil {
-		return "", errors.New("store not available")
-	}
-	if ttl <= 0 {
-		ttl = 15 * time.Minute
-	}
-	id := ulid.Make().String()
-	data := ChatOpsActionData{
-		ID:        id,
-		Action:    action,
-		RepoID:    repoID,
-		RunID:     runID,
-		ActorID:   actorID,
-		ExpiresAt: time.Now().UTC().Add(ttl),
-	}
-	raw, err := json.Marshal(data)
-	if err != nil {
-		return "", err
-	}
-	_, err = st.Settings().Upsert(ctx, store.SystemSetting{
-		Key:       store.ChatOpsTokenKey(id),
-		ValueJSON: raw,
-		UpdatedAt: time.Now().UTC(),
-	})
-	if err != nil {
-		return "", err
-	}
-	return id, nil
+	return rules.CreateChatOpsToken(ctx, st, action, repoID, runID, actorID, ttl)
 }
 
 // ConsumeChatOpsToken atomically retrieves and marks an action token as consumed.
 func ConsumeChatOpsToken(ctx context.Context, st store.Store, tokenID string) (*ChatOpsActionData, error) {
-	if st == nil {
-		return nil, errors.New("store not available")
-	}
-	key := store.ChatOpsTokenKey(tokenID)
-	var data ChatOpsActionData
-	// 先竞争唯一 claim 键：唯一约束是唯一的互斥来源，进程内与跨进程同样只有一个消费者成功。
-	// 此处不再加进程内互斥，避免把不同用户/不同令牌的回调消费串行化。
-	err := st.WithTx(ctx, func(tx store.Store) error {
-		if _, err := tx.Settings().Create(ctx, store.SystemSetting{
-			ID: ulid.Make().String(), Key: store.ChatOpsClaimKey(tokenID),
-			ValueJSON: json.RawMessage(`{"claimed":true}`), UpdatedAt: time.Now().UTC(),
-		}); err != nil {
-			if errors.Is(err, store.ErrConflict) {
-				return errors.New("token already consumed")
-			}
-			return err
-		}
-		setting, err := tx.Settings().Get(ctx, key)
-		if err != nil {
-			return fmt.Errorf("token not found or invalid: %w", err)
-		}
-		if err := json.Unmarshal(setting.ValueJSON, &data); err != nil {
-			return fmt.Errorf("invalid token data: %w", err)
-		}
-		if data.Consumed {
-			return errors.New("token already consumed")
-		}
-		if !data.ExpiresAt.IsZero() && time.Now().UTC().After(data.ExpiresAt) {
-			return errors.New("token expired")
-		}
-
-		data.Consumed = true
-		data.ConsumedAt = time.Now().UTC()
-		raw, err := json.Marshal(data)
-		if err != nil {
-			return err
-		}
-
-		_, err = tx.Settings().Upsert(ctx, store.SystemSetting{
-			Key:       key,
-			ValueJSON: raw,
-			UpdatedAt: data.ConsumedAt,
-		})
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &data, nil
+	return rules.ConsumeChatOpsToken(ctx, st, tokenID)
 }
 
 // ReleaseChatOpsToken 仅用于动作执行失败时释放已领取的 Token，允许安全重试。
 func ReleaseChatOpsToken(ctx context.Context, st store.Store, tokenID string) error {
-	if st == nil {
-		return errors.New("store not available")
-	}
-	return st.WithTx(ctx, func(tx store.Store) error {
-		if err := tx.Settings().Delete(ctx, store.ChatOpsClaimKey(tokenID)); err != nil && !errors.Is(err, store.ErrNotFound) {
-			return err
-		}
-		setting, err := tx.Settings().Get(ctx, store.ChatOpsTokenKey(tokenID))
-		if err != nil {
-			return err
-		}
-		var data ChatOpsActionData
-		if err := json.Unmarshal(setting.ValueJSON, &data); err != nil {
-			return err
-		}
-		data.Consumed = false
-		data.ConsumedAt = time.Time{}
-		raw, err := json.Marshal(data)
-		if err != nil {
-			return err
-		}
-		_, err = tx.Settings().Upsert(ctx, store.SystemSetting{Key: setting.Key, ValueJSON: raw, UpdatedAt: time.Now().UTC()})
-		return err
-	})
+	return rules.ReleaseChatOpsToken(ctx, st, tokenID)
 }
 
 // handleTelegramChatOpsCallback handles Telegram webhook callback queries.
@@ -232,12 +135,12 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	}
 
 	data := update.CallbackQuery.Data
-	if !strings.HasPrefix(data, "act:") {
+	if !strings.HasPrefix(data, "act:") && !strings.HasPrefix(data, "rerun:") {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
 
-	tokenID := strings.TrimPrefix(data, "act:")
+	tokenID := strings.TrimPrefix(strings.TrimPrefix(data, "act:"), "rerun:")
 	action, err := ConsumeChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 	if err != nil {
 		if s.dependencies.Logger != nil {
@@ -308,9 +211,11 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 		if valObj, ok := actionObj["value"].(map[string]any); ok {
 			if tok, ok := valObj["token"].(string); ok {
 				tokenID = tok
+			} else if tok, ok := valObj["chatops_token"].(string); ok {
+				tokenID = tok
 			}
 		} else if valStr, ok := actionObj["value"].(string); ok {
-			tokenID = strings.TrimPrefix(valStr, "act:")
+			tokenID = strings.TrimPrefix(strings.TrimPrefix(valStr, "act:"), "rerun:")
 		}
 	}
 

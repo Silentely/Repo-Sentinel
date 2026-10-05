@@ -214,17 +214,30 @@ func (w *Worker) sendFeishu(ctx context.Context, ch store.NotificationChannel, s
 			"content": "**" + item.Title + "**\n\n" + plainBody,
 		},
 	}
+	var actions []any
 	if item.HTMLURL != "" {
-		elements = append(elements, map[string]any{
-			"tag": "action",
-			"actions": []any{
-				map[string]any{
-					"tag":  "button",
-					"text": map[string]any{"tag": "plain_text", "content": store.GitHubViewLabel},
-					"url":  item.HTMLURL,
-					"type": "primary",
-				},
+		actions = append(actions, map[string]any{
+			"tag":  "button",
+			"text": map[string]any{"tag": "plain_text", "content": store.GitHubViewLabel},
+			"url":  item.HTMLURL,
+			"type": "primary",
+		})
+	}
+	if token, ok := item.BodyJSON["chatops_token"].(string); ok && token != "" {
+		actions = append(actions, map[string]any{
+			"tag":  "button",
+			"text": map[string]any{"tag": "plain_text", "content": "🔄 重试工作流"},
+			"type": "danger",
+			"value": map[string]any{
+				"action":        "workflow_rerun",
+				"chatops_token": token,
 			},
+		})
+	}
+	if len(actions) > 0 {
+		elements = append(elements, map[string]any{
+			"tag":     "action",
+			"actions": actions,
 		})
 	}
 
@@ -411,21 +424,36 @@ func (w *Worker) sendSlack(ctx context.Context, ch store.NotificationChannel, se
 		},
 	}
 
+	var actionElements []any
 	if item.HTMLURL != "" {
-		blocks = append(blocks, map[string]any{
-			"type": "actions",
-			"elements": []any{
-				map[string]any{
-					"type": "button",
-					"text": map[string]any{
-						"type":  "plain_text",
-						"text":  store.GitHubViewLabel,
-						"emoji": true,
-					},
-					"url":       item.HTMLURL,
-					"action_id": "view_on_github",
-				},
+		actionElements = append(actionElements, map[string]any{
+			"type": "button",
+			"text": map[string]any{
+				"type":  "plain_text",
+				"text":  store.GitHubViewLabel,
+				"emoji": true,
 			},
+			"url":       item.HTMLURL,
+			"action_id": "view_on_github",
+		})
+	}
+	if token, ok := item.BodyJSON["chatops_token"].(string); ok && token != "" {
+		actionElements = append(actionElements, map[string]any{
+			"type": "button",
+			"text": map[string]any{
+				"type":  "plain_text",
+				"text":  "🔄 重试工作流",
+				"emoji": true,
+			},
+			"value":     token,
+			"action_id": "workflow_rerun",
+			"style":     "danger",
+		})
+	}
+	if len(actionElements) > 0 {
+		blocks = append(blocks, map[string]any{
+			"type":     "actions",
+			"elements": actionElements,
 		})
 	}
 

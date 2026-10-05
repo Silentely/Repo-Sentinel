@@ -259,7 +259,8 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 	}
 	switch ch.ChannelType {
 	case store.ChannelTelegram:
-		return ch.ChannelType, w.sendTelegram(ctx, ch.Target, secret, item.BodyText, item.HTMLURL, item.ParseMode)
+		token, _ := item.BodyJSON["chatops_token"].(string)
+		return ch.ChannelType, w.sendTelegram(ctx, ch.Target, secret, item.BodyText, item.HTMLURL, item.ParseMode, token)
 	case store.ChannelHTTPWebhook:
 		return ch.ChannelType, w.sendHTTP(ctx, ch, secret, item)
 	case store.ChannelFeishu:
@@ -293,12 +294,12 @@ func (w *Worker) decryptSecret(ctx context.Context, envelope string) (string, er
 	return string(res.Plaintext), nil
 }
 
-func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text, htmlURL, parseMode string) error {
+func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text, htmlURL, parseMode string, chatOpsToken ...string) error {
 	if token == "" || chatID == "" {
 		return fmt.Errorf("telegram_not_configured")
 	}
 	api := "https://api.telegram.org/bot" + token + "/sendMessage"
-	return w.sendTelegramDirect(ctx, api, chatID, token, text, htmlURL, parseMode)
+	return w.sendTelegramDirect(ctx, api, chatID, token, text, htmlURL, parseMode, chatOpsToken...)
 }
 
 // sendTelegramDirect 发送 Telegram 消息，api 参数为完整 URL，便于测试时替换端点。
@@ -322,7 +323,7 @@ func formatTelegramExpandableBlocks(text string) string {
 	return sb.String()
 }
 
-func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, text, htmlURL, parseMode string) error {
+func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, text, htmlURL, parseMode string, chatOpsToken ...string) error {
 	if parseMode == "" {
 		parseMode = "HTML"
 	}
@@ -336,12 +337,20 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 		"parse_mode":               parseMode,
 		"disable_web_page_preview": true,
 	}
-	// 有 GitHub 链接时附加 inline keyboard 按钮
+	var opToken string
+	if len(chatOpsToken) > 0 {
+		opToken = chatOpsToken[0]
+	}
+	var keyboardRow []map[string]string
 	if htmlURL != "" {
+		keyboardRow = append(keyboardRow, map[string]string{"text": store.GitHubViewLabel, "url": htmlURL})
+	}
+	if opToken != "" {
+		keyboardRow = append(keyboardRow, map[string]string{"text": "🔄 重试工作流", "callback_data": "rerun:" + opToken})
+	}
+	if len(keyboardRow) > 0 {
 		payload["reply_markup"] = map[string]any{
-			"inline_keyboard": [][]map[string]string{
-				{{"text": store.GitHubViewLabel, "url": htmlURL}},
-			},
+			"inline_keyboard": [][]map[string]string{keyboardRow},
 		}
 	}
 	body, _ := json.Marshal(payload)
