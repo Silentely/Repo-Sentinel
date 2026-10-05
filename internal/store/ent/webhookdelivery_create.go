@@ -114,6 +114,90 @@ func (_c *WebhookDeliveryCreate) SetNillableProcessedAt(v *time.Time) *WebhookDe
 	return _c
 }
 
+// SetClaimToken sets the "claim_token" field.
+func (_c *WebhookDeliveryCreate) SetClaimToken(v string) *WebhookDeliveryCreate {
+	_c.mutation.SetClaimToken(v)
+	return _c
+}
+
+// SetNillableClaimToken sets the "claim_token" field if the given value is not nil.
+func (_c *WebhookDeliveryCreate) SetNillableClaimToken(v *string) *WebhookDeliveryCreate {
+	if v != nil {
+		_c.SetClaimToken(*v)
+	}
+	return _c
+}
+
+// SetClaimVersion sets the "claim_version" field.
+func (_c *WebhookDeliveryCreate) SetClaimVersion(v int64) *WebhookDeliveryCreate {
+	_c.mutation.SetClaimVersion(v)
+	return _c
+}
+
+// SetNillableClaimVersion sets the "claim_version" field if the given value is not nil.
+func (_c *WebhookDeliveryCreate) SetNillableClaimVersion(v *int64) *WebhookDeliveryCreate {
+	if v != nil {
+		_c.SetClaimVersion(*v)
+	}
+	return _c
+}
+
+// SetClaimedBy sets the "claimed_by" field.
+func (_c *WebhookDeliveryCreate) SetClaimedBy(v string) *WebhookDeliveryCreate {
+	_c.mutation.SetClaimedBy(v)
+	return _c
+}
+
+// SetNillableClaimedBy sets the "claimed_by" field if the given value is not nil.
+func (_c *WebhookDeliveryCreate) SetNillableClaimedBy(v *string) *WebhookDeliveryCreate {
+	if v != nil {
+		_c.SetClaimedBy(*v)
+	}
+	return _c
+}
+
+// SetClaimedUntil sets the "claimed_until" field.
+func (_c *WebhookDeliveryCreate) SetClaimedUntil(v time.Time) *WebhookDeliveryCreate {
+	_c.mutation.SetClaimedUntil(v)
+	return _c
+}
+
+// SetNillableClaimedUntil sets the "claimed_until" field if the given value is not nil.
+func (_c *WebhookDeliveryCreate) SetNillableClaimedUntil(v *time.Time) *WebhookDeliveryCreate {
+	if v != nil {
+		_c.SetClaimedUntil(*v)
+	}
+	return _c
+}
+
+// SetAttemptCount sets the "attempt_count" field.
+func (_c *WebhookDeliveryCreate) SetAttemptCount(v int) *WebhookDeliveryCreate {
+	_c.mutation.SetAttemptCount(v)
+	return _c
+}
+
+// SetNillableAttemptCount sets the "attempt_count" field if the given value is not nil.
+func (_c *WebhookDeliveryCreate) SetNillableAttemptCount(v *int) *WebhookDeliveryCreate {
+	if v != nil {
+		_c.SetAttemptCount(*v)
+	}
+	return _c
+}
+
+// SetLastErrorCode sets the "last_error_code" field.
+func (_c *WebhookDeliveryCreate) SetLastErrorCode(v string) *WebhookDeliveryCreate {
+	_c.mutation.SetLastErrorCode(v)
+	return _c
+}
+
+// SetNillableLastErrorCode sets the "last_error_code" field if the given value is not nil.
+func (_c *WebhookDeliveryCreate) SetNillableLastErrorCode(v *string) *WebhookDeliveryCreate {
+	if v != nil {
+		_c.SetLastErrorCode(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *WebhookDeliveryCreate) SetID(v string) *WebhookDeliveryCreate {
 	_c.mutation.SetID(v)
@@ -171,6 +255,26 @@ func (_c *WebhookDeliveryCreate) defaults() {
 		v := webhookdelivery.DefaultErrorCode
 		_c.mutation.SetErrorCode(v)
 	}
+	if _, ok := _c.mutation.ClaimToken(); !ok {
+		v := webhookdelivery.DefaultClaimToken
+		_c.mutation.SetClaimToken(v)
+	}
+	if _, ok := _c.mutation.ClaimVersion(); !ok {
+		v := webhookdelivery.DefaultClaimVersion
+		_c.mutation.SetClaimVersion(v)
+	}
+	if _, ok := _c.mutation.ClaimedBy(); !ok {
+		v := webhookdelivery.DefaultClaimedBy
+		_c.mutation.SetClaimedBy(v)
+	}
+	if _, ok := _c.mutation.AttemptCount(); !ok {
+		v := webhookdelivery.DefaultAttemptCount
+		_c.mutation.SetAttemptCount(v)
+	}
+	if _, ok := _c.mutation.LastErrorCode(); !ok {
+		v := webhookdelivery.DefaultLastErrorCode
+		_c.mutation.SetLastErrorCode(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -195,6 +299,21 @@ func (_c *WebhookDeliveryCreate) check() error {
 	}
 	if _, ok := _c.mutation.ReceivedAt(); !ok {
 		return &ValidationError{Name: "received_at", err: errors.New(`ent: missing required field "WebhookDelivery.received_at"`)}
+	}
+	if _, ok := _c.mutation.ClaimToken(); !ok {
+		return &ValidationError{Name: "claim_token", err: errors.New(`ent: missing required field "WebhookDelivery.claim_token"`)}
+	}
+	if _, ok := _c.mutation.ClaimVersion(); !ok {
+		return &ValidationError{Name: "claim_version", err: errors.New(`ent: missing required field "WebhookDelivery.claim_version"`)}
+	}
+	if _, ok := _c.mutation.ClaimedBy(); !ok {
+		return &ValidationError{Name: "claimed_by", err: errors.New(`ent: missing required field "WebhookDelivery.claimed_by"`)}
+	}
+	if _, ok := _c.mutation.AttemptCount(); !ok {
+		return &ValidationError{Name: "attempt_count", err: errors.New(`ent: missing required field "WebhookDelivery.attempt_count"`)}
+	}
+	if _, ok := _c.mutation.LastErrorCode(); !ok {
+		return &ValidationError{Name: "last_error_code", err: errors.New(`ent: missing required field "WebhookDelivery.last_error_code"`)}
 	}
 	return nil
 }
@@ -266,6 +385,30 @@ func (_c *WebhookDeliveryCreate) createSpec() (*WebhookDelivery, *sqlgraph.Creat
 	if value, ok := _c.mutation.ProcessedAt(); ok {
 		_spec.SetField(webhookdelivery.FieldProcessedAt, field.TypeTime, value)
 		_node.ProcessedAt = &value
+	}
+	if value, ok := _c.mutation.ClaimToken(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimToken, field.TypeString, value)
+		_node.ClaimToken = value
+	}
+	if value, ok := _c.mutation.ClaimVersion(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimVersion, field.TypeInt64, value)
+		_node.ClaimVersion = value
+	}
+	if value, ok := _c.mutation.ClaimedBy(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimedBy, field.TypeString, value)
+		_node.ClaimedBy = value
+	}
+	if value, ok := _c.mutation.ClaimedUntil(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimedUntil, field.TypeTime, value)
+		_node.ClaimedUntil = &value
+	}
+	if value, ok := _c.mutation.AttemptCount(); ok {
+		_spec.SetField(webhookdelivery.FieldAttemptCount, field.TypeInt, value)
+		_node.AttemptCount = value
+	}
+	if value, ok := _c.mutation.LastErrorCode(); ok {
+		_spec.SetField(webhookdelivery.FieldLastErrorCode, field.TypeString, value)
+		_node.LastErrorCode = value
 	}
 	return _node, _spec
 }

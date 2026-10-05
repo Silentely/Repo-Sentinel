@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"sync"
@@ -1618,8 +1618,8 @@ type AuditLogMutation struct {
 	actor_id            *string
 	target_type         *string
 	target_id           *string
-	metadata_json       *json.RawMessage
-	appendmetadata_json json.RawMessage
+	metadata_json       *jsontext.Value
+	appendmetadata_json jsontext.Value
 	ip_address          *string
 	created_at          *time.Time
 	clearedFields       map[string]struct{}
@@ -1913,13 +1913,13 @@ func (m *AuditLogMutation) ResetTargetID() {
 }
 
 // SetMetadataJSON sets the "metadata_json" field.
-func (m *AuditLogMutation) SetMetadataJSON(jm json.RawMessage) {
-	m.metadata_json = &jm
+func (m *AuditLogMutation) SetMetadataJSON(j jsontext.Value) {
+	m.metadata_json = &j
 	m.appendmetadata_json = nil
 }
 
 // MetadataJSON returns the value of the "metadata_json" field in the mutation.
-func (m *AuditLogMutation) MetadataJSON() (r json.RawMessage, exists bool) {
+func (m *AuditLogMutation) MetadataJSON() (r jsontext.Value, exists bool) {
 	v := m.metadata_json
 	if v == nil {
 		return
@@ -1930,7 +1930,7 @@ func (m *AuditLogMutation) MetadataJSON() (r json.RawMessage, exists bool) {
 // OldMetadataJSON returns the old "metadata_json" field's value of the AuditLog entity.
 // If the AuditLog object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v json.RawMessage, err error) {
+func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldMetadataJSON is only allowed on UpdateOne operations")
 	}
@@ -1944,13 +1944,13 @@ func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v json.RawMessa
 	return oldValue.MetadataJSON, nil
 }
 
-// AppendMetadataJSON adds jm to the "metadata_json" field.
-func (m *AuditLogMutation) AppendMetadataJSON(jm json.RawMessage) {
-	m.appendmetadata_json = append(m.appendmetadata_json, jm...)
+// AppendMetadataJSON adds j to the "metadata_json" field.
+func (m *AuditLogMutation) AppendMetadataJSON(j jsontext.Value) {
+	m.appendmetadata_json = append(m.appendmetadata_json, j...)
 }
 
 // AppendedMetadataJSON returns the list of values that were appended to the "metadata_json" field in this mutation.
-func (m *AuditLogMutation) AppendedMetadataJSON() (json.RawMessage, bool) {
+func (m *AuditLogMutation) AppendedMetadataJSON() (jsontext.Value, bool) {
 	if len(m.appendmetadata_json) == 0 {
 		return nil, false
 	}
@@ -2188,7 +2188,7 @@ func (m *AuditLogMutation) SetField(name string, value ent.Value) error {
 		m.SetTargetID(v)
 		return nil
 	case auditlog.FieldMetadataJSON:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -12228,8 +12228,8 @@ type SystemSettingMutation struct {
 	typ              string
 	id               *string
 	key              *string
-	value_json       *json.RawMessage
-	appendvalue_json json.RawMessage
+	value_json       *jsontext.Value
+	appendvalue_json jsontext.Value
 	updated_at       *time.Time
 	updated_by       *string
 	clearedFields    map[string]struct{}
@@ -12379,13 +12379,13 @@ func (m *SystemSettingMutation) ResetKey() {
 }
 
 // SetValueJSON sets the "value_json" field.
-func (m *SystemSettingMutation) SetValueJSON(jm json.RawMessage) {
-	m.value_json = &jm
+func (m *SystemSettingMutation) SetValueJSON(j jsontext.Value) {
+	m.value_json = &j
 	m.appendvalue_json = nil
 }
 
 // ValueJSON returns the value of the "value_json" field in the mutation.
-func (m *SystemSettingMutation) ValueJSON() (r json.RawMessage, exists bool) {
+func (m *SystemSettingMutation) ValueJSON() (r jsontext.Value, exists bool) {
 	v := m.value_json
 	if v == nil {
 		return
@@ -12396,7 +12396,7 @@ func (m *SystemSettingMutation) ValueJSON() (r json.RawMessage, exists bool) {
 // OldValueJSON returns the old "value_json" field's value of the SystemSetting entity.
 // If the SystemSetting object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v json.RawMessage, err error) {
+func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldValueJSON is only allowed on UpdateOne operations")
 	}
@@ -12410,13 +12410,13 @@ func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v json.RawMes
 	return oldValue.ValueJSON, nil
 }
 
-// AppendValueJSON adds jm to the "value_json" field.
-func (m *SystemSettingMutation) AppendValueJSON(jm json.RawMessage) {
-	m.appendvalue_json = append(m.appendvalue_json, jm...)
+// AppendValueJSON adds j to the "value_json" field.
+func (m *SystemSettingMutation) AppendValueJSON(j jsontext.Value) {
+	m.appendvalue_json = append(m.appendvalue_json, j...)
 }
 
 // AppendedValueJSON returns the list of values that were appended to the "value_json" field in this mutation.
-func (m *SystemSettingMutation) AppendedValueJSON() (json.RawMessage, bool) {
+func (m *SystemSettingMutation) AppendedValueJSON() (jsontext.Value, bool) {
 	if len(m.appendvalue_json) == 0 {
 		return nil, false
 	}
@@ -12598,7 +12598,7 @@ func (m *SystemSettingMutation) SetField(name string, value ent.Value) error {
 		m.SetKey(v)
 		return nil
 	case systemsetting.FieldValueJSON:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -12746,6 +12746,14 @@ type WebhookDeliveryMutation struct {
 	payload              *[]byte
 	received_at          *time.Time
 	processed_at         *time.Time
+	claim_token          *string
+	claim_version        *int64
+	addclaim_version     *int64
+	claimed_by           *string
+	claimed_until        *time.Time
+	attempt_count        *int
+	addattempt_count     *int
+	last_error_code      *string
 	clearedFields        map[string]struct{}
 	done                 bool
 	oldValue             func(context.Context) (*WebhookDelivery, error)
@@ -13206,6 +13214,275 @@ func (m *WebhookDeliveryMutation) ResetProcessedAt() {
 	delete(m.clearedFields, webhookdelivery.FieldProcessedAt)
 }
 
+// SetClaimToken sets the "claim_token" field.
+func (m *WebhookDeliveryMutation) SetClaimToken(s string) {
+	m.claim_token = &s
+}
+
+// ClaimToken returns the value of the "claim_token" field in the mutation.
+func (m *WebhookDeliveryMutation) ClaimToken() (r string, exists bool) {
+	v := m.claim_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimToken returns the old "claim_token" field's value of the WebhookDelivery entity.
+// If the WebhookDelivery object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookDeliveryMutation) OldClaimToken(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimToken: %w", err)
+	}
+	return oldValue.ClaimToken, nil
+}
+
+// ResetClaimToken resets all changes to the "claim_token" field.
+func (m *WebhookDeliveryMutation) ResetClaimToken() {
+	m.claim_token = nil
+}
+
+// SetClaimVersion sets the "claim_version" field.
+func (m *WebhookDeliveryMutation) SetClaimVersion(i int64) {
+	m.claim_version = &i
+	m.addclaim_version = nil
+}
+
+// ClaimVersion returns the value of the "claim_version" field in the mutation.
+func (m *WebhookDeliveryMutation) ClaimVersion() (r int64, exists bool) {
+	v := m.claim_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimVersion returns the old "claim_version" field's value of the WebhookDelivery entity.
+// If the WebhookDelivery object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookDeliveryMutation) OldClaimVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimVersion: %w", err)
+	}
+	return oldValue.ClaimVersion, nil
+}
+
+// AddClaimVersion adds i to the "claim_version" field.
+func (m *WebhookDeliveryMutation) AddClaimVersion(i int64) {
+	if m.addclaim_version != nil {
+		*m.addclaim_version += i
+	} else {
+		m.addclaim_version = &i
+	}
+}
+
+// AddedClaimVersion returns the value that was added to the "claim_version" field in this mutation.
+func (m *WebhookDeliveryMutation) AddedClaimVersion() (r int64, exists bool) {
+	v := m.addclaim_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetClaimVersion resets all changes to the "claim_version" field.
+func (m *WebhookDeliveryMutation) ResetClaimVersion() {
+	m.claim_version = nil
+	m.addclaim_version = nil
+}
+
+// SetClaimedBy sets the "claimed_by" field.
+func (m *WebhookDeliveryMutation) SetClaimedBy(s string) {
+	m.claimed_by = &s
+}
+
+// ClaimedBy returns the value of the "claimed_by" field in the mutation.
+func (m *WebhookDeliveryMutation) ClaimedBy() (r string, exists bool) {
+	v := m.claimed_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimedBy returns the old "claimed_by" field's value of the WebhookDelivery entity.
+// If the WebhookDelivery object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookDeliveryMutation) OldClaimedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimedBy: %w", err)
+	}
+	return oldValue.ClaimedBy, nil
+}
+
+// ResetClaimedBy resets all changes to the "claimed_by" field.
+func (m *WebhookDeliveryMutation) ResetClaimedBy() {
+	m.claimed_by = nil
+}
+
+// SetClaimedUntil sets the "claimed_until" field.
+func (m *WebhookDeliveryMutation) SetClaimedUntil(t time.Time) {
+	m.claimed_until = &t
+}
+
+// ClaimedUntil returns the value of the "claimed_until" field in the mutation.
+func (m *WebhookDeliveryMutation) ClaimedUntil() (r time.Time, exists bool) {
+	v := m.claimed_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimedUntil returns the old "claimed_until" field's value of the WebhookDelivery entity.
+// If the WebhookDelivery object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookDeliveryMutation) OldClaimedUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimedUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimedUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimedUntil: %w", err)
+	}
+	return oldValue.ClaimedUntil, nil
+}
+
+// ClearClaimedUntil clears the value of the "claimed_until" field.
+func (m *WebhookDeliveryMutation) ClearClaimedUntil() {
+	m.claimed_until = nil
+	m.clearedFields[webhookdelivery.FieldClaimedUntil] = struct{}{}
+}
+
+// ClaimedUntilCleared returns if the "claimed_until" field was cleared in this mutation.
+func (m *WebhookDeliveryMutation) ClaimedUntilCleared() bool {
+	_, ok := m.clearedFields[webhookdelivery.FieldClaimedUntil]
+	return ok
+}
+
+// ResetClaimedUntil resets all changes to the "claimed_until" field.
+func (m *WebhookDeliveryMutation) ResetClaimedUntil() {
+	m.claimed_until = nil
+	delete(m.clearedFields, webhookdelivery.FieldClaimedUntil)
+}
+
+// SetAttemptCount sets the "attempt_count" field.
+func (m *WebhookDeliveryMutation) SetAttemptCount(i int) {
+	m.attempt_count = &i
+	m.addattempt_count = nil
+}
+
+// AttemptCount returns the value of the "attempt_count" field in the mutation.
+func (m *WebhookDeliveryMutation) AttemptCount() (r int, exists bool) {
+	v := m.attempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttemptCount returns the old "attempt_count" field's value of the WebhookDelivery entity.
+// If the WebhookDelivery object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookDeliveryMutation) OldAttemptCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttemptCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttemptCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttemptCount: %w", err)
+	}
+	return oldValue.AttemptCount, nil
+}
+
+// AddAttemptCount adds i to the "attempt_count" field.
+func (m *WebhookDeliveryMutation) AddAttemptCount(i int) {
+	if m.addattempt_count != nil {
+		*m.addattempt_count += i
+	} else {
+		m.addattempt_count = &i
+	}
+}
+
+// AddedAttemptCount returns the value that was added to the "attempt_count" field in this mutation.
+func (m *WebhookDeliveryMutation) AddedAttemptCount() (r int, exists bool) {
+	v := m.addattempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttemptCount resets all changes to the "attempt_count" field.
+func (m *WebhookDeliveryMutation) ResetAttemptCount() {
+	m.attempt_count = nil
+	m.addattempt_count = nil
+}
+
+// SetLastErrorCode sets the "last_error_code" field.
+func (m *WebhookDeliveryMutation) SetLastErrorCode(s string) {
+	m.last_error_code = &s
+}
+
+// LastErrorCode returns the value of the "last_error_code" field in the mutation.
+func (m *WebhookDeliveryMutation) LastErrorCode() (r string, exists bool) {
+	v := m.last_error_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastErrorCode returns the old "last_error_code" field's value of the WebhookDelivery entity.
+// If the WebhookDelivery object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookDeliveryMutation) OldLastErrorCode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastErrorCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastErrorCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastErrorCode: %w", err)
+	}
+	return oldValue.LastErrorCode, nil
+}
+
+// ResetLastErrorCode resets all changes to the "last_error_code" field.
+func (m *WebhookDeliveryMutation) ResetLastErrorCode() {
+	m.last_error_code = nil
+}
+
 // Where appends a list predicates to the WebhookDeliveryMutation builder.
 func (m *WebhookDeliveryMutation) Where(ps ...predicate.WebhookDelivery) {
 	m.predicates = append(m.predicates, ps...)
@@ -13240,7 +13517,7 @@ func (m *WebhookDeliveryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WebhookDeliveryMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 15)
 	if m.delivery_id != nil {
 		fields = append(fields, webhookdelivery.FieldDeliveryID)
 	}
@@ -13268,6 +13545,24 @@ func (m *WebhookDeliveryMutation) Fields() []string {
 	if m.processed_at != nil {
 		fields = append(fields, webhookdelivery.FieldProcessedAt)
 	}
+	if m.claim_token != nil {
+		fields = append(fields, webhookdelivery.FieldClaimToken)
+	}
+	if m.claim_version != nil {
+		fields = append(fields, webhookdelivery.FieldClaimVersion)
+	}
+	if m.claimed_by != nil {
+		fields = append(fields, webhookdelivery.FieldClaimedBy)
+	}
+	if m.claimed_until != nil {
+		fields = append(fields, webhookdelivery.FieldClaimedUntil)
+	}
+	if m.attempt_count != nil {
+		fields = append(fields, webhookdelivery.FieldAttemptCount)
+	}
+	if m.last_error_code != nil {
+		fields = append(fields, webhookdelivery.FieldLastErrorCode)
+	}
 	return fields
 }
 
@@ -13294,6 +13589,18 @@ func (m *WebhookDeliveryMutation) Field(name string) (ent.Value, bool) {
 		return m.ReceivedAt()
 	case webhookdelivery.FieldProcessedAt:
 		return m.ProcessedAt()
+	case webhookdelivery.FieldClaimToken:
+		return m.ClaimToken()
+	case webhookdelivery.FieldClaimVersion:
+		return m.ClaimVersion()
+	case webhookdelivery.FieldClaimedBy:
+		return m.ClaimedBy()
+	case webhookdelivery.FieldClaimedUntil:
+		return m.ClaimedUntil()
+	case webhookdelivery.FieldAttemptCount:
+		return m.AttemptCount()
+	case webhookdelivery.FieldLastErrorCode:
+		return m.LastErrorCode()
 	}
 	return nil, false
 }
@@ -13321,6 +13628,18 @@ func (m *WebhookDeliveryMutation) OldField(ctx context.Context, name string) (en
 		return m.OldReceivedAt(ctx)
 	case webhookdelivery.FieldProcessedAt:
 		return m.OldProcessedAt(ctx)
+	case webhookdelivery.FieldClaimToken:
+		return m.OldClaimToken(ctx)
+	case webhookdelivery.FieldClaimVersion:
+		return m.OldClaimVersion(ctx)
+	case webhookdelivery.FieldClaimedBy:
+		return m.OldClaimedBy(ctx)
+	case webhookdelivery.FieldClaimedUntil:
+		return m.OldClaimedUntil(ctx)
+	case webhookdelivery.FieldAttemptCount:
+		return m.OldAttemptCount(ctx)
+	case webhookdelivery.FieldLastErrorCode:
+		return m.OldLastErrorCode(ctx)
 	}
 	return nil, fmt.Errorf("unknown WebhookDelivery field %s", name)
 }
@@ -13393,6 +13712,48 @@ func (m *WebhookDeliveryMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetProcessedAt(v)
 		return nil
+	case webhookdelivery.FieldClaimToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimToken(v)
+		return nil
+	case webhookdelivery.FieldClaimVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimVersion(v)
+		return nil
+	case webhookdelivery.FieldClaimedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimedBy(v)
+		return nil
+	case webhookdelivery.FieldClaimedUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimedUntil(v)
+		return nil
+	case webhookdelivery.FieldAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttemptCount(v)
+		return nil
+	case webhookdelivery.FieldLastErrorCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastErrorCode(v)
+		return nil
 	}
 	return fmt.Errorf("unknown WebhookDelivery field %s", name)
 }
@@ -13400,13 +13761,26 @@ func (m *WebhookDeliveryMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *WebhookDeliveryMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addclaim_version != nil {
+		fields = append(fields, webhookdelivery.FieldClaimVersion)
+	}
+	if m.addattempt_count != nil {
+		fields = append(fields, webhookdelivery.FieldAttemptCount)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *WebhookDeliveryMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case webhookdelivery.FieldClaimVersion:
+		return m.AddedClaimVersion()
+	case webhookdelivery.FieldAttemptCount:
+		return m.AddedAttemptCount()
+	}
 	return nil, false
 }
 
@@ -13415,6 +13789,20 @@ func (m *WebhookDeliveryMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *WebhookDeliveryMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case webhookdelivery.FieldClaimVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddClaimVersion(v)
+		return nil
+	case webhookdelivery.FieldAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttemptCount(v)
+		return nil
 	}
 	return fmt.Errorf("unknown WebhookDelivery numeric field %s", name)
 }
@@ -13428,6 +13816,9 @@ func (m *WebhookDeliveryMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(webhookdelivery.FieldProcessedAt) {
 		fields = append(fields, webhookdelivery.FieldProcessedAt)
+	}
+	if m.FieldCleared(webhookdelivery.FieldClaimedUntil) {
+		fields = append(fields, webhookdelivery.FieldClaimedUntil)
 	}
 	return fields
 }
@@ -13448,6 +13839,9 @@ func (m *WebhookDeliveryMutation) ClearField(name string) error {
 		return nil
 	case webhookdelivery.FieldProcessedAt:
 		m.ClearProcessedAt()
+		return nil
+	case webhookdelivery.FieldClaimedUntil:
+		m.ClearClaimedUntil()
 		return nil
 	}
 	return fmt.Errorf("unknown WebhookDelivery nullable field %s", name)
@@ -13483,6 +13877,24 @@ func (m *WebhookDeliveryMutation) ResetField(name string) error {
 		return nil
 	case webhookdelivery.FieldProcessedAt:
 		m.ResetProcessedAt()
+		return nil
+	case webhookdelivery.FieldClaimToken:
+		m.ResetClaimToken()
+		return nil
+	case webhookdelivery.FieldClaimVersion:
+		m.ResetClaimVersion()
+		return nil
+	case webhookdelivery.FieldClaimedBy:
+		m.ResetClaimedBy()
+		return nil
+	case webhookdelivery.FieldClaimedUntil:
+		m.ResetClaimedUntil()
+		return nil
+	case webhookdelivery.FieldAttemptCount:
+		m.ResetAttemptCount()
+		return nil
+	case webhookdelivery.FieldLastErrorCode:
+		m.ResetLastErrorCode()
 		return nil
 	}
 	return fmt.Errorf("unknown WebhookDelivery field %s", name)

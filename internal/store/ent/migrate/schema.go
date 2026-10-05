@@ -500,6 +500,12 @@ var (
 		{Name: "payload", Type: field.TypeBytes, Nullable: true},
 		{Name: "received_at", Type: field.TypeTime},
 		{Name: "processed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "claim_token", Type: field.TypeString, Default: ""},
+		{Name: "claim_version", Type: field.TypeInt64, Default: 0},
+		{Name: "claimed_by", Type: field.TypeString, Default: ""},
+		{Name: "claimed_until", Type: field.TypeTime, Nullable: true},
+		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "last_error_code", Type: field.TypeString, Default: ""},
 	}
 	// WebhookDeliveriesTable holds the schema information for the "webhook_deliveries" table.
 	WebhookDeliveriesTable = &schema.Table{
@@ -526,6 +532,11 @@ var (
 				Name:    "webhookdelivery_received_at",
 				Unique:  false,
 				Columns: []*schema.Column{WebhookDeliveriesColumns[8]},
+			},
+			{
+				Name:    "webhook_deliveries_claim_check",
+				Unique:  false,
+				Columns: []*schema.Column{WebhookDeliveriesColumns[5], WebhookDeliveriesColumns[13]},
 			},
 		},
 	}

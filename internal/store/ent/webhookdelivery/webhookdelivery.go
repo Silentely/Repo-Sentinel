@@ -29,6 +29,18 @@ const (
 	FieldReceivedAt = "received_at"
 	// FieldProcessedAt holds the string denoting the processed_at field in the database.
 	FieldProcessedAt = "processed_at"
+	// FieldClaimToken holds the string denoting the claim_token field in the database.
+	FieldClaimToken = "claim_token"
+	// FieldClaimVersion holds the string denoting the claim_version field in the database.
+	FieldClaimVersion = "claim_version"
+	// FieldClaimedBy holds the string denoting the claimed_by field in the database.
+	FieldClaimedBy = "claimed_by"
+	// FieldClaimedUntil holds the string denoting the claimed_until field in the database.
+	FieldClaimedUntil = "claimed_until"
+	// FieldAttemptCount holds the string denoting the attempt_count field in the database.
+	FieldAttemptCount = "attempt_count"
+	// FieldLastErrorCode holds the string denoting the last_error_code field in the database.
+	FieldLastErrorCode = "last_error_code"
 	// Table holds the table name of the webhookdelivery in the database.
 	Table = "webhook_deliveries"
 )
@@ -45,6 +57,12 @@ var Columns = []string{
 	FieldPayload,
 	FieldReceivedAt,
 	FieldProcessedAt,
+	FieldClaimToken,
+	FieldClaimVersion,
+	FieldClaimedBy,
+	FieldClaimedUntil,
+	FieldAttemptCount,
+	FieldLastErrorCode,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -66,6 +84,16 @@ var (
 	DefaultStatus string
 	// DefaultErrorCode holds the default value on creation for the "error_code" field.
 	DefaultErrorCode string
+	// DefaultClaimToken holds the default value on creation for the "claim_token" field.
+	DefaultClaimToken string
+	// DefaultClaimVersion holds the default value on creation for the "claim_version" field.
+	DefaultClaimVersion int64
+	// DefaultClaimedBy holds the default value on creation for the "claimed_by" field.
+	DefaultClaimedBy string
+	// DefaultAttemptCount holds the default value on creation for the "attempt_count" field.
+	DefaultAttemptCount int
+	// DefaultLastErrorCode holds the default value on creation for the "last_error_code" field.
+	DefaultLastErrorCode string
 )
 
 // OrderOption defines the ordering options for the WebhookDelivery queries.
@@ -114,4 +142,34 @@ func ByReceivedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByProcessedAt orders the results by the processed_at field.
 func ByProcessedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProcessedAt, opts...).ToFunc()
+}
+
+// ByClaimToken orders the results by the claim_token field.
+func ByClaimToken(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClaimToken, opts...).ToFunc()
+}
+
+// ByClaimVersion orders the results by the claim_version field.
+func ByClaimVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClaimVersion, opts...).ToFunc()
+}
+
+// ByClaimedBy orders the results by the claimed_by field.
+func ByClaimedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClaimedBy, opts...).ToFunc()
+}
+
+// ByClaimedUntil orders the results by the claimed_until field.
+func ByClaimedUntil(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClaimedUntil, opts...).ToFunc()
+}
+
+// ByAttemptCount orders the results by the attempt_count field.
+func ByAttemptCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAttemptCount, opts...).ToFunc()
+}
+
+// ByLastErrorCode orders the results by the last_error_code field.
+func ByLastErrorCode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastErrorCode, opts...).ToFunc()
 }

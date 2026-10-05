@@ -463,7 +463,7 @@ func (s *webhookDeliveryStore) Create(ctx context.Context, in WebhookDelivery) (
 	if in.Status == "" {
 		in.Status = DeliveryAccepted
 	}
-	entity, err := s.client.WebhookDelivery.Create().
+	createOp := s.client.WebhookDelivery.Create().
 		SetID(in.ID).
 		SetDeliveryID(in.DeliveryID).
 		SetEventType(in.EventType).
@@ -473,7 +473,15 @@ func (s *webhookDeliveryStore) Create(ctx context.Context, in WebhookDelivery) (
 		SetErrorCode(in.ErrorCode).
 		SetPayload(in.Payload).
 		SetReceivedAt(in.ReceivedAt.UTC()).
-		Save(ctx)
+		SetClaimToken(in.ClaimToken).
+		SetClaimVersion(in.ClaimVersion).
+		SetClaimedBy(in.ClaimedBy).
+		SetAttemptCount(in.AttemptCount).
+		SetLastErrorCode(in.LastErrorCode)
+	if in.ClaimedUntil != nil {
+		createOp.SetClaimedUntil(*in.ClaimedUntil)
+	}
+	entity, err := createOp.Save(ctx)
 	if err != nil {
 		return WebhookDelivery{}, mapStoreError(err)
 	}
@@ -580,6 +588,8 @@ func webhookDeliveryFromEntity(e *entclient.WebhookDelivery) WebhookDelivery {
 		ID: e.ID, DeliveryID: e.DeliveryID, EventType: e.EventType, Action: e.Action,
 		RepositoryFullName: e.RepositoryFullName, Status: e.Status, ErrorCode: e.ErrorCode,
 		Payload: e.Payload, ReceivedAt: e.ReceivedAt, ProcessedAt: e.ProcessedAt,
+		ClaimToken: e.ClaimToken, ClaimVersion: e.ClaimVersion, ClaimedBy: e.ClaimedBy,
+		ClaimedUntil: e.ClaimedUntil, AttemptCount: e.AttemptCount, LastErrorCode: e.LastErrorCode,
 	}
 }
 

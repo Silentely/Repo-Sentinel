@@ -56,10 +56,12 @@ const (
 	OutboxDead      = "dead"
 	OutboxCancelled = "cancelled"
 
-	DeliveryAccepted  = "accepted"
-	DeliveryProcessed = "processed"
-	DeliveryFailed    = "failed"
-	DeliveryDuplicate = "duplicate"
+	DeliveryAccepted   = "accepted"
+	DeliveryProcessing = "processing"
+	DeliveryProcessed  = "processed"
+	DeliveryFailed     = "failed"
+	DeliveryDuplicate  = "duplicate"
+	DeliveryDeadLetter = "dead_letter"
 )
 
 // IsValidChannelType 校验渠道类型白名单。
@@ -282,6 +284,12 @@ type WebhookDelivery struct {
 	Payload            []byte     `json:"-"`
 	ReceivedAt         time.Time  `json:"received_at"`
 	ProcessedAt        *time.Time `json:"processed_at,omitempty"`
+	ClaimToken         string     `json:"claim_token,omitempty"`
+	ClaimVersion       int64      `json:"claim_version,omitempty"`
+	ClaimedBy          string     `json:"claimed_by,omitempty"`
+	ClaimedUntil       *time.Time `json:"claimed_until,omitempty"`
+	AttemptCount       int        `json:"attempt_count,omitempty"`
+	LastErrorCode      string     `json:"last_error_code,omitempty"`
 }
 
 // WorkItem 领域模型。

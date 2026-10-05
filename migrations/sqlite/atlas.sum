@@ -1,4 +1,4 @@
-h1:eUjojsre2HLouPA+HtFogVaSf2ekVi3KE3sDFKzdcnI=
+h1:00vlNliTTCYNfOrHCE89p7sRY7+xgVgt28KzRyx6rvY=
 20260727000100_initial.sql h1:IZH3NW1MvYSmhBbiJfrMsVfIafVUkDEcDjJ1nVWiU8k=
 20260728000100_domain_core.sql h1:lmdbx1mJCthTGw+1leGYhe2yoMZ7MRLqoCfOGYBdbcQ=
 20260729000100_repo_capability_toggles.sql h1:r6Qv4zeU5Sn70i93B+7E3HP+TOQQpu5Tt72s5w8Hq7c=
@@ -14,3 +14,4 @@ h1:eUjojsre2HLouPA+HtFogVaSf2ekVi3KE3sDFKzdcnI=
 20261001000100_bot_filtering.sql h1:5gute3lXwJuR/tNeHDTvRCXun/joFIgQ82wLIGkJzwc=
 20261002000100_periodic_reports_and_quiet_hours.sql h1:RimPJnb/hEFqq7313PzLS6oiIIzKqFpQdRKdSh8StAk=
 20261003000100_webhook_delivery_indexes.sql h1:7WwiY+vji62CwWVJIAVibG0aoKHITd/bKsTNWCTZr4E=
+20261005000050_webhook_claim_fields.sql h1:BNSLbu7Zs3y2Jeiye08XthZdTJQTXrRDi5gEEL6DktE=

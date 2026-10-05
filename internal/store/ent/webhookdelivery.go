@@ -34,8 +34,20 @@ type WebhookDelivery struct {
 	// ReceivedAt holds the value of the "received_at" field.
 	ReceivedAt time.Time `json:"received_at,omitempty"`
 	// ProcessedAt holds the value of the "processed_at" field.
-	ProcessedAt  *time.Time `json:"processed_at,omitempty"`
-	selectValues sql.SelectValues
+	ProcessedAt *time.Time `json:"processed_at,omitempty"`
+	// ClaimToken holds the value of the "claim_token" field.
+	ClaimToken string `json:"claim_token,omitempty"`
+	// ClaimVersion holds the value of the "claim_version" field.
+	ClaimVersion int64 `json:"claim_version,omitempty"`
+	// ClaimedBy holds the value of the "claimed_by" field.
+	ClaimedBy string `json:"claimed_by,omitempty"`
+	// ClaimedUntil holds the value of the "claimed_until" field.
+	ClaimedUntil *time.Time `json:"claimed_until,omitempty"`
+	// AttemptCount holds the value of the "attempt_count" field.
+	AttemptCount int `json:"attempt_count,omitempty"`
+	// LastErrorCode holds the value of the "last_error_code" field.
+	LastErrorCode string `json:"last_error_code,omitempty"`
+	selectValues  sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -45,9 +57,11 @@ func (*WebhookDelivery) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case webhookdelivery.FieldPayload:
 			values[i] = new([]byte)
-		case webhookdelivery.FieldID, webhookdelivery.FieldDeliveryID, webhookdelivery.FieldEventType, webhookdelivery.FieldAction, webhookdelivery.FieldRepositoryFullName, webhookdelivery.FieldStatus, webhookdelivery.FieldErrorCode:
+		case webhookdelivery.FieldClaimVersion, webhookdelivery.FieldAttemptCount:
+			values[i] = new(sql.NullInt64)
+		case webhookdelivery.FieldID, webhookdelivery.FieldDeliveryID, webhookdelivery.FieldEventType, webhookdelivery.FieldAction, webhookdelivery.FieldRepositoryFullName, webhookdelivery.FieldStatus, webhookdelivery.FieldErrorCode, webhookdelivery.FieldClaimToken, webhookdelivery.FieldClaimedBy, webhookdelivery.FieldLastErrorCode:
 			values[i] = new(sql.NullString)
-		case webhookdelivery.FieldReceivedAt, webhookdelivery.FieldProcessedAt:
+		case webhookdelivery.FieldReceivedAt, webhookdelivery.FieldProcessedAt, webhookdelivery.FieldClaimedUntil:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -125,6 +139,43 @@ func (_m *WebhookDelivery) assignValues(columns []string, values []any) error {
 				_m.ProcessedAt = new(time.Time)
 				*_m.ProcessedAt = value.Time
 			}
+		case webhookdelivery.FieldClaimToken:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field claim_token", values[i])
+			} else if value.Valid {
+				_m.ClaimToken = value.String
+			}
+		case webhookdelivery.FieldClaimVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field claim_version", values[i])
+			} else if value.Valid {
+				_m.ClaimVersion = value.Int64
+			}
+		case webhookdelivery.FieldClaimedBy:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field claimed_by", values[i])
+			} else if value.Valid {
+				_m.ClaimedBy = value.String
+			}
+		case webhookdelivery.FieldClaimedUntil:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field claimed_until", values[i])
+			} else if value.Valid {
+				_m.ClaimedUntil = new(time.Time)
+				*_m.ClaimedUntil = value.Time
+			}
+		case webhookdelivery.FieldAttemptCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field attempt_count", values[i])
+			} else if value.Valid {
+				_m.AttemptCount = int(value.Int64)
+			}
+		case webhookdelivery.FieldLastErrorCode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_error_code", values[i])
+			} else if value.Valid {
+				_m.LastErrorCode = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -189,6 +240,26 @@ func (_m *WebhookDelivery) String() string {
 		builder.WriteString("processed_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("claim_token=")
+	builder.WriteString(_m.ClaimToken)
+	builder.WriteString(", ")
+	builder.WriteString("claim_version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ClaimVersion))
+	builder.WriteString(", ")
+	builder.WriteString("claimed_by=")
+	builder.WriteString(_m.ClaimedBy)
+	builder.WriteString(", ")
+	if v := _m.ClaimedUntil; v != nil {
+		builder.WriteString("claimed_until=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("attempt_count=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AttemptCount))
+	builder.WriteString(", ")
+	builder.WriteString("last_error_code=")
+	builder.WriteString(_m.LastErrorCode)
 	builder.WriteByte(')')
 	return builder.String()
 }

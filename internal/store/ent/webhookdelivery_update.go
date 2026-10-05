@@ -144,6 +144,110 @@ func (_u *WebhookDeliveryUpdate) ClearProcessedAt() *WebhookDeliveryUpdate {
 	return _u
 }
 
+// SetClaimToken sets the "claim_token" field.
+func (_u *WebhookDeliveryUpdate) SetClaimToken(v string) *WebhookDeliveryUpdate {
+	_u.mutation.SetClaimToken(v)
+	return _u
+}
+
+// SetNillableClaimToken sets the "claim_token" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdate) SetNillableClaimToken(v *string) *WebhookDeliveryUpdate {
+	if v != nil {
+		_u.SetClaimToken(*v)
+	}
+	return _u
+}
+
+// SetClaimVersion sets the "claim_version" field.
+func (_u *WebhookDeliveryUpdate) SetClaimVersion(v int64) *WebhookDeliveryUpdate {
+	_u.mutation.ResetClaimVersion()
+	_u.mutation.SetClaimVersion(v)
+	return _u
+}
+
+// SetNillableClaimVersion sets the "claim_version" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdate) SetNillableClaimVersion(v *int64) *WebhookDeliveryUpdate {
+	if v != nil {
+		_u.SetClaimVersion(*v)
+	}
+	return _u
+}
+
+// AddClaimVersion adds value to the "claim_version" field.
+func (_u *WebhookDeliveryUpdate) AddClaimVersion(v int64) *WebhookDeliveryUpdate {
+	_u.mutation.AddClaimVersion(v)
+	return _u
+}
+
+// SetClaimedBy sets the "claimed_by" field.
+func (_u *WebhookDeliveryUpdate) SetClaimedBy(v string) *WebhookDeliveryUpdate {
+	_u.mutation.SetClaimedBy(v)
+	return _u
+}
+
+// SetNillableClaimedBy sets the "claimed_by" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdate) SetNillableClaimedBy(v *string) *WebhookDeliveryUpdate {
+	if v != nil {
+		_u.SetClaimedBy(*v)
+	}
+	return _u
+}
+
+// SetClaimedUntil sets the "claimed_until" field.
+func (_u *WebhookDeliveryUpdate) SetClaimedUntil(v time.Time) *WebhookDeliveryUpdate {
+	_u.mutation.SetClaimedUntil(v)
+	return _u
+}
+
+// SetNillableClaimedUntil sets the "claimed_until" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdate) SetNillableClaimedUntil(v *time.Time) *WebhookDeliveryUpdate {
+	if v != nil {
+		_u.SetClaimedUntil(*v)
+	}
+	return _u
+}
+
+// ClearClaimedUntil clears the value of the "claimed_until" field.
+func (_u *WebhookDeliveryUpdate) ClearClaimedUntil() *WebhookDeliveryUpdate {
+	_u.mutation.ClearClaimedUntil()
+	return _u
+}
+
+// SetAttemptCount sets the "attempt_count" field.
+func (_u *WebhookDeliveryUpdate) SetAttemptCount(v int) *WebhookDeliveryUpdate {
+	_u.mutation.ResetAttemptCount()
+	_u.mutation.SetAttemptCount(v)
+	return _u
+}
+
+// SetNillableAttemptCount sets the "attempt_count" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdate) SetNillableAttemptCount(v *int) *WebhookDeliveryUpdate {
+	if v != nil {
+		_u.SetAttemptCount(*v)
+	}
+	return _u
+}
+
+// AddAttemptCount adds value to the "attempt_count" field.
+func (_u *WebhookDeliveryUpdate) AddAttemptCount(v int) *WebhookDeliveryUpdate {
+	_u.mutation.AddAttemptCount(v)
+	return _u
+}
+
+// SetLastErrorCode sets the "last_error_code" field.
+func (_u *WebhookDeliveryUpdate) SetLastErrorCode(v string) *WebhookDeliveryUpdate {
+	_u.mutation.SetLastErrorCode(v)
+	return _u
+}
+
+// SetNillableLastErrorCode sets the "last_error_code" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdate) SetNillableLastErrorCode(v *string) *WebhookDeliveryUpdate {
+	if v != nil {
+		_u.SetLastErrorCode(*v)
+	}
+	return _u
+}
+
 // Mutation returns the WebhookDeliveryMutation object of the builder.
 func (_u *WebhookDeliveryUpdate) Mutation() *WebhookDeliveryMutation {
 	return _u.mutation
@@ -214,6 +318,33 @@ func (_u *WebhookDeliveryUpdate) sqlSave(ctx context.Context) (_node int, err er
 	}
 	if _u.mutation.ProcessedAtCleared() {
 		_spec.ClearField(webhookdelivery.FieldProcessedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ClaimToken(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimToken, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ClaimVersion(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedClaimVersion(); ok {
+		_spec.AddField(webhookdelivery.FieldClaimVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.ClaimedBy(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimedBy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ClaimedUntil(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimedUntil, field.TypeTime, value)
+	}
+	if _u.mutation.ClaimedUntilCleared() {
+		_spec.ClearField(webhookdelivery.FieldClaimedUntil, field.TypeTime)
+	}
+	if value, ok := _u.mutation.AttemptCount(); ok {
+		_spec.SetField(webhookdelivery.FieldAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAttemptCount(); ok {
+		_spec.AddField(webhookdelivery.FieldAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LastErrorCode(); ok {
+		_spec.SetField(webhookdelivery.FieldLastErrorCode, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -351,6 +482,110 @@ func (_u *WebhookDeliveryUpdateOne) ClearProcessedAt() *WebhookDeliveryUpdateOne
 	return _u
 }
 
+// SetClaimToken sets the "claim_token" field.
+func (_u *WebhookDeliveryUpdateOne) SetClaimToken(v string) *WebhookDeliveryUpdateOne {
+	_u.mutation.SetClaimToken(v)
+	return _u
+}
+
+// SetNillableClaimToken sets the "claim_token" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdateOne) SetNillableClaimToken(v *string) *WebhookDeliveryUpdateOne {
+	if v != nil {
+		_u.SetClaimToken(*v)
+	}
+	return _u
+}
+
+// SetClaimVersion sets the "claim_version" field.
+func (_u *WebhookDeliveryUpdateOne) SetClaimVersion(v int64) *WebhookDeliveryUpdateOne {
+	_u.mutation.ResetClaimVersion()
+	_u.mutation.SetClaimVersion(v)
+	return _u
+}
+
+// SetNillableClaimVersion sets the "claim_version" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdateOne) SetNillableClaimVersion(v *int64) *WebhookDeliveryUpdateOne {
+	if v != nil {
+		_u.SetClaimVersion(*v)
+	}
+	return _u
+}
+
+// AddClaimVersion adds value to the "claim_version" field.
+func (_u *WebhookDeliveryUpdateOne) AddClaimVersion(v int64) *WebhookDeliveryUpdateOne {
+	_u.mutation.AddClaimVersion(v)
+	return _u
+}
+
+// SetClaimedBy sets the "claimed_by" field.
+func (_u *WebhookDeliveryUpdateOne) SetClaimedBy(v string) *WebhookDeliveryUpdateOne {
+	_u.mutation.SetClaimedBy(v)
+	return _u
+}
+
+// SetNillableClaimedBy sets the "claimed_by" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdateOne) SetNillableClaimedBy(v *string) *WebhookDeliveryUpdateOne {
+	if v != nil {
+		_u.SetClaimedBy(*v)
+	}
+	return _u
+}
+
+// SetClaimedUntil sets the "claimed_until" field.
+func (_u *WebhookDeliveryUpdateOne) SetClaimedUntil(v time.Time) *WebhookDeliveryUpdateOne {
+	_u.mutation.SetClaimedUntil(v)
+	return _u
+}
+
+// SetNillableClaimedUntil sets the "claimed_until" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdateOne) SetNillableClaimedUntil(v *time.Time) *WebhookDeliveryUpdateOne {
+	if v != nil {
+		_u.SetClaimedUntil(*v)
+	}
+	return _u
+}
+
+// ClearClaimedUntil clears the value of the "claimed_until" field.
+func (_u *WebhookDeliveryUpdateOne) ClearClaimedUntil() *WebhookDeliveryUpdateOne {
+	_u.mutation.ClearClaimedUntil()
+	return _u
+}
+
+// SetAttemptCount sets the "attempt_count" field.
+func (_u *WebhookDeliveryUpdateOne) SetAttemptCount(v int) *WebhookDeliveryUpdateOne {
+	_u.mutation.ResetAttemptCount()
+	_u.mutation.SetAttemptCount(v)
+	return _u
+}
+
+// SetNillableAttemptCount sets the "attempt_count" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdateOne) SetNillableAttemptCount(v *int) *WebhookDeliveryUpdateOne {
+	if v != nil {
+		_u.SetAttemptCount(*v)
+	}
+	return _u
+}
+
+// AddAttemptCount adds value to the "attempt_count" field.
+func (_u *WebhookDeliveryUpdateOne) AddAttemptCount(v int) *WebhookDeliveryUpdateOne {
+	_u.mutation.AddAttemptCount(v)
+	return _u
+}
+
+// SetLastErrorCode sets the "last_error_code" field.
+func (_u *WebhookDeliveryUpdateOne) SetLastErrorCode(v string) *WebhookDeliveryUpdateOne {
+	_u.mutation.SetLastErrorCode(v)
+	return _u
+}
+
+// SetNillableLastErrorCode sets the "last_error_code" field if the given value is not nil.
+func (_u *WebhookDeliveryUpdateOne) SetNillableLastErrorCode(v *string) *WebhookDeliveryUpdateOne {
+	if v != nil {
+		_u.SetLastErrorCode(*v)
+	}
+	return _u
+}
+
 // Mutation returns the WebhookDeliveryMutation object of the builder.
 func (_u *WebhookDeliveryUpdateOne) Mutation() *WebhookDeliveryMutation {
 	return _u.mutation
@@ -451,6 +686,33 @@ func (_u *WebhookDeliveryUpdateOne) sqlSave(ctx context.Context) (_node *Webhook
 	}
 	if _u.mutation.ProcessedAtCleared() {
 		_spec.ClearField(webhookdelivery.FieldProcessedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ClaimToken(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimToken, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ClaimVersion(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedClaimVersion(); ok {
+		_spec.AddField(webhookdelivery.FieldClaimVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.ClaimedBy(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimedBy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ClaimedUntil(); ok {
+		_spec.SetField(webhookdelivery.FieldClaimedUntil, field.TypeTime, value)
+	}
+	if _u.mutation.ClaimedUntilCleared() {
+		_spec.ClearField(webhookdelivery.FieldClaimedUntil, field.TypeTime)
+	}
+	if value, ok := _u.mutation.AttemptCount(); ok {
+		_spec.SetField(webhookdelivery.FieldAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAttemptCount(); ok {
+		_spec.AddField(webhookdelivery.FieldAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LastErrorCode(); ok {
+		_spec.SetField(webhookdelivery.FieldLastErrorCode, field.TypeString, value)
 	}
 	_node = &WebhookDelivery{config: _u.config}
 	_spec.Assign = _node.assignValues

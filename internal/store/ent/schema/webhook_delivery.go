@@ -20,11 +20,17 @@ func (WebhookDelivery) Fields() []ent.Field {
 		field.String("event_type"),
 		field.String("action").Default(""),
 		field.String("repository_full_name").Default(""),
-		field.String("status").Default("accepted"), // accepted | processed | failed | duplicate
+		field.String("status").Default("accepted"), // accepted | processing | processed | failed | duplicate | dead_letter
 		field.String("error_code").Default(""),
 		field.Bytes("payload").Optional(),
 		field.Time("received_at").Immutable(),
 		field.Time("processed_at").Optional().Nillable(),
+		field.String("claim_token").Default(""),
+		field.Int64("claim_version").Default(0),
+		field.String("claimed_by").Default(""),
+		field.Time("claimed_until").Optional().Nillable(),
+		field.Int("attempt_count").Default(0),
+		field.String("last_error_code").Default(""),
 	}
 }
 
@@ -34,6 +40,7 @@ func (WebhookDelivery) Indexes() []ent.Index {
 		index.Fields("status", "received_at", "id"),
 		index.Fields("event_type", "received_at", "id"),
 		index.Fields("received_at"),
+		index.Fields("status", "claimed_until").StorageKey("webhook_deliveries_claim_check"),
 	}
 }
 

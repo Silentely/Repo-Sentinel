@@ -274,6 +274,26 @@ func init() {
 	webhookdeliveryDescErrorCode := webhookdeliveryFields[6].Descriptor()
 	// webhookdelivery.DefaultErrorCode holds the default value on creation for the error_code field.
 	webhookdelivery.DefaultErrorCode = webhookdeliveryDescErrorCode.Default.(string)
+	// webhookdeliveryDescClaimToken is the schema descriptor for claim_token field.
+	webhookdeliveryDescClaimToken := webhookdeliveryFields[10].Descriptor()
+	// webhookdelivery.DefaultClaimToken holds the default value on creation for the claim_token field.
+	webhookdelivery.DefaultClaimToken = webhookdeliveryDescClaimToken.Default.(string)
+	// webhookdeliveryDescClaimVersion is the schema descriptor for claim_version field.
+	webhookdeliveryDescClaimVersion := webhookdeliveryFields[11].Descriptor()
+	// webhookdelivery.DefaultClaimVersion holds the default value on creation for the claim_version field.
+	webhookdelivery.DefaultClaimVersion = webhookdeliveryDescClaimVersion.Default.(int64)
+	// webhookdeliveryDescClaimedBy is the schema descriptor for claimed_by field.
+	webhookdeliveryDescClaimedBy := webhookdeliveryFields[12].Descriptor()
+	// webhookdelivery.DefaultClaimedBy holds the default value on creation for the claimed_by field.
+	webhookdelivery.DefaultClaimedBy = webhookdeliveryDescClaimedBy.Default.(string)
+	// webhookdeliveryDescAttemptCount is the schema descriptor for attempt_count field.
+	webhookdeliveryDescAttemptCount := webhookdeliveryFields[14].Descriptor()
+	// webhookdelivery.DefaultAttemptCount holds the default value on creation for the attempt_count field.
+	webhookdelivery.DefaultAttemptCount = webhookdeliveryDescAttemptCount.Default.(int)
+	// webhookdeliveryDescLastErrorCode is the schema descriptor for last_error_code field.
+	webhookdeliveryDescLastErrorCode := webhookdeliveryFields[15].Descriptor()
+	// webhookdelivery.DefaultLastErrorCode holds the default value on creation for the last_error_code field.
+	webhookdelivery.DefaultLastErrorCode = webhookdeliveryDescLastErrorCode.Default.(string)
 	workitemFields := schema.WorkItem{}.Fields()
 	_ = workitemFields
 	// workitemDescAuthor is the schema descriptor for author field.

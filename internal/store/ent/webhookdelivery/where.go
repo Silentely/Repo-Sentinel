@@ -109,6 +109,36 @@ func ProcessedAt(v time.Time) predicate.WebhookDelivery {
 	return predicate.WebhookDelivery(sql.FieldEQ(FieldProcessedAt, v))
 }
 
+// ClaimToken applies equality check predicate on the "claim_token" field. It's identical to ClaimTokenEQ.
+func ClaimToken(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldClaimToken, v))
+}
+
+// ClaimVersion applies equality check predicate on the "claim_version" field. It's identical to ClaimVersionEQ.
+func ClaimVersion(v int64) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldClaimVersion, v))
+}
+
+// ClaimedBy applies equality check predicate on the "claimed_by" field. It's identical to ClaimedByEQ.
+func ClaimedBy(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldClaimedBy, v))
+}
+
+// ClaimedUntil applies equality check predicate on the "claimed_until" field. It's identical to ClaimedUntilEQ.
+func ClaimedUntil(v time.Time) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldClaimedUntil, v))
+}
+
+// AttemptCount applies equality check predicate on the "attempt_count" field. It's identical to AttemptCountEQ.
+func AttemptCount(v int) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldAttemptCount, v))
+}
+
+// LastErrorCode applies equality check predicate on the "last_error_code" field. It's identical to LastErrorCodeEQ.
+func LastErrorCode(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldLastErrorCode, v))
+}
+
 // DeliveryIDEQ applies the EQ predicate on the "delivery_id" field.
 func DeliveryIDEQ(v string) predicate.WebhookDelivery {
 	return predicate.WebhookDelivery(sql.FieldEQ(FieldDeliveryID, v))
@@ -637,6 +667,331 @@ func ProcessedAtIsNil() predicate.WebhookDelivery {
 // ProcessedAtNotNil applies the NotNil predicate on the "processed_at" field.
 func ProcessedAtNotNil() predicate.WebhookDelivery {
 	return predicate.WebhookDelivery(sql.FieldNotNull(FieldProcessedAt))
+}
+
+// ClaimTokenEQ applies the EQ predicate on the "claim_token" field.
+func ClaimTokenEQ(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldClaimToken, v))
+}
+
+// ClaimTokenNEQ applies the NEQ predicate on the "claim_token" field.
+func ClaimTokenNEQ(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNEQ(FieldClaimToken, v))
+}
+
+// ClaimTokenIn applies the In predicate on the "claim_token" field.
+func ClaimTokenIn(vs ...string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldIn(FieldClaimToken, vs...))
+}
+
+// ClaimTokenNotIn applies the NotIn predicate on the "claim_token" field.
+func ClaimTokenNotIn(vs ...string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNotIn(FieldClaimToken, vs...))
+}
+
+// ClaimTokenGT applies the GT predicate on the "claim_token" field.
+func ClaimTokenGT(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGT(FieldClaimToken, v))
+}
+
+// ClaimTokenGTE applies the GTE predicate on the "claim_token" field.
+func ClaimTokenGTE(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGTE(FieldClaimToken, v))
+}
+
+// ClaimTokenLT applies the LT predicate on the "claim_token" field.
+func ClaimTokenLT(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLT(FieldClaimToken, v))
+}
+
+// ClaimTokenLTE applies the LTE predicate on the "claim_token" field.
+func ClaimTokenLTE(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLTE(FieldClaimToken, v))
+}
+
+// ClaimTokenContains applies the Contains predicate on the "claim_token" field.
+func ClaimTokenContains(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldContains(FieldClaimToken, v))
+}
+
+// ClaimTokenHasPrefix applies the HasPrefix predicate on the "claim_token" field.
+func ClaimTokenHasPrefix(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldHasPrefix(FieldClaimToken, v))
+}
+
+// ClaimTokenHasSuffix applies the HasSuffix predicate on the "claim_token" field.
+func ClaimTokenHasSuffix(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldHasSuffix(FieldClaimToken, v))
+}
+
+// ClaimTokenEqualFold applies the EqualFold predicate on the "claim_token" field.
+func ClaimTokenEqualFold(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEqualFold(FieldClaimToken, v))
+}
+
+// ClaimTokenContainsFold applies the ContainsFold predicate on the "claim_token" field.
+func ClaimTokenContainsFold(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldContainsFold(FieldClaimToken, v))
+}
+
+// ClaimVersionEQ applies the EQ predicate on the "claim_version" field.
+func ClaimVersionEQ(v int64) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldClaimVersion, v))
+}
+
+// ClaimVersionNEQ applies the NEQ predicate on the "claim_version" field.
+func ClaimVersionNEQ(v int64) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNEQ(FieldClaimVersion, v))
+}
+
+// ClaimVersionIn applies the In predicate on the "claim_version" field.
+func ClaimVersionIn(vs ...int64) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldIn(FieldClaimVersion, vs...))
+}
+
+// ClaimVersionNotIn applies the NotIn predicate on the "claim_version" field.
+func ClaimVersionNotIn(vs ...int64) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNotIn(FieldClaimVersion, vs...))
+}
+
+// ClaimVersionGT applies the GT predicate on the "claim_version" field.
+func ClaimVersionGT(v int64) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGT(FieldClaimVersion, v))
+}
+
+// ClaimVersionGTE applies the GTE predicate on the "claim_version" field.
+func ClaimVersionGTE(v int64) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGTE(FieldClaimVersion, v))
+}
+
+// ClaimVersionLT applies the LT predicate on the "claim_version" field.
+func ClaimVersionLT(v int64) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLT(FieldClaimVersion, v))
+}
+
+// ClaimVersionLTE applies the LTE predicate on the "claim_version" field.
+func ClaimVersionLTE(v int64) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLTE(FieldClaimVersion, v))
+}
+
+// ClaimedByEQ applies the EQ predicate on the "claimed_by" field.
+func ClaimedByEQ(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldClaimedBy, v))
+}
+
+// ClaimedByNEQ applies the NEQ predicate on the "claimed_by" field.
+func ClaimedByNEQ(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNEQ(FieldClaimedBy, v))
+}
+
+// ClaimedByIn applies the In predicate on the "claimed_by" field.
+func ClaimedByIn(vs ...string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldIn(FieldClaimedBy, vs...))
+}
+
+// ClaimedByNotIn applies the NotIn predicate on the "claimed_by" field.
+func ClaimedByNotIn(vs ...string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNotIn(FieldClaimedBy, vs...))
+}
+
+// ClaimedByGT applies the GT predicate on the "claimed_by" field.
+func ClaimedByGT(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGT(FieldClaimedBy, v))
+}
+
+// ClaimedByGTE applies the GTE predicate on the "claimed_by" field.
+func ClaimedByGTE(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGTE(FieldClaimedBy, v))
+}
+
+// ClaimedByLT applies the LT predicate on the "claimed_by" field.
+func ClaimedByLT(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLT(FieldClaimedBy, v))
+}
+
+// ClaimedByLTE applies the LTE predicate on the "claimed_by" field.
+func ClaimedByLTE(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLTE(FieldClaimedBy, v))
+}
+
+// ClaimedByContains applies the Contains predicate on the "claimed_by" field.
+func ClaimedByContains(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldContains(FieldClaimedBy, v))
+}
+
+// ClaimedByHasPrefix applies the HasPrefix predicate on the "claimed_by" field.
+func ClaimedByHasPrefix(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldHasPrefix(FieldClaimedBy, v))
+}
+
+// ClaimedByHasSuffix applies the HasSuffix predicate on the "claimed_by" field.
+func ClaimedByHasSuffix(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldHasSuffix(FieldClaimedBy, v))
+}
+
+// ClaimedByEqualFold applies the EqualFold predicate on the "claimed_by" field.
+func ClaimedByEqualFold(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEqualFold(FieldClaimedBy, v))
+}
+
+// ClaimedByContainsFold applies the ContainsFold predicate on the "claimed_by" field.
+func ClaimedByContainsFold(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldContainsFold(FieldClaimedBy, v))
+}
+
+// ClaimedUntilEQ applies the EQ predicate on the "claimed_until" field.
+func ClaimedUntilEQ(v time.Time) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldClaimedUntil, v))
+}
+
+// ClaimedUntilNEQ applies the NEQ predicate on the "claimed_until" field.
+func ClaimedUntilNEQ(v time.Time) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNEQ(FieldClaimedUntil, v))
+}
+
+// ClaimedUntilIn applies the In predicate on the "claimed_until" field.
+func ClaimedUntilIn(vs ...time.Time) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldIn(FieldClaimedUntil, vs...))
+}
+
+// ClaimedUntilNotIn applies the NotIn predicate on the "claimed_until" field.
+func ClaimedUntilNotIn(vs ...time.Time) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNotIn(FieldClaimedUntil, vs...))
+}
+
+// ClaimedUntilGT applies the GT predicate on the "claimed_until" field.
+func ClaimedUntilGT(v time.Time) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGT(FieldClaimedUntil, v))
+}
+
+// ClaimedUntilGTE applies the GTE predicate on the "claimed_until" field.
+func ClaimedUntilGTE(v time.Time) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGTE(FieldClaimedUntil, v))
+}
+
+// ClaimedUntilLT applies the LT predicate on the "claimed_until" field.
+func ClaimedUntilLT(v time.Time) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLT(FieldClaimedUntil, v))
+}
+
+// ClaimedUntilLTE applies the LTE predicate on the "claimed_until" field.
+func ClaimedUntilLTE(v time.Time) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLTE(FieldClaimedUntil, v))
+}
+
+// ClaimedUntilIsNil applies the IsNil predicate on the "claimed_until" field.
+func ClaimedUntilIsNil() predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldIsNull(FieldClaimedUntil))
+}
+
+// ClaimedUntilNotNil applies the NotNil predicate on the "claimed_until" field.
+func ClaimedUntilNotNil() predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNotNull(FieldClaimedUntil))
+}
+
+// AttemptCountEQ applies the EQ predicate on the "attempt_count" field.
+func AttemptCountEQ(v int) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldAttemptCount, v))
+}
+
+// AttemptCountNEQ applies the NEQ predicate on the "attempt_count" field.
+func AttemptCountNEQ(v int) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNEQ(FieldAttemptCount, v))
+}
+
+// AttemptCountIn applies the In predicate on the "attempt_count" field.
+func AttemptCountIn(vs ...int) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldIn(FieldAttemptCount, vs...))
+}
+
+// AttemptCountNotIn applies the NotIn predicate on the "attempt_count" field.
+func AttemptCountNotIn(vs ...int) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNotIn(FieldAttemptCount, vs...))
+}
+
+// AttemptCountGT applies the GT predicate on the "attempt_count" field.
+func AttemptCountGT(v int) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGT(FieldAttemptCount, v))
+}
+
+// AttemptCountGTE applies the GTE predicate on the "attempt_count" field.
+func AttemptCountGTE(v int) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGTE(FieldAttemptCount, v))
+}
+
+// AttemptCountLT applies the LT predicate on the "attempt_count" field.
+func AttemptCountLT(v int) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLT(FieldAttemptCount, v))
+}
+
+// AttemptCountLTE applies the LTE predicate on the "attempt_count" field.
+func AttemptCountLTE(v int) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLTE(FieldAttemptCount, v))
+}
+
+// LastErrorCodeEQ applies the EQ predicate on the "last_error_code" field.
+func LastErrorCodeEQ(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEQ(FieldLastErrorCode, v))
+}
+
+// LastErrorCodeNEQ applies the NEQ predicate on the "last_error_code" field.
+func LastErrorCodeNEQ(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNEQ(FieldLastErrorCode, v))
+}
+
+// LastErrorCodeIn applies the In predicate on the "last_error_code" field.
+func LastErrorCodeIn(vs ...string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldIn(FieldLastErrorCode, vs...))
+}
+
+// LastErrorCodeNotIn applies the NotIn predicate on the "last_error_code" field.
+func LastErrorCodeNotIn(vs ...string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldNotIn(FieldLastErrorCode, vs...))
+}
+
+// LastErrorCodeGT applies the GT predicate on the "last_error_code" field.
+func LastErrorCodeGT(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGT(FieldLastErrorCode, v))
+}
+
+// LastErrorCodeGTE applies the GTE predicate on the "last_error_code" field.
+func LastErrorCodeGTE(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldGTE(FieldLastErrorCode, v))
+}
+
+// LastErrorCodeLT applies the LT predicate on the "last_error_code" field.
+func LastErrorCodeLT(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLT(FieldLastErrorCode, v))
+}
+
+// LastErrorCodeLTE applies the LTE predicate on the "last_error_code" field.
+func LastErrorCodeLTE(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldLTE(FieldLastErrorCode, v))
+}
+
+// LastErrorCodeContains applies the Contains predicate on the "last_error_code" field.
+func LastErrorCodeContains(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldContains(FieldLastErrorCode, v))
+}
+
+// LastErrorCodeHasPrefix applies the HasPrefix predicate on the "last_error_code" field.
+func LastErrorCodeHasPrefix(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldHasPrefix(FieldLastErrorCode, v))
+}
+
+// LastErrorCodeHasSuffix applies the HasSuffix predicate on the "last_error_code" field.
+func LastErrorCodeHasSuffix(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldHasSuffix(FieldLastErrorCode, v))
+}
+
+// LastErrorCodeEqualFold applies the EqualFold predicate on the "last_error_code" field.
+func LastErrorCodeEqualFold(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldEqualFold(FieldLastErrorCode, v))
+}
+
+// LastErrorCodeContainsFold applies the ContainsFold predicate on the "last_error_code" field.
+func LastErrorCodeContainsFold(v string) predicate.WebhookDelivery {
+	return predicate.WebhookDelivery(sql.FieldContainsFold(FieldLastErrorCode, v))
 }
 
 // And groups predicates with the AND operator between them.
