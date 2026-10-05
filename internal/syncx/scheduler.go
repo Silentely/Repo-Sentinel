@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/digest"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
 // jitteredDuration 返回 base 的 ±10% 随机偏移（下限 1ms，避免测试毫秒级周期 jitter 为负），
@@ -33,6 +34,11 @@ const (
 
 // Scheduler 驱动对账、外部轮询与每日摘要。
 type Scheduler struct {
+	Leases     store.LeaseStore
+	Runner     *LeaseRunner
+	WorkerID   string
+	SingleNode bool
+
 	Reconciler *Reconciler
 	External   *ExternalPoller
 	Starred    *StarredReleasePoller
@@ -99,26 +105,52 @@ func (s *Scheduler) Run(ctx context.Context) {
 		s.DigestEvery = 1 * time.Hour
 	}
 
+	leases := s.Leases
+	if leases == nil {
+		if s.Reconciler != nil && s.Reconciler.Store != nil {
+			leases = s.Reconciler.Store.Leases()
+		} else if s.External != nil && s.External.Store != nil {
+			leases = s.External.Store.Leases()
+		} else if s.Digest != nil && s.Digest.Store != nil {
+			leases = s.Digest.Store.Leases()
+		}
+	}
+
+	runner := s.Runner
+	if runner == nil {
+		singleNode := s.SingleNode || (leases == nil)
+		runner = NewLeaseRunner(leases, s.WorkerID, s.Logger)
+		runner.SingleNode = singleNode
+	}
+
 	runReconcile := func() {
 		if s.Reconciler == nil {
 			return
 		}
 		if !s.reconcileBusy.CompareAndSwap(false, true) {
 			if s.Logger != nil {
-				s.Logger.Debug("reconcile skipped", "reason", "already_running")
+				s.Logger.Debug("reconcile skipped", "reason", "already_running_locally")
 			}
 			return
 		}
 		defer s.reconcileBusy.Store(false)
-		s.runScheduledTask(ctx, "reconcile", "scheduled reconcile failed", "reconcile_failed", func(taskCtx context.Context) error {
-			err := s.Reconciler.ReconcileAll(taskCtx, 15)
-			// 与 HTTP 手动对账并发时跳过本轮：Reconciler 内部已互斥，正常情况不触发。
-			if errors.Is(err, ErrReconcileInProgress) && s.Logger != nil {
-				s.Logger.Debug("reconcile skipped", "reason", "reconcile_in_progress")
-				return nil
-			}
-			return err
+
+		_, err := runner.RunWithLease(ctx, "reconcile", 10*time.Minute, func(taskCtx context.Context) error {
+			s.runScheduledTask(taskCtx, "reconcile", "scheduled reconcile failed", "reconcile_failed", func(subCtx context.Context) error {
+				err := s.Reconciler.ReconcileAll(subCtx, 15)
+				if errors.Is(err, ErrReconcileInProgress) && s.Logger != nil {
+					s.Logger.Debug("reconcile skipped", "reason", "reconcile_in_progress")
+					return nil
+				}
+				return err
+			})
+			return nil
 		})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			if s.Logger != nil {
+				s.Logger.Error("scheduled reconcile lease error", "task", "reconcile", "error_code", "reconcile_lease_failed", "error", err.Error())
+			}
+		}
 	}
 	runExternal := func() {
 		if s.External == nil {
@@ -126,14 +158,23 @@ func (s *Scheduler) Run(ctx context.Context) {
 		}
 		if !s.externalBusy.CompareAndSwap(false, true) {
 			if s.Logger != nil {
-				s.Logger.Debug("external poll skipped", "reason", "already_running")
+				s.Logger.Debug("external poll skipped", "reason", "already_running_locally")
 			}
 			return
 		}
 		defer s.externalBusy.Store(false)
-		s.runScheduledTask(ctx, "external_poll", "scheduled external poll failed", "external_poll_failed", func(taskCtx context.Context) error {
-			return s.External.PollAll(taskCtx)
+
+		_, err := runner.RunWithLease(ctx, "external_poll", 5*time.Minute, func(taskCtx context.Context) error {
+			s.runScheduledTask(taskCtx, "external_poll", "scheduled external poll failed", "external_poll_failed", func(subCtx context.Context) error {
+				return s.External.PollAll(subCtx)
+			})
+			return nil
 		})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			if s.Logger != nil {
+				s.Logger.Error("scheduled external poll lease error", "task", "external_poll", "error_code", "external_poll_lease_failed", "error", err.Error())
+			}
+		}
 	}
 	runStarredWrapped := func() {
 		if s.Starred == nil {
@@ -141,12 +182,21 @@ func (s *Scheduler) Run(ctx context.Context) {
 		}
 		if !s.starredBusy.CompareAndSwap(false, true) {
 			if s.Logger != nil {
-				s.Logger.Debug("starred poll skipped", "reason", "already_running")
+				s.Logger.Debug("starred poll skipped", "reason", "already_running_locally")
 			}
 			return
 		}
 		defer s.starredBusy.Store(false)
-		s.runStarred(ctx)
+
+		_, err := runner.RunWithLease(ctx, "starred_poll", 5*time.Minute, func(taskCtx context.Context) error {
+			s.runStarred(taskCtx)
+			return nil
+		})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			if s.Logger != nil {
+				s.Logger.Error("scheduled starred poll lease error", "task", "starred_poll", "error_code", "starred_poll_lease_failed", "error", err.Error())
+			}
+		}
 	}
 	runDigest := func() {
 		if s.Digest == nil {
@@ -154,21 +204,30 @@ func (s *Scheduler) Run(ctx context.Context) {
 		}
 		if !s.digestBusy.CompareAndSwap(false, true) {
 			if s.Logger != nil {
-				s.Logger.Debug("digest skipped", "reason", "already_running")
+				s.Logger.Debug("digest skipped", "reason", "already_running_locally")
 			}
 			return
 		}
 		defer s.digestBusy.Store(false)
-		now := time.Now()
-		s.runScheduledTask(ctx, "digest", "scheduled digest failed", "digest_failed", func(taskCtx context.Context) error {
-			return s.Digest.RunOnce(taskCtx, now)
+
+		_, err := runner.RunWithLease(ctx, "digest", 15*time.Minute, func(taskCtx context.Context) error {
+			now := time.Now()
+			s.runScheduledTask(taskCtx, "digest", "scheduled digest failed", "digest_failed", func(subCtx context.Context) error {
+				return s.Digest.RunOnce(subCtx, now)
+			})
+			s.runScheduledTask(taskCtx, "weekly_report", "scheduled weekly report failed", "weekly_report_failed", func(subCtx context.Context) error {
+				return s.Digest.RunWeekly(subCtx, now)
+			})
+			s.runScheduledTask(taskCtx, "monthly_report", "scheduled monthly report failed", "monthly_report_failed", func(subCtx context.Context) error {
+				return s.Digest.RunMonthly(subCtx, now)
+			})
+			return nil
 		})
-		s.runScheduledTask(ctx, "weekly_report", "scheduled weekly report failed", "weekly_report_failed", func(taskCtx context.Context) error {
-			return s.Digest.RunWeekly(taskCtx, now)
-		})
-		s.runScheduledTask(ctx, "monthly_report", "scheduled monthly report failed", "monthly_report_failed", func(taskCtx context.Context) error {
-			return s.Digest.RunMonthly(taskCtx, now)
-		})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			if s.Logger != nil {
+				s.Logger.Error("scheduled digest lease error", "task", "digest", "error_code", "digest_lease_failed", "error", err.Error())
+			}
+		}
 	}
 
 	startupDelay := startupDelayBase + time.Duration(rand.Int64N(int64(startupJitterMax)))

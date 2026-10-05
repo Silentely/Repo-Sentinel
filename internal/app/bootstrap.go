@@ -177,7 +177,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		}
 	}
 	scheduler := &syncx.Scheduler{
-		Reconciler: reconciler, External: external, Starred: starred, Digest: digestGen, Logger: logger,
+		Leases: data.Leases(), Reconciler: reconciler, External: external, Starred: starred, Digest: digestGen, Logger: logger,
 	}
 	build := buildinfo.Current()
 	updateChecker := &updatecheck.Checker{

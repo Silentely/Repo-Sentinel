@@ -267,6 +267,9 @@ func (p *StarredReleasePoller) syncStarsLocked(ctx context.Context) error {
 			p.warn("star sync page cap hit, skip unstar removal", "page", page, "username", username, "error_code", "star_sync_page_cap_hit")
 			break
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		items, link, _, err := client.ListUserStarred(ctx, username, page)
 		if err != nil {
 			if githubx.IsRateLimited(err) {

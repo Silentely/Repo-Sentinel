@@ -781,6 +781,11 @@ func (r *Reconciler) ReconcileAll(ctx context.Context, limit int) error {
 	// 限流等待预算：每轮最多按上游建议等待一次，二次限流说明冷却不足，直接停止本轮。
 	rateLimitWaited := false
 	for _, repo := range repos {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		if repo.SyncStatus == store.SyncStatusArchived || repo.SyncStatus == store.SyncStatusUnavailable {
 			continue
 		}
