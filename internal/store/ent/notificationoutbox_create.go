@@ -136,6 +136,20 @@ func (_c *NotificationOutboxCreate) SetNillableLastErrorCode(v *string) *Notific
 	return _c
 }
 
+// SetSuppressedReason sets the "suppressed_reason" field.
+func (_c *NotificationOutboxCreate) SetSuppressedReason(v string) *NotificationOutboxCreate {
+	_c.mutation.SetSuppressedReason(v)
+	return _c
+}
+
+// SetNillableSuppressedReason sets the "suppressed_reason" field if the given value is not nil.
+func (_c *NotificationOutboxCreate) SetNillableSuppressedReason(v *string) *NotificationOutboxCreate {
+	if v != nil {
+		_c.SetSuppressedReason(*v)
+	}
+	return _c
+}
+
 // SetTitle sets the "title" field.
 func (_c *NotificationOutboxCreate) SetTitle(v string) *NotificationOutboxCreate {
 	_c.mutation.SetTitle(v)
@@ -259,6 +273,10 @@ func (_c *NotificationOutboxCreate) defaults() {
 		v := notificationoutbox.DefaultLastErrorCode
 		_c.mutation.SetLastErrorCode(v)
 	}
+	if _, ok := _c.mutation.SuppressedReason(); !ok {
+		v := notificationoutbox.DefaultSuppressedReason
+		_c.mutation.SetSuppressedReason(v)
+	}
 	if _, ok := _c.mutation.Title(); !ok {
 		v := notificationoutbox.DefaultTitle
 		_c.mutation.SetTitle(v)
@@ -295,6 +313,9 @@ func (_c *NotificationOutboxCreate) check() error {
 	}
 	if _, ok := _c.mutation.LastErrorCode(); !ok {
 		return &ValidationError{Name: "last_error_code", err: errors.New(`ent: missing required field "NotificationOutbox.last_error_code"`)}
+	}
+	if _, ok := _c.mutation.SuppressedReason(); !ok {
+		return &ValidationError{Name: "suppressed_reason", err: errors.New(`ent: missing required field "NotificationOutbox.suppressed_reason"`)}
 	}
 	if _, ok := _c.mutation.Title(); !ok {
 		return &ValidationError{Name: "title", err: errors.New(`ent: missing required field "NotificationOutbox.title"`)}
@@ -388,6 +409,10 @@ func (_c *NotificationOutboxCreate) createSpec() (*NotificationOutbox, *sqlgraph
 	if value, ok := _c.mutation.LastErrorCode(); ok {
 		_spec.SetField(notificationoutbox.FieldLastErrorCode, field.TypeString, value)
 		_node.LastErrorCode = value
+	}
+	if value, ok := _c.mutation.SuppressedReason(); ok {
+		_spec.SetField(notificationoutbox.FieldSuppressedReason, field.TypeString, value)
+		_node.SuppressedReason = value
 	}
 	if value, ok := _c.mutation.Title(); ok {
 		_spec.SetField(notificationoutbox.FieldTitle, field.TypeString, value)

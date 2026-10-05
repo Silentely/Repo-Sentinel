@@ -228,6 +228,48 @@ func (_c *NotificationChannelCreate) SetNillableIgnoreBots(v *bool) *Notificatio
 	return _c
 }
 
+// SetRepoPattern sets the "repo_pattern" field.
+func (_c *NotificationChannelCreate) SetRepoPattern(v string) *NotificationChannelCreate {
+	_c.mutation.SetRepoPattern(v)
+	return _c
+}
+
+// SetNillableRepoPattern sets the "repo_pattern" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableRepoPattern(v *string) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetRepoPattern(*v)
+	}
+	return _c
+}
+
+// SetBranchFilter sets the "branch_filter" field.
+func (_c *NotificationChannelCreate) SetBranchFilter(v string) *NotificationChannelCreate {
+	_c.mutation.SetBranchFilter(v)
+	return _c
+}
+
+// SetNillableBranchFilter sets the "branch_filter" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableBranchFilter(v *string) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetBranchFilter(*v)
+	}
+	return _c
+}
+
+// SetMinSeverity sets the "min_severity" field.
+func (_c *NotificationChannelCreate) SetMinSeverity(v string) *NotificationChannelCreate {
+	_c.mutation.SetMinSeverity(v)
+	return _c
+}
+
+// SetNillableMinSeverity sets the "min_severity" field if the given value is not nil.
+func (_c *NotificationChannelCreate) SetNillableMinSeverity(v *string) *NotificationChannelCreate {
+	if v != nil {
+		_c.SetMinSeverity(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *NotificationChannelCreate) SetCreatedAt(v time.Time) *NotificationChannelCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -337,6 +379,18 @@ func (_c *NotificationChannelCreate) defaults() {
 		v := notificationchannel.DefaultIgnoreBots
 		_c.mutation.SetIgnoreBots(v)
 	}
+	if _, ok := _c.mutation.RepoPattern(); !ok {
+		v := notificationchannel.DefaultRepoPattern
+		_c.mutation.SetRepoPattern(v)
+	}
+	if _, ok := _c.mutation.BranchFilter(); !ok {
+		v := notificationchannel.DefaultBranchFilter
+		_c.mutation.SetBranchFilter(v)
+	}
+	if _, ok := _c.mutation.MinSeverity(); !ok {
+		v := notificationchannel.DefaultMinSeverity
+		_c.mutation.SetMinSeverity(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -385,6 +439,15 @@ func (_c *NotificationChannelCreate) check() error {
 	}
 	if _, ok := _c.mutation.IgnoreBots(); !ok {
 		return &ValidationError{Name: "ignore_bots", err: errors.New(`ent: missing required field "NotificationChannel.ignore_bots"`)}
+	}
+	if _, ok := _c.mutation.RepoPattern(); !ok {
+		return &ValidationError{Name: "repo_pattern", err: errors.New(`ent: missing required field "NotificationChannel.repo_pattern"`)}
+	}
+	if _, ok := _c.mutation.BranchFilter(); !ok {
+		return &ValidationError{Name: "branch_filter", err: errors.New(`ent: missing required field "NotificationChannel.branch_filter"`)}
+	}
+	if _, ok := _c.mutation.MinSeverity(); !ok {
+		return &ValidationError{Name: "min_severity", err: errors.New(`ent: missing required field "NotificationChannel.min_severity"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "NotificationChannel.created_at"`)}
@@ -490,6 +553,18 @@ func (_c *NotificationChannelCreate) createSpec() (*NotificationChannel, *sqlgra
 	if value, ok := _c.mutation.IgnoreBots(); ok {
 		_spec.SetField(notificationchannel.FieldIgnoreBots, field.TypeBool, value)
 		_node.IgnoreBots = value
+	}
+	if value, ok := _c.mutation.RepoPattern(); ok {
+		_spec.SetField(notificationchannel.FieldRepoPattern, field.TypeString, value)
+		_node.RepoPattern = value
+	}
+	if value, ok := _c.mutation.BranchFilter(); ok {
+		_spec.SetField(notificationchannel.FieldBranchFilter, field.TypeString, value)
+		_node.BranchFilter = value
+	}
+	if value, ok := _c.mutation.MinSeverity(); ok {
+		_spec.SetField(notificationchannel.FieldMinSeverity, field.TypeString, value)
+		_node.MinSeverity = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(notificationchannel.FieldCreatedAt, field.TypeTime, value)

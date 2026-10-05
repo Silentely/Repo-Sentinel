@@ -32,6 +32,9 @@ func (NotificationChannel) Fields() []ent.Field {
 		field.String("quiet_hours_end").Default("08:00"),   // 免打扰结束时间（HH:MM）
 		field.String("quiet_hours_tz").Default("UTC"),      // 免打扰时区（如 Asia/Shanghai）
 		field.Bool("ignore_bots").Default(false),           // 免打扰：忽略机器人常规 Issue/PR 动态
+		field.String("repo_pattern").Default(""),
+		field.String("branch_filter").Default(""),
+		field.String("min_severity").Default("low"),
 		field.Time("created_at").Immutable(),
 		field.Time("updated_at"),
 	}

@@ -139,6 +139,21 @@ func IgnoreBots(v bool) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldIgnoreBots, v))
 }
 
+// RepoPattern applies equality check predicate on the "repo_pattern" field. It's identical to RepoPatternEQ.
+func RepoPattern(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldRepoPattern, v))
+}
+
+// BranchFilter applies equality check predicate on the "branch_filter" field. It's identical to BranchFilterEQ.
+func BranchFilter(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldBranchFilter, v))
+}
+
+// MinSeverity applies equality check predicate on the "min_severity" field. It's identical to MinSeverityEQ.
+func MinSeverity(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldMinSeverity, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldCreatedAt, v))
@@ -692,6 +707,201 @@ func IgnoreBotsEQ(v bool) predicate.NotificationChannel {
 // IgnoreBotsNEQ applies the NEQ predicate on the "ignore_bots" field.
 func IgnoreBotsNEQ(v bool) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldNEQ(FieldIgnoreBots, v))
+}
+
+// RepoPatternEQ applies the EQ predicate on the "repo_pattern" field.
+func RepoPatternEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldRepoPattern, v))
+}
+
+// RepoPatternNEQ applies the NEQ predicate on the "repo_pattern" field.
+func RepoPatternNEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldRepoPattern, v))
+}
+
+// RepoPatternIn applies the In predicate on the "repo_pattern" field.
+func RepoPatternIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldIn(FieldRepoPattern, vs...))
+}
+
+// RepoPatternNotIn applies the NotIn predicate on the "repo_pattern" field.
+func RepoPatternNotIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNotIn(FieldRepoPattern, vs...))
+}
+
+// RepoPatternGT applies the GT predicate on the "repo_pattern" field.
+func RepoPatternGT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGT(FieldRepoPattern, v))
+}
+
+// RepoPatternGTE applies the GTE predicate on the "repo_pattern" field.
+func RepoPatternGTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGTE(FieldRepoPattern, v))
+}
+
+// RepoPatternLT applies the LT predicate on the "repo_pattern" field.
+func RepoPatternLT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLT(FieldRepoPattern, v))
+}
+
+// RepoPatternLTE applies the LTE predicate on the "repo_pattern" field.
+func RepoPatternLTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLTE(FieldRepoPattern, v))
+}
+
+// RepoPatternContains applies the Contains predicate on the "repo_pattern" field.
+func RepoPatternContains(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContains(FieldRepoPattern, v))
+}
+
+// RepoPatternHasPrefix applies the HasPrefix predicate on the "repo_pattern" field.
+func RepoPatternHasPrefix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasPrefix(FieldRepoPattern, v))
+}
+
+// RepoPatternHasSuffix applies the HasSuffix predicate on the "repo_pattern" field.
+func RepoPatternHasSuffix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasSuffix(FieldRepoPattern, v))
+}
+
+// RepoPatternEqualFold applies the EqualFold predicate on the "repo_pattern" field.
+func RepoPatternEqualFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEqualFold(FieldRepoPattern, v))
+}
+
+// RepoPatternContainsFold applies the ContainsFold predicate on the "repo_pattern" field.
+func RepoPatternContainsFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContainsFold(FieldRepoPattern, v))
+}
+
+// BranchFilterEQ applies the EQ predicate on the "branch_filter" field.
+func BranchFilterEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldBranchFilter, v))
+}
+
+// BranchFilterNEQ applies the NEQ predicate on the "branch_filter" field.
+func BranchFilterNEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldBranchFilter, v))
+}
+
+// BranchFilterIn applies the In predicate on the "branch_filter" field.
+func BranchFilterIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldIn(FieldBranchFilter, vs...))
+}
+
+// BranchFilterNotIn applies the NotIn predicate on the "branch_filter" field.
+func BranchFilterNotIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNotIn(FieldBranchFilter, vs...))
+}
+
+// BranchFilterGT applies the GT predicate on the "branch_filter" field.
+func BranchFilterGT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGT(FieldBranchFilter, v))
+}
+
+// BranchFilterGTE applies the GTE predicate on the "branch_filter" field.
+func BranchFilterGTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGTE(FieldBranchFilter, v))
+}
+
+// BranchFilterLT applies the LT predicate on the "branch_filter" field.
+func BranchFilterLT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLT(FieldBranchFilter, v))
+}
+
+// BranchFilterLTE applies the LTE predicate on the "branch_filter" field.
+func BranchFilterLTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLTE(FieldBranchFilter, v))
+}
+
+// BranchFilterContains applies the Contains predicate on the "branch_filter" field.
+func BranchFilterContains(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContains(FieldBranchFilter, v))
+}
+
+// BranchFilterHasPrefix applies the HasPrefix predicate on the "branch_filter" field.
+func BranchFilterHasPrefix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasPrefix(FieldBranchFilter, v))
+}
+
+// BranchFilterHasSuffix applies the HasSuffix predicate on the "branch_filter" field.
+func BranchFilterHasSuffix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasSuffix(FieldBranchFilter, v))
+}
+
+// BranchFilterEqualFold applies the EqualFold predicate on the "branch_filter" field.
+func BranchFilterEqualFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEqualFold(FieldBranchFilter, v))
+}
+
+// BranchFilterContainsFold applies the ContainsFold predicate on the "branch_filter" field.
+func BranchFilterContainsFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContainsFold(FieldBranchFilter, v))
+}
+
+// MinSeverityEQ applies the EQ predicate on the "min_severity" field.
+func MinSeverityEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEQ(FieldMinSeverity, v))
+}
+
+// MinSeverityNEQ applies the NEQ predicate on the "min_severity" field.
+func MinSeverityNEQ(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNEQ(FieldMinSeverity, v))
+}
+
+// MinSeverityIn applies the In predicate on the "min_severity" field.
+func MinSeverityIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldIn(FieldMinSeverity, vs...))
+}
+
+// MinSeverityNotIn applies the NotIn predicate on the "min_severity" field.
+func MinSeverityNotIn(vs ...string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNotIn(FieldMinSeverity, vs...))
+}
+
+// MinSeverityGT applies the GT predicate on the "min_severity" field.
+func MinSeverityGT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGT(FieldMinSeverity, v))
+}
+
+// MinSeverityGTE applies the GTE predicate on the "min_severity" field.
+func MinSeverityGTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldGTE(FieldMinSeverity, v))
+}
+
+// MinSeverityLT applies the LT predicate on the "min_severity" field.
+func MinSeverityLT(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLT(FieldMinSeverity, v))
+}
+
+// MinSeverityLTE applies the LTE predicate on the "min_severity" field.
+func MinSeverityLTE(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldLTE(FieldMinSeverity, v))
+}
+
+// MinSeverityContains applies the Contains predicate on the "min_severity" field.
+func MinSeverityContains(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContains(FieldMinSeverity, v))
+}
+
+// MinSeverityHasPrefix applies the HasPrefix predicate on the "min_severity" field.
+func MinSeverityHasPrefix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasPrefix(FieldMinSeverity, v))
+}
+
+// MinSeverityHasSuffix applies the HasSuffix predicate on the "min_severity" field.
+func MinSeverityHasSuffix(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldHasSuffix(FieldMinSeverity, v))
+}
+
+// MinSeverityEqualFold applies the EqualFold predicate on the "min_severity" field.
+func MinSeverityEqualFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldEqualFold(FieldMinSeverity, v))
+}
+
+// MinSeverityContainsFold applies the ContainsFold predicate on the "min_severity" field.
+func MinSeverityContainsFold(v string) predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldContainsFold(FieldMinSeverity, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -73,8 +73,17 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		return nil
 	}
 	title, body, htmlURL := renderMessage(res.Event, repoFullName)
-	// 全部订阅渠道都会被机器人免打扰过滤时不做 AI 分析：省下无效费用与最长一个 AI 超时的等待。
-	if hasReceivingChannel(channels, res.Event) {
+	branch := ExtractEventBranch(res.Event)
+	repoID := ""
+	if res.Event.RepositoryID != nil {
+		repoID = *res.Event.RepositoryID
+	} else if res.Repository != nil {
+		repoID = res.Repository.ID
+	}
+	isMuted, muteReason := CheckEmergencyMute(ctx, e.Store, repoID)
+
+	// 全部订阅渠道都会被过滤拦截或免打扰时不作 AI 分析：省下无效费用与等待。
+	if !isMuted && hasReceivingChannel(channels, res.Event, repoFullName, branch) {
 		// 安全告警分诊：新告警附带影响分析与处理建议；失败保持原文，不阻塞入库。
 		// 是否有接收渠道的检查并入 triageAnalysis，与参与度日志归并一处。
 		if analysis := e.triageAnalysis(ctx, res.Event, repoFullName, channels); analysis != "" {
@@ -112,15 +121,44 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			e.logNotifySkipped(res, repoFullName, "bot_suppressed")
 			continue
 		}
+		// 渠道精细化路由（仓库通配符、分支通配符、严重度门槛）
+		if !MatchChannelFilter(ch, res.Event, repoFullName, branch) {
+			e.logNotifySkipped(res, repoFullName, "channel_filter_mismatch")
+			continue
+		}
+		bodyJSON := map[string]any{
+			"event_id": res.Event.ID, "kind": res.Event.Kind, "action": res.Event.Action,
+			"repository": repoFullName,
+		}
+		// 紧急静音激活时，持久化审计记录进 outbox（独立键命名空间，状态为 suppressed）
+		if isMuted {
+			e.logNotifySkipped(res, repoFullName, "emergency_mute")
+			suppressedIdem := fmt.Sprintf("suppressed|%s|%s", res.Event.ID, ch.ID)
+			now := time.Now().UTC()
+			if _, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
+				ID:               ulid.Make().String(),
+				ChannelID:        ch.ID,
+				EventID:          &res.Event.ID,
+				IdempotencyKey:   suppressedIdem,
+				Status:           store.OutboxSuppressed,
+				SuppressedReason: muteReason,
+				NextAttemptAt:    now,
+				Title:            title,
+				BodyText:         body,
+				HTMLURL:          htmlURL,
+				BodyJSON:         bodyJSON,
+				ParseMode:        "HTML",
+			}); err != nil && !errors.Is(err, store.ErrConflict) {
+				return err
+			}
+			continue
+		}
+
 		idem := idempotencyKey(ch.ID, res.Event.ID, "realtime")
 		nextAttempt := time.Now().UTC()
 		action, resumeAt := DecideQuietHours(ch, res.Event, nextAttempt)
 		if action == ActionDeferQuietHours {
 			nextAttempt = resumeAt
-		}
-		bodyJSON := map[string]any{
-			"event_id": res.Event.ID, "kind": res.Event.Kind, "action": res.Event.Action,
-			"repository": repoFullName,
 		}
 		if chatOpsToken != "" {
 			bodyJSON["chatops_token"] = chatOpsToken
@@ -148,9 +186,9 @@ func ShouldSuppressBotEvent(ch store.NotificationChannel, ev *store.Event) bool 
 
 // hasReceivingChannel 判定是否存在「既订阅该事件类型、又不会被机器人免打扰过滤」的启用渠道。
 // 全部渠道都会被过滤时无需发起 AI 分析：省下无效费用与最长一个 AI 超时的等待。
-func hasReceivingChannel(channels []store.NotificationChannel, ev *store.Event) bool {
+func hasReceivingChannel(channels []store.NotificationChannel, ev *store.Event, repoFullName, branch string) bool {
 	for _, ch := range channels {
-		if ch.Enabled && ch.AcceptsKind(ev.Kind) && !ShouldSuppressBotEvent(ch, ev) {
+		if ch.Enabled && ch.AcceptsKind(ev.Kind) && !ShouldSuppressBotEvent(ch, ev) && MatchChannelFilter(ch, ev, repoFullName, branch) {
 			return true
 		}
 	}

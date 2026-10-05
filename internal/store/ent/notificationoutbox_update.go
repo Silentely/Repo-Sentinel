@@ -193,6 +193,20 @@ func (_u *NotificationOutboxUpdate) SetNillableLastErrorCode(v *string) *Notific
 	return _u
 }
 
+// SetSuppressedReason sets the "suppressed_reason" field.
+func (_u *NotificationOutboxUpdate) SetSuppressedReason(v string) *NotificationOutboxUpdate {
+	_u.mutation.SetSuppressedReason(v)
+	return _u
+}
+
+// SetNillableSuppressedReason sets the "suppressed_reason" field if the given value is not nil.
+func (_u *NotificationOutboxUpdate) SetNillableSuppressedReason(v *string) *NotificationOutboxUpdate {
+	if v != nil {
+		_u.SetSuppressedReason(*v)
+	}
+	return _u
+}
+
 // SetTitle sets the "title" field.
 func (_u *NotificationOutboxUpdate) SetTitle(v string) *NotificationOutboxUpdate {
 	_u.mutation.SetTitle(v)
@@ -357,6 +371,9 @@ func (_u *NotificationOutboxUpdate) sqlSave(ctx context.Context) (_node int, err
 	}
 	if value, ok := _u.mutation.LastErrorCode(); ok {
 		_spec.SetField(notificationoutbox.FieldLastErrorCode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SuppressedReason(); ok {
+		_spec.SetField(notificationoutbox.FieldSuppressedReason, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(notificationoutbox.FieldTitle, field.TypeString, value)
@@ -564,6 +581,20 @@ func (_u *NotificationOutboxUpdateOne) SetNillableLastErrorCode(v *string) *Noti
 	return _u
 }
 
+// SetSuppressedReason sets the "suppressed_reason" field.
+func (_u *NotificationOutboxUpdateOne) SetSuppressedReason(v string) *NotificationOutboxUpdateOne {
+	_u.mutation.SetSuppressedReason(v)
+	return _u
+}
+
+// SetNillableSuppressedReason sets the "suppressed_reason" field if the given value is not nil.
+func (_u *NotificationOutboxUpdateOne) SetNillableSuppressedReason(v *string) *NotificationOutboxUpdateOne {
+	if v != nil {
+		_u.SetSuppressedReason(*v)
+	}
+	return _u
+}
+
 // SetTitle sets the "title" field.
 func (_u *NotificationOutboxUpdateOne) SetTitle(v string) *NotificationOutboxUpdateOne {
 	_u.mutation.SetTitle(v)
@@ -758,6 +789,9 @@ func (_u *NotificationOutboxUpdateOne) sqlSave(ctx context.Context) (_node *Noti
 	}
 	if value, ok := _u.mutation.LastErrorCode(); ok {
 		_spec.SetField(notificationoutbox.FieldLastErrorCode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SuppressedReason(); ok {
+		_spec.SetField(notificationoutbox.FieldSuppressedReason, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(notificationoutbox.FieldTitle, field.TypeString, value)

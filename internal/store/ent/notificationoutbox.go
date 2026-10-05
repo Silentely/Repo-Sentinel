@@ -38,6 +38,8 @@ type NotificationOutbox struct {
 	ClaimToken *string `json:"claim_token,omitempty"`
 	// LastErrorCode holds the value of the "last_error_code" field.
 	LastErrorCode string `json:"last_error_code,omitempty"`
+	// SuppressedReason holds the value of the "suppressed_reason" field.
+	SuppressedReason string `json:"suppressed_reason,omitempty"`
 	// Title holds the value of the "title" field.
 	Title string `json:"title,omitempty"`
 	// BodyText holds the value of the "body_text" field.
@@ -64,7 +66,7 @@ func (*NotificationOutbox) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case notificationoutbox.FieldAttemptCount:
 			values[i] = new(sql.NullInt64)
-		case notificationoutbox.FieldID, notificationoutbox.FieldChannelID, notificationoutbox.FieldEventID, notificationoutbox.FieldAggregateKey, notificationoutbox.FieldIdempotencyKey, notificationoutbox.FieldStatus, notificationoutbox.FieldClaimToken, notificationoutbox.FieldLastErrorCode, notificationoutbox.FieldTitle, notificationoutbox.FieldBodyText, notificationoutbox.FieldRepositoryFullName, notificationoutbox.FieldParseMode:
+		case notificationoutbox.FieldID, notificationoutbox.FieldChannelID, notificationoutbox.FieldEventID, notificationoutbox.FieldAggregateKey, notificationoutbox.FieldIdempotencyKey, notificationoutbox.FieldStatus, notificationoutbox.FieldClaimToken, notificationoutbox.FieldLastErrorCode, notificationoutbox.FieldSuppressedReason, notificationoutbox.FieldTitle, notificationoutbox.FieldBodyText, notificationoutbox.FieldRepositoryFullName, notificationoutbox.FieldParseMode:
 			values[i] = new(sql.NullString)
 		case notificationoutbox.FieldNextAttemptAt, notificationoutbox.FieldLockedUntil, notificationoutbox.FieldCreatedAt, notificationoutbox.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -151,6 +153,12 @@ func (_m *NotificationOutbox) assignValues(columns []string, values []any) error
 				return fmt.Errorf("unexpected type %T for field last_error_code", values[i])
 			} else if value.Valid {
 				_m.LastErrorCode = value.String
+			}
+		case notificationoutbox.FieldSuppressedReason:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field suppressed_reason", values[i])
+			} else if value.Valid {
+				_m.SuppressedReason = value.String
 			}
 		case notificationoutbox.FieldTitle:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -267,6 +275,9 @@ func (_m *NotificationOutbox) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("last_error_code=")
 	builder.WriteString(_m.LastErrorCode)
+	builder.WriteString(", ")
+	builder.WriteString("suppressed_reason=")
+	builder.WriteString(_m.SuppressedReason)
 	builder.WriteString(", ")
 	builder.WriteString("title=")
 	builder.WriteString(_m.Title)

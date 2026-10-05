@@ -201,6 +201,9 @@ var (
 		{Name: "quiet_hours_end", Type: field.TypeString, Default: "08:00"},
 		{Name: "quiet_hours_tz", Type: field.TypeString, Default: "UTC"},
 		{Name: "ignore_bots", Type: field.TypeBool, Default: false},
+		{Name: "repo_pattern", Type: field.TypeString, Default: ""},
+		{Name: "branch_filter", Type: field.TypeString, Default: ""},
+		{Name: "min_severity", Type: field.TypeString, Default: "low"},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -230,6 +233,7 @@ var (
 		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
 		{Name: "claim_token", Type: field.TypeString, Nullable: true},
 		{Name: "last_error_code", Type: field.TypeString, Default: ""},
+		{Name: "suppressed_reason", Type: field.TypeString, Default: ""},
 		{Name: "title", Type: field.TypeString, Default: ""},
 		{Name: "body_text", Type: field.TypeString},
 		{Name: "body_json", Type: field.TypeJSON, Nullable: true},
@@ -257,7 +261,7 @@ var (
 			{
 				Name:    "notificationoutbox_status_repository_full_name",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationOutboxColumns[5], NotificationOutboxColumns[14]},
+				Columns: []*schema.Column{NotificationOutboxColumns[5], NotificationOutboxColumns[15]},
 			},
 			{
 				Name:    "notificationoutbox_channel_id_status",
@@ -267,7 +271,7 @@ var (
 			{
 				Name:    "notificationoutbox_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationOutboxColumns[16]},
+				Columns: []*schema.Column{NotificationOutboxColumns[17]},
 			},
 		},
 	}

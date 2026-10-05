@@ -26,6 +26,7 @@ func (NotificationOutbox) Fields() []ent.Field {
 		field.Time("locked_until").Optional().Nillable(),
 		field.String("claim_token").Optional().Nillable(),
 		field.String("last_error_code").Default(""),
+		field.String("suppressed_reason").Default(""),
 		field.String("title").Default(""),
 		field.String("body_text"),
 		field.JSON("body_json", map[string]any{}).Optional(),

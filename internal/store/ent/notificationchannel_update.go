@@ -257,6 +257,48 @@ func (_u *NotificationChannelUpdate) SetNillableIgnoreBots(v *bool) *Notificatio
 	return _u
 }
 
+// SetRepoPattern sets the "repo_pattern" field.
+func (_u *NotificationChannelUpdate) SetRepoPattern(v string) *NotificationChannelUpdate {
+	_u.mutation.SetRepoPattern(v)
+	return _u
+}
+
+// SetNillableRepoPattern sets the "repo_pattern" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableRepoPattern(v *string) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetRepoPattern(*v)
+	}
+	return _u
+}
+
+// SetBranchFilter sets the "branch_filter" field.
+func (_u *NotificationChannelUpdate) SetBranchFilter(v string) *NotificationChannelUpdate {
+	_u.mutation.SetBranchFilter(v)
+	return _u
+}
+
+// SetNillableBranchFilter sets the "branch_filter" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableBranchFilter(v *string) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetBranchFilter(*v)
+	}
+	return _u
+}
+
+// SetMinSeverity sets the "min_severity" field.
+func (_u *NotificationChannelUpdate) SetMinSeverity(v string) *NotificationChannelUpdate {
+	_u.mutation.SetMinSeverity(v)
+	return _u
+}
+
+// SetNillableMinSeverity sets the "min_severity" field if the given value is not nil.
+func (_u *NotificationChannelUpdate) SetNillableMinSeverity(v *string) *NotificationChannelUpdate {
+	if v != nil {
+		_u.SetMinSeverity(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *NotificationChannelUpdate) SetUpdatedAt(v time.Time) *NotificationChannelUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -367,6 +409,15 @@ func (_u *NotificationChannelUpdate) sqlSave(ctx context.Context) (_node int, er
 	}
 	if value, ok := _u.mutation.IgnoreBots(); ok {
 		_spec.SetField(notificationchannel.FieldIgnoreBots, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RepoPattern(); ok {
+		_spec.SetField(notificationchannel.FieldRepoPattern, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BranchFilter(); ok {
+		_spec.SetField(notificationchannel.FieldBranchFilter, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MinSeverity(); ok {
+		_spec.SetField(notificationchannel.FieldMinSeverity, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(notificationchannel.FieldUpdatedAt, field.TypeTime, value)
@@ -619,6 +670,48 @@ func (_u *NotificationChannelUpdateOne) SetNillableIgnoreBots(v *bool) *Notifica
 	return _u
 }
 
+// SetRepoPattern sets the "repo_pattern" field.
+func (_u *NotificationChannelUpdateOne) SetRepoPattern(v string) *NotificationChannelUpdateOne {
+	_u.mutation.SetRepoPattern(v)
+	return _u
+}
+
+// SetNillableRepoPattern sets the "repo_pattern" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableRepoPattern(v *string) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetRepoPattern(*v)
+	}
+	return _u
+}
+
+// SetBranchFilter sets the "branch_filter" field.
+func (_u *NotificationChannelUpdateOne) SetBranchFilter(v string) *NotificationChannelUpdateOne {
+	_u.mutation.SetBranchFilter(v)
+	return _u
+}
+
+// SetNillableBranchFilter sets the "branch_filter" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableBranchFilter(v *string) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetBranchFilter(*v)
+	}
+	return _u
+}
+
+// SetMinSeverity sets the "min_severity" field.
+func (_u *NotificationChannelUpdateOne) SetMinSeverity(v string) *NotificationChannelUpdateOne {
+	_u.mutation.SetMinSeverity(v)
+	return _u
+}
+
+// SetNillableMinSeverity sets the "min_severity" field if the given value is not nil.
+func (_u *NotificationChannelUpdateOne) SetNillableMinSeverity(v *string) *NotificationChannelUpdateOne {
+	if v != nil {
+		_u.SetMinSeverity(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *NotificationChannelUpdateOne) SetUpdatedAt(v time.Time) *NotificationChannelUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -759,6 +852,15 @@ func (_u *NotificationChannelUpdateOne) sqlSave(ctx context.Context) (_node *Not
 	}
 	if value, ok := _u.mutation.IgnoreBots(); ok {
 		_spec.SetField(notificationchannel.FieldIgnoreBots, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.RepoPattern(); ok {
+		_spec.SetField(notificationchannel.FieldRepoPattern, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BranchFilter(); ok {
+		_spec.SetField(notificationchannel.FieldBranchFilter, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MinSeverity(); ok {
+		_spec.SetField(notificationchannel.FieldMinSeverity, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(notificationchannel.FieldUpdatedAt, field.TypeTime, value)

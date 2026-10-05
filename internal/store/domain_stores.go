@@ -2041,6 +2041,9 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 				SetQuietHoursEnd(in.QuietHoursEnd).
 				SetQuietHoursTz(in.QuietHoursTZ).
 				SetIgnoreBots(in.IgnoreBots).
+				SetRepoPattern(in.RepoPattern).
+				SetBranchFilter(in.BranchFilter).
+				SetMinSeverity(in.MinSeverity).
 				SetUpdatedAt(now).
 				Save(ctx)
 			if err != nil {
@@ -2071,6 +2074,9 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 		SetQuietHoursEnd(in.QuietHoursEnd).
 		SetQuietHoursTz(in.QuietHoursTZ).
 		SetIgnoreBots(in.IgnoreBots).
+		SetRepoPattern(in.RepoPattern).
+		SetBranchFilter(in.BranchFilter).
+		SetMinSeverity(in.MinSeverity).
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
@@ -2168,8 +2174,9 @@ func channelFromEntity(e *entclient.NotificationChannel) NotificationChannel {
 		EventKinds: e.EventKinds, DigestEnabled: e.DigestEnabled,
 		ReceiveDailyDigest: e.ReceiveDailyDigest, ReceiveWeeklyReport: e.ReceiveWeeklyReport, ReceiveMonthlyReport: e.ReceiveMonthlyReport,
 		QuietHoursEnabled: e.QuietHoursEnabled, QuietHoursStart: e.QuietHoursStart, QuietHoursEnd: e.QuietHoursEnd, QuietHoursTZ: e.QuietHoursTz,
-		IgnoreBots: e.IgnoreBots,
-		CreatedAt:  e.CreatedAt, UpdatedAt: e.UpdatedAt,
+		IgnoreBots:  e.IgnoreBots,
+		RepoPattern: e.RepoPattern, BranchFilter: e.BranchFilter, MinSeverity: e.MinSeverity,
+		CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 }
 
@@ -2253,6 +2260,7 @@ func (s *outboxStore) Create(ctx context.Context, in NotificationOutbox) (Notifi
 		SetBodyText(in.BodyText).
 		SetBodyJSON(bodyJSON).
 		SetRepositoryFullName(releaseRepositoryOf(bodyJSON)).
+		SetSuppressedReason(in.SuppressedReason).
 		SetParseMode(in.ParseMode).
 		SetCreatedAt(now).
 		SetUpdatedAt(now)
@@ -2513,6 +2521,7 @@ func outboxFromEntity(e *entclient.NotificationOutbox) NotificationOutbox {
 		NextAttemptAt: e.NextAttemptAt, LockedUntil: e.LockedUntil, ClaimToken: e.ClaimToken, LastErrorCode: e.LastErrorCode,
 		Title: e.Title, BodyText: e.BodyText, BodyJSON: e.BodyJSON, ParseMode: e.ParseMode,
 		RepositoryFullName: e.RepositoryFullName,
+		SuppressedReason:   e.SuppressedReason,
 		CreatedAt:          e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
 	out.HTMLURL = outboxHTMLURLOf(e.BodyJSON)

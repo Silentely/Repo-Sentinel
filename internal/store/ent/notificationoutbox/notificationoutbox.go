@@ -31,6 +31,8 @@ const (
 	FieldClaimToken = "claim_token"
 	// FieldLastErrorCode holds the string denoting the last_error_code field in the database.
 	FieldLastErrorCode = "last_error_code"
+	// FieldSuppressedReason holds the string denoting the suppressed_reason field in the database.
+	FieldSuppressedReason = "suppressed_reason"
 	// FieldTitle holds the string denoting the title field in the database.
 	FieldTitle = "title"
 	// FieldBodyText holds the string denoting the body_text field in the database.
@@ -62,6 +64,7 @@ var Columns = []string{
 	FieldLockedUntil,
 	FieldClaimToken,
 	FieldLastErrorCode,
+	FieldSuppressedReason,
 	FieldTitle,
 	FieldBodyText,
 	FieldBodyJSON,
@@ -90,6 +93,8 @@ var (
 	DefaultAttemptCount int
 	// DefaultLastErrorCode holds the default value on creation for the "last_error_code" field.
 	DefaultLastErrorCode string
+	// DefaultSuppressedReason holds the default value on creation for the "suppressed_reason" field.
+	DefaultSuppressedReason string
 	// DefaultTitle holds the default value on creation for the "title" field.
 	DefaultTitle string
 	// DefaultRepositoryFullName holds the default value on creation for the "repository_full_name" field.
@@ -154,6 +159,11 @@ func ByClaimToken(opts ...sql.OrderTermOption) OrderOption {
 // ByLastErrorCode orders the results by the last_error_code field.
 func ByLastErrorCode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastErrorCode, opts...).ToFunc()
+}
+
+// BySuppressedReason orders the results by the suppressed_reason field.
+func BySuppressedReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSuppressedReason, opts...).ToFunc()
 }
 
 // ByTitle orders the results by the title field.

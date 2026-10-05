@@ -131,6 +131,18 @@ func init() {
 	notificationchannelDescIgnoreBots := notificationchannelFields[16].Descriptor()
 	// notificationchannel.DefaultIgnoreBots holds the default value on creation for the ignore_bots field.
 	notificationchannel.DefaultIgnoreBots = notificationchannelDescIgnoreBots.Default.(bool)
+	// notificationchannelDescRepoPattern is the schema descriptor for repo_pattern field.
+	notificationchannelDescRepoPattern := notificationchannelFields[17].Descriptor()
+	// notificationchannel.DefaultRepoPattern holds the default value on creation for the repo_pattern field.
+	notificationchannel.DefaultRepoPattern = notificationchannelDescRepoPattern.Default.(string)
+	// notificationchannelDescBranchFilter is the schema descriptor for branch_filter field.
+	notificationchannelDescBranchFilter := notificationchannelFields[18].Descriptor()
+	// notificationchannel.DefaultBranchFilter holds the default value on creation for the branch_filter field.
+	notificationchannel.DefaultBranchFilter = notificationchannelDescBranchFilter.Default.(string)
+	// notificationchannelDescMinSeverity is the schema descriptor for min_severity field.
+	notificationchannelDescMinSeverity := notificationchannelFields[19].Descriptor()
+	// notificationchannel.DefaultMinSeverity holds the default value on creation for the min_severity field.
+	notificationchannel.DefaultMinSeverity = notificationchannelDescMinSeverity.Default.(string)
 	notificationoutboxFields := schema.NotificationOutbox{}.Fields()
 	_ = notificationoutboxFields
 	// notificationoutboxDescAggregateKey is the schema descriptor for aggregate_key field.
@@ -149,16 +161,20 @@ func init() {
 	notificationoutboxDescLastErrorCode := notificationoutboxFields[10].Descriptor()
 	// notificationoutbox.DefaultLastErrorCode holds the default value on creation for the last_error_code field.
 	notificationoutbox.DefaultLastErrorCode = notificationoutboxDescLastErrorCode.Default.(string)
+	// notificationoutboxDescSuppressedReason is the schema descriptor for suppressed_reason field.
+	notificationoutboxDescSuppressedReason := notificationoutboxFields[11].Descriptor()
+	// notificationoutbox.DefaultSuppressedReason holds the default value on creation for the suppressed_reason field.
+	notificationoutbox.DefaultSuppressedReason = notificationoutboxDescSuppressedReason.Default.(string)
 	// notificationoutboxDescTitle is the schema descriptor for title field.
-	notificationoutboxDescTitle := notificationoutboxFields[11].Descriptor()
+	notificationoutboxDescTitle := notificationoutboxFields[12].Descriptor()
 	// notificationoutbox.DefaultTitle holds the default value on creation for the title field.
 	notificationoutbox.DefaultTitle = notificationoutboxDescTitle.Default.(string)
 	// notificationoutboxDescRepositoryFullName is the schema descriptor for repository_full_name field.
-	notificationoutboxDescRepositoryFullName := notificationoutboxFields[14].Descriptor()
+	notificationoutboxDescRepositoryFullName := notificationoutboxFields[15].Descriptor()
 	// notificationoutbox.DefaultRepositoryFullName holds the default value on creation for the repository_full_name field.
 	notificationoutbox.DefaultRepositoryFullName = notificationoutboxDescRepositoryFullName.Default.(string)
 	// notificationoutboxDescParseMode is the schema descriptor for parse_mode field.
-	notificationoutboxDescParseMode := notificationoutboxFields[15].Descriptor()
+	notificationoutboxDescParseMode := notificationoutboxFields[16].Descriptor()
 	// notificationoutbox.DefaultParseMode holds the default value on creation for the parse_mode field.
 	notificationoutbox.DefaultParseMode = notificationoutboxDescParseMode.Default.(string)
 	repositoryFields := schema.Repository{}.Fields()

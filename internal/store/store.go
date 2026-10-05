@@ -113,6 +113,17 @@ func AutoLabelReceiptKey(repoFullName string, issueNumber int, category string) 
 	return "side_effect:auto_label:" + repoFullName + ":" + strconv.Itoa(issueNumber) + ":v1:" + category
 }
 
+const (
+	muteSettingKeyPrefix = "mute:repo:"
+	muteAllSettingKey    = "mute:all"
+)
+
+// MuteSettingKey 返回指定仓库的紧急静音设置键。
+func MuteSettingKey(repoID string) string { return muteSettingKeyPrefix + repoID }
+
+// MuteAllSettingKey 返回全局紧急静音设置键。
+func MuteAllSettingKey() string { return muteAllSettingKey }
+
 // AdminStore 管理唯一管理员账号。
 type AdminStore interface {
 	Create(context.Context, AdminAccount) (AdminAccount, error)

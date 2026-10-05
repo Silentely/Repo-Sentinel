@@ -4599,6 +4599,9 @@ type NotificationChannelMutation struct {
 	quiet_hours_end        *string
 	quiet_hours_tz         *string
 	ignore_bots            *bool
+	repo_pattern           *string
+	branch_filter          *string
+	min_severity           *string
 	created_at             *time.Time
 	updated_at             *time.Time
 	clearedFields          map[string]struct{}
@@ -5316,6 +5319,114 @@ func (m *NotificationChannelMutation) ResetIgnoreBots() {
 	m.ignore_bots = nil
 }
 
+// SetRepoPattern sets the "repo_pattern" field.
+func (m *NotificationChannelMutation) SetRepoPattern(s string) {
+	m.repo_pattern = &s
+}
+
+// RepoPattern returns the value of the "repo_pattern" field in the mutation.
+func (m *NotificationChannelMutation) RepoPattern() (r string, exists bool) {
+	v := m.repo_pattern
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRepoPattern returns the old "repo_pattern" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldRepoPattern(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRepoPattern is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRepoPattern requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepoPattern: %w", err)
+	}
+	return oldValue.RepoPattern, nil
+}
+
+// ResetRepoPattern resets all changes to the "repo_pattern" field.
+func (m *NotificationChannelMutation) ResetRepoPattern() {
+	m.repo_pattern = nil
+}
+
+// SetBranchFilter sets the "branch_filter" field.
+func (m *NotificationChannelMutation) SetBranchFilter(s string) {
+	m.branch_filter = &s
+}
+
+// BranchFilter returns the value of the "branch_filter" field in the mutation.
+func (m *NotificationChannelMutation) BranchFilter() (r string, exists bool) {
+	v := m.branch_filter
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBranchFilter returns the old "branch_filter" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldBranchFilter(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBranchFilter is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBranchFilter requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBranchFilter: %w", err)
+	}
+	return oldValue.BranchFilter, nil
+}
+
+// ResetBranchFilter resets all changes to the "branch_filter" field.
+func (m *NotificationChannelMutation) ResetBranchFilter() {
+	m.branch_filter = nil
+}
+
+// SetMinSeverity sets the "min_severity" field.
+func (m *NotificationChannelMutation) SetMinSeverity(s string) {
+	m.min_severity = &s
+}
+
+// MinSeverity returns the value of the "min_severity" field in the mutation.
+func (m *NotificationChannelMutation) MinSeverity() (r string, exists bool) {
+	v := m.min_severity
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMinSeverity returns the old "min_severity" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldMinSeverity(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMinSeverity is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMinSeverity requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMinSeverity: %w", err)
+	}
+	return oldValue.MinSeverity, nil
+}
+
+// ResetMinSeverity resets all changes to the "min_severity" field.
+func (m *NotificationChannelMutation) ResetMinSeverity() {
+	m.min_severity = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *NotificationChannelMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -5422,7 +5533,7 @@ func (m *NotificationChannelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationChannelMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 21)
 	if m.channel_type != nil {
 		fields = append(fields, notificationchannel.FieldChannelType)
 	}
@@ -5471,6 +5582,15 @@ func (m *NotificationChannelMutation) Fields() []string {
 	if m.ignore_bots != nil {
 		fields = append(fields, notificationchannel.FieldIgnoreBots)
 	}
+	if m.repo_pattern != nil {
+		fields = append(fields, notificationchannel.FieldRepoPattern)
+	}
+	if m.branch_filter != nil {
+		fields = append(fields, notificationchannel.FieldBranchFilter)
+	}
+	if m.min_severity != nil {
+		fields = append(fields, notificationchannel.FieldMinSeverity)
+	}
 	if m.created_at != nil {
 		fields = append(fields, notificationchannel.FieldCreatedAt)
 	}
@@ -5517,6 +5637,12 @@ func (m *NotificationChannelMutation) Field(name string) (ent.Value, bool) {
 		return m.QuietHoursTz()
 	case notificationchannel.FieldIgnoreBots:
 		return m.IgnoreBots()
+	case notificationchannel.FieldRepoPattern:
+		return m.RepoPattern()
+	case notificationchannel.FieldBranchFilter:
+		return m.BranchFilter()
+	case notificationchannel.FieldMinSeverity:
+		return m.MinSeverity()
 	case notificationchannel.FieldCreatedAt:
 		return m.CreatedAt()
 	case notificationchannel.FieldUpdatedAt:
@@ -5562,6 +5688,12 @@ func (m *NotificationChannelMutation) OldField(ctx context.Context, name string)
 		return m.OldQuietHoursTz(ctx)
 	case notificationchannel.FieldIgnoreBots:
 		return m.OldIgnoreBots(ctx)
+	case notificationchannel.FieldRepoPattern:
+		return m.OldRepoPattern(ctx)
+	case notificationchannel.FieldBranchFilter:
+		return m.OldBranchFilter(ctx)
+	case notificationchannel.FieldMinSeverity:
+		return m.OldMinSeverity(ctx)
 	case notificationchannel.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case notificationchannel.FieldUpdatedAt:
@@ -5687,6 +5819,27 @@ func (m *NotificationChannelMutation) SetField(name string, value ent.Value) err
 		}
 		m.SetIgnoreBots(v)
 		return nil
+	case notificationchannel.FieldRepoPattern:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRepoPattern(v)
+		return nil
+	case notificationchannel.FieldBranchFilter:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBranchFilter(v)
+		return nil
+	case notificationchannel.FieldMinSeverity:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMinSeverity(v)
+		return nil
 	case notificationchannel.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -5807,6 +5960,15 @@ func (m *NotificationChannelMutation) ResetField(name string) error {
 	case notificationchannel.FieldIgnoreBots:
 		m.ResetIgnoreBots()
 		return nil
+	case notificationchannel.FieldRepoPattern:
+		m.ResetRepoPattern()
+		return nil
+	case notificationchannel.FieldBranchFilter:
+		m.ResetBranchFilter()
+		return nil
+	case notificationchannel.FieldMinSeverity:
+		m.ResetMinSeverity()
+		return nil
 	case notificationchannel.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
@@ -5882,6 +6044,7 @@ type NotificationOutboxMutation struct {
 	locked_until         *time.Time
 	claim_token          *string
 	last_error_code      *string
+	suppressed_reason    *string
 	title                *string
 	body_text            *string
 	body_json            *map[string]interface{}
@@ -6418,6 +6581,42 @@ func (m *NotificationOutboxMutation) ResetLastErrorCode() {
 	m.last_error_code = nil
 }
 
+// SetSuppressedReason sets the "suppressed_reason" field.
+func (m *NotificationOutboxMutation) SetSuppressedReason(s string) {
+	m.suppressed_reason = &s
+}
+
+// SuppressedReason returns the value of the "suppressed_reason" field in the mutation.
+func (m *NotificationOutboxMutation) SuppressedReason() (r string, exists bool) {
+	v := m.suppressed_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSuppressedReason returns the old "suppressed_reason" field's value of the NotificationOutbox entity.
+// If the NotificationOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationOutboxMutation) OldSuppressedReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSuppressedReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSuppressedReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSuppressedReason: %w", err)
+	}
+	return oldValue.SuppressedReason, nil
+}
+
+// ResetSuppressedReason resets all changes to the "suppressed_reason" field.
+func (m *NotificationOutboxMutation) ResetSuppressedReason() {
+	m.suppressed_reason = nil
+}
+
 // SetTitle sets the "title" field.
 func (m *NotificationOutboxMutation) SetTitle(s string) {
 	m.title = &s
@@ -6717,7 +6916,7 @@ func (m *NotificationOutboxMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationOutboxMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.channel_id != nil {
 		fields = append(fields, notificationoutbox.FieldChannelID)
 	}
@@ -6747,6 +6946,9 @@ func (m *NotificationOutboxMutation) Fields() []string {
 	}
 	if m.last_error_code != nil {
 		fields = append(fields, notificationoutbox.FieldLastErrorCode)
+	}
+	if m.suppressed_reason != nil {
+		fields = append(fields, notificationoutbox.FieldSuppressedReason)
 	}
 	if m.title != nil {
 		fields = append(fields, notificationoutbox.FieldTitle)
@@ -6797,6 +6999,8 @@ func (m *NotificationOutboxMutation) Field(name string) (ent.Value, bool) {
 		return m.ClaimToken()
 	case notificationoutbox.FieldLastErrorCode:
 		return m.LastErrorCode()
+	case notificationoutbox.FieldSuppressedReason:
+		return m.SuppressedReason()
 	case notificationoutbox.FieldTitle:
 		return m.Title()
 	case notificationoutbox.FieldBodyText:
@@ -6840,6 +7044,8 @@ func (m *NotificationOutboxMutation) OldField(ctx context.Context, name string) 
 		return m.OldClaimToken(ctx)
 	case notificationoutbox.FieldLastErrorCode:
 		return m.OldLastErrorCode(ctx)
+	case notificationoutbox.FieldSuppressedReason:
+		return m.OldSuppressedReason(ctx)
 	case notificationoutbox.FieldTitle:
 		return m.OldTitle(ctx)
 	case notificationoutbox.FieldBodyText:
@@ -6932,6 +7138,13 @@ func (m *NotificationOutboxMutation) SetField(name string, value ent.Value) erro
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLastErrorCode(v)
+		return nil
+	case notificationoutbox.FieldSuppressedReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSuppressedReason(v)
 		return nil
 	case notificationoutbox.FieldTitle:
 		v, ok := value.(string)
@@ -7102,6 +7315,9 @@ func (m *NotificationOutboxMutation) ResetField(name string) error {
 		return nil
 	case notificationoutbox.FieldLastErrorCode:
 		m.ResetLastErrorCode()
+		return nil
+	case notificationoutbox.FieldSuppressedReason:
+		m.ResetSuppressedReason()
 		return nil
 	case notificationoutbox.FieldTitle:
 		m.ResetTitle()

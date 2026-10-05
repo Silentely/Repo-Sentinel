@@ -114,6 +114,11 @@ func LastErrorCode(v string) predicate.NotificationOutbox {
 	return predicate.NotificationOutbox(sql.FieldEQ(FieldLastErrorCode, v))
 }
 
+// SuppressedReason applies equality check predicate on the "suppressed_reason" field. It's identical to SuppressedReasonEQ.
+func SuppressedReason(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldEQ(FieldSuppressedReason, v))
+}
+
 // Title applies equality check predicate on the "title" field. It's identical to TitleEQ.
 func Title(v string) predicate.NotificationOutbox {
 	return predicate.NotificationOutbox(sql.FieldEQ(FieldTitle, v))
@@ -747,6 +752,71 @@ func LastErrorCodeEqualFold(v string) predicate.NotificationOutbox {
 // LastErrorCodeContainsFold applies the ContainsFold predicate on the "last_error_code" field.
 func LastErrorCodeContainsFold(v string) predicate.NotificationOutbox {
 	return predicate.NotificationOutbox(sql.FieldContainsFold(FieldLastErrorCode, v))
+}
+
+// SuppressedReasonEQ applies the EQ predicate on the "suppressed_reason" field.
+func SuppressedReasonEQ(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldEQ(FieldSuppressedReason, v))
+}
+
+// SuppressedReasonNEQ applies the NEQ predicate on the "suppressed_reason" field.
+func SuppressedReasonNEQ(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldNEQ(FieldSuppressedReason, v))
+}
+
+// SuppressedReasonIn applies the In predicate on the "suppressed_reason" field.
+func SuppressedReasonIn(vs ...string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldIn(FieldSuppressedReason, vs...))
+}
+
+// SuppressedReasonNotIn applies the NotIn predicate on the "suppressed_reason" field.
+func SuppressedReasonNotIn(vs ...string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldNotIn(FieldSuppressedReason, vs...))
+}
+
+// SuppressedReasonGT applies the GT predicate on the "suppressed_reason" field.
+func SuppressedReasonGT(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldGT(FieldSuppressedReason, v))
+}
+
+// SuppressedReasonGTE applies the GTE predicate on the "suppressed_reason" field.
+func SuppressedReasonGTE(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldGTE(FieldSuppressedReason, v))
+}
+
+// SuppressedReasonLT applies the LT predicate on the "suppressed_reason" field.
+func SuppressedReasonLT(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldLT(FieldSuppressedReason, v))
+}
+
+// SuppressedReasonLTE applies the LTE predicate on the "suppressed_reason" field.
+func SuppressedReasonLTE(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldLTE(FieldSuppressedReason, v))
+}
+
+// SuppressedReasonContains applies the Contains predicate on the "suppressed_reason" field.
+func SuppressedReasonContains(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldContains(FieldSuppressedReason, v))
+}
+
+// SuppressedReasonHasPrefix applies the HasPrefix predicate on the "suppressed_reason" field.
+func SuppressedReasonHasPrefix(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldHasPrefix(FieldSuppressedReason, v))
+}
+
+// SuppressedReasonHasSuffix applies the HasSuffix predicate on the "suppressed_reason" field.
+func SuppressedReasonHasSuffix(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldHasSuffix(FieldSuppressedReason, v))
+}
+
+// SuppressedReasonEqualFold applies the EqualFold predicate on the "suppressed_reason" field.
+func SuppressedReasonEqualFold(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldEqualFold(FieldSuppressedReason, v))
+}
+
+// SuppressedReasonContainsFold applies the ContainsFold predicate on the "suppressed_reason" field.
+func SuppressedReasonContainsFold(v string) predicate.NotificationOutbox {
+	return predicate.NotificationOutbox(sql.FieldContainsFold(FieldSuppressedReason, v))
 }
 
 // TitleEQ applies the EQ predicate on the "title" field.

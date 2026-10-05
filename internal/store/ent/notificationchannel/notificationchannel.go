@@ -43,6 +43,12 @@ const (
 	FieldQuietHoursTz = "quiet_hours_tz"
 	// FieldIgnoreBots holds the string denoting the ignore_bots field in the database.
 	FieldIgnoreBots = "ignore_bots"
+	// FieldRepoPattern holds the string denoting the repo_pattern field in the database.
+	FieldRepoPattern = "repo_pattern"
+	// FieldBranchFilter holds the string denoting the branch_filter field in the database.
+	FieldBranchFilter = "branch_filter"
+	// FieldMinSeverity holds the string denoting the min_severity field in the database.
+	FieldMinSeverity = "min_severity"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -70,6 +76,9 @@ var Columns = []string{
 	FieldQuietHoursEnd,
 	FieldQuietHoursTz,
 	FieldIgnoreBots,
+	FieldRepoPattern,
+	FieldBranchFilter,
+	FieldMinSeverity,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -113,6 +122,12 @@ var (
 	DefaultQuietHoursTz string
 	// DefaultIgnoreBots holds the default value on creation for the "ignore_bots" field.
 	DefaultIgnoreBots bool
+	// DefaultRepoPattern holds the default value on creation for the "repo_pattern" field.
+	DefaultRepoPattern string
+	// DefaultBranchFilter holds the default value on creation for the "branch_filter" field.
+	DefaultBranchFilter string
+	// DefaultMinSeverity holds the default value on creation for the "min_severity" field.
+	DefaultMinSeverity string
 )
 
 // OrderOption defines the ordering options for the NotificationChannel queries.
@@ -196,6 +211,21 @@ func ByQuietHoursTz(opts ...sql.OrderTermOption) OrderOption {
 // ByIgnoreBots orders the results by the ignore_bots field.
 func ByIgnoreBots(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIgnoreBots, opts...).ToFunc()
+}
+
+// ByRepoPattern orders the results by the repo_pattern field.
+func ByRepoPattern(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRepoPattern, opts...).ToFunc()
+}
+
+// ByBranchFilter orders the results by the branch_filter field.
+func ByBranchFilter(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBranchFilter, opts...).ToFunc()
+}
+
+// ByMinSeverity orders the results by the min_severity field.
+func ByMinSeverity(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMinSeverity, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

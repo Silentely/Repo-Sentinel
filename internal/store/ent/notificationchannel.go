@@ -50,6 +50,12 @@ type NotificationChannel struct {
 	QuietHoursTz string `json:"quiet_hours_tz,omitempty"`
 	// IgnoreBots holds the value of the "ignore_bots" field.
 	IgnoreBots bool `json:"ignore_bots,omitempty"`
+	// RepoPattern holds the value of the "repo_pattern" field.
+	RepoPattern string `json:"repo_pattern,omitempty"`
+	// BranchFilter holds the value of the "branch_filter" field.
+	BranchFilter string `json:"branch_filter,omitempty"`
+	// MinSeverity holds the value of the "min_severity" field.
+	MinSeverity string `json:"min_severity,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -66,7 +72,7 @@ func (*NotificationChannel) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case notificationchannel.FieldEnabled, notificationchannel.FieldAllowPrivate, notificationchannel.FieldDigestEnabled, notificationchannel.FieldReceiveDailyDigest, notificationchannel.FieldReceiveWeeklyReport, notificationchannel.FieldReceiveMonthlyReport, notificationchannel.FieldQuietHoursEnabled, notificationchannel.FieldIgnoreBots:
 			values[i] = new(sql.NullBool)
-		case notificationchannel.FieldID, notificationchannel.FieldChannelType, notificationchannel.FieldName, notificationchannel.FieldTarget, notificationchannel.FieldSecretEnvelope, notificationchannel.FieldQuietHoursStart, notificationchannel.FieldQuietHoursEnd, notificationchannel.FieldQuietHoursTz:
+		case notificationchannel.FieldID, notificationchannel.FieldChannelType, notificationchannel.FieldName, notificationchannel.FieldTarget, notificationchannel.FieldSecretEnvelope, notificationchannel.FieldQuietHoursStart, notificationchannel.FieldQuietHoursEnd, notificationchannel.FieldQuietHoursTz, notificationchannel.FieldRepoPattern, notificationchannel.FieldBranchFilter, notificationchannel.FieldMinSeverity:
 			values[i] = new(sql.NullString)
 		case notificationchannel.FieldCreatedAt, notificationchannel.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -189,6 +195,24 @@ func (_m *NotificationChannel) assignValues(columns []string, values []any) erro
 			} else if value.Valid {
 				_m.IgnoreBots = value.Bool
 			}
+		case notificationchannel.FieldRepoPattern:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field repo_pattern", values[i])
+			} else if value.Valid {
+				_m.RepoPattern = value.String
+			}
+		case notificationchannel.FieldBranchFilter:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field branch_filter", values[i])
+			} else if value.Valid {
+				_m.BranchFilter = value.String
+			}
+		case notificationchannel.FieldMinSeverity:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field min_severity", values[i])
+			} else if value.Valid {
+				_m.MinSeverity = value.String
+			}
 		case notificationchannel.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -284,6 +308,15 @@ func (_m *NotificationChannel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("ignore_bots=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IgnoreBots))
+	builder.WriteString(", ")
+	builder.WriteString("repo_pattern=")
+	builder.WriteString(_m.RepoPattern)
+	builder.WriteString(", ")
+	builder.WriteString("branch_filter=")
+	builder.WriteString(_m.BranchFilter)
+	builder.WriteString(", ")
+	builder.WriteString("min_severity=")
+	builder.WriteString(_m.MinSeverity)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

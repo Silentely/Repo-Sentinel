@@ -50,11 +50,12 @@ const (
 	ChannelBark        = "bark"
 	ChannelSlack       = "slack"
 
-	OutboxPending   = "pending"
-	OutboxSending   = "sending"
-	OutboxSent      = "sent"
-	OutboxDead      = "dead"
-	OutboxCancelled = "cancelled"
+	OutboxPending    = "pending"
+	OutboxSending    = "sending"
+	OutboxSent       = "sent"
+	OutboxDead       = "dead"
+	OutboxCancelled  = "cancelled"
+	OutboxSuppressed = "suppressed"
 
 	DeliveryAccepted   = "accepted"
 	DeliveryProcessing = "processing"
@@ -434,6 +435,9 @@ type NotificationChannel struct {
 	QuietHoursEnd        string    `json:"quiet_hours_end"`
 	QuietHoursTZ         string    `json:"quiet_hours_tz"`
 	IgnoreBots           bool      `json:"ignore_bots"`
+	RepoPattern          string    `json:"repo_pattern"`
+	BranchFilter         string    `json:"branch_filter"`
+	MinSeverity          string    `json:"min_severity"`
 	CreatedAt            time.Time `json:"created_at"`
 	UpdatedAt            time.Time `json:"updated_at"`
 }
@@ -472,20 +476,21 @@ func (c NotificationChannel) AcceptsKind(kind string) bool {
 
 // NotificationOutbox 待传递通知。
 type NotificationOutbox struct {
-	ID             string         `json:"id"`
-	ChannelID      string         `json:"channel_id"`
-	EventID        *string        `json:"event_id,omitempty"`
-	AggregateKey   string         `json:"aggregate_key,omitempty"`
-	IdempotencyKey string         `json:"idempotency_key,omitempty"`
-	Status         string         `json:"status"`
-	AttemptCount   int            `json:"attempt_count"`
-	NextAttemptAt  time.Time      `json:"next_attempt_at"`
-	LockedUntil    *time.Time     `json:"locked_until,omitempty"`
-	ClaimToken     *string        `json:"claim_token,omitempty"`
-	LastErrorCode  string         `json:"last_error_code,omitempty"`
-	Title          string         `json:"title"`
-	BodyText       string         `json:"body_text,omitempty"`
-	BodyJSON       map[string]any `json:"body_json,omitempty"`
+	ID               string         `json:"id"`
+	ChannelID        string         `json:"channel_id"`
+	EventID          *string        `json:"event_id,omitempty"`
+	AggregateKey     string         `json:"aggregate_key,omitempty"`
+	IdempotencyKey   string         `json:"idempotency_key,omitempty"`
+	Status           string         `json:"status"`
+	AttemptCount     int            `json:"attempt_count"`
+	NextAttemptAt    time.Time      `json:"next_attempt_at"`
+	LockedUntil      *time.Time     `json:"locked_until,omitempty"`
+	ClaimToken       *string        `json:"claim_token,omitempty"`
+	SuppressedReason string         `json:"suppressed_reason,omitempty"`
+	LastErrorCode    string         `json:"last_error_code,omitempty"`
+	Title            string         `json:"title"`
+	BodyText         string         `json:"body_text,omitempty"`
+	BodyJSON         map[string]any `json:"body_json,omitempty"`
 	// RepositoryFullName 为 Release 通知冗余的仓库名（其它类别为空），
 	// 是 unstar 取消未投递通知的唯一匹配依据，见 outboxStore.CancelPendingByRepository。
 	// 写入时由 Create 从 body_json 派生，调用方传值会被忽略（读取时由行回填）。
@@ -870,4 +875,21 @@ type LeaseStore interface {
 	Renew(ctx context.Context, taskName, holderID string, fencingToken int64, ttl time.Duration) (bool, error)
 	Release(ctx context.Context, taskName, holderID string, fencingToken int64) (bool, error)
 	Get(ctx context.Context, taskName string) (*SystemLease, error)
+}
+
+// SeverityWeight 返回严重度等级权重（数值越高越严重）。
+// 未知或空严重度安全回退为 low（1）。
+func SeverityWeight(sev string) int {
+	switch strings.ToLower(strings.TrimSpace(sev)) {
+	case "critical":
+		return 4
+	case "high":
+		return 3
+	case "medium", "moderate":
+		return 2
+	case "low":
+		return 1
+	default:
+		return 1
+	}
 }
