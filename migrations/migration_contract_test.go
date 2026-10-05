@@ -118,8 +118,9 @@ func TestDualEngineWebhookClaimFieldsMigration(t *testing.T) {
 		}
 
 		// 验证 MarkProcessed 状态变更
-		if err := deliveryStore.MarkProcessed(t.Context(), fetched.ID, store.DeliveryProcessed, ""); err != nil {
-			t.Fatalf("MarkProcessed 失败: %v", err)
+		res, err := deliveryStore.MarkProcessed(t.Context(), fetched.ID, fetched.ClaimToken)
+		if err != nil || !res.Applied || res.Stale {
+			t.Fatalf("MarkProcessed 失败: res=%+v err=%v", res, err)
 		}
 
 		afterMark, err := deliveryStore.Get(t.Context(), created.ID)

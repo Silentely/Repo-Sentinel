@@ -215,7 +215,7 @@ func (s *storeImpl) Repositories() RepositoryStore {
 	return &repositoryStore{client: s.client, idsCache: s.repoIDsCache, settingsCache: s.settingsCache}
 }
 func (s *storeImpl) WebhookDeliveries() WebhookDeliveryStore {
-	return &webhookDeliveryStore{client: s.client}
+	return &webhookDeliveryStore{client: s.client, driver: s.driver}
 }
 func (s *storeImpl) WorkItems() WorkItemStore {
 	return &workItemStore{client: s.client, idsCache: s.repoIDsCache}

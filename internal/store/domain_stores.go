@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	entclient "github.com/Silentely/Repo-Sentinel/internal/store/ent"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/event"
@@ -451,7 +453,10 @@ func repositoryFromEntity(e *entclient.Repository) Repository {
 
 // --- webhook deliveries ---
 
-type webhookDeliveryStore struct{ client *entclient.Client }
+type webhookDeliveryStore struct {
+	client *entclient.Client
+	driver dialect.Driver
+}
 
 func (s *webhookDeliveryStore) Create(ctx context.Context, in WebhookDelivery) (WebhookDelivery, error) {
 	if in.ID == "" {
@@ -535,14 +540,485 @@ func (s *webhookDeliveryStore) GetByDeliveryID(ctx context.Context, deliveryID s
 	return webhookDeliveryFromEntity(entity), nil
 }
 
-func (s *webhookDeliveryStore) MarkProcessed(ctx context.Context, id, status, errorCode string) error {
+func (s *webhookDeliveryStore) getDB() *sql.DB {
+	if s.driver == nil {
+		return nil
+	}
+	if sqlDriver, ok := s.driver.(*entsql.Driver); ok {
+		return sqlDriver.DB()
+	}
+	return nil
+}
+
+func scanWebhookDelivery(scanner interface{ Scan(...any) error }) (*WebhookDelivery, error) {
+	var d WebhookDelivery
+	var processedAt sql.NullTime
+	var claimedUntil sql.NullTime
+	err := scanner.Scan(
+		&d.ID,
+		&d.DeliveryID,
+		&d.EventType,
+		&d.Action,
+		&d.RepositoryFullName,
+		&d.Status,
+		&d.ErrorCode,
+		&d.Payload,
+		&d.ReceivedAt,
+		&processedAt,
+		&d.ClaimToken,
+		&d.ClaimVersion,
+		&d.ClaimedBy,
+		&claimedUntil,
+		&d.AttemptCount,
+		&d.LastErrorCode,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if processedAt.Valid {
+		t := processedAt.Time.UTC()
+		d.ProcessedAt = &t
+	}
+	if claimedUntil.Valid {
+		t := claimedUntil.Time.UTC()
+		d.ClaimedUntil = &t
+	}
+	d.ReceivedAt = d.ReceivedAt.UTC()
+	return &d, nil
+}
+
+func (s *webhookDeliveryStore) ClaimWebhookForProcessing(ctx context.Context, id string, workerID string, ttl time.Duration) (string, bool, error) {
+	if ttl == 0 {
+		ttl = 3 * time.Minute
+	}
+	ttlSecs := int(ttl.Seconds())
+	claimToken := newID()
 	now := time.Now().UTC()
-	err := s.client.WebhookDelivery.UpdateOneID(id).
-		SetStatus(status).
-		SetErrorCode(errorCode).
+	claimedUntil := now.Add(ttl)
+
+	db := s.getDB()
+	if db != nil {
+		var query string
+		var args []any
+		if s.driver != nil && s.driver.Dialect() == dialect.Postgres {
+			query = `UPDATE webhook_deliveries
+SET status = 'processing',
+    claim_token = $1,
+    claim_version = claim_version + 1,
+    claimed_by = $2,
+    claimed_until = now() + make_interval(secs => $3),
+    attempt_count = attempt_count + 1
+WHERE id = $4 AND (status = 'accepted' OR (status = 'processing' AND (claimed_until IS NULL OR claimed_until < now())))`
+			args = []any{claimToken, workerID, ttlSecs, id}
+		} else {
+			query = `UPDATE webhook_deliveries
+SET status = 'processing',
+    claim_token = ?,
+    claim_version = claim_version + 1,
+    claimed_by = ?,
+    claimed_until = datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds'),
+    attempt_count = attempt_count + 1
+WHERE id = ? AND (status = 'accepted' OR (status = 'processing' AND (claimed_until IS NULL OR claimed_until < CURRENT_TIMESTAMP)))`
+			args = []any{claimToken, workerID, ttlSecs, id}
+		}
+
+		res, err := db.ExecContext(ctx, query, args...)
+		if err != nil {
+			return "", false, mapStoreError(err)
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return "", false, mapStoreError(err)
+		}
+		if rows == 0 {
+			return "", false, nil
+		}
+		return claimToken, true, nil
+	}
+
+	pred := webhookdelivery.And(
+		webhookdelivery.IDEQ(id),
+		webhookdelivery.Or(
+			webhookdelivery.StatusEQ(DeliveryAccepted),
+			webhookdelivery.And(
+				webhookdelivery.StatusEQ(DeliveryProcessing),
+				webhookdelivery.Or(
+					webhookdelivery.ClaimedUntilIsNil(),
+					webhookdelivery.ClaimedUntilLT(now),
+				),
+			),
+		),
+	)
+	n, err := s.client.WebhookDelivery.Update().
+		Where(pred).
+		SetStatus(DeliveryProcessing).
+		SetClaimToken(claimToken).
+		AddClaimVersion(1).
+		SetClaimedBy(workerID).
+		SetClaimedUntil(claimedUntil).
+		AddAttemptCount(1).
+		Save(ctx)
+	if err != nil {
+		return "", false, mapStoreError(err)
+	}
+	if n == 0 {
+		return "", false, nil
+	}
+	return claimToken, true, nil
+}
+
+func (s *webhookDeliveryStore) ClaimDueOrphanWebhooks(ctx context.Context, workerID string, cutoff time.Time, limit int) ([]*WebhookDelivery, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	ttl := 3 * time.Minute
+	ttlSecs := int(ttl.Seconds())
+	batchToken := newID()
+	now := time.Now().UTC()
+	cutoffUTC := cutoff.UTC()
+
+	db := s.getDB()
+	if db != nil {
+		isPG := s.driver != nil && s.driver.Dialect() == dialect.Postgres
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, mapStoreError(err)
+		}
+		defer func() {
+			_ = tx.Rollback()
+		}()
+
+		const selectCols = "id, delivery_id, event_type, action, repository_full_name, status, error_code, payload, received_at, processed_at, claim_token, claim_version, claimed_by, claimed_until, attempt_count, last_error_code"
+
+		if isPG {
+			updateSQL := `UPDATE webhook_deliveries
+SET status = 'processing',
+    claim_token = $1,
+    claim_version = claim_version + 1,
+    claimed_by = $2,
+    claimed_until = now() + make_interval(secs => $3),
+    attempt_count = attempt_count + 1
+WHERE id IN (
+    SELECT id FROM webhook_deliveries
+    WHERE (status = 'accepted' AND received_at < $4)
+       OR (status = 'processing' AND (claimed_until IS NULL OR claimed_until < now()))
+    ORDER BY received_at ASC
+    LIMIT $5
+    FOR UPDATE SKIP LOCKED
+)
+AND ((status = 'accepted' AND received_at < $4)
+     OR (status = 'processing' AND (claimed_until IS NULL OR claimed_until < now())))`
+			if _, err := tx.ExecContext(ctx, updateSQL, batchToken, workerID, ttlSecs, cutoffUTC, limit); err != nil {
+				return nil, mapStoreError(err)
+			}
+
+			rows, err := tx.QueryContext(ctx, `SELECT `+selectCols+` FROM webhook_deliveries WHERE claim_token = $1 ORDER BY received_at ASC`, batchToken)
+			if err != nil {
+				return nil, mapStoreError(err)
+			}
+			defer rows.Close()
+
+			var out []*WebhookDelivery
+			for rows.Next() {
+				d, err := scanWebhookDelivery(rows)
+				if err != nil {
+					return nil, mapStoreError(err)
+				}
+				out = append(out, d)
+			}
+			if err := rows.Err(); err != nil {
+				return nil, mapStoreError(err)
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, mapStoreError(err)
+			}
+			return out, nil
+		} else {
+			updateSQL := `UPDATE webhook_deliveries
+SET status = 'processing',
+    claim_token = ?,
+    claim_version = claim_version + 1,
+    claimed_by = ?,
+    claimed_until = datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds'),
+    attempt_count = attempt_count + 1
+WHERE id IN (
+    SELECT id FROM webhook_deliveries
+    WHERE (status = 'accepted' AND received_at < ?)
+       OR (status = 'processing' AND (claimed_until IS NULL OR claimed_until < CURRENT_TIMESTAMP))
+    ORDER BY received_at ASC
+    LIMIT ?
+)
+AND ((status = 'accepted' AND received_at < ?)
+     OR (status = 'processing' AND (claimed_until IS NULL OR claimed_until < CURRENT_TIMESTAMP)))`
+			if _, err := tx.ExecContext(ctx, updateSQL, batchToken, workerID, ttlSecs, cutoffUTC, limit, cutoffUTC); err != nil {
+				return nil, mapStoreError(err)
+			}
+
+			rows, err := tx.QueryContext(ctx, `SELECT `+selectCols+` FROM webhook_deliveries WHERE claim_token = ? ORDER BY received_at ASC`, batchToken)
+			if err != nil {
+				return nil, mapStoreError(err)
+			}
+			defer rows.Close()
+
+			var out []*WebhookDelivery
+			for rows.Next() {
+				d, err := scanWebhookDelivery(rows)
+				if err != nil {
+					return nil, mapStoreError(err)
+				}
+				out = append(out, d)
+			}
+			if err := rows.Err(); err != nil {
+				return nil, mapStoreError(err)
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, mapStoreError(err)
+			}
+			return out, nil
+		}
+	}
+
+	claimedUntil := now.Add(ttl)
+	pred := webhookdelivery.Or(
+		webhookdelivery.And(
+			webhookdelivery.StatusEQ(DeliveryAccepted),
+			webhookdelivery.ReceivedAtLT(cutoffUTC),
+		),
+		webhookdelivery.And(
+			webhookdelivery.StatusEQ(DeliveryProcessing),
+			webhookdelivery.Or(
+				webhookdelivery.ClaimedUntilIsNil(),
+				webhookdelivery.ClaimedUntilLT(now),
+			),
+		),
+	)
+	entities, err := s.client.WebhookDelivery.Query().
+		Where(pred).
+		Order(entclient.Asc(webhookdelivery.FieldReceivedAt)).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	var out []*WebhookDelivery
+	for _, entity := range entities {
+		n, err := s.client.WebhookDelivery.Update().
+			Where(
+				webhookdelivery.IDEQ(entity.ID),
+				webhookdelivery.ClaimVersionEQ(entity.ClaimVersion),
+				pred,
+			).
+			SetStatus(DeliveryProcessing).
+			SetClaimToken(batchToken).
+			AddClaimVersion(1).
+			SetClaimedBy(workerID).
+			SetClaimedUntil(claimedUntil).
+			AddAttemptCount(1).
+			Save(ctx)
+		if err == nil && n > 0 {
+			cloned := webhookDeliveryFromEntity(entity)
+			cloned.Status = DeliveryProcessing
+			cloned.ClaimToken = batchToken
+			cloned.ClaimVersion = entity.ClaimVersion + 1
+			cloned.ClaimedBy = workerID
+			cloned.ClaimedUntil = &claimedUntil
+			cloned.AttemptCount = entity.AttemptCount + 1
+			out = append(out, &cloned)
+		}
+	}
+	return out, nil
+}
+
+func (s *webhookDeliveryStore) MarkProcessed(ctx context.Context, id string, claimToken string) (TransitionResult, error) {
+	now := time.Now().UTC()
+	db := s.getDB()
+	if db != nil {
+		var query string
+		var args []any
+		if s.driver != nil && s.driver.Dialect() == dialect.Postgres {
+			if claimToken != "" {
+				query = `UPDATE webhook_deliveries SET status = 'processed', claim_token = '', processed_at = $1, last_error_code = '' WHERE id = $2 AND claim_token = $3 AND status = 'processing'`
+				args = []any{now, id, claimToken}
+			} else {
+				query = `UPDATE webhook_deliveries SET status = 'processed', claim_token = '', processed_at = $1, last_error_code = '' WHERE id = $2 AND (claim_token = '' OR claim_token IS NULL) AND (status = 'accepted' OR status = 'processing')`
+				args = []any{now, id}
+			}
+		} else {
+			if claimToken != "" {
+				query = `UPDATE webhook_deliveries SET status = 'processed', claim_token = '', processed_at = ?, last_error_code = '' WHERE id = ? AND claim_token = ? AND status = 'processing'`
+				args = []any{now, id, claimToken}
+			} else {
+				query = `UPDATE webhook_deliveries SET status = 'processed', claim_token = '', processed_at = ?, last_error_code = '' WHERE id = ? AND (claim_token = '' OR claim_token IS NULL) AND (status = 'accepted' OR status = 'processing')`
+				args = []any{now, id}
+			}
+		}
+		res, err := db.ExecContext(ctx, query, args...)
+		if err != nil {
+			return TransitionResult{}, mapStoreError(err)
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return TransitionResult{}, mapStoreError(err)
+		}
+		if rows == 0 {
+			return TransitionResult{Applied: false, Stale: true}, nil
+		}
+		return TransitionResult{Applied: true, Stale: false}, nil
+	}
+
+	q := s.client.WebhookDelivery.Update().Where(webhookdelivery.IDEQ(id))
+	if claimToken != "" {
+		q = q.Where(webhookdelivery.ClaimTokenEQ(claimToken), webhookdelivery.StatusEQ(DeliveryProcessing))
+	} else {
+		q = q.Where(
+			webhookdelivery.ClaimTokenEQ(""),
+			webhookdelivery.Or(
+				webhookdelivery.StatusEQ(DeliveryAccepted),
+				webhookdelivery.StatusEQ(DeliveryProcessing),
+			),
+		)
+	}
+	n, err := q.
+		SetStatus(DeliveryProcessed).
+		SetClaimToken("").
 		SetProcessedAt(now).
-		Exec(ctx)
-	return mapStoreError(err)
+		SetLastErrorCode("").
+		Save(ctx)
+	if err != nil {
+		return TransitionResult{}, mapStoreError(err)
+	}
+	if n == 0 {
+		return TransitionResult{Applied: false, Stale: true}, nil
+	}
+	return TransitionResult{Applied: true, Stale: false}, nil
+}
+
+func (s *webhookDeliveryStore) MarkFailed(ctx context.Context, id string, claimToken string, errCode string) (TransitionResult, error) {
+	now := time.Now().UTC()
+	db := s.getDB()
+	if db != nil {
+		var query string
+		var args []any
+		if s.driver != nil && s.driver.Dialect() == dialect.Postgres {
+			if claimToken != "" {
+				query = `UPDATE webhook_deliveries SET status = 'failed', claim_token = '', last_error_code = $1, error_code = $1, processed_at = $2 WHERE id = $3 AND claim_token = $4 AND status = 'processing'`
+				args = []any{errCode, now, id, claimToken}
+			} else {
+				query = `UPDATE webhook_deliveries SET status = 'failed', claim_token = '', last_error_code = $1, error_code = $1, processed_at = $2 WHERE id = $3 AND (claim_token = '' OR claim_token IS NULL) AND (status = 'accepted' OR status = 'processing')`
+				args = []any{errCode, now, id}
+			}
+		} else {
+			if claimToken != "" {
+				query = `UPDATE webhook_deliveries SET status = 'failed', claim_token = '', last_error_code = ?, error_code = ?, processed_at = ? WHERE id = ? AND claim_token = ? AND status = 'processing'`
+				args = []any{errCode, errCode, now, id, claimToken}
+			} else {
+				query = `UPDATE webhook_deliveries SET status = 'failed', claim_token = '', last_error_code = ?, error_code = ?, processed_at = ? WHERE id = ? AND (claim_token = '' OR claim_token IS NULL) AND (status = 'accepted' OR status = 'processing')`
+				args = []any{errCode, errCode, now, id}
+			}
+		}
+		res, err := db.ExecContext(ctx, query, args...)
+		if err != nil {
+			return TransitionResult{}, mapStoreError(err)
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return TransitionResult{}, mapStoreError(err)
+		}
+		if rows == 0 {
+			return TransitionResult{Applied: false, Stale: true}, nil
+		}
+		return TransitionResult{Applied: true, Stale: false}, nil
+	}
+
+	q := s.client.WebhookDelivery.Update().Where(webhookdelivery.IDEQ(id))
+	if claimToken != "" {
+		q = q.Where(webhookdelivery.ClaimTokenEQ(claimToken), webhookdelivery.StatusEQ(DeliveryProcessing))
+	} else {
+		q = q.Where(
+			webhookdelivery.ClaimTokenEQ(""),
+			webhookdelivery.Or(
+				webhookdelivery.StatusEQ(DeliveryAccepted),
+				webhookdelivery.StatusEQ(DeliveryProcessing),
+			),
+		)
+	}
+	n, err := q.
+		SetStatus(DeliveryFailed).
+		SetClaimToken("").
+		SetLastErrorCode(errCode).
+		SetErrorCode(errCode).
+		SetProcessedAt(now).
+		Save(ctx)
+	if err != nil {
+		return TransitionResult{}, mapStoreError(err)
+	}
+	if n == 0 {
+		return TransitionResult{Applied: false, Stale: true}, nil
+	}
+	return TransitionResult{Applied: true, Stale: false}, nil
+}
+
+func (s *webhookDeliveryStore) MarkDeadLetter(ctx context.Context, id string, claimToken string, reason string) (TransitionResult, error) {
+	now := time.Now().UTC()
+	db := s.getDB()
+	if db != nil {
+		var query string
+		var args []any
+		if s.driver != nil && s.driver.Dialect() == dialect.Postgres {
+			if claimToken != "" {
+				query = `UPDATE webhook_deliveries SET status = 'dead_letter', claim_token = '', last_error_code = $1, error_code = $1, processed_at = $2 WHERE id = $3 AND claim_token = $4 AND (status = 'accepted' OR status = 'processing')`
+				args = []any{reason, now, id, claimToken}
+			} else {
+				query = `UPDATE webhook_deliveries SET status = 'dead_letter', claim_token = '', last_error_code = $1, error_code = $1, processed_at = $2 WHERE id = $3 AND (status = 'accepted' OR status = 'processing')`
+				args = []any{reason, now, id}
+			}
+		} else {
+			if claimToken != "" {
+				query = `UPDATE webhook_deliveries SET status = 'dead_letter', claim_token = '', last_error_code = ?, error_code = ?, processed_at = ? WHERE id = ? AND claim_token = ? AND (status = 'accepted' OR status = 'processing')`
+				args = []any{reason, reason, now, id, claimToken}
+			} else {
+				query = `UPDATE webhook_deliveries SET status = 'dead_letter', claim_token = '', last_error_code = ?, error_code = ?, processed_at = ? WHERE id = ? AND (status = 'accepted' OR status = 'processing')`
+				args = []any{reason, reason, now, id}
+			}
+		}
+		res, err := db.ExecContext(ctx, query, args...)
+		if err != nil {
+			return TransitionResult{}, mapStoreError(err)
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return TransitionResult{}, mapStoreError(err)
+		}
+		if rows == 0 {
+			return TransitionResult{Applied: false, Stale: true}, nil
+		}
+		return TransitionResult{Applied: true, Stale: false}, nil
+	}
+
+	q := s.client.WebhookDelivery.Update().Where(
+		webhookdelivery.IDEQ(id),
+		webhookdelivery.Or(
+			webhookdelivery.StatusEQ(DeliveryAccepted),
+			webhookdelivery.StatusEQ(DeliveryProcessing),
+		),
+	)
+	if claimToken != "" {
+		q = q.Where(webhookdelivery.ClaimTokenEQ(claimToken))
+	}
+	n, err := q.
+		SetStatus(DeliveryDeadLetter).
+		SetClaimToken("").
+		SetLastErrorCode(reason).
+		SetErrorCode(reason).
+		SetProcessedAt(now).
+		Save(ctx)
+	if err != nil {
+		return TransitionResult{}, mapStoreError(err)
+	}
+	if n == 0 {
+		return TransitionResult{Applied: false, Stale: true}, nil
+	}
+	return TransitionResult{Applied: true, Stale: false}, nil
 }
 
 // retentionBatchSize 单批物理删除条数上限，避免超大事务长期独占写锁造成 busy_timeout。

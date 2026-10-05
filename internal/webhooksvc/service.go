@@ -85,7 +85,7 @@ func (s *Service) MarkFailed(rowID, deliveryID, eventType, errorCode string) {
 func (s *Service) markFailed(rowID, deliveryID, eventType, errorCode string) {
 	markCtx, markCancel := s.markContext()
 	defer markCancel()
-	if err := s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryFailed, errorCode); err != nil && s.Logger != nil {
+	if _, err := s.Store.WebhookDeliveries().MarkFailed(markCtx, rowID, "", errorCode); err != nil && s.Logger != nil {
 		s.Logger.Warn("webhook mark failed status error",
 			"delivery_id", deliveryID, "event_type", eventType, "error", err.Error(), "error_code", "webhook_mark_failed_status_error")
 	}
@@ -173,7 +173,7 @@ func (s *Service) Process(rowID, eventType, deliveryID string, body []byte) {
 	}
 	markCtx, markCancel := s.markContext()
 	defer markCancel()
-	if err := s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, store.DeliveryProcessed, ""); err != nil {
+	if _, err := s.Store.WebhookDeliveries().MarkProcessed(markCtx, rowID, ""); err != nil {
 		// 标记失败会让 delivery 行残留 accepted/中间态，影响状态机与重放判断，
 		// 与 markFailed 失败同级别留痕，否则该行永久卡在 accepted 且无迹可查。
 		if s.Logger != nil {

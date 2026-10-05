@@ -612,13 +612,23 @@ type InstallationStore interface {
 	List(context.Context) ([]GitHubInstallation, error)
 }
 
+// TransitionResult 表示状态机流转结果。
+type TransitionResult struct {
+	Applied bool
+	Stale   bool
+}
+
 // WebhookDeliveryStore delivery 去重与查询。
 type WebhookDeliveryStore interface {
 	Create(context.Context, WebhookDelivery) (WebhookDelivery, error)
 	Get(context.Context, string) (WebhookDelivery, error)
 	GetByDeliveryID(context.Context, string) (WebhookDelivery, error)
 	List(context.Context, ListFilter) ([]WebhookDelivery, PageResult, error)
-	MarkProcessed(context.Context, string, string, string) error
+	ClaimWebhookForProcessing(ctx context.Context, id string, workerID string, ttl time.Duration) (claimToken string, ok bool, err error)
+	ClaimDueOrphanWebhooks(ctx context.Context, workerID string, cutoff time.Time, limit int) ([]*WebhookDelivery, error)
+	MarkProcessed(ctx context.Context, id string, claimToken string) (TransitionResult, error)
+	MarkFailed(ctx context.Context, id string, claimToken string, errCode string) (TransitionResult, error)
+	MarkDeadLetter(ctx context.Context, id string, claimToken string, reason string) (TransitionResult, error)
 	// DeleteOlderThan 删除 received_at 早于 cutoff 的 delivery 记录，返回删除行数。
 	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error)
 }
