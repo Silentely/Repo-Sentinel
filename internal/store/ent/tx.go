@@ -36,6 +36,8 @@ type Tx struct {
 	StarredRepoTracker *StarredRepoTrackerClient
 	// SyncCursor is the client for interacting with the SyncCursor builders.
 	SyncCursor *SyncCursorClient
+	// SystemLease is the client for interacting with the SystemLease builders.
+	SystemLease *SystemLeaseClient
 	// SystemSetting is the client for interacting with the SystemSetting builders.
 	SystemSetting *SystemSettingClient
 	// WebhookDelivery is the client for interacting with the WebhookDelivery builders.
@@ -187,6 +189,7 @@ func (tx *Tx) init() {
 	tx.SecurityAlert = NewSecurityAlertClient(tx.config)
 	tx.StarredRepoTracker = NewStarredRepoTrackerClient(tx.config)
 	tx.SyncCursor = NewSyncCursorClient(tx.config)
+	tx.SystemLease = NewSystemLeaseClient(tx.config)
 	tx.SystemSetting = NewSystemSettingClient(tx.config)
 	tx.WebhookDelivery = NewWebhookDeliveryClient(tx.config)
 	tx.WorkItem = NewWorkItemClient(tx.config)

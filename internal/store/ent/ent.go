@@ -24,6 +24,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/starredrepotracker"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemlease"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
@@ -100,6 +101,7 @@ func checkColumn(t, c string) error {
 			securityalert.Table:       securityalert.ValidColumn,
 			starredrepotracker.Table:  starredrepotracker.ValidColumn,
 			synccursor.Table:          synccursor.ValidColumn,
+			systemlease.Table:         systemlease.ValidColumn,
 			systemsetting.Table:       systemsetting.ValidColumn,
 			webhookdelivery.Table:     webhookdelivery.ValidColumn,
 			workitem.Table:            workitem.ValidColumn,

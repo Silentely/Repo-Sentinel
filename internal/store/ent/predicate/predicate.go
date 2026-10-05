@@ -42,6 +42,9 @@ type StarredRepoTracker func(*sql.Selector)
 // SyncCursor is the predicate function for synccursor builders.
 type SyncCursor func(*sql.Selector)
 
+// SystemLease is the predicate function for systemlease builders.
+type SystemLease func(*sql.Selector)
+
 // SystemSetting is the predicate function for systemsetting builders.
 type SystemSetting func(*sql.Selector)
 

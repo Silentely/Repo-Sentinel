@@ -27,6 +27,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/starredrepotracker"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemlease"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
@@ -62,6 +63,8 @@ type Client struct {
 	StarredRepoTracker *StarredRepoTrackerClient
 	// SyncCursor is the client for interacting with the SyncCursor builders.
 	SyncCursor *SyncCursorClient
+	// SystemLease is the client for interacting with the SystemLease builders.
+	SystemLease *SystemLeaseClient
 	// SystemSetting is the client for interacting with the SystemSetting builders.
 	SystemSetting *SystemSettingClient
 	// WebhookDelivery is the client for interacting with the WebhookDelivery builders.
@@ -93,6 +96,7 @@ func (c *Client) init() {
 	c.SecurityAlert = NewSecurityAlertClient(c.config)
 	c.StarredRepoTracker = NewStarredRepoTrackerClient(c.config)
 	c.SyncCursor = NewSyncCursorClient(c.config)
+	c.SystemLease = NewSystemLeaseClient(c.config)
 	c.SystemSetting = NewSystemSettingClient(c.config)
 	c.WebhookDelivery = NewWebhookDeliveryClient(c.config)
 	c.WorkItem = NewWorkItemClient(c.config)
@@ -201,6 +205,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		SecurityAlert:       NewSecurityAlertClient(cfg),
 		StarredRepoTracker:  NewStarredRepoTrackerClient(cfg),
 		SyncCursor:          NewSyncCursorClient(cfg),
+		SystemLease:         NewSystemLeaseClient(cfg),
 		SystemSetting:       NewSystemSettingClient(cfg),
 		WebhookDelivery:     NewWebhookDeliveryClient(cfg),
 		WorkItem:            NewWorkItemClient(cfg),
@@ -236,6 +241,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		SecurityAlert:       NewSecurityAlertClient(cfg),
 		StarredRepoTracker:  NewStarredRepoTrackerClient(cfg),
 		SyncCursor:          NewSyncCursorClient(cfg),
+		SystemLease:         NewSystemLeaseClient(cfg),
 		SystemSetting:       NewSystemSettingClient(cfg),
 		WebhookDelivery:     NewWebhookDeliveryClient(cfg),
 		WorkItem:            NewWorkItemClient(cfg),
@@ -271,8 +277,8 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AdminAccount, c.AdminSession, c.AuditLog, c.Event, c.GitHubInstallation,
 		c.NotificationChannel, c.NotificationOutbox, c.RepoStatSnapshot, c.Repository,
-		c.SecurityAlert, c.StarredRepoTracker, c.SyncCursor, c.SystemSetting,
-		c.WebhookDelivery, c.WorkItem, c.WorkflowRun,
+		c.SecurityAlert, c.StarredRepoTracker, c.SyncCursor, c.SystemLease,
+		c.SystemSetting, c.WebhookDelivery, c.WorkItem, c.WorkflowRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -284,8 +290,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AdminAccount, c.AdminSession, c.AuditLog, c.Event, c.GitHubInstallation,
 		c.NotificationChannel, c.NotificationOutbox, c.RepoStatSnapshot, c.Repository,
-		c.SecurityAlert, c.StarredRepoTracker, c.SyncCursor, c.SystemSetting,
-		c.WebhookDelivery, c.WorkItem, c.WorkflowRun,
+		c.SecurityAlert, c.StarredRepoTracker, c.SyncCursor, c.SystemLease,
+		c.SystemSetting, c.WebhookDelivery, c.WorkItem, c.WorkflowRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -318,6 +324,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.StarredRepoTracker.mutate(ctx, m)
 	case *SyncCursorMutation:
 		return c.SyncCursor.mutate(ctx, m)
+	case *SystemLeaseMutation:
+		return c.SystemLease.mutate(ctx, m)
 	case *SystemSettingMutation:
 		return c.SystemSetting.mutate(ctx, m)
 	case *WebhookDeliveryMutation:
@@ -1959,6 +1967,139 @@ func (c *SyncCursorClient) mutate(ctx context.Context, m *SyncCursorMutation) (V
 	}
 }
 
+// SystemLeaseClient is a client for the SystemLease schema.
+type SystemLeaseClient struct {
+	config
+}
+
+// NewSystemLeaseClient returns a client for the SystemLease from the given config.
+func NewSystemLeaseClient(c config) *SystemLeaseClient {
+	return &SystemLeaseClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `systemlease.Hooks(f(g(h())))`.
+func (c *SystemLeaseClient) Use(hooks ...Hook) {
+	c.hooks.SystemLease = append(c.hooks.SystemLease, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `systemlease.Intercept(f(g(h())))`.
+func (c *SystemLeaseClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SystemLease = append(c.inters.SystemLease, interceptors...)
+}
+
+// Create returns a builder for creating a SystemLease entity.
+func (c *SystemLeaseClient) Create() *SystemLeaseCreate {
+	mutation := newSystemLeaseMutation(c.config, OpCreate)
+	return &SystemLeaseCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SystemLease entities.
+func (c *SystemLeaseClient) CreateBulk(builders ...*SystemLeaseCreate) *SystemLeaseCreateBulk {
+	return &SystemLeaseCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SystemLeaseClient) MapCreateBulk(slice any, setFunc func(*SystemLeaseCreate, int)) *SystemLeaseCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SystemLeaseCreateBulk{err: fmt.Errorf("calling to SystemLeaseClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SystemLeaseCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SystemLeaseCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SystemLease.
+func (c *SystemLeaseClient) Update() *SystemLeaseUpdate {
+	mutation := newSystemLeaseMutation(c.config, OpUpdate)
+	return &SystemLeaseUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SystemLeaseClient) UpdateOne(_m *SystemLease) *SystemLeaseUpdateOne {
+	mutation := newSystemLeaseMutation(c.config, OpUpdateOne, withSystemLease(_m))
+	return &SystemLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SystemLeaseClient) UpdateOneID(id string) *SystemLeaseUpdateOne {
+	mutation := newSystemLeaseMutation(c.config, OpUpdateOne, withSystemLeaseID(id))
+	return &SystemLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SystemLease.
+func (c *SystemLeaseClient) Delete() *SystemLeaseDelete {
+	mutation := newSystemLeaseMutation(c.config, OpDelete)
+	return &SystemLeaseDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SystemLeaseClient) DeleteOne(_m *SystemLease) *SystemLeaseDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SystemLeaseClient) DeleteOneID(id string) *SystemLeaseDeleteOne {
+	builder := c.Delete().Where(systemlease.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SystemLeaseDeleteOne{builder}
+}
+
+// Query returns a query builder for SystemLease.
+func (c *SystemLeaseClient) Query() *SystemLeaseQuery {
+	return &SystemLeaseQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSystemLease},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SystemLease entity by its id.
+func (c *SystemLeaseClient) Get(ctx context.Context, id string) (*SystemLease, error) {
+	return c.Query().Where(systemlease.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SystemLeaseClient) GetX(ctx context.Context, id string) *SystemLease {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SystemLeaseClient) Hooks() []Hook {
+	return c.hooks.SystemLease
+}
+
+// Interceptors returns the client interceptors.
+func (c *SystemLeaseClient) Interceptors() []Interceptor {
+	return c.inters.SystemLease
+}
+
+func (c *SystemLeaseClient) mutate(ctx context.Context, m *SystemLeaseMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SystemLeaseCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SystemLeaseUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SystemLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SystemLeaseDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SystemLease mutation op: %q", m.Op())
+	}
+}
+
 // SystemSettingClient is a client for the SystemSetting schema.
 type SystemSettingClient struct {
 	config
@@ -2496,13 +2637,13 @@ type (
 	hooks struct {
 		AdminAccount, AdminSession, AuditLog, Event, GitHubInstallation,
 		NotificationChannel, NotificationOutbox, RepoStatSnapshot, Repository,
-		SecurityAlert, StarredRepoTracker, SyncCursor, SystemSetting, WebhookDelivery,
-		WorkItem, WorkflowRun []ent.Hook
+		SecurityAlert, StarredRepoTracker, SyncCursor, SystemLease, SystemSetting,
+		WebhookDelivery, WorkItem, WorkflowRun []ent.Hook
 	}
 	inters struct {
 		AdminAccount, AdminSession, AuditLog, Event, GitHubInstallation,
 		NotificationChannel, NotificationOutbox, RepoStatSnapshot, Repository,
-		SecurityAlert, StarredRepoTracker, SyncCursor, SystemSetting, WebhookDelivery,
-		WorkItem, WorkflowRun []ent.Interceptor
+		SecurityAlert, StarredRepoTracker, SyncCursor, SystemLease, SystemSetting,
+		WebhookDelivery, WorkItem, WorkflowRun []ent.Interceptor
 	}
 )

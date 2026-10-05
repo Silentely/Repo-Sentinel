@@ -25,6 +25,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/starredrepotracker"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemlease"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
@@ -52,6 +53,7 @@ const (
 	TypeSecurityAlert       = "SecurityAlert"
 	TypeStarredRepoTracker  = "StarredRepoTracker"
 	TypeSyncCursor          = "SyncCursor"
+	TypeSystemLease         = "SystemLease"
 	TypeSystemSetting       = "SystemSetting"
 	TypeWebhookDelivery     = "WebhookDelivery"
 	TypeWorkItem            = "WorkItem"
@@ -12219,6 +12221,590 @@ func (m *SyncCursorMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SyncCursorMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown SyncCursor edge %s", name)
+}
+
+// SystemLeaseMutation represents an operation that mutates the SystemLease nodes in the graph.
+type SystemLeaseMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *string
+	task_name        *string
+	holder_id        *string
+	acquired_at      *time.Time
+	expires_at       *time.Time
+	fencing_token    *int64
+	addfencing_token *int64
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*SystemLease, error)
+	predicates       []predicate.SystemLease
+}
+
+var _ ent.Mutation = (*SystemLeaseMutation)(nil)
+
+// systemleaseOption allows management of the mutation configuration using functional options.
+type systemleaseOption func(*SystemLeaseMutation)
+
+// newSystemLeaseMutation creates new mutation for the SystemLease entity.
+func newSystemLeaseMutation(c config, op Op, opts ...systemleaseOption) *SystemLeaseMutation {
+	m := &SystemLeaseMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSystemLease,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSystemLeaseID sets the ID field of the mutation.
+func withSystemLeaseID(id string) systemleaseOption {
+	return func(m *SystemLeaseMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SystemLease
+		)
+		m.oldValue = func(ctx context.Context) (*SystemLease, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SystemLease.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSystemLease sets the old SystemLease of the mutation.
+func withSystemLease(node *SystemLease) systemleaseOption {
+	return func(m *SystemLeaseMutation) {
+		m.oldValue = func(context.Context) (*SystemLease, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SystemLeaseMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SystemLeaseMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SystemLease entities.
+func (m *SystemLeaseMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SystemLeaseMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SystemLeaseMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SystemLease.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTaskName sets the "task_name" field.
+func (m *SystemLeaseMutation) SetTaskName(s string) {
+	m.task_name = &s
+}
+
+// TaskName returns the value of the "task_name" field in the mutation.
+func (m *SystemLeaseMutation) TaskName() (r string, exists bool) {
+	v := m.task_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskName returns the old "task_name" field's value of the SystemLease entity.
+// If the SystemLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SystemLeaseMutation) OldTaskName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskName: %w", err)
+	}
+	return oldValue.TaskName, nil
+}
+
+// ResetTaskName resets all changes to the "task_name" field.
+func (m *SystemLeaseMutation) ResetTaskName() {
+	m.task_name = nil
+}
+
+// SetHolderID sets the "holder_id" field.
+func (m *SystemLeaseMutation) SetHolderID(s string) {
+	m.holder_id = &s
+}
+
+// HolderID returns the value of the "holder_id" field in the mutation.
+func (m *SystemLeaseMutation) HolderID() (r string, exists bool) {
+	v := m.holder_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHolderID returns the old "holder_id" field's value of the SystemLease entity.
+// If the SystemLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SystemLeaseMutation) OldHolderID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHolderID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHolderID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHolderID: %w", err)
+	}
+	return oldValue.HolderID, nil
+}
+
+// ResetHolderID resets all changes to the "holder_id" field.
+func (m *SystemLeaseMutation) ResetHolderID() {
+	m.holder_id = nil
+}
+
+// SetAcquiredAt sets the "acquired_at" field.
+func (m *SystemLeaseMutation) SetAcquiredAt(t time.Time) {
+	m.acquired_at = &t
+}
+
+// AcquiredAt returns the value of the "acquired_at" field in the mutation.
+func (m *SystemLeaseMutation) AcquiredAt() (r time.Time, exists bool) {
+	v := m.acquired_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAcquiredAt returns the old "acquired_at" field's value of the SystemLease entity.
+// If the SystemLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SystemLeaseMutation) OldAcquiredAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAcquiredAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAcquiredAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAcquiredAt: %w", err)
+	}
+	return oldValue.AcquiredAt, nil
+}
+
+// ResetAcquiredAt resets all changes to the "acquired_at" field.
+func (m *SystemLeaseMutation) ResetAcquiredAt() {
+	m.acquired_at = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *SystemLeaseMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *SystemLeaseMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the SystemLease entity.
+// If the SystemLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SystemLeaseMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *SystemLeaseMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// SetFencingToken sets the "fencing_token" field.
+func (m *SystemLeaseMutation) SetFencingToken(i int64) {
+	m.fencing_token = &i
+	m.addfencing_token = nil
+}
+
+// FencingToken returns the value of the "fencing_token" field in the mutation.
+func (m *SystemLeaseMutation) FencingToken() (r int64, exists bool) {
+	v := m.fencing_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFencingToken returns the old "fencing_token" field's value of the SystemLease entity.
+// If the SystemLease object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SystemLeaseMutation) OldFencingToken(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFencingToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFencingToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFencingToken: %w", err)
+	}
+	return oldValue.FencingToken, nil
+}
+
+// AddFencingToken adds i to the "fencing_token" field.
+func (m *SystemLeaseMutation) AddFencingToken(i int64) {
+	if m.addfencing_token != nil {
+		*m.addfencing_token += i
+	} else {
+		m.addfencing_token = &i
+	}
+}
+
+// AddedFencingToken returns the value that was added to the "fencing_token" field in this mutation.
+func (m *SystemLeaseMutation) AddedFencingToken() (r int64, exists bool) {
+	v := m.addfencing_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFencingToken resets all changes to the "fencing_token" field.
+func (m *SystemLeaseMutation) ResetFencingToken() {
+	m.fencing_token = nil
+	m.addfencing_token = nil
+}
+
+// Where appends a list predicates to the SystemLeaseMutation builder.
+func (m *SystemLeaseMutation) Where(ps ...predicate.SystemLease) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SystemLeaseMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SystemLeaseMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SystemLease, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SystemLeaseMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SystemLeaseMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SystemLease).
+func (m *SystemLeaseMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SystemLeaseMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.task_name != nil {
+		fields = append(fields, systemlease.FieldTaskName)
+	}
+	if m.holder_id != nil {
+		fields = append(fields, systemlease.FieldHolderID)
+	}
+	if m.acquired_at != nil {
+		fields = append(fields, systemlease.FieldAcquiredAt)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, systemlease.FieldExpiresAt)
+	}
+	if m.fencing_token != nil {
+		fields = append(fields, systemlease.FieldFencingToken)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SystemLeaseMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case systemlease.FieldTaskName:
+		return m.TaskName()
+	case systemlease.FieldHolderID:
+		return m.HolderID()
+	case systemlease.FieldAcquiredAt:
+		return m.AcquiredAt()
+	case systemlease.FieldExpiresAt:
+		return m.ExpiresAt()
+	case systemlease.FieldFencingToken:
+		return m.FencingToken()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SystemLeaseMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case systemlease.FieldTaskName:
+		return m.OldTaskName(ctx)
+	case systemlease.FieldHolderID:
+		return m.OldHolderID(ctx)
+	case systemlease.FieldAcquiredAt:
+		return m.OldAcquiredAt(ctx)
+	case systemlease.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	case systemlease.FieldFencingToken:
+		return m.OldFencingToken(ctx)
+	}
+	return nil, fmt.Errorf("unknown SystemLease field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SystemLeaseMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case systemlease.FieldTaskName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskName(v)
+		return nil
+	case systemlease.FieldHolderID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHolderID(v)
+		return nil
+	case systemlease.FieldAcquiredAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAcquiredAt(v)
+		return nil
+	case systemlease.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	case systemlease.FieldFencingToken:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFencingToken(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SystemLease field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SystemLeaseMutation) AddedFields() []string {
+	var fields []string
+	if m.addfencing_token != nil {
+		fields = append(fields, systemlease.FieldFencingToken)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SystemLeaseMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case systemlease.FieldFencingToken:
+		return m.AddedFencingToken()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SystemLeaseMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case systemlease.FieldFencingToken:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFencingToken(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SystemLease numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SystemLeaseMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SystemLeaseMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SystemLeaseMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown SystemLease nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SystemLeaseMutation) ResetField(name string) error {
+	switch name {
+	case systemlease.FieldTaskName:
+		m.ResetTaskName()
+		return nil
+	case systemlease.FieldHolderID:
+		m.ResetHolderID()
+		return nil
+	case systemlease.FieldAcquiredAt:
+		m.ResetAcquiredAt()
+		return nil
+	case systemlease.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	case systemlease.FieldFencingToken:
+		m.ResetFencingToken()
+		return nil
+	}
+	return fmt.Errorf("unknown SystemLease field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SystemLeaseMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SystemLeaseMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SystemLeaseMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SystemLeaseMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SystemLeaseMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SystemLeaseMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SystemLeaseMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SystemLease unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SystemLeaseMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SystemLease edge %s", name)
 }
 
 // SystemSettingMutation represents an operation that mutates the SystemSetting nodes in the graph.

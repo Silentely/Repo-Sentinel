@@ -848,3 +848,21 @@ func FailedConclusions() []string {
 	}
 	return out
 }
+
+// SystemLease 分布式任务租约领域模型。
+type SystemLease struct {
+	ID           string    `json:"id"`
+	TaskName     string    `json:"task_name"`
+	HolderID     string    `json:"holder_id"`
+	AcquiredAt   time.Time `json:"acquired_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	FencingToken int64     `json:"fencing_token"`
+}
+
+// LeaseStore 分布式租约锁存储层接口。
+type LeaseStore interface {
+	Acquire(ctx context.Context, taskName, holderID string, ttl time.Duration) (fencingToken int64, ok bool, err error)
+	Renew(ctx context.Context, taskName, holderID string, fencingToken int64, ttl time.Duration) (bool, error)
+	Release(ctx context.Context, taskName, holderID string, fencingToken int64) (bool, error)
+	Get(ctx context.Context, taskName string) (*SystemLease, error)
+}

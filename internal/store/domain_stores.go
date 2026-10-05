@@ -23,6 +23,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/repostatsnapshot"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemlease"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemsetting"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
@@ -3058,4 +3059,198 @@ func repoStatSnapshotFromEntity(e *entclient.RepoStatSnapshot) RepoStatSnapshot 
 		ID: e.ID, RepositoryID: e.RepositoryID, Metric: e.Metric, Value: e.Value,
 		SampleDate: e.SampleDate, CreatedAt: e.CreatedAt, UpdatedAt: e.UpdatedAt,
 	}
+}
+
+// --- system leases ---
+
+type leaseStore struct {
+	client *entclient.Client
+	driver dialect.Driver
+}
+
+func (s *leaseStore) getDB() *sql.DB {
+	if s.driver == nil {
+		return nil
+	}
+	if sqlDriver, ok := s.driver.(*entsql.Driver); ok {
+		return sqlDriver.DB()
+	}
+	return nil
+}
+
+func leaseFromEntity(entity *entclient.SystemLease) *SystemLease {
+	if entity == nil {
+		return nil
+	}
+	return &SystemLease{
+		ID:           entity.ID,
+		TaskName:     entity.TaskName,
+		HolderID:     entity.HolderID,
+		AcquiredAt:   entity.AcquiredAt.UTC(),
+		ExpiresAt:    entity.ExpiresAt.UTC(),
+		FencingToken: entity.FencingToken,
+	}
+}
+
+func (s *leaseStore) Get(ctx context.Context, taskName string) (*SystemLease, error) {
+	entity, err := s.client.SystemLease.Query().
+		Where(systemlease.TaskNameEQ(taskName)).
+		Only(ctx)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	return leaseFromEntity(entity), nil
+}
+
+func (s *leaseStore) Acquire(ctx context.Context, taskName, holderID string, ttl time.Duration) (int64, bool, error) {
+	if ttl <= 0 {
+		ttl = 30 * time.Second
+	}
+	ttlSecs := int(ttl.Seconds())
+	if ttlSecs < 1 {
+		ttlSecs = 1
+	}
+
+	db := s.getDB()
+	if db != nil {
+		isPG := s.driver != nil && s.driver.Dialect() == dialect.Postgres
+		if isPG {
+			query := `INSERT INTO system_leases (id, task_name, holder_id, acquired_at, expires_at, fencing_token)
+VALUES ($1, $2, $3, now(), now() + make_interval(secs => $4), 1)
+ON CONFLICT (task_name) DO UPDATE
+SET holder_id = EXCLUDED.holder_id,
+    acquired_at = now(),
+    expires_at = now() + make_interval(secs => $4),
+    fencing_token = CASE 
+        WHEN system_leases.holder_id = EXCLUDED.holder_id AND system_leases.expires_at > now() 
+        THEN system_leases.fencing_token 
+        ELSE system_leases.fencing_token + 1 
+    END
+WHERE system_leases.expires_at <= now() OR system_leases.holder_id = EXCLUDED.holder_id
+RETURNING fencing_token`
+			var token int64
+			err := db.QueryRowContext(ctx, query, newID(), taskName, holderID, ttlSecs).Scan(&token)
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return 0, false, nil
+				}
+				return 0, false, fmt.Errorf("%w: acquire lease %s: %v", errDatabaseOperation, taskName, err)
+			}
+			return token, true, nil
+		}
+
+		// SQLite: atomic transaction
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return 0, false, fmt.Errorf("%w: begin lease tx: %v", errDatabaseOperation, err)
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		id := newID()
+		res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO system_leases (id, task_name, holder_id, acquired_at, expires_at, fencing_token)
+VALUES (?, ?, ?, CURRENT_TIMESTAMP, datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds'), 1)`, id, taskName, holderID, ttlSecs)
+		if err != nil {
+			return 0, false, fmt.Errorf("%w: insert lease: %v", errDatabaseOperation, err)
+		}
+		rowsAffected, err := res.RowsAffected()
+		if err == nil && rowsAffected > 0 {
+			if err := tx.Commit(); err != nil {
+				return 0, false, fmt.Errorf("%w: commit lease insert: %v", errDatabaseOperation, err)
+			}
+			return 1, true, nil
+		}
+
+		res, err = tx.ExecContext(ctx, `UPDATE system_leases
+SET holder_id = ?,
+    acquired_at = CURRENT_TIMESTAMP,
+    expires_at = datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds'),
+    fencing_token = CASE 
+        WHEN holder_id = ? AND expires_at > CURRENT_TIMESTAMP 
+        THEN fencing_token 
+        ELSE fencing_token + 1 
+    END
+WHERE task_name = ? AND (expires_at <= CURRENT_TIMESTAMP OR holder_id = ?)`,
+			holderID, ttlSecs, holderID, taskName, holderID)
+		if err != nil {
+			return 0, false, fmt.Errorf("%w: update lease: %v", errDatabaseOperation, err)
+		}
+		rowsAffected, err = res.RowsAffected()
+		if err != nil || rowsAffected == 0 {
+			return 0, false, nil
+		}
+
+		var token int64
+		err = tx.QueryRowContext(ctx, `SELECT fencing_token FROM system_leases WHERE task_name = ?`, taskName).Scan(&token)
+		if err != nil {
+			return 0, false, fmt.Errorf("%w: read updated lease token: %v", errDatabaseOperation, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return 0, false, fmt.Errorf("%w: commit lease update: %v", errDatabaseOperation, err)
+		}
+		return token, true, nil
+	}
+
+	return 0, false, errors.New("db driver not available")
+}
+
+func (s *leaseStore) Renew(ctx context.Context, taskName, holderID string, fencingToken int64, ttl time.Duration) (bool, error) {
+	if ttl <= 0 {
+		ttl = 30 * time.Second
+	}
+	ttlSecs := int(ttl.Seconds())
+	if ttlSecs < 1 {
+		ttlSecs = 1
+	}
+
+	db := s.getDB()
+	if db != nil {
+		isPG := s.driver != nil && s.driver.Dialect() == dialect.Postgres
+		var res sql.Result
+		var err error
+		if isPG {
+			res, err = db.ExecContext(ctx, `UPDATE system_leases
+SET expires_at = now() + make_interval(secs => $1)
+WHERE task_name = $2 AND holder_id = $3 AND fencing_token = $4 AND expires_at > now()`, ttlSecs, taskName, holderID, fencingToken)
+		} else {
+			res, err = db.ExecContext(ctx, `UPDATE system_leases
+SET expires_at = datetime(CURRENT_TIMESTAMP, '+' || ? || ' seconds')
+WHERE task_name = ? AND holder_id = ? AND fencing_token = ? AND expires_at > CURRENT_TIMESTAMP`, ttlSecs, taskName, holderID, fencingToken)
+		}
+		if err != nil {
+			return false, fmt.Errorf("%w: renew lease %s: %v", errDatabaseOperation, taskName, err)
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+		return rows > 0, nil
+	}
+	return false, errors.New("db driver not available")
+}
+
+func (s *leaseStore) Release(ctx context.Context, taskName, holderID string, fencingToken int64) (bool, error) {
+	db := s.getDB()
+	if db != nil {
+		isPG := s.driver != nil && s.driver.Dialect() == dialect.Postgres
+		var res sql.Result
+		var err error
+		if isPG {
+			res, err = db.ExecContext(ctx, `UPDATE system_leases
+SET expires_at = now()
+WHERE task_name = $1 AND holder_id = $2 AND fencing_token = $3`, taskName, holderID, fencingToken)
+		} else {
+			res, err = db.ExecContext(ctx, `UPDATE system_leases
+SET expires_at = CURRENT_TIMESTAMP
+WHERE task_name = ? AND holder_id = ? AND fencing_token = ?`, taskName, holderID, fencingToken)
+		}
+		if err != nil {
+			return false, fmt.Errorf("%w: release lease %s: %v", errDatabaseOperation, taskName, err)
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+		return rows > 0, nil
+	}
+	return false, errors.New("db driver not available")
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/securityalert"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/starredrepotracker"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/synccursor"
+	"github.com/Silentely/Repo-Sentinel/internal/store/ent/systemlease"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/webhookdelivery"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workflowrun"
 	"github.com/Silentely/Repo-Sentinel/internal/store/ent/workitem"
@@ -256,6 +257,20 @@ func init() {
 	synccursorDescLastErrorCode := synccursorFields[6].Descriptor()
 	// synccursor.DefaultLastErrorCode holds the default value on creation for the last_error_code field.
 	synccursor.DefaultLastErrorCode = synccursorDescLastErrorCode.Default.(string)
+	systemleaseFields := schema.SystemLease{}.Fields()
+	_ = systemleaseFields
+	// systemleaseDescTaskName is the schema descriptor for task_name field.
+	systemleaseDescTaskName := systemleaseFields[1].Descriptor()
+	// systemlease.TaskNameValidator is a validator for the "task_name" field. It is called by the builders before save.
+	systemlease.TaskNameValidator = systemleaseDescTaskName.Validators[0].(func(string) error)
+	// systemleaseDescHolderID is the schema descriptor for holder_id field.
+	systemleaseDescHolderID := systemleaseFields[2].Descriptor()
+	// systemlease.DefaultHolderID holds the default value on creation for the holder_id field.
+	systemlease.DefaultHolderID = systemleaseDescHolderID.Default.(string)
+	// systemleaseDescFencingToken is the schema descriptor for fencing_token field.
+	systemleaseDescFencingToken := systemleaseFields[5].Descriptor()
+	// systemlease.DefaultFencingToken holds the default value on creation for the fencing_token field.
+	systemlease.DefaultFencingToken = systemleaseDescFencingToken.Default.(int64)
 	webhookdeliveryFields := schema.WebhookDelivery{}.Fields()
 	_ = webhookdeliveryFields
 	// webhookdeliveryDescAction is the schema descriptor for action field.

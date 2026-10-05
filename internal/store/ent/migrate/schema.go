@@ -467,6 +467,33 @@ var (
 			},
 		},
 	}
+	// SystemLeasesColumns holds the columns for the "system_leases" table.
+	SystemLeasesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "task_name", Type: field.TypeString},
+		{Name: "holder_id", Type: field.TypeString, Default: ""},
+		{Name: "acquired_at", Type: field.TypeTime},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "fencing_token", Type: field.TypeInt64, Default: 0},
+	}
+	// SystemLeasesTable holds the schema information for the "system_leases" table.
+	SystemLeasesTable = &schema.Table{
+		Name:       "system_leases",
+		Columns:    SystemLeasesColumns,
+		PrimaryKey: []*schema.Column{SystemLeasesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "system_leases_task_name",
+				Unique:  true,
+				Columns: []*schema.Column{SystemLeasesColumns[1]},
+			},
+			{
+				Name:    "system_leases_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{SystemLeasesColumns[4]},
+			},
+		},
+	}
 	// SystemSettingsColumns holds the columns for the "system_settings" table.
 	SystemSettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -679,6 +706,7 @@ var (
 		SecurityAlertsTable,
 		StarredRepoTrackersTable,
 		SyncCursorsTable,
+		SystemLeasesTable,
 		SystemSettingsTable,
 		WebhookDeliveriesTable,
 		WorkItemsTable,
@@ -714,6 +742,9 @@ func init() {
 	}
 	SyncCursorsTable.Annotation = &entsql.Annotation{
 		Table: "sync_cursors",
+	}
+	SystemLeasesTable.Annotation = &entsql.Annotation{
+		Table: "system_leases",
 	}
 	WebhookDeliveriesTable.Annotation = &entsql.Annotation{
 		Table: "webhook_deliveries",
