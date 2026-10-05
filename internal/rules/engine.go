@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	htmlpkg "html"
 	"io"
 	"log/slog"
@@ -529,62 +530,49 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 		return
 	}
 
-	labels := githubx.FilterAndMapLabels([]string{res.Category})
+	var rawLabels []string
+	if res.Category != "" {
+		rawLabels = append(rawLabels, res.Category)
+	}
+	rawLabels = append(rawLabels, res.Labels...)
+	labels := githubx.FilterAndMapLabels(rawLabels)
+	if len(labels) == 0 {
+		return
+	}
 	if !githubx.ShouldAutoLabelIssue(res.Category, labels) {
 		return
 	}
 
-	idempotencyKey := store.AutoLabelReceiptKey(repoFullName, issueNumber, res.Category)
-	// 原子竞争回执键：已存在即表示本次打标已成功（或另一并发分诊正在处理），跳过。
-	// 相比先 Get 再 Upsert，避免多个并发分诊对同一 Issue 重复调用打标接口。
-	if _, err := e.Store.Settings().Create(ctx, store.SystemSetting{
-		ID:        ulid.Make().String(),
-		Key:       idempotencyKey,
-		ValueJSON: json.RawMessage(`{"status":"pending"}`),
-		UpdatedAt: time.Now().UTC(),
-		UpdatedBy: "auto_label",
-	}); err != nil {
-		return
-	}
-	// 领取回执后任一环节失败都必须释放，否则该 Issue 会被永久抑制打标。
-	applied := false
-	defer func() {
-		if !applied {
-			_ = e.Store.Settings().Delete(ctx, idempotencyKey)
+	target := res.Category
+	_ = ExecuteWithReceipt(ctx, e.Store.Settings(), "auto_label", repoFullName, strconv.Itoa(issueNumber), "v1", target, func() (string, error) {
+		parts := strings.SplitN(repoFullName, "/", 2)
+		if len(parts) != 2 {
+			return "", MarkPreSendError(fmt.Errorf("invalid repo full name: %s", repoFullName))
 		}
-	}()
+		owner, repo := parts[0], parts[1]
 
-	parts := strings.SplitN(repoFullName, "/", 2)
-	if len(parts) != 2 {
-		return
-	}
-	owner, repo := parts[0], parts[1]
-
-	repoRec, err := e.Store.Repositories().GetByFullName(ctx, repoFullName)
-	if err != nil || repoRec.InstallationID == nil {
-		return
-	}
-	instID, err := strconv.ParseInt(*repoRec.InstallationID, 10, 64)
-	if err != nil || instID <= 0 {
-		return
-	}
-	token, err := e.GitHub.InstallationToken(ctx, instID)
-	if err != nil || token == "" {
-		return
-	}
-
-	bgCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	if err := e.GitHub.AddIssueLabels(bgCtx, token, owner, repo, issueNumber, labels); err != nil {
-		if e.Logger != nil {
-			e.Logger.Warn("issue auto-label failed", "repo", repoFullName, "issue", issueNumber, "labels", labels, "error", err.Error())
+		repoRec, err := e.Store.Repositories().GetByFullName(ctx, repoFullName)
+		if err != nil || repoRec.InstallationID == nil {
+			return "", MarkPreSendError(fmt.Errorf("repo or installation missing: %w", err))
 		}
-		return
-	}
-	applied = true
-	_, _ = e.Store.Settings().Upsert(ctx, store.SystemSetting{
-		ID: ulid.Make().String(), Key: idempotencyKey,
-		ValueJSON: json.RawMessage(`{"status":"applied"}`), UpdatedAt: time.Now().UTC(), UpdatedBy: "auto_label",
+		instID, err := strconv.ParseInt(*repoRec.InstallationID, 10, 64)
+		if err != nil || instID <= 0 {
+			return "", MarkPreSendError(fmt.Errorf("invalid installation id: %v", repoRec.InstallationID))
+		}
+		token, err := e.GitHub.InstallationToken(ctx, instID)
+		if err != nil || token == "" {
+			return "", MarkPreSendError(fmt.Errorf("failed to get installation token: %w", err))
+		}
+
+		bgCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		if err := e.GitHub.AddIssueLabels(bgCtx, token, owner, repo, issueNumber, labels); err != nil {
+			if e.Logger != nil {
+				e.Logger.Warn("issue auto-label failed", "repo", repoFullName, "issue", issueNumber, "labels", labels, "error", err.Error())
+			}
+			return "", err
+		}
+		return strings.Join(labels, ","), nil
 	})
 }
 

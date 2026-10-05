@@ -2675,7 +2675,11 @@ func (s *storeImpl) CleanupTransientSettings(ctx context.Context, now time.Time)
 
 	autoLabelDeleted, err := s.client.SystemSetting.Delete().
 		Where(systemsetting.UpdatedAtLT(now.Add(-autoLabelReceiptRetention)),
-			systemsetting.KeyHasPrefix(autoLabelReceiptKeyPrefix)).
+			systemsetting.Or(
+				systemsetting.KeyHasPrefix(autoLabelReceiptKeyPrefix),
+				systemsetting.KeyHasPrefix("github_label:"),
+				systemsetting.KeyHasPrefix("side_effect:"),
+			)).
 		Exec(ctx)
 	if err != nil {
 		return chatOpsDeleted, mapStoreError(err)

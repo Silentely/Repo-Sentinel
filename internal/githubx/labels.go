@@ -102,8 +102,37 @@ func (c *AppClient) AddIssueLabels(ctx context.Context, token, owner, repo strin
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnprocessableEntity {
-		_, _ = io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return fmt.Errorf("%w: issue %d on %s/%s", ErrLabelNotFound, number, owner, repo)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		bodyStr := string(body)
+		var ghErr struct {
+			Message string `json:"message"`
+			Errors  []struct {
+				Resource string `json:"resource"`
+				Field    string `json:"field"`
+				Code     string `json:"code"`
+				Message  string `json:"message"`
+			} `json:"errors"`
+		}
+		if json.Unmarshal(body, &ghErr) == nil {
+			for _, e := range ghErr.Errors {
+				if e.Code == "already_exists" {
+					return nil
+				}
+				if e.Code == "missing_field" || e.Code == "invalid" ||
+					strings.Contains(strings.ToLower(e.Message), "does not exist") ||
+					strings.Contains(strings.ToLower(e.Message), "not found") {
+					return fmt.Errorf("%w: issue %d on %s/%s (%s)", ErrLabelNotFound, number, owner, repo, e.Message)
+				}
+			}
+			if strings.Contains(strings.ToLower(ghErr.Message), "label does not exist") ||
+				strings.Contains(strings.ToLower(ghErr.Message), "not found") {
+				return fmt.Errorf("%w: issue %d on %s/%s (%s)", ErrLabelNotFound, number, owner, repo, ghErr.Message)
+			}
+		}
+		if strings.Contains(strings.ToLower(bodyStr), "does not exist") || strings.Contains(strings.ToLower(bodyStr), "not found") {
+			return fmt.Errorf("%w: issue %d on %s/%s", ErrLabelNotFound, number, owner, repo)
+		}
+		return statusError(resp.StatusCode, body)
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return &RateLimitError{RetryAfter: parseRetryAfterHeader(resp.Header.Get("Retry-After"))}

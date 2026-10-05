@@ -94,7 +94,7 @@ const (
 	// 取 1 小时留出执行与排障余量，避免误删仍在执行中的动作标记。
 	chatOpsClaimRetention = time.Hour
 
-	autoLabelReceiptKeyPrefix = "github_label:"
+	autoLabelReceiptKeyPrefix = "side_effect:auto_label:"
 	// autoLabelReceiptRetention 自动打标回执的保留时长。回执只用于短期幂等：
 	// 过期后如重新分诊会重复调用一次加标签接口（GitHub 侧幂等，无害），
 	// 但不清理会让 settings 表随打标过的 Issue 数无界增长。
@@ -109,7 +109,7 @@ func ChatOpsClaimKey(id string) string { return chatOpsClaimKeyPrefix + id }
 
 // AutoLabelReceiptKey 返回自动打标回执的 settings 键：同一 (仓库, Issue, 分类) 只打一次。
 func AutoLabelReceiptKey(repoFullName string, issueNumber int, category string) string {
-	return autoLabelReceiptKeyPrefix + repoFullName + ":" + strconv.Itoa(issueNumber) + ":" + category
+	return "side_effect:auto_label:" + repoFullName + ":" + strconv.Itoa(issueNumber) + ":v1:" + category
 }
 
 // AdminStore 管理唯一管理员账号。
