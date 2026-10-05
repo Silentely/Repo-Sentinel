@@ -381,6 +381,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/admin/2fa/disable", s.handleDisable2FA)
 				mutating.Put("/notifications/channels/{type}", s.handleUpsertChannel)
 				mutating.Post("/notifications/channels/{type}/test", s.handleTestChannel)
+				mutating.Post("/rules/dry-run", s.handleRulesDryRun)
 				mutating.Delete("/notifications/channels/{type}", s.handleDeleteChannel)
 				mutating.Patch("/notifications/channels/{type}/toggle", s.handleToggleChannel)
 				mutating.Post("/notifications/outbox/{id}/retry", s.handleRetryOutbox)

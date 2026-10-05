@@ -824,3 +824,114 @@ func idempotencyKey(channelID, eventID, variant string) string {
 	hex.Encode(buf[:], sum[:])
 	return string(buf[:])
 }
+
+// RenderMessage formats an event and repository into notification title, HTML body, and HTML URL.
+func RenderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
+	return renderMessage(ev, repo)
+}
+
+type DryRunChannelResult struct {
+	ChannelID   string `json:"channel_id"`
+	ChannelType string `json:"channel_type"`
+	Name        string `json:"name"`
+	Matched     bool   `json:"matched"`
+	Reason      string `json:"reason,omitempty"`
+	ParseMode   string `json:"parse_mode"`
+}
+
+type DryRunResult struct {
+	EventKind      string                `json:"event_kind"`
+	Action         string                `json:"action"`
+	Repository     string                `json:"repository"`
+	Title          string                `json:"title"`
+	BodyText       string                `json:"body_text"`
+	HTMLURL        string                `json:"html_url"`
+	MatchedRules   []string              `json:"matched_rules"`
+	ChannelResults []DryRunChannelResult `json:"channel_results"`
+	IsMuted        bool                  `json:"is_muted"`
+	MuteReason     string                `json:"mute_reason,omitempty"`
+}
+
+func (e *Engine) DryRun(ctx context.Context, res normalizer.Result, repoFullName string, customChannels []store.NotificationChannel) (DryRunResult, error) {
+	if res.Event == nil {
+		return DryRunResult{}, errors.New("event is required for dry run")
+	}
+	title, body, htmlURL := renderMessage(res.Event, repoFullName)
+	branch := ExtractEventBranch(res.Event)
+	repoID := ""
+	if res.Event.RepositoryID != nil {
+		repoID = *res.Event.RepositoryID
+	} else if res.Repository != nil {
+		repoID = res.Repository.ID
+	}
+
+	isMuted := false
+	muteReason := ""
+	if e != nil && e.Store != nil {
+		isMuted, muteReason = CheckEmergencyMute(ctx, e.Store, repoID)
+	}
+
+	channels := customChannels
+	if len(channels) == 0 && e != nil && e.Store != nil {
+		var err error
+		channels, err = e.Store.Channels().List(ctx)
+		if err != nil {
+			return DryRunResult{}, err
+		}
+	}
+
+	var matchedRules []string
+	if e != nil && e.Store != nil && allowsEventKind(ctx, e.Store, res.Repository, res.Event.Kind) {
+		matchedRules = append(matchedRules, "capability_allowed")
+	}
+	if shouldNotifyRealtime(res.Event) {
+		matchedRules = append(matchedRules, "realtime_evaluation_pass")
+	}
+	if isMuted {
+		matchedRules = append(matchedRules, "emergency_mute_active")
+	}
+
+	var channelResults []DryRunChannelResult
+	for _, ch := range channels {
+		parseMode := "HTML"
+		matched := false
+		reason := "matched"
+
+		if !ch.Enabled {
+			reason = "channel_disabled"
+		} else if !ch.AcceptsKind(res.Event.Kind) {
+			reason = "event_kind_not_subscribed"
+		} else if ShouldSuppressBotEvent(ch, res.Event) {
+			reason = "bot_suppressed"
+		} else if !MatchChannelFilter(ch, res.Event, repoFullName, branch) {
+			reason = "channel_filter_mismatch"
+		} else if isMuted {
+			reason = "emergency_mute: " + muteReason
+		} else {
+			matched = true
+			matchedRules = append(matchedRules, fmt.Sprintf("channel:%s:delivered", ch.ChannelType))
+		}
+
+		channelResults = append(channelResults, DryRunChannelResult{
+			ChannelID:   ch.ID,
+			ChannelType: ch.ChannelType,
+			Name:        ch.Name,
+			Matched:     matched,
+			Reason:      reason,
+			ParseMode:   parseMode,
+		})
+	}
+
+	return DryRunResult{
+		EventKind:      res.Event.Kind,
+		Action:         res.Event.Action,
+		Repository:     repoFullName,
+		Title:          title,
+		BodyText:       body,
+		HTMLURL:        htmlURL,
+		MatchedRules:   matchedRules,
+		ChannelResults: channelResults,
+		IsMuted:        isMuted,
+		MuteReason:     muteReason,
+	}, nil
+}

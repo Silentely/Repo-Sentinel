@@ -891,3 +891,40 @@ export async function triggerWorkItemAITriage(workItemId: string): Promise<Trigg
     body: JSON.stringify({}),
   });
 }
+
+export interface DryRunChannelResult {
+  channel_id: string;
+  channel_type: string;
+  name: string;
+  matched: boolean;
+  reason?: string;
+  parse_mode: string;
+}
+
+export interface DryRunResponse {
+  event_kind: string;
+  action: string;
+  repository: string;
+  title: string;
+  body_text: string;
+  html_url: string;
+  matched_rules: string[];
+  channel_results: DryRunChannelResult[];
+  is_muted: boolean;
+  mute_reason?: string;
+}
+
+export interface DryRunParams {
+  event_type: string;
+  action?: string;
+  repository?: string;
+  branch?: string;
+  payload_raw?: string;
+}
+
+export async function dryRunRules(params: DryRunParams): Promise<DryRunResponse> {
+  return apiRequest<DryRunResponse>("/api/v1/rules/dry-run", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}

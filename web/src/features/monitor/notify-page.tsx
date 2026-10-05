@@ -1,3 +1,5 @@
+import { Sparkles } from "lucide-react";
+import { NotificationSimulatorDrawer } from "./components/notification-simulator-drawer";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -415,6 +417,7 @@ export function NotifyPage() {
 
   const [message, setMessage] = useAutoDismiss();
   const [error, setError] = useState("");
+  const [simulatorOpen, setSimulatorOpen] = useState(false);
 
   const channelItems = useMemo(() => channels.data?.items ?? [], [channels.data?.items]);
   const channelsByType = useMemo(
