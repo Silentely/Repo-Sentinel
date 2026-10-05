@@ -2406,6 +2406,7 @@ func (s *outboxStore) MarkRetry(ctx context.Context, id string, next time.Time, 
 			SetNextAttemptAt(next.UTC()).
 			SetLastErrorCode(errorCode).
 			ClearLockedUntil().
+			ClearClaimToken().
 			SetUpdatedAt(now)
 	})
 }
@@ -2521,7 +2522,7 @@ func (s *outboxStore) DeleteTerminalOlderThan(ctx context.Context, cutoff time.T
 		}
 		ids, err := s.client.NotificationOutbox.Query().
 			Where(
-				notificationoutbox.StatusIn(OutboxSent, OutboxDead, OutboxCancelled),
+				notificationoutbox.StatusIn(OutboxSent, OutboxDead, OutboxCancelled, OutboxSuppressed),
 				notificationoutbox.CreatedAtLT(cutoffUTC),
 			).
 			Limit(retentionBatchSize).
@@ -2750,7 +2751,7 @@ func (s *storeImpl) CleanupTransientSettings(ctx context.Context, now time.Time)
 		Where(systemsetting.UpdatedAtLT(now.Add(-autoLabelReceiptRetention)),
 			systemsetting.Or(
 				systemsetting.KeyHasPrefix(autoLabelReceiptKeyPrefix),
-				systemsetting.KeyHasPrefix("github_label:"),
+				systemsetting.KeyHasPrefix(legacyAutoLabelReceiptKeyPrefix),
 				systemsetting.KeyHasPrefix("side_effect:"),
 			)).
 		Exec(ctx)
@@ -3477,6 +3478,7 @@ func (s *outboxStore) MarkFailedWithToken(ctx context.Context, id, claimToken, l
 		SetNextAttemptAt(next).
 		SetLastErrorCode(lastErr).
 		ClearLockedUntil().
+		ClearClaimToken().
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {

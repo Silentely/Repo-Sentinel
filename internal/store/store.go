@@ -114,6 +114,15 @@ func AutoLabelReceiptKey(repoFullName string, issueNumber int, category string) 
 	return "side_effect:auto_label:" + repoFullName + ":" + strconv.Itoa(issueNumber) + ":v1:" + category
 }
 
+// legacyAutoLabelReceiptKeyPrefix 迁移前的自动打标回执键前缀。
+const legacyAutoLabelReceiptKeyPrefix = "github_label:"
+
+// LegacyAutoLabelReceiptKey 返回迁移前的自动打标回执键，用于对存量库做一次性兼容：
+// 旧键命中说明升级前该 Issue 已打标，新逻辑据此跳过以免重复调用打标接口。
+func LegacyAutoLabelReceiptKey(repoFullName string, issueNumber int, category string) string {
+	return legacyAutoLabelReceiptKeyPrefix + repoFullName + ":" + strconv.Itoa(issueNumber) + ":" + category
+}
+
 const (
 	muteSettingKeyPrefix = "mute:repo:"
 	muteAllSettingKey    = "mute:all"

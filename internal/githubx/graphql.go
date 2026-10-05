@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 var (
@@ -17,6 +18,34 @@ var (
 	// ErrGraphQLBatchLimitExceeded 单批数量超出 25 限制
 	ErrGraphQLBatchLimitExceeded = errors.New("graphql_batch_limit_exceeded")
 )
+
+// graphQLError 对应 GraphQL 响应 errors 数组中的单项。
+type graphQLError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
+// graphQLErrorsAsError 将 GraphQL 响应体 errors 数组分类为领域错误：
+// 权限缺失升级为 ErrGraphQLPermissionDenied（严禁回退 REST）；RATE_LIMITED 升级为限流错误。
+func graphQLErrorsAsError(errs []graphQLError) error {
+	for _, e := range errs {
+		t := strings.ToUpper(e.Type)
+		msg := strings.ToUpper(e.Message)
+		switch {
+		case strings.Contains(t, "FORBIDDEN") ||
+			strings.Contains(msg, "FORBIDDEN") ||
+			strings.Contains(msg, "INSUFFICIENT_SCOPES") ||
+			strings.Contains(msg, "NOT ACCESSIBLE BY INTEGRATION"):
+			return fmt.Errorf("%w: %s", ErrGraphQLPermissionDenied, e.Message)
+		case strings.Contains(t, "RATE_LIMITED") ||
+			strings.Contains(t, "RATE_LIMIT") ||
+			strings.Contains(msg, "RATE LIMIT") ||
+			strings.Contains(msg, "RATE_LIMIT"):
+			return &RateLimitError{RetryAfter: 60 * time.Second}
+		}
+	}
+	return nil
+}
 
 type GraphQLPRBatchResult struct {
 	PullRequests []GraphQLPRNode
@@ -148,23 +177,14 @@ func (c *AppClient) FetchPullRequestsBatch(ctx context.Context, token, owner, re
 				} `json:"pullRequests"`
 			} `json:"repository"`
 		} `json:"data"`
-		Errors []struct {
-			Type    string `json:"type"`
-			Message string `json:"message"`
-		} `json:"errors"`
+		Errors []graphQLError `json:"errors"`
 	}
 
 	if err := c.doGraphQL(ctx, token, prBatchQuery, vars, &rawResp); err != nil {
 		return nil, err
 	}
-
-	for _, e := range rawResp.Errors {
-		if strings.Contains(strings.ToUpper(e.Type), "FORBIDDEN") ||
-			strings.Contains(strings.ToUpper(e.Message), "FORBIDDEN") ||
-			strings.Contains(strings.ToUpper(e.Message), "INSUFFICIENT_SCOPES") ||
-			strings.Contains(strings.ToUpper(e.Message), "NOT ACCESSIBLE BY INTEGRATION") {
-			return nil, fmt.Errorf("%w: %s", ErrGraphQLPermissionDenied, e.Message)
-		}
+	if err := graphQLErrorsAsError(rawResp.Errors); err != nil {
+		return nil, err
 	}
 
 	result := &GraphQLPRBatchResult{

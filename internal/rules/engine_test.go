@@ -1291,3 +1291,42 @@ func TestEngineBotSuppression(t *testing.T) {
 		t.Errorf("expected chNotify to receive security alert, got %d", ch2Count)
 	}
 }
+
+func TestAIBudgetExceededFromJSON(t *testing.T) {
+	// 空载荷：未使用，不超限
+	if thr, err := aiBudgetExceededFromJSON([]byte{}, 100); err != nil || thr {
+		t.Fatalf("空载荷应不超限，got thr=%v err=%v", thr, err)
+	}
+	// 累计成本低于上限：不超限
+	if thr, err := aiBudgetExceededFromJSON([]byte(`{"cost_est_cents":10,"is_throttled":false}`), 100); err != nil || thr {
+		t.Fatalf("未达到上限应不超限，got thr=%v err=%v", thr, err)
+	}
+	// 累计成本达到上限：超限
+	if thr, err := aiBudgetExceededFromJSON([]byte(`{"cost_est_cents":100,"is_throttled":false}`), 100); err != nil || !thr {
+		t.Fatalf("达到上限应超限，got thr=%v err=%v", thr, err)
+	}
+	// is_throttled 置位（SQLite bool 序列化）：超限
+	if thr, err := aiBudgetExceededFromJSON([]byte(`{"cost_est_cents":1,"is_throttled":true}`), 100); err != nil || !thr {
+		t.Fatalf("is_throttled=true 应超限，got thr=%v err=%v", thr, err)
+	}
+	// 非法 JSON：返回错误，调用方据此 fail closed
+	if _, err := aiBudgetExceededFromJSON([]byte(`{bad`), 100); err == nil {
+		t.Fatal("非法载荷应返回错误")
+	}
+}
+
+func TestEngine_AIBudgetRecordThenExceeded(t *testing.T) {
+	t.Setenv("REPOSENTINEL_AI_DAILY_BUDGET_CENTS", "100")
+	data := openAutoLabelStore(t)
+	engine := &Engine{Store: data}
+	ctx := t.Context()
+
+	if engine.aiBudgetExceeded(ctx) {
+		t.Fatal("初始状态不应超限")
+	}
+	// 记录一次超出预算的用量（150 分 >= 100 上限）
+	engine.recordAIUsage(ctx, 500, 150)
+	if !engine.aiBudgetExceeded(ctx) {
+		t.Fatal("记录超限用量后应判定超限")
+	}
+}

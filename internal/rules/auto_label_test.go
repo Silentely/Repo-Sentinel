@@ -194,3 +194,25 @@ func TestCleanupTransientSettings_AutoLabelReceipt(t *testing.T) {
 		t.Fatalf("新回执不应被清理: %v", err)
 	}
 }
+
+// TestMaybeAutoLabelIssue_LegacyReceiptSkip 存量兼容：升级前 github_label: 前缀回执命中时
+// 不再重复调用打标接口（旧键由 CleanupTransientSettings 按保留期回收）。
+func TestMaybeAutoLabelIssue_LegacyReceiptSkip(t *testing.T) {
+	addCalls := 0
+	engine, data := newAutoLabelEngine(t, &addCalls)
+	ctx := context.Background()
+
+	// 预置迁移前格式的回执键
+	legacyKey := store.LegacyAutoLabelReceiptKey("org/auto-label", 9, triageBug().Category)
+	if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: "legacy-receipt", Key: legacyKey, ValueJSON: []byte(`{"state":"succeeded"}`), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("seed legacy receipt: %v", err)
+	}
+
+	engine.maybeAutoLabelIssue(ctx, "org/auto-label", 9, triageBug())
+
+	if addCalls != 0 {
+		t.Fatalf("命中存量回执时不应再打标，实际调用 %d 次", addCalls)
+	}
+}

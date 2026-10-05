@@ -104,6 +104,10 @@ func SideEffectReceiptKey(effectType, repoID, subjectNumber, revision, target st
 
 // ExecuteWithReceipt 外部副作用显式生命周期回执防刷执行器。
 // fn 返回 externalID (如 GitHub comment ID 或 run ID) 与 error。
+//
+// 关键约定：任何无法判定的回执状态都必须返回错误（供调用方留痕），
+// 绝不能返回 nil 把「未执行」伪装成「已成功」；陈旧 pending 回执（执行者大概率已崩溃）
+// 会先回收再重试一次，避免副作用被永久阻塞。
 func ExecuteWithReceipt(
 	ctx context.Context,
 	settings store.SettingsStore,
@@ -116,55 +120,74 @@ func ExecuteWithReceipt(
 	}
 
 	key := SideEffectReceiptKey(effectType, repoID, subjectNumber, revision, target)
-	now := time.Now().UTC()
-
-	initialReceipt := SideEffectReceipt{
-		State:      ReceiptPending,
-		EffectType: effectType,
-		Target:     target,
-		CreatedAt:  now,
-		UpdatedAt:  now,
-	}
-	rawJSON, _ := json.Marshal(initialReceipt)
-
-	// Step 1: 原子写入 pending 记录
-	_, err := settings.Create(ctx, store.SystemSetting{
-		ID:        ulid.Make().String(),
-		Key:       key,
-		ValueJSON: rawJSON,
-		UpdatedAt: now,
-		UpdatedBy: "side_effect_executor",
-	})
-	if err != nil {
-		// 已存在回执：读出状态判断
-		existing, getErr := settings.Get(ctx, key)
-		if getErr == nil {
-			var rec SideEffectReceipt
-			if json.Unmarshal(existing.ValueJSON, &rec) == nil {
-				// 如果已成功或状态为 unknown（保护网络未知态，杜绝重试导致二次副作用），幂等跳过
-				if rec.State == ReceiptSucceeded || rec.State == ReceiptUnknown {
-					return nil
-				}
-				// 如果是 pending 且仍在租约期内（2 分钟），视为正在执行中，跳过
-				if rec.State == ReceiptPending && now.Sub(rec.UpdatedAt) < 2*time.Minute {
-					return nil
-				}
-			}
+	// 最多允许一次「陈旧 pending 回收重试」，防止异常回执导致无限循环。
+	const maxReclaimAttempts = 2
+	for attempt := 0; attempt < maxReclaimAttempts; attempt++ {
+		now := time.Now().UTC()
+		initialReceipt := SideEffectReceipt{
+			State:      ReceiptPending,
+			EffectType: effectType,
+			Target:     target,
+			CreatedAt:  now,
+			UpdatedAt:  now,
 		}
-		// 无法判定或正在执行中，跳过
-		return nil
-	}
+		rawJSON, _ := json.Marshal(initialReceipt)
 
-	// Step 2: 执行外部副作用调用
+		// Step 1: 原子写入 pending 记录（唯一键约束即并发互斥）。
+		_, err := settings.Create(ctx, store.SystemSetting{
+			ID:        ulid.Make().String(),
+			Key:       key,
+			ValueJSON: rawJSON,
+			UpdatedAt: now,
+			UpdatedBy: "side_effect_executor",
+		})
+		if err == nil {
+			return executeSideEffect(ctx, settings, key, effectType, target, fn, now)
+		}
+		if !errors.Is(err, store.ErrConflict) {
+			// 非冲突错误（数据库抖动等）不能当作成功：返回错误以避免副作用被静默丢弃。
+			return fmt.Errorf("side_effect receipt create failed for %s: %w", key, err)
+		}
+
+		// 已存在回执：读出状态判断。
+		existing, getErr := settings.Get(ctx, key)
+		if getErr != nil {
+			return fmt.Errorf("side_effect receipt read failed for %s: %w", key, getErr)
+		}
+		var rec SideEffectReceipt
+		if json.Unmarshal(existing.ValueJSON, &rec) != nil {
+			return fmt.Errorf("side_effect receipt malformed for %s", key)
+		}
+		switch {
+		case rec.State == ReceiptSucceeded || rec.State == ReceiptUnknown:
+			// 已成功或网络不确定态：幂等跳过，杜绝二次副作用。
+			return nil
+		case rec.State == ReceiptPending && now.Sub(rec.UpdatedAt) < 2*time.Minute:
+			// 仍在租约期内：视为正在执行中，跳过。
+			return nil
+		case rec.State == ReceiptPending:
+			// 陈旧 pending：原执行者大概率已崩溃，回收后重试一次。
+			if delErr := settings.Delete(ctx, key); delErr != nil && !errors.Is(delErr, store.ErrNotFound) {
+				return fmt.Errorf("side_effect stale receipt reclaim failed for %s: %w", key, delErr)
+			}
+			continue
+		default:
+			return fmt.Errorf("side_effect receipt in unknown state %q for %s", rec.State, key)
+		}
+	}
+	return fmt.Errorf("side_effect receipt reclaim retry exhausted for %s", key)
+}
+
+// executeSideEffect 在已写入 pending 回执后执行外部调用，并按其结果推进回执状态。
+func executeSideEffect(ctx context.Context, settings store.SettingsStore, key string, effectType, target string, fn func() (string, error), createdAt time.Time) error {
 	externalID, execErr := fn()
 	if execErr == nil {
-		// 成功：流转至 succeeded 并持久化 externalID
 		successReceipt := SideEffectReceipt{
 			State:      ReceiptSucceeded,
 			EffectType: effectType,
 			Target:     target,
 			ExternalID: externalID,
-			CreatedAt:  now,
+			CreatedAt:  createdAt,
 			UpdatedAt:  time.Now().UTC(),
 		}
 		successJSON, _ := json.Marshal(successReceipt)
@@ -178,21 +201,20 @@ func ExecuteWithReceipt(
 		return nil
 	}
 
-	// 发生错误：根据错误性质分类处理
 	if IsPreSendError(execErr) {
-		// 前置参数校验失败（尚未发出网络请求）：安全删除回执，允许修正后立即重试
+		// 前置参数校验失败（尚未发出网络请求）：安全删除回执，允许修正后立即重试。
 		_ = settings.Delete(ctx, key)
 		return execErr
 	}
 
 	if IsNetworkUnknownError(execErr) {
-		// 网络不确定态：远端可能已生效，严格保留回执为 unknown，绝不删除，杜绝重复调用
+		// 网络不确定态：远端可能已生效，严格保留回执为 unknown，绝不删除，杜绝重复调用。
 		unknownReceipt := SideEffectReceipt{
 			State:      ReceiptUnknown,
 			EffectType: effectType,
 			Target:     target,
 			Error:      execErr.Error(),
-			CreatedAt:  now,
+			CreatedAt:  createdAt,
 			UpdatedAt:  time.Now().UTC(),
 		}
 		unknownJSON, _ := json.Marshal(unknownReceipt)
@@ -206,7 +228,7 @@ func ExecuteWithReceipt(
 		return execErr
 	}
 
-	// 明确远端错误（如 4xx 业务拒绝）：删除 pending 回执以允许重试
+	// 明确远端错误（如 4xx 业务拒绝）：删除 pending 回执以允许重试。
 	_ = settings.Delete(ctx, key)
 	return execErr
 }

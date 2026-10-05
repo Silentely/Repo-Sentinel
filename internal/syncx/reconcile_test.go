@@ -38,6 +38,7 @@ var (
 	rePRReviewers    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/(\d+)/requested_reviewers$`)
 	rePRDetail       = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/(\d+)$`)
 	rePRCheckRuns    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/commits/[^/]+/check-runs$`)
+	reGraphQL        = regexp.MustCompile(`/graphql$`)
 )
 
 // fakeGitHub 伪 GitHub API 服务：按路由返回可配置响应，并用原子计数器观测请求次数。
@@ -69,12 +70,15 @@ type fakeGitHub struct {
 	repoMetaHTTPStatus int
 	// prReviewsState 可选：reviews 端点返回的最新评审状态（缺省 APPROVED）。
 	prReviewsState string
+	// graphqlFn 可选：/graphql 端点响应体；缺省 500（触发 REST 回退路径）。
+	graphqlFn func() any
 
 	// 请求计数器（httptest 每个请求独立 goroutine，必须用原子量）。
 	prDetailRequests atomic.Int64 // GET /pulls/{n}：enrich 预算观测点
 	dependabotPages  atomic.Int64 // dependabot alerts 请求总次数
 	issuesPages      atomic.Int64 // issues 请求总次数（能力开关观测点）
 	actionsPages     atomic.Int64 // actions runs 请求总次数（能力开关观测点）
+	graphqlRequests  atomic.Int64 // /graphql 请求总次数（GraphQL 接入观测点）
 }
 
 // ServeHTTP 实现 http.Handler，把 Reconciler 可能触达的端点全部接管。
@@ -176,6 +180,14 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			{"id": 1, "name": "ci", "status": "completed", "conclusion": "success"},
 			{"id": 2, "name": "lint", "status": "completed", "conclusion": "success"},
 		}})
+	case reGraphQL.MatchString(path):
+		f.graphqlRequests.Add(1)
+		if f.graphqlFn != nil {
+			write(f.graphqlFn())
+			return
+		}
+		// 缺省 500：与未知路径一致，触发 REST 回退，保证既有用例路径不变。
+		http.Error(w, "graphql not configured", http.StatusInternalServerError)
 	default:
 		// 未知路径直接 500：让对账流程尽快暴露测试覆盖缺口。
 		http.Error(w, "unexpected github api path: "+path, http.StatusInternalServerError)
@@ -1268,5 +1280,122 @@ func TestReconcileWorkItemReadFailureSkipsEnrich(t *testing.T) {
 	}
 	if _, err := data.Cursors().Get(ctx, repo.ID, "issues"); err == nil {
 		t.Fatal("存在读取失败时不应推进 issues 游标")
+	}
+}
+
+// graphQLPRBatch 生成一份 GraphQL 批量响应：单条 OPEN PR + 两个 Check 上下文（1 成功 1 失败）。
+func graphQLPRBatch(prNumber int) map[string]any {
+	return map[string]any{
+		"data": map[string]any{
+			"repository": map[string]any{
+				"pullRequests": map[string]any{
+					"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""},
+					"nodes": []map[string]any{
+						{
+							"id": "PR_2", "number": prNumber, "title": "增加缓存层",
+							"state": "OPEN", "isDraft": false, "mergeable": "MERGEABLE", "headRefOid": "abc123",
+							"commits": map[string]any{"nodes": []map[string]any{
+								{"commit": map[string]any{
+									"oid": "abc123",
+									"statusCheckRollup": map[string]any{
+										"contexts": map[string]any{
+											"pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""},
+											"nodes": []map[string]any{
+												{"__typename": "CheckRun", "id": "cr1", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/acme/demo/actions/runs/1"},
+												{"__typename": "CheckRun", "id": "cr2", "name": "lint", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": "https://github.com/acme/demo/actions/runs/2"},
+											},
+										},
+									},
+								}},
+							}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// TestReconcileGraphQLBatchEnrich 验证 GraphQL 批量上下文被用于 PR enrich：
+// 检查统计由一次 /graphql 调用回填，REST 的 PR 详情与 check-runs 被跳过（prDetailRequests == 0）。
+func TestReconcileGraphQLBatchEnrich(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	updated := time.Now().UTC().Truncate(time.Second)
+
+	fake.graphqlFn = func() any { return graphQLPRBatch(2) }
+	fake.issuesFn = func(page int) any {
+		return []map[string]any{
+			{
+				"number": 2, "state": "open", "title": "增加缓存层",
+				"html_url":     "https://github.com/acme/demo/pull/2",
+				"pull_request": map[string]any{"url": "https://api.github.com/repos/acme/demo/pulls/2"},
+				"updated_at":   updated.Format(time.RFC3339),
+				"user":         map[string]any{"login": "bob"},
+				"labels":       []map[string]any{{"name": "enhancement"}}, "assignees": []any{},
+			},
+		}
+	}
+
+	r := &Reconciler{Store: data, GitHub: fake.client}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+
+	if got := fake.graphqlRequests.Load(); got != 1 {
+		t.Fatalf("应发起一次 /graphql 批量请求，got %d", got)
+	}
+	if got := fake.prDetailRequests.Load(); got != 0 {
+		t.Fatalf("GraphQL 命中后不应再走 REST PR 详情，got %d 次", got)
+	}
+
+	pr, err := data.WorkItems().GetByRepoNumber(ctx, repo.ID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 检查统计由 GraphQL 上下文回填：1 成功 + 1 失败。
+	if pr.CheckStatus != "failure" || pr.ChecksTotal != 2 || pr.ChecksPassed != 1 {
+		t.Fatalf("GraphQL 检查统计回填错误，status=%s total=%d passed=%d", pr.CheckStatus, pr.ChecksTotal, pr.ChecksPassed)
+	}
+	// review/reviewers 仍走 REST（GraphQL 不返回该字段）。
+	if pr.ReviewState != "APPROVED" || len(pr.Reviewers) != 1 {
+		t.Fatalf("评审信息应仍走 REST enrich，state=%s reviewers=%v", pr.ReviewState, pr.Reviewers)
+	}
+}
+
+// TestReconcileGraphQLPermissionDeniedNoFallback 验证权限缺失时严禁回退 REST：
+// GraphQL 返回 FORBIDDEN 后本轮跳过 PR enrich，REST 详情请求计数为 0。
+func TestReconcileGraphQLPermissionDeniedNoFallback(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	updated := time.Now().UTC().Truncate(time.Second)
+
+	fake.graphqlFn = func() any {
+		return map[string]any{"errors": []map[string]any{{"type": "FORBIDDEN", "message": "not accessible"}}}
+	}
+	fake.issuesFn = func(page int) any {
+		return []map[string]any{
+			{
+				"number": 2, "state": "open", "title": "增加缓存层",
+				"html_url":     "https://github.com/acme/demo/pull/2",
+				"pull_request": map[string]any{"url": "https://api.github.com/repos/acme/demo/pulls/2"},
+				"updated_at":   updated.Format(time.RFC3339),
+				"user":         map[string]any{"login": "bob"},
+				"labels":       []any{}, "assignees": []any{},
+			},
+		}
+	}
+
+	var buf bytes.Buffer
+	r := &Reconciler{Store: data, GitHub: fake.client, Logger: slog.New(slog.NewTextHandler(&buf, nil))}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("对账应成功: %v", err)
+	}
+
+	if got := fake.prDetailRequests.Load(); got != 0 {
+		t.Fatalf("权限缺失严禁回退 REST，got %d 次 PR 详情请求", got)
+	}
+	if !strings.Contains(buf.String(), "graphql_permission_denied") {
+		t.Fatalf("应记录 graphql_permission_denied 日志，got: %s", buf.String())
 	}
 }

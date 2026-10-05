@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -265,6 +266,32 @@ const prEnrichBudgetPerRound = 25
 // 调用方据此标记仓库部分失败且不推进 issues 游标（下轮重拉补齐）。
 func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Repository, since *time.Time, baseline, wantIssues, wantPRs bool) (softFailed bool, err error) {
 	enrichBudget := prEnrichBudgetPerRound
+
+	// PR Check/Status 上下文改用 GraphQL 单批拉取（仅需 PR、且非基线时每仓一次）：
+	// 权限缺失时按计划跳过本轮 enrich（严禁回退 REST）；网络/5xx 时回退既有 REST enrich。
+	var prContexts map[int][]githubx.CheckOrStatusContext
+	graphqlChecks := false
+	skipEnrich := false
+	if wantPRs && !baseline {
+		contexts, permissionDenied, ferr := r.fetchPRContextsBatch(ctx, token, repo)
+		switch {
+		case ferr == nil:
+			prContexts = contexts
+			graphqlChecks = true
+		case permissionDenied:
+			skipEnrich = true
+			if r.Logger != nil {
+				r.Logger.Warn("graphql pr enrich permission denied, skip enrich this round",
+					"repo", repo.FullName, "error_code", "graphql_permission_denied", "error", ferr.Error())
+			}
+		default:
+			if r.Logger != nil {
+				r.Logger.Warn("graphql pr enrich failed, fall back to REST",
+					"repo", repo.FullName, "error_code", "graphql_fallback", "error", ferr.Error())
+			}
+		}
+	}
+
 	for page := 1; page <= r.maxPages(); page++ {
 		items, remaining, err := r.GitHub.ListIssues(ctx, token, repo.Owner, repo.Name, since, page)
 		if err != nil {
@@ -342,9 +369,10 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 					item.ChecksPassed = existing.ChecksPassed
 				}
 				stale := existing.ID == "" || existing.StateHash != hash || existing.CheckStatus == "pending"
-				if stale && enrichBudget > 0 {
+				if stale && enrichBudget > 0 && !skipEnrich {
 					enrichBudget--
-					r.enrichPullRequest(ctx, token, repo, it.Number, &item)
+					ctxs := prContexts[it.Number]
+					r.enrichPullRequest(ctx, token, repo, it.Number, &item, ctxs, graphqlChecks && ctxs != nil)
 					// enrich 耗时秒级：已查旧行的新鲜度判定不能再复用（webhook 并发写入会被回滚），
 					// 传 nil 让 UpsertIfNewer 写入前自查。
 					knownExisting = nil
@@ -391,14 +419,83 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 	return softFailed, nil
 }
 
+// fetchPRContextsBatch 用一次 GraphQL 批量拉取 OPEN PR 及其 Check/Status 上下文，
+// 返回 number → contexts 映射，供单仓对账复用（替代逐 PR 的 GetPRDetail + ListCheckRuns）。
+//
+// 返回 (contexts, skipEnrich, err)：
+//   - err == nil：批量成功，contexts 可用；
+//   - errors.Is(err, ErrGraphQLPermissionDenied)：权限缺失，skipEnrich=true，
+//     按计划严禁回退 REST（同 token 亦无权限），本轮跳过 PR enrich；
+//   - 其它错误（网络/5xx/超时）：skipEnrich=false，调用方回退既有 REST enrich。
+func (r *Reconciler) fetchPRContextsBatch(ctx context.Context, token string, repo store.Repository) (map[int][]githubx.CheckOrStatusContext, bool, error) {
+	if r.GitHub == nil {
+		return nil, false, nil
+	}
+	res, err := r.GitHub.FetchPullRequestsBatch(ctx, token, repo.Owner, repo.Name, prEnrichBudgetPerRound, "")
+	if err != nil {
+		if errors.Is(err, githubx.ErrGraphQLPermissionDenied) {
+			return nil, true, err
+		}
+		return nil, false, err
+	}
+	contextsByNumber := make(map[int][]githubx.CheckOrStatusContext, len(res.PullRequests))
+	for _, pr := range res.PullRequests {
+		contextsByNumber[pr.Number] = pr.Contexts
+	}
+	return contextsByNumber, false, nil
+}
+
+// applyGraphQLCheckContexts 由 GraphQL 联合类型上下文回填检查统计。
+// 口径与 REST ListCheckRuns 路径保持一致：成功计入 passed，失败结论或错误状态置 failure，
+// 其余为 pending；无上下文的 PR 视为 success（与 REST 零 check 的行为一致）。
+func applyGraphQLCheckContexts(item *store.WorkItem, contexts []githubx.CheckOrStatusContext) {
+	passed := 0
+	hasFailure := false
+	for _, c := range contexts {
+		if c.Typename == "StatusContext" {
+			switch strings.ToUpper(c.State) {
+			case "SUCCESS":
+				passed++
+			case "FAILURE", "ERROR":
+				hasFailure = true
+			}
+			continue
+		}
+		switch strings.ToUpper(c.Conclusion) {
+		case "SUCCESS":
+			passed++
+		case "FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE":
+			hasFailure = true
+		}
+	}
+	item.ChecksTotal = len(contexts)
+	item.ChecksPassed = passed
+	switch {
+	case hasFailure:
+		item.CheckStatus = "failure"
+		item.CheckConclusion = "failure"
+	case passed == len(contexts):
+		item.CheckStatus = "success"
+		item.CheckConclusion = "success"
+	default:
+		item.CheckStatus = "pending"
+		item.CheckConclusion = "pending"
+	}
+}
+
 // enrichPullRequest 拉取 PR 的审核结论、评审人与检查状态并回填到 item。
 // 尽力而为：单个 API 失败只记日志，不清空已从现有记录沿用的字段。
+//
+// useGraphQLChecks 为 true 时，检查统计直接由 graphqlContexts 回填，跳过
+// GetPRDetail + ListCheckRuns 两次 REST 调用（见 fetchPRContextsBatch）；
+// 否则沿用 REST 路径（网络故障回退）。reviews / requested reviewers 无对应
+// GraphQL 字段，始终走 REST。
 //
 // 性能：reviews / requested reviewers / PR 详情三个调用互不依赖，并发发出后单 PR
 // 由 4 次串行网络 RTT 降为 2 轮（首轮并行 + 依赖详情 head SHA 的 Check Runs）。
 // 各 goroutine 只写自己的局部变量，wg.Wait 后由主协程统一回填 item，
 // 避免多 goroutine 并发写同一结构体字段。
-func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo store.Repository, number int, item *store.WorkItem) {
+func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo store.Repository, number int, item *store.WorkItem, graphqlContexts []githubx.CheckOrStatusContext, useGraphQLChecks bool) {
 	owner, name := repo.Owner, repo.Name
 	var (
 		reviews      []githubx.PRReviewItem
@@ -409,7 +506,7 @@ func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo s
 		prErr        error
 	)
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		reviews, reviewErr = r.GitHub.ListPRReviews(ctx, token, owner, name, number)
@@ -418,10 +515,13 @@ func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo s
 		defer wg.Done()
 		reviewers, reviewersErr = r.GitHub.ListRequestedReviewers(ctx, token, owner, name, number)
 	}()
-	go func() {
-		defer wg.Done()
-		prDetail, prErr = r.GitHub.GetPRDetail(ctx, token, owner, name, number)
-	}()
+	if !useGraphQLChecks {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			prDetail, prErr = r.GitHub.GetPRDetail(ctx, token, owner, name, number)
+		}()
+	}
 	wg.Wait()
 
 	// 获取 Review 状态
@@ -448,6 +548,12 @@ func (r *Reconciler) enrichPullRequest(ctx context.Context, token string, repo s
 	// 获取 Requested Reviewers
 	if reviewersErr == nil {
 		item.Reviewers = reviewers
+	}
+
+	// GraphQL 批量上下文优先：一次批量调用已覆盖 OPEN PR 的 Check/Status 上下文。
+	if useGraphQLChecks {
+		applyGraphQLCheckContexts(item, graphqlContexts)
+		return
 	}
 
 	// 获取 Check Runs（依赖 PR 详情的 head SHA，Issues API 不返回此字段）

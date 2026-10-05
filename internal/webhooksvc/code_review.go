@@ -549,7 +549,8 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		return
 	}
 
-	htmlURL := item.HTMLURL
+	// 链接做 scheme/host 校验，过滤非法 URL（与 rules/engine.go 的 SafeHTTPURL 同口径）。
+	htmlURL := rules.SafeHTTPURL(item.HTMLURL)
 	if htmlURL == "" {
 		htmlURL = "https://github.com/" + repoFullName + "/pull/" + strconv.Itoa(prNum)
 	}

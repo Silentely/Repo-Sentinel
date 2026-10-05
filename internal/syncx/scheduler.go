@@ -118,9 +118,11 @@ func (s *Scheduler) Run(ctx context.Context) {
 
 	runner := s.Runner
 	if runner == nil {
+		// NewLeaseRunner 已读取 REPOSENTINEL_SINGLE_NODE 环境变量并置位 SingleNode；
+		// 这里保留环境变量设置，只用 Scheduler.SingleNode / 缺租约兜底做 OR，避免覆盖配置。
 		singleNode := s.SingleNode || (leases == nil)
 		runner = NewLeaseRunner(leases, s.WorkerID, s.Logger)
-		runner.SingleNode = singleNode
+		runner.SingleNode = singleNode || runner.SingleNode
 	}
 
 	runReconcile := func() {

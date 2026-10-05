@@ -34,10 +34,8 @@ type Engine struct {
 	GitHub *githubx.AppClient
 }
 
-func (e *Engine) checkAndRecordAIBudget(ctx context.Context, estTokens int, estCostCents int) bool {
-	if e.Store == nil {
-		return false
-	}
+// aiBudgetKeyAndLimit 返回当日预算设置键与预算上限（美分）。
+func (e *Engine) aiBudgetKeyAndLimit() (string, int) {
 	todayKey := "ai_budget:" + time.Now().UTC().Format("2006-01-02")
 	budgetLimit := 500 // 默认 500 美分 ($5.00)
 	if raw := os.Getenv("REPOSENTINEL_AI_DAILY_BUDGET_CENTS"); raw != "" {
@@ -45,14 +43,89 @@ func (e *Engine) checkAndRecordAIBudget(ctx context.Context, estTokens int, estC
 			budgetLimit = v
 		}
 	}
-	throttled, err := e.Store.Settings().UpdateAIBudgetUsageAtomic(ctx, todayKey, estTokens, estCostCents, budgetLimit)
+	return todayKey, budgetLimit
+}
+
+// aiBudgetExceeded 只读检查当日 AI 预算是否已耗尽（不产生消耗）。
+// 读失败时 fail closed（返回 true）避免预算系统异常时额度失控；
+// 当日尚无用量（ErrNotFound）视为未超限。
+func (e *Engine) aiBudgetExceeded(ctx context.Context) bool {
+	if e.Store == nil {
+		return false
+	}
+	todayKey, budgetLimit := e.aiBudgetKeyAndLimit()
+	setting, err := e.Store.Settings().Get(ctx, todayKey)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return false
+		}
 		if e.Logger != nil {
-			e.Logger.Warn("ai budget update failed, failing closed", "error", err.Error())
+			e.Logger.Warn("ai budget check failed, failing closed", "error", err.Error())
 		}
 		return true
 	}
-	return throttled
+	if len(setting.ValueJSON) == 0 {
+		return false
+	}
+	exceeded, err := aiBudgetExceededFromJSON(setting.ValueJSON, budgetLimit)
+	if err != nil {
+		if e.Logger != nil {
+			e.Logger.Warn("ai budget payload malformed, failing closed", "error", err.Error())
+		}
+		return true
+	}
+	return exceeded
+}
+
+// aiBudgetExceededFromJSON 判定当日预算 JSON 是否已超限：已置位熔断或累计成本达到上限。
+func aiBudgetExceededFromJSON(valueJSON []byte, budgetLimit int) (bool, error) {
+	if len(valueJSON) == 0 {
+		return false, nil
+	}
+	var raw struct {
+		CostEstCents int  `json:"cost_est_cents"`
+		IsThrottled  any  `json:"is_throttled"`
+		Throttled    bool `json:"throttled"`
+	}
+	if err := json.Unmarshal(valueJSON, &raw); err != nil {
+		return false, err
+	}
+	return raw.Throttled || parseAIBool(raw.IsThrottled) || raw.CostEstCents >= budgetLimit, nil
+}
+
+// recordAIUsage 在 AI 调用实际执行后累加当日用量（失败调用不计费）。
+// 熔断置位由累加语句内的成本比较完成，下一轮 aiBudgetExceeded 读取生效。
+func (e *Engine) recordAIUsage(ctx context.Context, estTokens int, estCostCents int) {
+	if e.Store == nil {
+		return
+	}
+	todayKey, budgetLimit := e.aiBudgetKeyAndLimit()
+	if _, err := e.Store.Settings().UpdateAIBudgetUsageAtomic(ctx, todayKey, estTokens, estCostCents, budgetLimit); err != nil {
+		if e.Logger != nil {
+			e.Logger.Warn("ai budget record failed", "error_code", "ai_budget_record_failed", "error", err.Error())
+		}
+	}
+}
+
+// parseAIBool 归一化 SQLite/Postgres 双方言返回的 is_throttled 值。
+func parseAIBool(v any) bool {
+	switch val := v.(type) {
+	case bool:
+		return val
+	case float64:
+		return val != 0
+	case int64:
+		return val != 0
+	case int:
+		return val != 0
+	case string:
+		return val == "true" || val == "1" || val == "t"
+	case []byte:
+		s := string(val)
+		return s == "true" || s == "1" || s == "t"
+	default:
+		return false
+	}
 }
 
 // logNotifySkipped 记录"事件已入库但未产生实时通知"的决策留痕（Debug）：
@@ -303,7 +376,7 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 	if !hasSubscribedChannel(channels, ev.Kind) {
 		return skip("no_subscribed_channel")
 	}
-	if e.checkAndRecordAIBudget(ctx, 300, 1) {
+	if e.aiBudgetExceeded(ctx) {
 		if e.Logger != nil {
 			e.Logger.Warn("triage ai fallback", "event_id", ev.ID, "reason", "ai_budget_throttled")
 		}
@@ -332,6 +405,8 @@ func (e *Engine) triageAnalysis(ctx context.Context, ev *store.Event, repo strin
 		}
 		return ""
 	}
+	// AI 调用已实际执行（无传输错误）：计入当日用量；失败调用不计费。
+	e.recordAIUsage(ctx, 300, 1)
 	// 格式护栏：提示词要求首行以「影响：」开头，不达标视为低质输出，降级保持原正文。
 	firstLine := analysis
 	if i := strings.IndexByte(analysis, '\n'); i >= 0 {
@@ -374,7 +449,7 @@ func (e *Engine) releaseAnalysis(ctx context.Context, ev *store.Event, repo stri
 	if !hasSubscribedChannel(channels, ev.Kind) {
 		return skip("no_subscribed_channel")
 	}
-	if e.checkAndRecordAIBudget(ctx, 500, 2) {
+	if e.aiBudgetExceeded(ctx) {
 		return skip("ai_budget_throttled")
 	}
 	ctx, reqID := ai.EnsureRequestID(ctx)
@@ -399,6 +474,8 @@ func (e *Engine) releaseAnalysis(ctx context.Context, ev *store.Event, repo stri
 		}
 		return ""
 	}
+	// AI 调用已实际执行（无传输错误）：计入当日用量；失败调用不计费。
+	e.recordAIUsage(ctx, 500, 2)
 	if e.Logger != nil {
 		e.Logger.Info("release ai used", "req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
 	}
@@ -430,7 +507,7 @@ func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, r
 	if !hasSubscribedChannel(channels, ev.Kind) {
 		return skip("no_subscribed_channel")
 	}
-	if e.checkAndRecordAIBudget(ctx, 500, 2) {
+	if e.aiBudgetExceeded(ctx) {
 		return skip("ai_budget_throttled")
 	}
 
@@ -515,6 +592,9 @@ func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, r
 		return ""
 	}
 
+	// AI 调用已实际执行（无传输错误）：计入当日用量；失败调用不计费。
+	e.recordAIUsage(ctx, 500, 2)
+
 	// 质量防护：输出必须以「诊断：」开头
 	if !strings.HasPrefix(strings.TrimSpace(diagnosis), "诊断：") {
 		if e.Logger != nil {
@@ -548,7 +628,7 @@ func (e *Engine) issueAnalysis(ctx context.Context, ev *store.Event, repo string
 	if !hasSubscribedChannel(channels, ev.Kind) {
 		return skip("no_subscribed_channel")
 	}
-	if e.checkAndRecordAIBudget(ctx, 400, 2) {
+	if e.aiBudgetExceeded(ctx) {
 		return skip("ai_budget_throttled")
 	}
 
@@ -581,6 +661,8 @@ func (e *Engine) issueAnalysis(ctx context.Context, ev *store.Event, repo string
 		}
 		return ""
 	}
+	// AI 调用已实际执行（无传输错误）：计入当日用量；失败调用不计费。
+	e.recordAIUsage(ctx, 400, 2)
 	if e.Logger != nil {
 		e.Logger.Info("issue triage ai used", "req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
 	}
@@ -633,7 +715,15 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 	}
 
 	target := res.Category
-	_ = ExecuteWithReceipt(ctx, e.Store.Settings(), "auto_label", repoFullName, strconv.Itoa(issueNumber), "v1", target, func() (string, error) {
+	// 存量兼容：迁移前回执键为 github_label:<repo>:<num>:<category>，
+	// 命中说明该 Issue 已打标，跳过以免升级后重复调用打标接口。
+	if _, legacyErr := e.Store.Settings().Get(ctx, store.LegacyAutoLabelReceiptKey(repoFullName, issueNumber, target)); legacyErr == nil {
+		if e.Logger != nil {
+			e.Logger.Debug("issue auto-label skipped on legacy receipt", "repo", repoFullName, "issue", issueNumber)
+		}
+		return
+	}
+	if err := ExecuteWithReceipt(ctx, e.Store.Settings(), "auto_label", repoFullName, strconv.Itoa(issueNumber), "v1", target, func() (string, error) {
 		parts := strings.SplitN(repoFullName, "/", 2)
 		if len(parts) != 2 {
 			return "", MarkPreSendError(fmt.Errorf("invalid repo full name: %s", repoFullName))
@@ -662,7 +752,11 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 			return "", err
 		}
 		return strings.Join(labels, ","), nil
-	})
+	}); err != nil && e.Logger != nil {
+		// 回执写入异常等：留痕，避免副作用被静默丢弃。
+		e.Logger.Warn("issue auto-label skipped", "repo", repoFullName, "issue", issueNumber,
+			"error_code", "side_effect_receipt_error", "error", err.Error())
+	}
 }
 
 // isSecurityAlertKind 判定事件是否为安全告警类型（分诊仅针对告警）。
@@ -788,7 +882,7 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		b.WriteString("\n")
 	}
 
-	if link := safeHTTPURL(ev.HTMLURL); link != "" {
+	if link := SafeHTTPURL(ev.HTMLURL); link != "" {
 		b.WriteString("────────────────\n<a href=\"")
 		b.WriteString(htmlpkg.EscapeString(link))
 		b.WriteString("\">")
@@ -799,7 +893,7 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 	return title, b.String(), htmlURL
 }
 
-func safeHTTPURL(raw string) string {
+func SafeHTTPURL(raw string) string {
 	link := strings.TrimSpace(raw)
 	if link == "" {
 		return ""

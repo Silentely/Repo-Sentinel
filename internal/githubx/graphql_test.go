@@ -243,3 +243,28 @@ func TestGraphQLBatch_SecondaryContextPagination(t *testing.T) {
 		t.Errorf("contexts mismatch: %+v", pr.Contexts)
 	}
 }
+
+func TestGraphQLBatch_RateLimitedSurfacesError(t *testing.T) {
+	// GraphQL 限流以 HTTP 200 + errors 数组形式返回；必须升级为限流错误而非静默空结果。
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{"repository": nil},
+			"errors": []any{
+				map[string]any{"type": "RATE_LIMITED", "message": "API rate limit exceeded"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewAppClient(1234, "")
+	client.BaseURL = srv.URL
+
+	_, err := client.FetchPullRequestsBatch(context.Background(), "mock-token", "Silentely", "Repo-Sentinel", 20, "")
+	if err == nil {
+		t.Fatal("expected rate limit error, got nil")
+	}
+	var rle *RateLimitError
+	if !errors.As(err, &rle) {
+		t.Errorf("expected RateLimitError, got: %v", err)
+	}
+}

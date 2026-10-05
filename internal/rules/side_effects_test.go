@@ -31,7 +31,8 @@ func (m *memSettingsStore) Create(ctx context.Context, s store.SystemSetting) (s
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, exists := m.settings[s.Key]; exists {
-		return store.SystemSetting{}, errors.New("conflict: already exists")
+		// 与真实 store 保持一致：唯一键冲突返回 ErrConflict。
+		return store.SystemSetting{}, store.ErrConflict
 	}
 	m.settings[s.Key] = s
 	return s, nil
@@ -265,5 +266,69 @@ func TestSideEffects_GitHub422_LabelHandling(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// createErrorStore 包装 memSettingsStore，模拟 Create 返回非冲突错误（DB 抖动）。
+type createErrorStore struct {
+	*memSettingsStore
+}
+
+func (c *createErrorStore) Create(ctx context.Context, s store.SystemSetting) (store.SystemSetting, error) {
+	return store.SystemSetting{}, errors.New("database temporary unavailable")
+}
+
+// TestSideEffects_CreateErrorSurfaces 验证回执写入遇非冲突错误时返回错误，绝不把「未执行」伪装成成功。
+func TestSideEffects_CreateErrorSurfaces(t *testing.T) {
+	store := &createErrorStore{memSettingsStore: newMemSettingsStore()}
+	ctx := context.Background()
+
+	executed := false
+	err := ExecuteWithReceipt(ctx, store, "rerun", "repo-1", "104", "v1", "action-1", func() (string, error) {
+		executed = true
+		return "run-id", nil
+	})
+	if err == nil {
+		t.Fatal("非冲突写入错误应返回错误，而不是静默成功")
+	}
+	if executed {
+		t.Fatal("回执写入失败时绝不应执行外部副作用")
+	}
+}
+
+// TestSideEffects_StalePendingReclaimed 验证陈旧 pending 回执（执行者已崩溃）被回收并重试一次，
+// 而非永久阻塞副作用。
+func TestSideEffects_StalePendingReclaimed(t *testing.T) {
+	memStore := newMemSettingsStore()
+	ctx := context.Background()
+
+	key := SideEffectReceiptKey("rerun", "repo-1", "105", "v1", "action-1")
+	stale := SideEffectReceipt{State: ReceiptPending, CreatedAt: time.Now().UTC().Add(-3 * time.Minute), UpdatedAt: time.Now().UTC().Add(-3 * time.Minute)}
+	raw, _ := json.Marshal(stale)
+	if _, err := memStore.Upsert(ctx, store.SystemSetting{ID: "seed", Key: key, ValueJSON: raw, UpdatedAt: time.Now().UTC().Add(-3 * time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+
+	executed := false
+	if err := ExecuteWithReceipt(ctx, memStore, "rerun", "repo-1", "105", "v1", "action-1", func() (string, error) {
+		executed = true
+		return "run-id-new", nil
+	}); err != nil {
+		t.Fatalf("陈旧 pending 应被回收并成功重试，got err: %v", err)
+	}
+	if !executed {
+		t.Fatal("陈旧 pending 回收后应执行一次外部副作用")
+	}
+
+	setting, err := memStore.Get(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec SideEffectReceipt
+	if err := json.Unmarshal(setting.ValueJSON, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.State != ReceiptSucceeded || rec.ExternalID != "run-id-new" {
+		t.Fatalf("回收重试后回执应为 succeeded，got state=%s id=%s", rec.State, rec.ExternalID)
 	}
 }

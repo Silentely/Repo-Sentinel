@@ -184,13 +184,20 @@ func sqliteDSN(rawURL string) string {
 	if strings.Contains(rawURL, "?") {
 		separator = "&"
 	}
-	return rawURL + separator + strings.Join([]string{
+	params := []string{
 		"_pragma=foreign_keys(1)",
 		"_pragma=journal_mode(WAL)",
 		"_pragma=busy_timeout(10000)",
 		"_pragma=synchronous(NORMAL)",
 		"_pragma=auto_vacuum(INCREMENTAL)",
-	}, "&")
+	}
+	// 显式 BEGIN IMMEDIATE：避免延时事务「先读后写」升级写锁时触发 SQLITE_BUSY_SNAPSHOT，
+	// 与 system_leases / notification_outbox 的原子认领 CAS 语义配套（配合 WAL + busy_timeout
+	// 等待而非立即失败）。仅在调用方未显式指定 _txlock 时追加，尊重既定 DSN。
+	if !strings.Contains(rawURL, "_txlock=") {
+		params = append(params, "_txlock=immediate")
+	}
+	return rawURL + separator + strings.Join(params, "&")
 }
 
 func newStore(client *entclient.Client, driver dialect.Driver, driverName, rawURL string, pingFn func(context.Context) error, closeFn func() error) *storeImpl {

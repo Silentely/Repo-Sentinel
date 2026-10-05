@@ -25,7 +25,24 @@ type LeaseRunner struct {
 	SingleNode bool
 	Logger     *slog.Logger
 
-	localMu sync.Mutex
+	// localMu 保护 localLocks；单机内存锁按任务名隔离，避免不同任务互相跳过。
+	localMu    sync.Mutex
+	localLocks map[string]*sync.Mutex
+}
+
+// localLock 返回指定任务名的进程内互斥锁（仅单机模式使用），按任务名惰性创建。
+func (r *LeaseRunner) localLock(taskName string) *sync.Mutex {
+	r.localMu.Lock()
+	defer r.localMu.Unlock()
+	if r.localLocks == nil {
+		r.localLocks = make(map[string]*sync.Mutex)
+	}
+	m, ok := r.localLocks[taskName]
+	if !ok {
+		m = &sync.Mutex{}
+		r.localLocks[taskName] = m
+	}
+	return m
 }
 
 // NewLeaseRunner 创建分布式租约执行器实例。
@@ -51,11 +68,12 @@ func NewLeaseRunner(leases store.LeaseStore, workerID string, logger *slog.Logge
 func (r *LeaseRunner) RunWithLease(ctx context.Context, taskName string, ttl time.Duration, fn func(taskCtx context.Context) error) (LeaseAcquireResult, error) {
 	if r.Leases == nil {
 		if r.SingleNode {
-			// 单机显式配置允许使用本地互斥锁
-			if !r.localMu.TryLock() {
+			// 单机显式配置允许使用本地互斥锁（按任务名隔离，不同任务互不阻塞）。
+			mu := r.localLock(taskName)
+			if !mu.TryLock() {
 				return LeaseAcquireResult{Acquired: false, Skipped: true}, nil
 			}
-			defer r.localMu.Unlock()
+			defer mu.Unlock()
 			err := fn(ctx)
 			return LeaseAcquireResult{Acquired: true, Skipped: false}, err
 		}

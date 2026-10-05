@@ -90,8 +90,8 @@ func TestSendHTTPHonorsRetryAfterHTTPDate(t *testing.T) {
 	if !ok {
 		t.Fatalf("期望 retryAfterError，实际: %T %v", err, err)
 	}
-	if ra.seconds != 90 {
-		t.Fatalf("期望 seconds=90，实际 %d", ra.seconds)
+	if ra.seconds < 88 || ra.seconds > 90 {
+		t.Fatalf("期望 seconds≈90（HTTP 日期按剩余秒数退避），实际 %d", ra.seconds)
 	}
 
 	past := now.Add(-time.Minute)
