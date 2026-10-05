@@ -20,10 +20,12 @@ import (
 const databasePingTimeout = 5 * time.Second
 
 type storeImpl struct {
-	client  *entclient.Client
-	driver  dialect.Driver
-	pingFn  func(context.Context) error
-	closeFn func() error
+	client     *entclient.Client
+	driver     dialect.Driver
+	driverName string
+	rawURL     string
+	pingFn     func(context.Context) error
+	closeFn    func() error
 	// settingsCache 由全部 Settings() 调用共享，保证 webhook/scheduler/http 各 goroutine 读到一致缓存。
 	settingsCache *settingsCache
 	// channelsCache 渠道列表短 TTL 缓存：通知规则/聚合器/outbox 投递的热路径每次事件
@@ -58,7 +60,7 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (Store, error) {
 	}
 
 	driver := entsql.OpenDB(entDialect, db)
-	return newStore(entclient.NewClient(entclient.Driver(driver)), driver, db.PingContext, db.Close), nil
+	return newStore(entclient.NewClient(entclient.Driver(driver)), driver, cfg.Driver, cfg.URL, db.PingContext, db.Close), nil
 }
 
 func openDatabase(cfg config.DatabaseConfig) (*sql.DB, string, string, error) {
@@ -191,10 +193,12 @@ func sqliteDSN(rawURL string) string {
 	}, "&")
 }
 
-func newStore(client *entclient.Client, driver dialect.Driver, pingFn func(context.Context) error, closeFn func() error) *storeImpl {
+func newStore(client *entclient.Client, driver dialect.Driver, driverName, rawURL string, pingFn func(context.Context) error, closeFn func() error) *storeImpl {
 	return &storeImpl{
 		client:         client,
 		driver:         driver,
+		driverName:     driverName,
+		rawURL:         rawURL,
 		pingFn:         pingFn,
 		closeFn:        closeFn,
 		settingsCache:  newSettingsCache(settingsCacheTTL),
@@ -245,6 +249,16 @@ func (s *storeImpl) Channels() ChannelStore {
 func (s *storeImpl) Outbox() OutboxStore  { return &outboxStore{client: s.client, driver: s.driver} }
 func (s *storeImpl) Cursors() CursorStore { return &cursorStore{client: s.client} }
 func (s *storeImpl) Leases() LeaseStore   { return &leaseStore{client: s.client, driver: s.driver} }
+func (s *storeImpl) Diagnostics() DiagnosticStore {
+	return &diagnosticStore{
+		client:     s.client,
+		driver:     s.driver,
+		driverName: s.driverName,
+		rawURL:     s.rawURL,
+		settings:   s.Settings(),
+		outbox:     s.Outbox(),
+	}
+}
 func (s *storeImpl) PingQuick(ctx context.Context) error {
 	if s.pingFn == nil {
 		return nil

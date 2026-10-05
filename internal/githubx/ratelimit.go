@@ -40,7 +40,6 @@ func parseRateLimitError(resp *http.Response, body []byte) (bool, *RateLimitErro
 	return false, nil
 }
 
-
 // RateLimitCoordinator 统一协调 REST 与 GraphQL 的限流退避状态。
 type RateLimitCoordinator struct {
 	mu            sync.RWMutex

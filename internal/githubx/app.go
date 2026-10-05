@@ -270,6 +270,30 @@ func (c *AppClient) fetchInstallationToken(ctx context.Context, installationID i
 	return parsed.Token, parsed.ExpiresAt, nil
 }
 
+// ProbeRateLimit 探测 GitHub API 速率限制（使用 App JWT 请求 /rate_limit）。
+func (c *AppClient) ProbeRateLimit(ctx context.Context) (limit int, remaining int, err error) {
+	if !c.Configured() {
+		return 0, 0, ErrAppNotConfigured
+	}
+	jwt, err := c.AppJWT()
+	if err != nil {
+		return 0, 0, err
+	}
+	var res struct {
+		Resources struct {
+			Core struct {
+				Limit     int `json:"limit"`
+				Remaining int `json:"remaining"`
+			} `json:"core"`
+		} `json:"resources"`
+	}
+	_, err = c.DoJSON(ctx, http.MethodGet, "/rate_limit", jwt, &res)
+	if err != nil {
+		return 0, 0, err
+	}
+	return res.Resources.Core.Limit, res.Resources.Core.Remaining, nil
+}
+
 // DoJSON 使用 bearer token 请求 GitHub API。
 func (c *AppClient) DoJSON(ctx context.Context, method, path, token string, out any) (rateRemaining int, err error) {
 	rateRemaining, _, err = c.doJSON(ctx, method, path, token, out)

@@ -46,20 +46,20 @@ func TestDryRun_NotificationSimulation(t *testing.T) {
 		}`,
 		"channels": []map[string]any{
 			{
-				"id":          "chan-sim-1",
+				"id":           "chan-sim-1",
 				"channel_type": "telegram",
 				"type":         "telegram",
-				"name":        "Dev Telegram",
-				"enabled":     true,
-				"event_kinds": []string{"pull_request", "issue"},
+				"name":         "Dev Telegram",
+				"enabled":      true,
+				"event_kinds":  []string{"pull_request", "issue"},
 			},
 			{
-				"id":          "chan-sim-2",
+				"id":           "chan-sim-2",
 				"channel_type": "feishu",
 				"type":         "feishu",
-				"name":        "Ops Feishu",
-				"enabled":     false,
-				"event_kinds": []string{"release"},
+				"name":         "Ops Feishu",
+				"enabled":      false,
+				"event_kinds":  []string{"release"},
 			},
 		},
 	}

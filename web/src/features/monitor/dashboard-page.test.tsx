@@ -95,6 +95,37 @@ const fixtures = vi.hoisted(() => ({
     per_page: 100,
     total: 2,
   },
+  health: {
+    database_ok: true,
+    database_driver: "sqlite",
+    goroutines: 4,
+    memory_alloc_mb: 32,
+    memory_sys_mb: 64,
+    uptime_seconds: 120,
+    status: "ok",
+    storage: {
+      driver: "sqlite",
+      file_size_bytes: 4194304,
+    },
+    outbox: {
+      pending_count: 0,
+      delivered_count: 10,
+      dead_count: 0,
+    },
+    github: {
+      configured: true,
+      rate_limit_limit: 5000,
+      rate_limit_remaining: 4999,
+      status: "ok",
+    },
+    ai_budget: {
+      daily_tokens_used: 1200,
+      daily_token_limit: 100000,
+      daily_calls_used: 3,
+      daily_call_limit: 200,
+      is_throttled: false,
+    },
+  },
   // 分页数据由 beforeEach 用工厂函数重建，便于单测切换截断/未截断场景。
   events: null as null | { items: Record<string, unknown>[]; page: number; per_page: number; total: number },
   outbox: null as null | { items: Record<string, unknown>[]; page: number; per_page: number; total: number },
@@ -177,6 +208,11 @@ vi.mock("./api", () => ({
     queryKey: ["test", "github"],
     queryFn: async () => fixtures.github,
   },
+  systemHealthQueryOptions: {
+    queryKey: ["test", "health"],
+    queryFn: async () => fixtures.health,
+  },
+
   retryOutbox: vi.fn(async () => {}),
 }));
 

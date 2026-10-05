@@ -22,7 +22,6 @@ const (
 	sseWriteTimeout         = 10 * time.Second
 )
 
-
 const (
 	DeliveryStageAccepted         = "accepted"
 	DeliveryStageProcessing       = "processing"

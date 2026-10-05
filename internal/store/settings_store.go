@@ -286,6 +286,8 @@ func parseBoolScan(v any) bool {
 	switch val := v.(type) {
 	case bool:
 		return val
+	case float64:
+		return val != 0
 	case int64:
 		return val != 0
 	case int:

@@ -12,7 +12,6 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"testing"
-
 )
 
 func TestModelRoutingForTask(t *testing.T) {

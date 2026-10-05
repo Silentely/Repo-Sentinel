@@ -635,6 +635,44 @@ a.primary-button {
   border-color: var(--danger);
 }
 
+.system-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.3;
+  border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.system-badge--success {
+  color: var(--success-fg);
+  background: var(--success-bg);
+  border-color: var(--success);
+}
+
+.system-badge--warning {
+  color: var(--warning-fg);
+  background: var(--warning-bg);
+  border-color: var(--warning);
+}
+
+.system-badge--danger {
+  color: var(--danger-fg);
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
+.system-badge--neutral {
+  color: var(--muted);
+  background: var(--panel-surface, var(--bg-surface));
+  border-color: var(--border-subtle);
+}
+
 .app-main {
   min-width: 0;
   overflow-y: auto;

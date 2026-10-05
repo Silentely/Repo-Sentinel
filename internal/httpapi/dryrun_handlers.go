@@ -15,13 +15,13 @@ import (
 )
 
 type dryRunRequest struct {
-	EventType   string                      `json:"event_type"`
-	Action      string                      `json:"action,omitempty"`
-	Repository  string                      `json:"repository,omitempty"`
-	Branch      string                      `json:"branch,omitempty"`
-	PayloadRaw  string                      `json:"payload_raw,omitempty"`
-	Payload     map[string]any              `json:"payload,omitempty"`
-	Channels    []store.NotificationChannel `json:"channels,omitempty"`
+	EventType  string                      `json:"event_type"`
+	Action     string                      `json:"action,omitempty"`
+	Repository string                      `json:"repository,omitempty"`
+	Branch     string                      `json:"branch,omitempty"`
+	PayloadRaw string                      `json:"payload_raw,omitempty"`
+	Payload    map[string]any              `json:"payload,omitempty"`
+	Channels   []store.NotificationChannel `json:"channels,omitempty"`
 }
 
 type dryRunStoreWrapper struct {
@@ -148,6 +148,25 @@ type dryRunChannelStore struct {
 
 func (s *dryRunChannelStore) List(ctx context.Context) ([]store.NotificationChannel, error) {
 	return s.channels, nil
+}
+
+type dryRunDiagnosticStore struct{}
+
+func (d *dryRunDiagnosticStore) GetStorageDiagnostics(ctx context.Context) (store.StorageStats, error) {
+	return store.StorageStats{Driver: "sqlite", FileSizeBytes: 0}, nil
+}
+func (d *dryRunDiagnosticStore) GetOutboxDiagnostics(ctx context.Context) (store.OutboxStats, error) {
+	return store.OutboxStats{}, nil
+}
+func (d *dryRunDiagnosticStore) GetAIBudgetDiagnostics(ctx context.Context) (store.AIBudgetStats, error) {
+	return store.AIBudgetStats{}, nil
+}
+
+func (w *dryRunStoreWrapper) Diagnostics() store.DiagnosticStore {
+	if w.Store == nil {
+		return &dryRunDiagnosticStore{}
+	}
+	return w.Store.Diagnostics()
 }
 
 func (w *dryRunStoreWrapper) Channels() store.ChannelStore {

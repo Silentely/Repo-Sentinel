@@ -71,6 +71,7 @@ type Store interface {
 	Outbox() OutboxStore
 	Cursors() CursorStore
 	Leases() LeaseStore
+	Diagnostics() DiagnosticStore
 	Dashboard(context.Context) (DashboardStats, error)
 	// PingQuick 快速探测底层数据库连通性（建议带短超时 1~2s），避免常规探测长时间挂起。
 	PingQuick(context.Context) error

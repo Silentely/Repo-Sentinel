@@ -758,26 +758,26 @@ type OutboxStore interface {
 
 // RetentionPolicy 历史数据保留策略（天）。某字段为 0 表示跳过该类清理。
 type RetentionPolicy struct {
-	EventsDays            int
-	OutboxDays            int
-	WebhookDeliveriesDays int
+	EventsDays                  int
+	OutboxDays                  int
+	WebhookDeliveriesDays       int
 	WebhookPayloadDehydrateDays int
 }
 
 // CleanupResult 一次保留清理删除的行数。
 type CleanupResult struct {
-	EventsDeleted            int `json:"events_deleted"`
-	OutboxDeleted            int `json:"outbox_deleted"`
-	WebhookDeliveriesDeleted int `json:"webhook_deliveries_deleted"`
+	EventsDeleted             int `json:"events_deleted"`
+	OutboxDeleted             int `json:"outbox_deleted"`
+	WebhookDeliveriesDeleted  int `json:"webhook_deliveries_deleted"`
 	WebhookPayloadsDehydrated int `json:"webhook_payloads_dehydrated"`
 }
 
 // DefaultRetentionPolicy 返回管理台默认保留天数。
 func DefaultRetentionPolicy() RetentionPolicy {
 	return RetentionPolicy{
-		EventsDays:            90,
-		OutboxDays:            30,
-		WebhookDeliveriesDays: 30,
+		EventsDays:                  90,
+		OutboxDays:                  30,
+		WebhookDeliveriesDays:       30,
 		WebhookPayloadDehydrateDays: 1,
 	}
 }
@@ -897,4 +897,34 @@ func SeverityWeight(sev string) int {
 	default:
 		return 1
 	}
+}
+
+// StorageStats 存储系统诊断指标。
+type StorageStats struct {
+	Driver        string `json:"driver"`
+	FileSizeBytes int64  `json:"file_size_bytes"`
+	WALSizeBytes  int64  `json:"wal_size_bytes,omitempty"`
+}
+
+// OutboxStats Outbox 投递队列诊断指标。
+type OutboxStats struct {
+	PendingCount   int `json:"pending_count"`
+	DeliveredCount int `json:"delivered_count"`
+	DeadCount      int `json:"dead_count"`
+}
+
+// AIBudgetStats AI 预算与熔断诊断指标。
+type AIBudgetStats struct {
+	DailyTokensUsed int  `json:"daily_tokens_used"`
+	DailyTokenLimit int  `json:"daily_token_limit"`
+	DailyCallsUsed  int  `json:"daily_calls_used"`
+	DailyCallLimit  int  `json:"daily_call_limit"`
+	IsThrottled     bool `json:"is_throttled"`
+}
+
+// DiagnosticStore 诊断与健康指标存储接口。
+type DiagnosticStore interface {
+	GetStorageDiagnostics(ctx context.Context) (StorageStats, error)
+	GetOutboxDiagnostics(ctx context.Context) (OutboxStats, error)
+	GetAIBudgetDiagnostics(ctx context.Context) (AIBudgetStats, error)
 }

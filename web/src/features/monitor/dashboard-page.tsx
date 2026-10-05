@@ -27,6 +27,8 @@ import {
   retryOutbox,
   settingsQueryOptions,
   starTrendQueryOptions,
+  systemHealthQueryOptions,
+  type SystemHealthDiagnostics,
   type SyncFreshnessSummary,
 } from "./api";
 const StarTrendChart = lazy(() =>
@@ -101,10 +103,70 @@ function FreshnessBadge({ freshness }: { freshness?: SyncFreshnessSummary }) {
   );
 }
 
+
+function SystemHealthBadges({ health }: { health?: SystemHealthDiagnostics }) {
+  if (!health) return null;
+
+  const isDegraded = health.status === "degraded";
+  const dbOk = health.database_ok;
+  const aiThrottled = health.ai_budget?.is_throttled;
+  const ghStatus = health.github?.status;
+  const fileSize = health.storage?.file_size_bytes ?? 0;
+  const storageMb = (fileSize / (1024 * 1024)).toFixed(1);
+
+  return (
+    <div
+      className="system-health-badges"
+      style={{ display: "inline-flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}
+      data-testid="system-health-badges"
+      role="status"
+    >
+      <span
+        className={`system-badge system-badge--${dbOk ? "success" : "danger"}`}
+        title={`数据库驱动: ${health.database_driver}`}
+      >
+        DB: {dbOk ? "OK" : "DOWN"}
+      </span>
+      {fileSize > 0 ? (
+        <span className="system-badge system-badge--neutral" title="数据库存储占用">
+          存储: {storageMb} MB
+        </span>
+      ) : null}
+      {(health.outbox?.pending_count ?? 0) > 0 ? (
+        <span className="system-badge system-badge--warning" title="Outbox 待投递消息">
+          Outbox: {health.outbox.pending_count} 待发
+        </span>
+      ) : null}
+      {health.github?.configured ? (
+        <span
+          className={`system-badge system-badge--${ghStatus === "ok" ? "success" : "warning"}`}
+          title={`GitHub 剩余配额: ${health.github.rate_limit_remaining}/${health.github.rate_limit_limit}`}
+        >
+          GH: {ghStatus === "ok" ? "OK" : "降级"}
+        </span>
+      ) : null}
+      {health.ai_budget ? (
+        <span
+          className={`system-badge system-badge--${aiThrottled ? "danger" : "success"}`}
+          title={`AI 当日调用: ${health.ai_budget.daily_calls_used} 次, Token: ${health.ai_budget.daily_tokens_used}`}
+        >
+          AI: {aiThrottled ? "熔断限流" : "正常"}
+        </span>
+      ) : null}
+      {isDegraded ? (
+        <span className="system-badge system-badge--danger" title="系统处于局部降级运行模式">
+          ● 局部降级
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function DashboardPage() {
   const queryClient = useQueryClient();
   const dashboard = useQuery(dashboardQueryOptions);
   const repos = useQuery(repositoriesQueryOptions);
+  const health = useQuery(systemHealthQueryOptions);
   // 折叠状态从 localStorage 恢复，切换后写回。
   // 面板查询按折叠状态暂停：折叠的「通知投递/最近事件/Star 增长」零请求零轮询，
   // 展开时若缓存新鲜直接显示，过期则骨架加载（QueryGate 兜底）。
@@ -262,6 +324,7 @@ export function DashboardPage() {
           <div className="page-intro__status">
             <p className="eyebrow">值守概览</p>
             <FreshnessBadge freshness={stats?.freshness} />
+            <SystemHealthBadges health={health.data} />
           </div>
           <h1>现在是否健康，今天发生了什么。</h1>
           <p>Webhook 入库后会在此汇总。仓库对账与基线放行请在「设置」中操作。</p>

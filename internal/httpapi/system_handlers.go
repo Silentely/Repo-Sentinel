@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"context"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
 )
 
@@ -145,6 +147,14 @@ func (s *server) localVersion() versionResponse {
 	}
 }
 
+type gitHubProbe struct {
+	Configured         bool   `json:"configured"`
+	RateLimitLimit     int    `json:"rate_limit_limit"`
+	RateLimitRemaining int    `json:"rate_limit_remaining"`
+	Status             string `json:"status"` // "ok" | "degraded" | "unconfigured" | "timeout"
+	Error              string `json:"error,omitempty"`
+}
+
 type systemHealthResponse struct {
 	DatabaseOK     bool   `json:"database_ok"`
 	DatabaseDriver string `json:"database_driver"`
@@ -152,6 +162,12 @@ type systemHealthResponse struct {
 	MemoryAllocMB  uint64 `json:"memory_alloc_mb"`
 	MemorySysMB    uint64 `json:"memory_sys_mb"`
 	UptimeSeconds  int64  `json:"uptime_seconds"`
+
+	Status   string              `json:"status"` // "ok" | "degraded"
+	Storage  store.StorageStats  `json:"storage"`
+	Outbox   store.OutboxStats   `json:"outbox"`
+	GitHub   gitHubProbe         `json:"github"`
+	AIBudget store.AIBudgetStats `json:"ai_budget"`
 }
 
 func (s *server) handleSystemHealth(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +189,50 @@ func (s *server) handleSystemHealth(w http.ResponseWriter, r *http.Request) {
 		uptime = int64(time.Since(s.startedAt).Seconds())
 	}
 
+	overallStatus := "ok"
+	var storageStats store.StorageStats
+	var outboxStats store.OutboxStats
+	var aiBudgetStats store.AIBudgetStats
+
+	if dbOK && s.dependencies.Store != nil {
+		diag := s.dependencies.Store.Diagnostics()
+		if diag != nil {
+			storageStats, _ = diag.GetStorageDiagnostics(r.Context())
+			outboxStats, _ = diag.GetOutboxDiagnostics(r.Context())
+			aiBudgetStats, _ = diag.GetAIBudgetDiagnostics(r.Context())
+			if aiBudgetStats.IsThrottled {
+				overallStatus = "degraded"
+			}
+		}
+	}
+
+	ghProbe := gitHubProbe{Status: "unconfigured"}
+	if s.dependencies.GitHubRuntime != nil && s.dependencies.GitHubRuntime.Client != nil {
+		if s.dependencies.GitHubRuntime.Client.Configured() {
+			ghProbe.Configured = true
+			ghCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			limit, remaining, err := s.dependencies.GitHubRuntime.Client.ProbeRateLimit(ghCtx)
+			cancel()
+			if err != nil {
+				ghProbe.Status = "degraded"
+				ghProbe.Error = err.Error()
+				overallStatus = "degraded"
+			} else {
+				ghProbe.Status = "ok"
+				ghProbe.RateLimitLimit = limit
+				ghProbe.RateLimitRemaining = remaining
+				if remaining == 0 {
+					ghProbe.Status = "degraded"
+					overallStatus = "degraded"
+				}
+			}
+		}
+	}
+
+	if !dbOK {
+		overallStatus = "degraded"
+	}
+
 	res := systemHealthResponse{
 		DatabaseOK:     dbOK,
 		DatabaseDriver: s.dependencies.Config.Database.Driver,
@@ -180,6 +240,11 @@ func (s *server) handleSystemHealth(w http.ResponseWriter, r *http.Request) {
 		MemoryAllocMB:  mem.Alloc / (1024 * 1024),
 		MemorySysMB:    mem.Sys / (1024 * 1024),
 		UptimeSeconds:  uptime,
+		Status:         overallStatus,
+		Storage:        storageStats,
+		Outbox:         outboxStats,
+		GitHub:         ghProbe,
+		AIBudget:       aiBudgetStats,
 	}
 
 	status := http.StatusOK

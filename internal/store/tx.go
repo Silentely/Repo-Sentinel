@@ -11,7 +11,7 @@ func (s *storeImpl) WithTx(ctx context.Context, callback func(Store) error) (err
 	if err != nil {
 		return fmt.Errorf("%w: %w", errDatabaseOperation, err)
 	}
-	txStore := newStore(tx.Client(), s.driver, s.pingFn, func() error { return nil })
+	txStore := newStore(tx.Client(), s.driver, s.driverName, s.rawURL, s.pingFn, func() error { return nil })
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			_ = tx.Rollback()

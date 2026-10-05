@@ -928,3 +928,44 @@ export async function dryRunRules(params: DryRunParams): Promise<DryRunResponse>
     body: JSON.stringify(params),
   });
 }
+
+export interface SystemHealthDiagnostics {
+  database_ok: boolean;
+  database_driver: string;
+  goroutines: number;
+  memory_alloc_mb: number;
+  memory_sys_mb: number;
+  uptime_seconds: number;
+  status: "ok" | "degraded";
+  storage: {
+    driver: string;
+    file_size_bytes: number;
+    wal_size_bytes?: number;
+  };
+  outbox: {
+    pending_count: number;
+    delivered_count: number;
+    dead_count: number;
+  };
+  github: {
+    configured: boolean;
+    rate_limit_limit: number;
+    rate_limit_remaining: number;
+    status: "ok" | "degraded" | "unconfigured" | "timeout";
+    error?: string;
+  };
+  ai_budget: {
+    daily_tokens_used: number;
+    daily_token_limit: number;
+    daily_calls_used: number;
+    daily_call_limit: number;
+    is_throttled: boolean;
+  };
+}
+
+export const systemHealthQueryOptions = queryOptions({
+  queryKey: ["system-health"] as const,
+  queryFn: () => apiRequest<SystemHealthDiagnostics>("/api/v1/system/health"),
+  staleTime: 10_000,
+  refetchInterval: 30_000,
+});

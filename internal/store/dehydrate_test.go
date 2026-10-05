@@ -39,12 +39,12 @@ func TestWebhookDelivery_DehydratePayloads(t *testing.T) {
 	for i := 1; i <= 2; i++ {
 		procTime := cutoff.Add(-time.Duration(i) * time.Hour)
 		_, err := st.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
-			ID:                 fmt.Sprintf("del-processing-%d", i),
-			DeliveryID:         fmt.Sprintf("gh-del-processing-%d", i),
-			EventType:          "push",
-			Status:             store.DeliveryProcessing,
-			Payload:            []byte(`{"ref":"refs/heads/feat"}`),
-			ReceivedAt:         procTime,
+			ID:         fmt.Sprintf("del-processing-%d", i),
+			DeliveryID: fmt.Sprintf("gh-del-processing-%d", i),
+			EventType:  "push",
+			Status:     store.DeliveryProcessing,
+			Payload:    []byte(`{"ref":"refs/heads/feat"}`),
+			ReceivedAt: procTime,
 		})
 		if err != nil {
 			t.Fatalf("create processing delivery failed: %v", err)
@@ -55,13 +55,13 @@ func TestWebhookDelivery_DehydratePayloads(t *testing.T) {
 	for i := 1; i <= 2; i++ {
 		procTime := now.Add(-time.Duration(i) * time.Hour)
 		_, err := st.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
-			ID:                 fmt.Sprintf("del-fresh-%d", i),
-			DeliveryID:         fmt.Sprintf("gh-del-fresh-%d", i),
-			EventType:          "push",
-			Status:             store.DeliveryProcessed,
-			Payload:            []byte(`{"ref":"refs/heads/fresh"}`),
-			ReceivedAt:         procTime.Add(-5 * time.Second),
-			ProcessedAt:        &procTime,
+			ID:          fmt.Sprintf("del-fresh-%d", i),
+			DeliveryID:  fmt.Sprintf("gh-del-fresh-%d", i),
+			EventType:   "push",
+			Status:      store.DeliveryProcessed,
+			Payload:     []byte(`{"ref":"refs/heads/fresh"}`),
+			ReceivedAt:  procTime.Add(-5 * time.Second),
+			ProcessedAt: &procTime,
 		})
 		if err != nil {
 			t.Fatalf("create fresh delivery failed: %v", err)
@@ -121,13 +121,13 @@ func TestWebhookDelivery_Dehydrate_ConcurrentReplayConflict(t *testing.T) {
 	for i := 1; i <= 50; i++ {
 		procTime := cutoff.Add(-time.Duration(i) * time.Second)
 		_, err := st.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
-			ID:                 fmt.Sprintf("del-conc-%d", i),
-			DeliveryID:         fmt.Sprintf("gh-del-conc-%d", i),
-			EventType:          "push",
-			Status:             store.DeliveryProcessed,
-			Payload:            []byte(fmt.Sprintf(`{"i":%d}`, i)),
-			ReceivedAt:         procTime,
-			ProcessedAt:        &procTime,
+			ID:          fmt.Sprintf("del-conc-%d", i),
+			DeliveryID:  fmt.Sprintf("gh-del-conc-%d", i),
+			EventType:   "push",
+			Status:      store.DeliveryProcessed,
+			Payload:     []byte(fmt.Sprintf(`{"i":%d}`, i)),
+			ReceivedAt:  procTime,
+			ProcessedAt: &procTime,
 		})
 		if err != nil {
 			t.Fatalf("create delivery failed: %v", err)
