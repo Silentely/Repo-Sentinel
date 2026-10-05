@@ -487,6 +487,9 @@ func (s *webhookDeliveryStore) Create(ctx context.Context, in WebhookDelivery) (
 	if in.ClaimedUntil != nil {
 		createOp.SetClaimedUntil(*in.ClaimedUntil)
 	}
+	if in.ProcessedAt != nil {
+		createOp.SetProcessedAt(*in.ProcessedAt)
+	}
 	entity, err := createOp.Save(ctx)
 	if err != nil {
 		return WebhookDelivery{}, mapStoreError(err)
@@ -1024,6 +1027,37 @@ func (s *webhookDeliveryStore) MarkDeadLetter(ctx context.Context, id string, cl
 
 // retentionBatchSize 单批物理删除条数上限，避免超大事务长期独占写锁造成 busy_timeout。
 const retentionBatchSize = 1000
+
+func (s *webhookDeliveryStore) DehydrateWebhookPayloads(ctx context.Context, cutoff time.Time, batchSize int) (int, error) {
+	if batchSize <= 0 {
+		batchSize = 500
+	}
+	cutoffUTC := cutoff.UTC()
+	ids, err := s.client.WebhookDelivery.Query().
+		Where(
+			webhookdelivery.StatusEQ(DeliveryProcessed),
+			webhookdelivery.ProcessedAtLTE(cutoffUTC),
+			webhookdelivery.PayloadNotNil(),
+		).
+		Order(entclient.Asc(webhookdelivery.FieldReceivedAt)).
+		Limit(batchSize).
+		Select(webhookdelivery.FieldID).
+		Strings(ctx)
+	if err != nil {
+		return 0, mapStoreError(err)
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	n, err := s.client.WebhookDelivery.Update().
+		Where(webhookdelivery.IDIn(ids...)).
+		ClearPayload().
+		Save(ctx)
+	if err != nil {
+		return 0, mapStoreError(err)
+	}
+	return n, nil
+}
 
 func (s *webhookDeliveryStore) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error) {
 	total := 0
@@ -2620,7 +2654,22 @@ func (s *storeImpl) CleanupRetention(ctx context.Context, policy RetentionPolicy
 		}
 		result.WebhookDeliveriesDeleted = n
 	}
-	if s.driver != nil && s.driver.Dialect() == "sqlite" && (result.EventsDeleted > 0 || result.OutboxDeleted > 0 || result.WebhookDeliveriesDeleted > 0) {
+	dehydrateDays := policy.WebhookPayloadDehydrateDays
+	if dehydrateDays <= 0 {
+		dehydrateDays = 1
+	}
+	dehydrateCutoff := now.AddDate(0, 0, -dehydrateDays)
+	for {
+		n, err := s.WebhookDeliveries().DehydrateWebhookPayloads(ctx, dehydrateCutoff, 500)
+		if err != nil {
+			return result, err
+		}
+		result.WebhookPayloadsDehydrated += n
+		if n < 500 {
+			break
+		}
+	}
+	if s.driver != nil && s.driver.Dialect() == "sqlite" && (result.EventsDeleted > 0 || result.OutboxDeleted > 0 || result.WebhookDeliveriesDeleted > 0 || result.WebhookPayloadsDehydrated > 0) {
 		_ = s.driver.Exec(ctx, "PRAGMA incremental_vacuum(50)", []any{}, nil)
 	}
 	return result, nil

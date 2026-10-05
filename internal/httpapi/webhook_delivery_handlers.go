@@ -94,7 +94,7 @@ func (s *server) handleReplayWebhookDelivery(w http.ResponseWriter, r *http.Requ
 	}
 
 	if len(d.Payload) == 0 {
-		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": "payload is empty"})
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": "webhook payload has been dehydrated/archived and cannot be replayed"})
 		return
 	}
 

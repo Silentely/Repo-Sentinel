@@ -637,6 +637,8 @@ type WebhookDeliveryStore interface {
 	MarkDeadLetter(ctx context.Context, id string, claimToken string, reason string) (TransitionResult, error)
 	// DeleteOlderThan 删除 received_at 早于 cutoff 的 delivery 记录，返回删除行数。
 	DeleteOlderThan(ctx context.Context, cutoff time.Time) (int, error)
+	// DehydrateWebhookPayloads 将状态为 processed 且 processed_at 早于等于 cutoff 的旧 Webhook 记录的 payload 清空脱水，返回脱水条数。
+	DehydrateWebhookPayloads(ctx context.Context, cutoff time.Time, batchSize int) (int, error)
 }
 
 // WorkItemStore Issue/PR。
@@ -759,6 +761,7 @@ type RetentionPolicy struct {
 	EventsDays            int
 	OutboxDays            int
 	WebhookDeliveriesDays int
+	WebhookPayloadDehydrateDays int
 }
 
 // CleanupResult 一次保留清理删除的行数。
@@ -766,6 +769,7 @@ type CleanupResult struct {
 	EventsDeleted            int `json:"events_deleted"`
 	OutboxDeleted            int `json:"outbox_deleted"`
 	WebhookDeliveriesDeleted int `json:"webhook_deliveries_deleted"`
+	WebhookPayloadsDehydrated int `json:"webhook_payloads_dehydrated"`
 }
 
 // DefaultRetentionPolicy 返回管理台默认保留天数。
@@ -774,6 +778,7 @@ func DefaultRetentionPolicy() RetentionPolicy {
 		EventsDays:            90,
 		OutboxDays:            30,
 		WebhookDeliveriesDays: 30,
+		WebhookPayloadDehydrateDays: 1,
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"strings"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -150,5 +151,38 @@ func TestActionsInsightsHandler(t *testing.T) {
 	}
 	if len(insights.TopFailing) != 1 || insights.TopFailing[0].Name != "CI Test" {
 		t.Fatalf("unexpected top failing: %+v", insights.TopFailing)
+	}
+}
+
+func TestWebhookDelivery_ReplayDehydratedFails(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	ctx := context.Background()
+
+	d, err := fixture.store.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
+		ID:                 "del-dehydrated-replay",
+		DeliveryID:         "gh-delivery-dehydrated",
+		EventType:          "push",
+		RepositoryFullName: "Silentely/Repo-Sentinel",
+		Status:             store.DeliveryProcessed,
+		Payload:            nil, // 已被脱水
+		ReceivedAt:         time.Now().UTC().Add(-48 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("create delivery: %v", err)
+	}
+
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	replayResp := fixture.request(
+		t, http.MethodPost, "/api/v1/webhook-deliveries/"+d.ID+"/replay",
+		"", "127.0.0.1:45104", cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	if replayResp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for dehydrated replay, got %d: %s", replayResp.Code, replayResp.Body.String())
+	}
+	if !strings.Contains(replayResp.Body.String(), "webhook payload has been dehydrated/archived and cannot be replayed") {
+		t.Errorf("expected dehydrated message, got: %s", replayResp.Body.String())
 	}
 }

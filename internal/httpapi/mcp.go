@@ -376,7 +376,7 @@ func (s *server) mcpTools() []mcpTool {
 					}
 				}
 				if len(d.Payload) == 0 {
-					return nil, fmt.Errorf("payload_empty")
+					return nil, fmt.Errorf("webhook payload has been dehydrated/archived and cannot be replayed")
 				}
 				replayDeliveryID := d.DeliveryID + "-replay-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 				newRecord, err := s.dependencies.Store.WebhookDeliveries().Create(ctx, store.WebhookDelivery{
