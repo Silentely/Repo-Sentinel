@@ -1,3 +1,4 @@
+import { LiveInspectorWaterfall } from "./components/live-inspector-waterfall";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RefreshCw, Eye } from "lucide-react";
@@ -93,6 +94,8 @@ export function WebhookDeliveriesPage() {
 
       {notice ? <p className="success-banner" role="status">{notice}</p> : null}
       {error ? <ErrorAlert title="操作失败" message={error} /> : null}
+
+      <LiveInspectorWaterfall />
 
       <section className="onboarding-card">
         <div className="outbox-toolbar">

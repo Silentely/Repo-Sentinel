@@ -202,6 +202,19 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 				ResourceID: resourceID,
 			})
 		},
+		OnBroadcastStage: func(stage, deliveryID string, durationMS int64, detail string) {
+			sseHub.Broadcast(httpapi.SSEEvent{
+				ID:         ulid.Make().String(),
+				Topic:      "delivery.stage",
+				Version:    1,
+				OccurredAt: time.Now().UTC(),
+				Resource:   "webhook_delivery",
+				ResourceID: deliveryID,
+				Stage:      stage,
+				DurationMS: durationMS,
+				Detail:     detail,
+			})
+		},
 	}
 	handler := httpapi.New(httpapi.Dependencies{
 		Config:         cfg,

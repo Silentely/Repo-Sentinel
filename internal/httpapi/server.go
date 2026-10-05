@@ -249,6 +249,33 @@ func New(dependencies Dependencies) http.Handler {
 	if sseHub == nil {
 		sseHub = NewSSEHub(dependencies.Logger)
 	}
+	if webhookService.OnBroadcast == nil {
+		webhookService.OnBroadcast = func(topic, resource, resourceID string) {
+			sseHub.Broadcast(SSEEvent{
+				ID:         ulid.Make().String(),
+				Topic:      topic,
+				Version:    1,
+				OccurredAt: time.Now().UTC(),
+				Resource:   resource,
+				ResourceID: resourceID,
+			})
+		}
+	}
+	if webhookService.OnBroadcastStage == nil {
+		webhookService.OnBroadcastStage = func(stage, deliveryID string, durationMS int64, detail string) {
+			sseHub.Broadcast(SSEEvent{
+				ID:         ulid.Make().String(),
+				Topic:      "delivery.stage",
+				Version:    1,
+				OccurredAt: time.Now().UTC(),
+				Resource:   "webhook_delivery",
+				ResourceID: deliveryID,
+				Stage:      stage,
+				DurationMS: durationMS,
+				Detail:     detail,
+			})
+		}
+	}
 	s := &server{
 		dependencies:    dependencies,
 		secureCookies:   usesSecureCookies(dependencies.Config.HTTP.PublicBaseURL),

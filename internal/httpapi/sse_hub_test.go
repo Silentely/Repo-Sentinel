@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bufio"
 	"net"
+	"net/http"
 	"net/http/httptest"
 
 	"context"
@@ -360,5 +361,85 @@ func TestSSEHub_HTTPStream_EndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(payload.String(), "event: events.created") {
 		t.Fatalf("缺少事件名行，实际=%q", payload.String())
+	}
+}
+
+func TestSSEHub_UnauthenticatedReturns401(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	hub := NewSSEHub(nil)
+	handler := New(Dependencies{
+		Config:         config.Config{HTTP: config.HTTPConfig{PublicBaseURL: "https://reposentinel.example"}},
+		Store:          fixture.store,
+		AdminService:   fixture.adminService,
+		SessionService: fixture.sessionService,
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		SSEHub:         hub,
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/events/stream", nil)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 Unauthorized for unauthenticated SSE, got %d", resp.StatusCode)
+	}
+}
+
+func TestSSEHub_WebhookDeliveryFiveStages(t *testing.T) {
+	hub := NewSSEHub(nil)
+	defer hub.Close()
+
+	ch, id, err := hub.Subscribe()
+	if err != nil {
+		t.Fatalf("subscribe error: %v", err)
+	}
+	defer hub.Unsubscribe(id)
+
+	deliveryID := "deliv-test-123"
+	stages := []string{
+		DeliveryStageAccepted,
+		DeliveryStageProcessing,
+		DeliveryStageRulesEvaluated,
+		DeliveryStageOutboxQueued,
+		DeliveryStageChannelDelivered,
+	}
+
+	for i, stage := range stages {
+		hub.Broadcast(SSEEvent{
+			ID:         fmt.Sprintf("evt-stage-%d", i),
+			Topic:      "delivery.stage",
+			Version:    1,
+			OccurredAt: time.Now().UTC(),
+			Resource:   "webhook_delivery",
+			ResourceID: deliveryID,
+			Stage:      stage,
+			DurationMS: int64(i * 15),
+			Detail:     fmt.Sprintf("stage %s completed", stage),
+		})
+	}
+
+	for _, expectedStage := range stages {
+		select {
+		case evt := <-ch:
+			if evt.Topic != "delivery.stage" {
+				t.Errorf("expected topic delivery.stage, got %s", evt.Topic)
+			}
+			if evt.ResourceID != deliveryID {
+				t.Errorf("expected resource_id %s, got %s", deliveryID, evt.ResourceID)
+			}
+			if evt.Stage != expectedStage {
+				t.Errorf("expected stage %s, got %s", expectedStage, evt.Stage)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for stage %s", expectedStage)
+		}
 	}
 }

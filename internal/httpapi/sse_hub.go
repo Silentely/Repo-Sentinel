@@ -22,6 +22,15 @@ const (
 	sseWriteTimeout         = 10 * time.Second
 )
 
+
+const (
+	DeliveryStageAccepted         = "accepted"
+	DeliveryStageProcessing       = "processing"
+	DeliveryStageRulesEvaluated   = "rules_evaluated"
+	DeliveryStageOutboxQueued     = "outbox_queued"
+	DeliveryStageChannelDelivered = "channel_delivered"
+)
+
 var (
 	// ErrHubClosed is returned when subscribing to a closed hub.
 	ErrHubClosed = errors.New("sse hub is closed")
@@ -38,6 +47,10 @@ type SSEEvent struct {
 	OccurredAt time.Time `json:"occurred_at"`
 	Resource   string    `json:"resource"`
 	ResourceID string    `json:"resource_id"`
+	Stage      string    `json:"stage,omitempty"`
+	DurationMS int64     `json:"duration_ms,omitempty"`
+	Detail     string    `json:"detail,omitempty"`
+	Data       any       `json:"data,omitempty"`
 }
 
 // SSEHub manages active Server-Sent Events subscriber connections.
@@ -172,6 +185,24 @@ func (s *server) broadcastResource(topic, resource string, resourceIDs ...string
 			ResourceID: id,
 		})
 	}
+}
+
+func (s *server) broadcastDeliveryStage(stage, deliveryID string, durationMS int64, detail string, data any) {
+	if s.sseHub == nil {
+		return
+	}
+	s.sseHub.Broadcast(SSEEvent{
+		ID:         ulid.Make().String(),
+		Topic:      "delivery.stage",
+		Version:    1,
+		OccurredAt: time.Now().UTC(),
+		Resource:   "webhook_delivery",
+		ResourceID: deliveryID,
+		Stage:      stage,
+		DurationMS: durationMS,
+		Detail:     detail,
+		Data:       data,
+	})
 }
 
 // handleEventStream handles GET /api/v1/events/stream.

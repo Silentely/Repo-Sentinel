@@ -16,6 +16,15 @@ import (
 )
 
 // Evaluator 实时通知评估器（聚合器或引擎均可实现）。
+
+const (
+	DeliveryStageAccepted         = "accepted"
+	DeliveryStageProcessing       = "processing"
+	DeliveryStageRulesEvaluated   = "rules_evaluated"
+	DeliveryStageOutboxQueued     = "outbox_queued"
+	DeliveryStageChannelDelivered = "channel_delivered"
+)
+
 type Evaluator interface {
 	Evaluate(ctx context.Context, res normalizer.Result, repoFullName string) error
 }
@@ -37,6 +46,8 @@ type Service struct {
 	OnFailed func()
 	// OnBroadcast 可选广播回调：Webhook 成功入库或状态流转时触发实时推流。
 	OnBroadcast func(topic, resource, resourceID string)
+	// OnBroadcastStage 可选五阶段流转广播回调
+	OnBroadcastStage func(stage, deliveryID string, durationMS int64, detail string)
 	// SlowThreshold 慢处理判定阈值；<=0 时用默认 slowWebhookThreshold。
 	SlowThreshold time.Duration
 	// ReviewDebounceDelay PR 审查防抖窗口（默认 60s；<=0 时使用默认值；测试中可设为毫秒级）。
@@ -82,6 +93,12 @@ func (s *Service) MarkFailed(rowID, deliveryID, eventType, errorCode, claimToken
 // markFailed 统一处理失败分支：标记投递失败（带语义化错误码）、记录失败指标回调。
 // 标记失败会让行残留 accepted/中间态，影响状态机与重放判断，必须留痕。
 // deliveryID/eventType 与 logError 对齐：排查按 GitHub delivery_id 检索时不致漏掉该条 Warn。
+func (s *Service) broadcastStage(stage, deliveryID string, durationMS int64, detail string) {
+	if s.OnBroadcastStage != nil {
+		s.OnBroadcastStage(stage, deliveryID, durationMS, detail)
+	}
+}
+
 func (s *Service) markFailed(rowID, deliveryID, eventType, errorCode, claimToken string) {
 	markCtx, markCancel := s.markContext()
 	defer markCancel()
@@ -92,6 +109,7 @@ func (s *Service) markFailed(rowID, deliveryID, eventType, errorCode, claimToken
 	} else if res.Stale && s.Logger != nil {
 		s.Logger.Warn("stale_claim_ignored", "delivery_id", deliveryID, "event_type", eventType, "row_id", rowID)
 	}
+	s.broadcastStage(DeliveryStageChannelDelivered, deliveryID, 0, "failed: "+errorCode)
 	if s.OnFailed != nil {
 		s.OnFailed()
 	}
@@ -129,6 +147,7 @@ func (s *Service) Process(rowID, eventType, deliveryID, claimToken string, body 
 	processCtx, processCancel := context.WithTimeout(ctx, processBudget(s.AI, webhookProcessTimeout))
 	defer processCancel()
 	startedAt := time.Now()
+	s.broadcastStage(DeliveryStageProcessing, deliveryID, 0, "processing started")
 	// 慢处理留痕：repoName 为变量，defer 读取 return 时的最终值。
 	repoName := ""
 	defer func() {
@@ -173,6 +192,10 @@ func (s *Service) Process(rowID, eventType, deliveryID, claimToken string, body 
 			s.logError("rule evaluate failed", deliveryID, eventType, "rule_failed", repoName, err.Error(), time.Since(startedAt).Milliseconds())
 			return
 		}
+	}
+	s.broadcastStage(DeliveryStageRulesEvaluated, deliveryID, time.Since(startedAt).Milliseconds(), "rules evaluated")
+	if res.Event != nil && !res.SuppressNotify {
+		s.broadcastStage(DeliveryStageOutboxQueued, deliveryID, time.Since(startedAt).Milliseconds(), "outbox queued")
 	}
 	markCtx, markCancel := s.markContext()
 	defer markCancel()

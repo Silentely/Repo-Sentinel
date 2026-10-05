@@ -8,6 +8,30 @@ export interface SSEEventPayload {
   occurred_at: string;
   resource: string;
   resource_id: string;
+  stage?: string;
+  duration_ms?: number;
+  detail?: string;
+  data?: unknown;
+}
+
+export type StageListener = (payload: SSEEventPayload) => void;
+const stageListeners = new Set<StageListener>();
+
+export function subscribeDeliveryStage(listener: StageListener): () => void {
+  stageListeners.add(listener);
+  return () => {
+    stageListeners.delete(listener);
+  };
+}
+
+export function emitDeliveryStage(payload: SSEEventPayload): void {
+  for (const listener of stageListeners) {
+    try {
+      listener(payload);
+    } catch {
+      // Ignore listener error
+    }
+  }
 }
 
 export interface DebouncedInvalidator {
@@ -21,6 +45,7 @@ export interface SSEManagerOptions {
   maxRetries?: number;
   debounceMs?: number;
   onCircuitBreak?: () => void;
+  onEvent?: (event: SSEEventPayload) => void;
 }
 
 /**
@@ -70,6 +95,9 @@ export function createDebouncedInvalidator(
       case "work_items.changed":
         pendingDomains.add("work-items");
         break;
+      case "delivery.stage":
+        pendingDomains.add("webhook-deliveries");
+        break;
       default:
         break;
     }
@@ -99,6 +127,7 @@ export class SSEManager {
   private url: string;
   private maxRetries: number;
   private onCircuitBreak?: () => void;
+  private onEvent?: (event: SSEEventPayload) => void;
   private invalidator: DebouncedInvalidator;
 
   private es: EventSource | null = null;
@@ -113,6 +142,7 @@ export class SSEManager {
     this.url = options.url || "/api/v1/events/stream";
     this.maxRetries = options.maxRetries ?? 4;
     this.onCircuitBreak = options.onCircuitBreak;
+    this.onEvent = options.onEvent;
     this.invalidator = createDebouncedInvalidator(
       queryClient,
       options.debounceMs ?? 150
@@ -199,9 +229,19 @@ export class SSEManager {
         }, delay);
       };
 
-      const handleEvent = (topic: string) => () => {
+      const handleEvent = (topic: string) => (evt?: MessageEvent) => {
         try {
           this.invalidator.schedule(topic);
+          let parsed: SSEEventPayload | null = null;
+          if (evt?.data) {
+            parsed = JSON.parse(evt.data) as SSEEventPayload;
+          }
+          if (parsed) {
+            this.onEvent?.(parsed);
+            if (topic === "delivery.stage") {
+              emitDeliveryStage(parsed);
+            }
+          }
         } catch {
           // Ignore parsing or handling errors
         }
@@ -211,6 +251,7 @@ export class SSEManager {
       es.addEventListener("outbox.changed", handleEvent("outbox.changed"));
       es.addEventListener("ai_review.changed", handleEvent("ai_review.changed"));
       es.addEventListener("work_items.changed", handleEvent("work_items.changed"));
+      es.addEventListener("delivery.stage", handleEvent("delivery.stage"));
     } catch {
       // EventSource instantiation error
     }

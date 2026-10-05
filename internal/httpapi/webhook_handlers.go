@@ -84,6 +84,9 @@ func (s *server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		ID: ulid.Make().String(), DeliveryID: deliveryID, EventType: eventType,
 		Status: store.DeliveryAccepted, Payload: body, ReceivedAt: time.Now().UTC(),
 	})
+	if err == nil {
+		s.broadcastDeliveryStage(DeliveryStageAccepted, deliveryID, 0, "webhook accepted", nil)
+	}
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			// 冲突说明行已存在：取回行状态，accepted 卡死时走重放路径。
