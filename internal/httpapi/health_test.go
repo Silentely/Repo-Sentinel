@@ -22,6 +22,17 @@ func TestSystemHealth_ComprehensiveDiagnostics(t *testing.T) {
 	fixture.bootstrapAdmin(t)
 	cookies := fixture.login(t, httpTestPassword)
 
+	ctx := context.Background()
+	_, _ = fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
+		ID: "out-diag-1", ChannelID: "chan-1", IdempotencyKey: "idem-1", Status: "pending",
+	})
+	_, _ = fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
+		ID: "out-diag-2", ChannelID: "chan-1", IdempotencyKey: "idem-2", Status: "sent",
+	})
+	_, _ = fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
+		ID: "out-diag-3", ChannelID: "chan-1", IdempotencyKey: "idem-3", Status: "dead",
+	})
+
 	rec := fixture.request(t, http.MethodGet, "/api/v1/system/health", "", "127.0.0.1:45201", cookies, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
@@ -44,8 +55,8 @@ func TestSystemHealth_ComprehensiveDiagnostics(t *testing.T) {
 	if res.Storage.FileSizeBytes < 0 {
 		t.Fatalf("expected file_size_bytes >= 0, got %d", res.Storage.FileSizeBytes)
 	}
-	if res.Outbox.PendingCount < 0 || res.Outbox.DeadCount < 0 {
-		t.Fatalf("unexpected outbox counts: %+v", res.Outbox)
+	if res.Outbox.PendingCount != 1 || res.Outbox.DeliveredCount != 1 || res.Outbox.DeadCount != 1 {
+		t.Fatalf("expected outbox counts pending=1, delivered=1, dead=1; got %+v", res.Outbox)
 	}
 	if res.AIBudget.IsThrottled {
 		t.Fatalf("expected ai_budget.is_throttled=false initially")
@@ -87,6 +98,17 @@ func TestSystemHealth_AIBudgetThrottledDegradesTo200(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
 	fixture.bootstrapAdmin(t)
 	cookies := fixture.login(t, httpTestPassword)
+
+	ctx := context.Background()
+	_, _ = fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
+		ID: "out-diag-1", ChannelID: "chan-1", IdempotencyKey: "idem-1", Status: "pending",
+	})
+	_, _ = fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
+		ID: "out-diag-2", ChannelID: "chan-1", IdempotencyKey: "idem-2", Status: "sent",
+	})
+	_, _ = fixture.store.Outbox().Create(ctx, store.NotificationOutbox{
+		ID: "out-diag-3", ChannelID: "chan-1", IdempotencyKey: "idem-3", Status: "dead",
+	})
 
 	// Artificially trigger AI throttling for today
 	todayKey := "ai_budget:" + time.Now().UTC().Format("2006-01-02")

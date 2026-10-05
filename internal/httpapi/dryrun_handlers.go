@@ -162,6 +162,25 @@ func (d *dryRunDiagnosticStore) GetAIBudgetDiagnostics(ctx context.Context) (sto
 	return store.AIBudgetStats{}, nil
 }
 
+type dryRunAuditStore struct {
+	store.AuditStore
+}
+
+func (s *dryRunAuditStore) Append(ctx context.Context, log store.AuditLog) (store.AuditLog, error) {
+	return log, nil
+}
+
+func (w *dryRunStoreWrapper) Audits() store.AuditStore {
+	if w.Store == nil {
+		return &dryRunAuditStore{}
+	}
+	return &dryRunAuditStore{AuditStore: w.Store.Audits()}
+}
+
+func (w *dryRunStoreWrapper) WithTx(ctx context.Context, fn func(store.Store) error) error {
+	return fn(w)
+}
+
 func (w *dryRunStoreWrapper) Diagnostics() store.DiagnosticStore {
 	if w.Store == nil {
 		return &dryRunDiagnosticStore{}

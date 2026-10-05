@@ -80,3 +80,18 @@ Server-Sent Events (SSE) 实时长连接端点。当 Webhook 入库、通知状�
 | 参数 | 取值 | 说明 |
 | --- | --- | --- |
 | `state` | `tracking` / `inactive` / `disabled` / `unavailable` | Star Release 追踪状态；`inactive`（无 Release）默认 7 天复查，`disabled` 为手动停用 |
+
+## POST /api/v1/rules/dry-run
+
+规则试算与通知效果模拟端点（0 数据库写入、0 Outbox 写入、0 外部网络调用、0 审计日志副作用），供通知模拟器或自动化规则验证使用。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `event_type` | `string` | 必填，事件类型（如 `pull_request`、`issues`、`workflow_run`、`release` 等） |
+| `action` | `string` | 可选，事件动作（如 `opened`、`completed`、`published`） |
+| `repository` | `string` | 可选，仓库完整全称（如 `owner/repo`） |
+| `branch` | `string` | 可选，分支或引用名 |
+| `payload_raw` | `string` | 可选，完整的原始 Webhook JSON 字符串 |
+| `channels` | `object[]` | 可选，临时覆盖使用的渠道配置列表（未提供则使用系统当前配置渠道） |
+
+响应包含格式化后的事件标题、正文渲染结果（HTML/Markdown）、命中的过滤规则列表、各渠道匹配状态与跳过原因（`channel_results`），以及是否触发紧急静音。需管理员 Session 与 CSRF。

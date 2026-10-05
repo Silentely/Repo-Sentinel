@@ -7,6 +7,7 @@
 | `GET /health/live` | 无 | 进程存活 |
 | `GET /health/ready` | 无 | 数据库与迁移等核心依赖就绪 |
 | `GET /metrics` | 可选 Bearer | Prometheus 文本指标（见下方） |
+| `GET /api/v1/system/health` | 管理员 Session | 综合系统健康诊断与子系统指标（数据库、存储体积、Outbox 队列、GitHub API 限流配额与 AI 预算状态；DB 故障返回 503，外部依赖/AI熔断时降级返回 200 + `status: "degraded"`） |
 
 示例：
 
@@ -34,6 +35,55 @@ curl -fsS http://127.0.0.1:8080/health/ready
 - `REPOSENTINEL_METRICS_TOKEN`：设置后抓取需带 `Authorization: Bearer <token>`
 
 生产建议：反向代理只对内网开放 `/metrics`，或启用 Token。
+
+
+### 综合系统健康诊断 API (`/api/v1/system/health`)
+
+面向管理平台与运维看板的深度诊断端点（需管理员 Session 认证）：
+
+```http
+GET /api/v1/system/health
+```
+
+**响应结构示例：**
+```json
+{
+  "database_ok": true,
+  "database_driver": "sqlite",
+  "goroutines": 32,
+  "memory_alloc_mb": 45,
+  "memory_sys_mb": 112,
+  "uptime_seconds": 3600,
+  "status": "ok",
+  "storage": {
+    "driver": "sqlite",
+    "file_size_bytes": 10485760,
+    "wal_size_bytes": 2097152
+  },
+  "outbox": {
+    "pending_count": 0,
+    "delivered_count": 128,
+    "dead_count": 0
+  },
+  "github": {
+    "configured": true,
+    "rate_limit_limit": 5000,
+    "rate_limit_remaining": 4820,
+    "status": "ok"
+  },
+  "ai_budget": {
+    "daily_tokens_used": 15400,
+    "daily_token_limit": 100000,
+    "daily_calls_used": 12,
+    "daily_call_limit": 200,
+    "is_throttled": false
+  }
+}
+```
+
+**故障降级语义：**
+- **强依赖故障**：底层数据库连接失败时，坚决返回 **HTTP 503 Service Unavailable**，保障集群探针判死语义；
+- **弱依赖与软限制**：仅当外部依赖探测超时（如 GitHub API 配额探测）或触发当日 AI 预算熔断时，返回 **HTTP 200 OK** 并标明 `"status": "degraded"`，系统进入局部平稳降级模式。
 
 ## 版本 API
 

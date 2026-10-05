@@ -46,6 +46,8 @@ func (d *diagnosticStore) GetStorageDiagnostics(ctx context.Context) (StorageSta
 
 	if stats.Driver == "sqlite" {
 		path := strings.TrimPrefix(d.rawURL, "file:")
+		path = strings.TrimPrefix(path, "sqlite://")
+		path = strings.TrimPrefix(path, "sqlite:")
 		if idx := strings.Index(path, "?"); idx != -1 {
 			path = path[:idx]
 		}
@@ -83,12 +85,12 @@ func (d *diagnosticStore) GetOutboxDiagnostics(ctx context.Context) (OutboxStats
 	}
 
 	pending, _ := d.client.NotificationOutbox.Query().
-		Where(notificationoutbox.StatusIn("pending", "retry")).
+		Where(notificationoutbox.StatusIn("pending", "sending")).
 		Count(ctx)
 	stats.PendingCount = pending
 
 	delivered, _ := d.client.NotificationOutbox.Query().
-		Where(notificationoutbox.StatusEQ("delivered")).
+		Where(notificationoutbox.StatusEQ("sent")).
 		Count(ctx)
 	stats.DeliveredCount = delivered
 

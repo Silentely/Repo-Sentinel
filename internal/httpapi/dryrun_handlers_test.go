@@ -26,6 +26,18 @@ func TestDryRun_NotificationSimulation(t *testing.T) {
 	}
 	initialOutboxCount := len(initialOutbox)
 
+	initialEvents, _, err := fixture.store.Events().List(ctx, store.ListFilter{Page: 1, PerPage: 100})
+	if err != nil {
+		t.Fatalf("failed to query events: %v", err)
+	}
+	initialEventsCount := len(initialEvents)
+
+	initialAudits, err := fixture.store.Audits().List(ctx, 1, 100)
+	if err != nil {
+		t.Fatalf("failed to query audits: %v", err)
+	}
+	initialAuditsCount := len(initialAudits)
+
 	dryRunReq := map[string]any{
 		"event_type": "pull_request",
 		"action":     "opened",
@@ -122,6 +134,14 @@ func TestDryRun_NotificationSimulation(t *testing.T) {
 	}
 	if len(afterOutbox) != initialOutboxCount {
 		t.Fatalf("dry run must NOT create outbox records, count before=%d, after=%d", initialOutboxCount, len(afterOutbox))
+	}
+	afterEvents, _, _ := fixture.store.Events().List(ctx, store.ListFilter{Page: 1, PerPage: 100})
+	if len(afterEvents) != initialEventsCount {
+		t.Fatalf("dry run must NOT create events records, before=%d, after=%d", initialEventsCount, len(afterEvents))
+	}
+	afterAudits, _ := fixture.store.Audits().List(ctx, 1, 100)
+	if len(afterAudits) != initialAuditsCount {
+		t.Fatalf("dry run must NOT create audit records, before=%d, after=%d", initialAuditsCount, len(afterAudits))
 	}
 }
 
