@@ -216,3 +216,114 @@ func TestMaybeAutoLabelIssue_LegacyReceiptSkip(t *testing.T) {
 		t.Fatalf("命中存量回执时不应再打标，实际调用 %d 次", addCalls)
 	}
 }
+
+// TestMaybeAutoLabelIssue_ULIDInstallationResolution 验证当仓库 InstallationID 存储为内部表 ULID 主键时，
+// engine 能正确从 installations 表反查真实的 GitHub 数字 InstallationID 并顺利完成打标。
+func TestMaybeAutoLabelIssue_ULIDInstallationResolution(t *testing.T) {
+	addCalls := 0
+	ctx := context.Background()
+	opened := openAutoLabelStore(t)
+
+	// 创建真实的 GitHubInstallation 记录，ID 为 ULID 主键
+	const ulidID = "01M4AUTOINSTALLID0000000001"
+	const githubAppInstID = int64(123456)
+	if _, err := opened.Installations().Upsert(ctx, store.GitHubInstallation{
+		ID:             ulidID,
+		InstallationID: githubAppInstID,
+		AccountLogin:   "Silentely",
+		AccountType:    "User",
+	}); err != nil {
+		t.Fatalf("upsert installation: %v", err)
+	}
+
+	// 仓库的 InstallationID 关联该 ULID 主键（复现线上数据模型）
+	if _, err := opened.Repositories().Upsert(ctx, store.Repository{
+		ID:             "repo-ulid-test",
+		FullName:       "Silentely/TG-SignPulse",
+		InstallationID: strPtr(ulidID),
+		MonitorEnabled: true,
+	}); err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+
+	if _, err := opened.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        "s-auto-label-enabled",
+		Key:       "ai.auto_label_enabled",
+		ValueJSON: []byte(`true`),
+		UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("enable auto label: %v", err)
+	}
+
+	engine := &Engine{
+		Store:  opened,
+		GitHub: newAutoLabelGHStub(t, &addCalls),
+	}
+
+	// 验证 resolveRepoInstallationID 正确解析出了 int64 数字 ID
+	repoRec, err := opened.Repositories().GetByFullName(ctx, "Silentely/TG-SignPulse")
+	if err != nil {
+		t.Fatalf("get repo: %v", err)
+	}
+	resolvedID := engine.resolveRepoInstallationID(ctx, repoRec)
+	if resolvedID != githubAppInstID {
+		t.Fatalf("expected resolved ID %d, got %d", githubAppInstID, resolvedID)
+	}
+
+	// 执行 auto label，验证成功调用 GitHub 打标接口
+	engine.maybeAutoLabelIssue(ctx, "Silentely/TG-SignPulse", 12, triageBug())
+	if addCalls != 1 {
+		t.Fatalf("expected 1 add label call, got %d", addCalls)
+	}
+
+	receiptKey := store.AutoLabelReceiptKey("Silentely/TG-SignPulse", 12, triageBug().Category)
+	if _, err := opened.Settings().Get(ctx, receiptKey); err != nil {
+		t.Fatalf("expected receipt to exist after successful labeling: %v", err)
+	}
+}
+
+// TestResolveRepoInstallationID_NoFallbackForExplicitInvalidRef 验证当仓库显式设置了未知的 InstallationID（如无效或已删除的 ULID）时，
+// 即使当前系统只存在一个全局唯一的 GitHub 安装，也绝对禁止跨租户兜底回退，必须返回 0。
+func TestResolveRepoInstallationID_NoFallbackForExplicitInvalidRef(t *testing.T) {
+	ctx := context.Background()
+	opened := openAutoLabelStore(t)
+
+	// 创建唯一一个合法的安装记录
+	if _, err := opened.Installations().Upsert(ctx, store.GitHubInstallation{
+		ID:             "01VALIDINSTALL000000000001",
+		InstallationID: 999888,
+		AccountLogin:   "other-org",
+		AccountType:    "Organization",
+	}); err != nil {
+		t.Fatalf("upsert installation: %v", err)
+	}
+
+	engine := &Engine{Store: opened}
+
+	// 1. 显式指定了无效 ULID -> 禁止回退，必须返回 0
+	invalidRepo := store.Repository{
+		FullName:       "org/stale-repo",
+		InstallationID: strPtr("01DELETEDULID0000000000000"),
+	}
+	if got := engine.resolveRepoInstallationID(ctx, invalidRepo); got != 0 {
+		t.Fatalf("expected 0 for explicit invalid installation id, got %d", got)
+	}
+
+	// 2. 显式指定了不存在的数字 ID -> 禁止回退，返回原数字 ID 还是 0？返回 0
+	invalidNumRepo := store.Repository{
+		FullName:       "org/stale-repo",
+		InstallationID: strPtr("not-a-number"),
+	}
+	if got := engine.resolveRepoInstallationID(ctx, invalidNumRepo); got != 0 {
+		t.Fatalf("expected 0 for malformed string installation id, got %d", got)
+	}
+
+	// 3. 未指定 InstallationID (nil) -> 允许作为单租户唯一安装兜底
+	nilRepo := store.Repository{
+		FullName:       "org/new-repo",
+		InstallationID: nil,
+	}
+	if got := engine.resolveRepoInstallationID(ctx, nilRepo); got != 999888 {
+		t.Fatalf("expected fallback to 999888 for nil installation id, got %d", got)
+	}
+}

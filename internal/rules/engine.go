@@ -539,8 +539,8 @@ func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, r
 			case repoRec.InstallationID == nil:
 				// 无安装上下文：匿名拉取公开仓即可，不视为故障。
 			default:
-				if instID, perr := strconv.ParseInt(*repoRec.InstallationID, 10, 64); perr != nil || instID <= 0 {
-					// 安装 ID 非法：同上按无安装上下文降级。
+				if instID := e.resolveRepoInstallationID(ctx, repoRec); instID <= 0 {
+					// 安装 ID 无法解析：同上按无安装上下文降级。
 				} else if tok, tokErr := e.GitHub.InstallationToken(ctx, instID); tokErr != nil {
 					if e.Logger != nil {
 						e.Logger.Warn("workflow failure context: resolve installation token failed", "req_id", reqID, "repo", repo, "run_id", *ev.WorkflowRunID, "error", tokErr.Error())
@@ -731,12 +731,16 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 		owner, repo := parts[0], parts[1]
 
 		repoRec, err := e.Store.Repositories().GetByFullName(ctx, repoFullName)
-		if err != nil || repoRec.InstallationID == nil {
-			return "", MarkPreSendError(fmt.Errorf("repo or installation missing: %w", err))
+		if err != nil {
+			return "", MarkPreSendError(fmt.Errorf("repo missing: %w", err))
 		}
-		instID, err := strconv.ParseInt(*repoRec.InstallationID, 10, 64)
-		if err != nil || instID <= 0 {
-			return "", MarkPreSendError(fmt.Errorf("invalid installation id: %v", repoRec.InstallationID))
+		instID := e.resolveRepoInstallationID(ctx, repoRec)
+		if instID <= 0 {
+			rawID := "<nil>"
+			if repoRec.InstallationID != nil {
+				rawID = *repoRec.InstallationID
+			}
+			return "", MarkPreSendError(fmt.Errorf("invalid installation id: %s", rawID))
 		}
 		token, err := e.GitHub.InstallationToken(ctx, instID)
 		if err != nil || token == "" {
@@ -757,6 +761,42 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 		e.Logger.Warn("issue auto-label skipped", "repo", repoFullName, "issue", issueNumber,
 			"error_code", "side_effect_receipt_error", "error", err.Error())
 	}
+}
+
+// resolveRepoInstallationID 解析仓库所属 GitHub installation ID (int64)。
+// 1. 若 repo.InstallationID 为内部存储主键（ULID），从本地 installations 表获取对应记录；
+// 2. 若 repo.InstallationID 为纯数字，直接按 GitHub installation ID 解析（兼顾测试与直接保存安装编号场景）；
+// 3. 兜底策略：仅在仓库未显式指定 InstallationID 时，若全库只有唯一一个 GitHub App 安装，才安全兜底复用；
+//    若显式指定了 InstallationID 但解析/查询失败（如无效引用或已删除），严禁跨租户/错误回退，直接返回 0。
+func (e *Engine) resolveRepoInstallationID(ctx context.Context, repoRec store.Repository) int64 {
+	hasExplicitID := repoRec.InstallationID != nil && strings.TrimSpace(*repoRec.InstallationID) != ""
+	if e.Store != nil && hasExplicitID {
+		raw := strings.TrimSpace(*repoRec.InstallationID)
+		if inst, err := e.Store.Installations().Get(ctx, raw); err == nil && inst.InstallationID > 0 {
+			return inst.InstallationID
+		}
+		if id, err := strconv.ParseInt(raw, 10, 64); err == nil && id > 0 {
+			if inst, err := e.Store.Installations().GetByInstallationID(ctx, id); err == nil && inst.InstallationID > 0 {
+				return inst.InstallationID
+			}
+			return id
+		}
+		// 显式配置了 InstallationID 但既无法匹配记录也非有效数字，严格拒绝回退
+		return 0
+	}
+	// 仅当仓库未显式指定安装关联时，才允许单租户环境唯一安装兜底
+	if e.Store != nil && !hasExplicitID {
+		all, err := e.Store.Installations().List(ctx)
+		if err == nil && len(all) == 1 && all[0].InstallationID > 0 {
+			if e.Logger != nil {
+				e.Logger.Info("fallback to unique github installation",
+					"repo", repoRec.FullName, "installation_id", all[0].InstallationID,
+				)
+			}
+			return all[0].InstallationID
+		}
+	}
+	return 0
 }
 
 // isSecurityAlertKind 判定事件是否为安全告警类型（分诊仅针对告警）。

@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -776,5 +777,162 @@ func TestLockfileDiffPruningAndClassification(t *testing.T) {
 	}
 	if !strings.Contains(cleaned, "依赖锁定文件/构建产物变更已自动精简") {
 		t.Errorf("expected lockfile diff to be pruned to summary line, got: %s", cleaned)
+	}
+}
+
+func TestFlexibleStringListUnmarshal(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "标准字符串数组",
+			input:    `["risk 1", "risk 2"]`,
+			expected: []string{"risk 1", "risk 2"},
+		},
+		{
+			name:     "空数组与null",
+			input:    `[]`,
+			expected: []string{},
+		},
+		{
+			name:     "单个纯字符串",
+			input:    `"single breaking risk"`,
+			expected: []string{"single breaking risk"},
+		},
+		{
+			name:     "对象数组（PR 15真实场景）",
+			input:    `[{"risk": "handleLogin 失败语义发生变化", "file_path": "src/panel-flow.mjs"}, {"issue": "日志未带上下文"}]`,
+			expected: []string{"handleLogin 失败语义发生变化 (src/panel-flow.mjs)", "日志未带上下文"},
+		},
+		{
+			name:     "单个对象",
+			input:    `{"risk": "单对象风险", "file_path": "a.go"}`,
+			expected: []string{"单对象风险 (a.go)"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var list FlexibleStringList
+			if err := json.Unmarshal([]byte(tc.input), &list); err != nil {
+				t.Fatalf("unexpected unmarshal error: %v", err)
+			}
+			if len(list) != len(tc.expected) {
+				t.Fatalf("expected len %d, got %d: %v", len(tc.expected), len(list), list)
+			}
+			for i, exp := range tc.expected {
+				if list[i] != exp {
+					t.Errorf("at index %d: expected %q, got %q", i, exp, list[i])
+				}
+			}
+		})
+	}
+}
+
+func TestReviewPRWithRealWorldObjectArrayRisks(t *testing.T) {
+	// 真实复现并验证针对 xserver-vps-renew PR 15 的 AI 响应解析能力
+	rawContent := `{
+		"summary": "PR 在 handleLogin 中新增 Turnstile 人机校验",
+		"score": 82,
+		"confidence": 3,
+		"category": "Security Fix",
+		"merge_risk": "Low",
+		"maintainer_verdict": "Request Changes",
+		"sensitive_assets": ["config.MEMBER_ID", "config.PASSWORD"],
+		"security_risks": [],
+		"breaking_risks": [
+			{
+				"risk": "handleLogin 的失败语义发生变化: Turnstile 校验失败会直接 throw Error",
+				"file_path": "src/panel-flow.mjs"
+			}
+		],
+		"code_smells": [
+			{
+				"issue": "日志/报错信息未带上下文",
+				"file_path": "src/panel-flow.mjs"
+			}
+		],
+		"missing_tests": ["缺少 handleLogin 在 Turnstile 失败时的测试"]
+	}`
+
+	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		resp := map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]any{
+						"content": rawContent,
+					},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer fakeServer.Close()
+
+	client := &Client{
+		BaseURL: fakeServer.URL,
+		Model:   "mimo-v2.5:free",
+		APIKey:  "test-key",
+		Enabled: true,
+	}
+
+	res, err := client.ReviewPR(context.Background(), "Silentely/xserver-vps-renew", "fix: solve turnstile before login", "Alueee", "+ diff")
+	if err != nil {
+		t.Fatalf("ReviewPR failed: %v", err)
+	}
+
+	if len(res.BreakingRisks) != 1 || !strings.Contains(res.BreakingRisks[0], "handleLogin 的失败语义发生变化") {
+		t.Errorf("unexpected breaking risks: %v", res.BreakingRisks)
+	}
+	if len(res.CodeSmells) != 1 || !strings.Contains(res.CodeSmells[0], "日志/报错信息未带上下文") {
+		t.Errorf("unexpected code smells: %v", res.CodeSmells)
+	}
+	if len(res.SensitiveAssets) != 2 {
+		t.Errorf("unexpected sensitive assets: %v", res.SensitiveAssets)
+	}
+	formatted := FormatPRComment(res)
+	if !strings.Contains(formatted, "handleLogin 的失败语义发生变化") {
+		t.Errorf("formatted comment missing breaking risk: %s", formatted)
+	}
+}
+
+func TestFlexibleStringListUnmarshal_EdgeCasesAndValidation(t *testing.T) {
+	// 1. 验证不支持的格式报错拒绝，禁止静默变成空数组
+	invalidInputs := []string{
+		`123`,
+		`true`,
+		`false`,
+		`[1, 2]`,
+		`[true, false]`,
+	}
+	for _, in := range invalidInputs {
+		var list FlexibleStringList
+		if err := json.Unmarshal([]byte(in), &list); err == nil {
+			t.Errorf("expected unmarshal error for %s, but got nil", in)
+		}
+	}
+
+	// 2. 验证嵌套对象与排序确定性
+	nestedInput := `[{"risk": {"description": "嵌套风险描述"}, "file_path": "pkg/auth.go"}]`
+	var nestedList FlexibleStringList
+	if err := json.Unmarshal([]byte(nestedInput), &nestedList); err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+	if len(nestedList) != 1 || nestedList[0] != "嵌套风险描述 (pkg/auth.go)" {
+		t.Fatalf("unexpected extracted nested string: %v", nestedList)
+	}
+
+	// 3. 验证无预定义键时，按字母序稳定拼接，无随机乱序
+	multiKeyInput := `[{"context": "ctx-value", "impact": "impact-value", "reason": "reason-value"}]`
+	var multiKeyList FlexibleStringList
+	if err := json.Unmarshal([]byte(multiKeyInput), &multiKeyList); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := "ctx-value - impact-value - reason-value"
+	if len(multiKeyList) != 1 || multiKeyList[0] != expected {
+		t.Fatalf("expected %q, got %q", expected, multiKeyList[0])
 	}
 }

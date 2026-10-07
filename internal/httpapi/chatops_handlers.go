@@ -51,9 +51,19 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 		return errors.New("invalid repository full name")
 	}
 	var token string
-	if repo.InstallationID != nil {
-		installationID, parseErr := strconv.ParseInt(*repo.InstallationID, 10, 64)
-		if parseErr != nil || installationID <= 0 {
+	if repo.InstallationID != nil && strings.TrimSpace(*repo.InstallationID) != "" {
+		raw := strings.TrimSpace(*repo.InstallationID)
+		var installationID int64
+		if inst, err := e.Store.Installations().Get(ctx, raw); err == nil && inst.InstallationID > 0 {
+			installationID = inst.InstallationID
+		} else if id, err := strconv.ParseInt(raw, 10, 64); err == nil && id > 0 {
+			if inst, err := e.Store.Installations().GetByInstallationID(ctx, id); err == nil && inst.InstallationID > 0 {
+				installationID = inst.InstallationID
+			} else {
+				installationID = id
+			}
+		}
+		if installationID <= 0 {
 			return errors.New("invalid installation id")
 		}
 		token, err = e.Client.InstallationToken(ctx, installationID)
