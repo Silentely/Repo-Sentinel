@@ -764,10 +764,10 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 }
 
 // resolveRepoInstallationID 解析仓库所属 GitHub installation ID (int64)。
-// 1. 若 repo.InstallationID 为内部存储主键（ULID），从本地 installations 表获取对应记录；
-// 2. 若 repo.InstallationID 为纯数字，直接按 GitHub installation ID 解析（兼顾测试与直接保存安装编号场景）；
-// 3. 兜底策略：仅在仓库未显式指定 InstallationID 时，若全库只有唯一一个 GitHub App 安装，才安全兜底复用；
-//    若显式指定了 InstallationID 但解析/查询失败（如无效引用或已删除），严禁跨租户/错误回退，直接返回 0。
+//  1. 若 repo.InstallationID 为内部存储主键（ULID），从本地 installations 表获取对应记录；
+//  2. 若 repo.InstallationID 为纯数字，直接按 GitHub installation ID 解析（兼顾测试与直接保存安装编号场景）；
+//  3. 兜底策略：仅在仓库未显式指定 InstallationID 时，若全库只有唯一一个 GitHub App 安装，才安全兜底复用；
+//     若显式指定了 InstallationID 但解析/查询失败（如无效引用或已删除），严禁跨租户/错误回退，直接返回 0。
 func (e *Engine) resolveRepoInstallationID(ctx context.Context, repoRec store.Repository) int64 {
 	hasExplicitID := repoRec.InstallationID != nil && strings.TrimSpace(*repoRec.InstallationID) != ""
 	if e.Store != nil && hasExplicitID {
