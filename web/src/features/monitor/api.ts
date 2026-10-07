@@ -872,6 +872,7 @@ export interface IssueTriageResult {
   missing_details?: string[];
   suggested_reply: string;
   confidence: number;
+  labels?: string[];
   triaged_at: string;
 }
 

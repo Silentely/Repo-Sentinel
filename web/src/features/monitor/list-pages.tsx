@@ -331,9 +331,9 @@ function ReviewRiskList({ label, tone, items }: { label: string; tone: "danger" 
       <strong className={tone === "muted" ? "muted" : undefined} style={color ? { color } : undefined}>
         {label}
       </strong>
-      <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0 }}>
+      <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0, listStyleType: "disc" }}>
         {items.map((item, idx) => (
-          <li key={`${idx}-${item}`}>{item}</li>
+          <li key={`${idx}-${item}`} style={{ marginTop: "0.15rem", lineHeight: 1.45, color: "var(--color-text-secondary, #4b5563)" }}>{item}</li>
         ))}
       </ul>
     </div>
@@ -749,6 +749,13 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const copiedTimerRef = useRef<number | undefined>(undefined);
+  const [draftReply, setDraftReply] = useState<string | null>(null);
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+
+  useEffect(() => {
+    setDraftReply(null);
+    setIsEditingDraft(false);
+  }, [triage?.suggested_reply]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -801,10 +808,12 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
     }
   };
 
+  const activeReplyText = draftReply ?? triage?.suggested_reply ?? "";
+
   const handleCopyReply = async () => {
-    if (!triage?.suggested_reply) return;
+    if (!activeReplyText) return;
     try {
-      await navigator.clipboard.writeText(triage.suggested_reply);
+      await navigator.clipboard.writeText(activeReplyText);
       setCopied(true);
       if (copiedTimerRef.current !== undefined) window.clearTimeout(copiedTimerRef.current);
       copiedTimerRef.current = window.setTimeout(() => {
@@ -813,6 +822,22 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
       }, 2000);
     } catch {
       // 剪贴板异常降级
+    }
+  };
+
+  const handleGoToReply = async () => {
+    if (activeReplyText) {
+      try {
+        await navigator.clipboard.writeText(activeReplyText);
+        setCopied(true);
+        if (copiedTimerRef.current !== undefined) window.clearTimeout(copiedTimerRef.current);
+        copiedTimerRef.current = window.setTimeout(() => {
+          copiedTimerRef.current = undefined;
+          setCopied(false);
+        }, 2000);
+      } catch {
+        // 剪贴板异常降级
+      }
     }
   };
 
@@ -934,6 +959,8 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                       target="_blank"
                       rel="noopener noreferrer"
                       className="quiet-button quiet-button--compact"
+                      onClick={handleGoToReply}
+                      title="点击自动复制建议首响应草稿并跳转到 GitHub Issue"
                       style={{ fontSize: "0.75rem", textDecoration: "none", display: "inline-flex", alignItems: "center" }}
                     >
                       ↗ 前往回复
@@ -947,6 +974,28 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                 <span>{triage.summary}</span>
               </div>
 
+              {triage.labels && triage.labels.length > 0 && (
+                <div style={{ marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: "0.8rem", color: "var(--color-text-primary, #111827)" }}>🏷️ 建议标签: </strong>
+                  {triage.labels.map((lbl) => (
+                    <span
+                      key={lbl}
+                      style={{
+                        fontSize: "0.75rem",
+                        padding: "0.1rem 0.5rem",
+                        borderRadius: "9999px",
+                        background: "rgba(59, 130, 246, 0.08)",
+                        color: "var(--color-primary, #2563eb)",
+                        border: "1px solid rgba(59, 130, 246, 0.25)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {lbl}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {triage.missing_details && triage.missing_details.length > 0 && (
                 <div style={{ marginTop: "0.4rem" }}>
                   <ReviewRiskList label="⚠️ 缺失排查要素 (待提问者补充):" tone="warning" items={triage.missing_details} />
@@ -955,27 +1004,62 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
 
               {triage.suggested_reply && (
                 <div style={{ marginTop: "0.6rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem", gap: "0.5rem" }}>
                     <strong style={{ fontSize: "0.8rem", color: "var(--color-text-primary, #111827)" }}>
                       💬 建议维护者首响应草稿 (可一键复制直接回复):
                     </strong>
+                    <button
+                      type="button"
+                      className="quiet-button quiet-button--compact"
+                      onClick={() => {
+                        if (!isEditingDraft && draftReply === null) {
+                          setDraftReply(triage.suggested_reply);
+                        }
+                        setIsEditingDraft(!isEditingDraft);
+                      }}
+                      style={{ fontSize: "0.72rem", padding: "0.1rem 0.4rem" }}
+                    >
+                      {isEditingDraft ? "✓ 完成编辑" : "✏️ 编辑草稿"}
+                    </button>
                   </div>
-                  <pre
-                    style={{
-                      margin: 0,
-                      padding: "0.5rem 0.65rem",
-                      borderRadius: "4px",
-                      background: "var(--bg-code, #f9fafb)",
-                      border: "1px solid var(--border-default, #e5e7eb)",
-                      overflowX: "auto",
-                      fontSize: "0.8rem",
-                      whiteSpace: "pre-wrap",
-                      fontFamily: "inherit",
-                      color: "var(--color-text-primary, #1f2937)",
-                    }}
-                  >
-                    {triage.suggested_reply}
-                  </pre>
+                  {isEditingDraft ? (
+                    <textarea
+                      value={activeReplyText}
+                      onChange={(e) => setDraftReply(e.target.value)}
+                      rows={5}
+                      aria-label="编辑建议首响应草稿"
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        margin: 0,
+                        padding: "0.5rem 0.65rem",
+                        borderRadius: "4px",
+                        background: "var(--bg-code, #f9fafb)",
+                        border: "1px solid var(--border-default, #e5e7eb)",
+                        fontSize: "0.8rem",
+                        fontFamily: "inherit",
+                        color: "var(--color-text-primary, #1f2937)",
+                        resize: "vertical",
+                      }}
+                    />
+                  ) : (
+                    <pre
+                      style={{
+                        margin: 0,
+                        padding: "0.5rem 0.65rem",
+                        borderRadius: "4px",
+                        background: "var(--bg-code, #f9fafb)",
+                        border: "1px solid var(--border-default, #e5e7eb)",
+                        overflowX: "auto",
+                        fontSize: "0.8rem",
+                        whiteSpace: "pre-wrap",
+                        fontFamily: "inherit",
+                        color: "var(--color-text-primary, #1f2937)",
+                      }}
+                    >
+                      {activeReplyText}
+                    </pre>
+                  )}
                 </div>
               )}
             </div>

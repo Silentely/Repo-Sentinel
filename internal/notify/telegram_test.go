@@ -190,3 +190,61 @@ func TestTruncateTelegramTextKeepsMultibyteIntact(t *testing.T) {
 		t.Fatal("截断结果不应包含替换字符乱码")
 	}
 }
+
+func TestSendTelegramIssueTriageFormattingAndDedupLink(t *testing.T) {
+	var receivedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &receivedBody); err != nil {
+			t.Fatalf("无法解析请求体: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	w := &Worker{Client: srv.Client()}
+	inputMsg := "<b>🟢 已打开｜#12 多个bug</b>\n────────────────\n📦 仓库：<code>org/repo</code>\n⏰ 时间：2026-10-07\n────────────────\n<a href=\"https://github.com/org/repo/issues/12\">🔗 在 GitHub 中查看</a>\n────────────────\n🤖 Issue 智能分析与回复建议\n🐛 类别：Bug Report ｜ 🔥 优先级：P1 High\n📝 核心诉求：修复登录问题\n💬 建议首响应回复：\n&gt; 你好，感谢反馈。\n&gt; 正在排查中。"
+
+	err := w.sendTelegramDirect(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", inputMsg, "https://github.com/org/repo/issues/12", "HTML")
+	if err != nil {
+		t.Fatalf("发送失败: %v", err)
+	}
+
+	text, ok := receivedBody["text"].(string)
+	if !ok {
+		t.Fatalf("期望 text 字段存在")
+	}
+
+	// 1. 验证正文中冗余的 <a href="...">🔗 在 GitHub 中查看</a> 已被移除（避免与底部 inline button 重复割裂）
+	if strings.Contains(text, "🔗 在 GitHub 中查看") {
+		t.Errorf("正文不应包含多余的 GitHub 文本链接，got: %s", text)
+	}
+
+	// 2. 验证分析要素进入了 <blockquote expandable>
+	if !strings.Contains(text, "<blockquote expandable>") || !strings.Contains(text, "🐛 类别：Bug Report") {
+		t.Errorf("期望分析要素包含在可折叠引用块中，got: %s", text)
+	}
+
+	// 3. 验证建议首响应抽离为专属 <pre><code> 块，且已剥离 > 引用符
+	if !strings.Contains(text, "💬 <b>建议首响应草稿（轻触文本直接复制）：</b>") {
+		t.Errorf("期望包含建议首响应复制标题，got: %s", text)
+	}
+	if !strings.Contains(text, "<pre><code>你好，感谢反馈。\n正在排查中。</code></pre>") {
+		t.Errorf("期望包含纯净 tap-to-copy code 块，got: %s", text)
+	}
+	if strings.Contains(text, "&gt;") || strings.Contains(text, "> 你好") {
+		t.Errorf("建议草稿不应残留引用符号，got: %s", text)
+	}
+
+	// 4. 验证 inline_keyboard 保留了 GitHub 跳转按钮
+	rm, ok := receivedBody["reply_markup"].(map[string]any)
+	if !ok {
+		t.Fatal("期望 reply_markup 存在")
+	}
+	kb := rm["inline_keyboard"].([]any)
+	btn := kb[0].([]any)[0].(map[string]any)
+	if btn["url"] != "https://github.com/org/repo/issues/12" {
+		t.Errorf("期望按钮 URL 正确，got: %v", btn["url"])
+	}
+}

@@ -321,21 +321,96 @@ func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text, htmlURL,
 
 // sendTelegramDirect 发送 Telegram 消息，api 参数为完整 URL，便于测试时替换端点。
 // parseMode 为空时回退 HTML（既有正文均按 HTML 生成）。
+var reTelegramGitHubLink = regexp.MustCompile(`\n────────────────\n<a\s+href="[^"]*">` + regexp.QuoteMeta(store.GitHubViewLabel) + `</a>(?:\n|$)`)
+
+// renderTelegramIssueTriageSection 对 Issue 智能分诊段落进行 Telegram 定制渲染：
+// 1. 分诊要素（类别、优先级、诉求、建议标签、缺失要素）放入 <blockquote expandable> 可折叠块，界面整洁不刷屏；
+// 2. 建议首响应回复抽离为独立 <pre><code> 块，去除硬编码的 "> " 引用前缀，使得在 Telegram 移动端与桌面端只需轻触即可一键整段复制，体验极佳。
+func renderTelegramIssueTriageSection(sb *strings.Builder, title, body string) {
+	marker := "建议首响应回复"
+	idx := strings.Index(body, marker)
+	if idx < 0 {
+		marker = "建议首响回复"
+		idx = strings.Index(body, marker)
+	}
+	if idx < 0 {
+		sb.WriteString("\n\n<blockquote expandable><b>🤖 " + title + "</b>")
+		if body != "" {
+			sb.WriteString("\n" + body)
+		}
+		sb.WriteString("</blockquote>")
+		return
+	}
+
+	lineStart := strings.LastIndex(body[:idx], "\n")
+	var analysisPart string
+	if lineStart >= 0 {
+		analysisPart = strings.TrimSpace(body[:lineStart])
+	}
+
+	afterMarker := body[idx:]
+	var draftRaw string
+	if nl := strings.IndexByte(afterMarker, '\n'); nl >= 0 {
+		draftRaw = afterMarker[nl+1:]
+	}
+
+	var cleanLines []string
+	for _, line := range strings.Split(draftRaw, "\n") {
+		trimmed := strings.TrimRight(line, "\r")
+		if strings.HasPrefix(trimmed, "&gt; ") {
+			trimmed = trimmed[5:]
+		} else if strings.HasPrefix(trimmed, "&gt;") {
+			trimmed = trimmed[4:]
+		} else if strings.HasPrefix(trimmed, "> ") {
+			trimmed = trimmed[2:]
+		} else if strings.HasPrefix(trimmed, ">") {
+			trimmed = trimmed[1:]
+		}
+		cleanLines = append(cleanLines, trimmed)
+	}
+	cleanDraft := strings.TrimSpace(strings.Join(cleanLines, "\n"))
+
+	sb.WriteString("\n\n<blockquote expandable><b>🤖 " + title + "</b>")
+	if analysisPart != "" {
+		sb.WriteString("\n" + analysisPart)
+	}
+	sb.WriteString("</blockquote>")
+
+	if cleanDraft != "" {
+		sb.WriteString("\n\n💬 <b>建议首响应草稿（轻触文本直接复制）：</b>\n<pre><code>" + cleanDraft + "</code></pre>")
+	}
+}
+
 // formatTelegramExpandableBlocks 将正文中的 AI 分析/诊断/分诊段落包装为 Telegram 7.3+ 原生支持的可折叠长引用块。
+// 当 hasInlineURL 为 true 时，移除正文末尾内嵌的「在 GitHub 中查看」链接与冗余分隔线（因为已有 inline keyboard 按钮，避免重复与割裂）。
 // 段落拆分复用 splitAISections，与其它渠道共用同一分隔符口径。
-func formatTelegramExpandableBlocks(text string) string {
+func formatTelegramExpandableBlocks(text string, hasInlineURL ...bool) string {
+	if len(hasInlineURL) > 0 && hasInlineURL[0] {
+		if strings.Contains(text, aiSectionDelimiter) {
+			text = reTelegramGitHubLink.ReplaceAllString(text, "\n")
+		} else {
+			text = reTelegramGitHubLink.ReplaceAllString(text, "")
+		}
+	}
 	prefix, sections := splitAISections(text)
 	if len(sections) == 0 {
 		return text
 	}
 	var sb strings.Builder
-	sb.WriteString(prefix)
+	sb.WriteString(strings.TrimRight(prefix, "\n"))
 	for _, sec := range sections {
-		sb.WriteString("\n\n<blockquote expandable><b>🤖 " + sec[0] + "</b>")
-		if sec[1] != "" {
-			sb.WriteString("\n" + sec[1])
+		title := sec[0]
+		body := sec[1]
+
+		if strings.Contains(title, "Issue") && (strings.Contains(body, "建议首响应回复") || strings.Contains(body, "建议首响回复")) {
+			renderTelegramIssueTriageSection(&sb, title, body)
+		} else {
+			sb.WriteString("\n\n<blockquote expandable><b>🤖 " + title + "</b>")
+			if body != "" {
+				sb.WriteString("\n" + body)
+			}
+			sb.WriteString("</blockquote>")
 		}
-		sb.WriteString("</blockquote>")
 	}
 	return sb.String()
 }
@@ -345,7 +420,7 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 		parseMode = "HTML"
 	}
 	if parseMode == "HTML" {
-		text = formatTelegramExpandableBlocks(text)
+		text = formatTelegramExpandableBlocks(text, htmlURL != "")
 	}
 	text = truncateTelegramText(text)
 	payload := map[string]any{

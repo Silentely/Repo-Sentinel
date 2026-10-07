@@ -1785,7 +1785,7 @@ a.status-item--link:focus-visible {
   color: var(--text-muted);
 }
 
-.event-list li {
+.event-list > li {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 0.75rem;
@@ -1799,7 +1799,7 @@ a.status-item--link:focus-visible {
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
-.event-list li:hover {
+.event-list > li:hover {
   transform: translate(-1px, -1px);
   box-shadow: 4px 4px 0 var(--shadow-neo);
 }
@@ -2079,7 +2079,7 @@ a.status-item--link:focus-visible {
 }
 
 /* 兼容旧 event-list：长标题截断，动作靠右 */
-.event-list li > strong {
+.event-list > li > strong {
   flex: 1 1 12rem;
   min-width: 0;
   overflow: hidden;
@@ -2087,8 +2087,8 @@ a.status-item--link:focus-visible {
   text-overflow: ellipsis;
 }
 
-.event-list li > .quiet-button,
-.event-list li > a.quiet-button {
+.event-list > li > .quiet-button,
+.event-list > li > a.quiet-button {
   margin-left: auto;
   flex: 0 0 auto;
 }
