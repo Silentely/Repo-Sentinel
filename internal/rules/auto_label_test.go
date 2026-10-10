@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
@@ -43,7 +44,7 @@ func newAutoLabelGHStub(t *testing.T, addCalls *int) *githubx.AppClient {
 		case strings.HasSuffix(r.URL.Path, "/labels"):
 			*addCalls++
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`[{"name":"sentinel:bug"}]`))
+			_, _ = w.Write([]byte(`[{"name":"bug"}]`))
 		default:
 			w.WriteHeader(http.StatusOK)
 		}
@@ -325,5 +326,144 @@ func TestResolveRepoInstallationID_NoFallbackForExplicitInvalidRef(t *testing.T)
 	}
 	if got := engine.resolveRepoInstallationID(ctx, nilRepo); got != 999888 {
 		t.Fatalf("expected fallback to 999888 for nil installation id, got %d", got)
+	}
+}
+
+// TestMaybeAutoLabelIssue_SkipsIfLabelAlreadyExists 当 Issue 已有目标标签时直接跳过打标。
+func TestMaybeAutoLabelIssue_SkipsIfLabelAlreadyExists(t *testing.T) {
+	addCalls := 0
+	engine, data := newAutoLabelEngine(t, &addCalls)
+	ctx := context.Background()
+
+	repoRec, err := data.Repositories().GetByFullName(ctx, "org/auto-label")
+	if err != nil {
+		t.Fatalf("get repo: %v", err)
+	}
+	if _, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		RepositoryID: repoRec.ID,
+		Number:       15,
+		Kind:         store.WorkItemKindIssue,
+		State:        "open",
+		Title:        "Existing bug issue",
+		Author:       "alice",
+		LabelsJSON:   []any{"bug"},
+	}, nil); err != nil {
+		t.Fatalf("upsert work item: %v", err)
+	}
+
+	engine.maybeAutoLabelIssue(ctx, "org/auto-label", 15, triageBug())
+
+	if addCalls != 0 {
+		t.Fatalf("已存在对应标签时不应调用打标接口，实际调用 %d 次", addCalls)
+	}
+}
+
+// TestMaybeAutoLabelIssue_SkipsIfLegacySentinelLabelExists 当 Issue 存量标签带 "sentinel:bug" 时也正确识别并跳过。
+func TestMaybeAutoLabelIssue_SkipsIfLegacySentinelLabelExists(t *testing.T) {
+	addCalls := 0
+	engine, data := newAutoLabelEngine(t, &addCalls)
+	ctx := context.Background()
+
+	repoRec, err := data.Repositories().GetByFullName(ctx, "org/auto-label")
+	if err != nil {
+		t.Fatalf("get repo: %v", err)
+	}
+	if _, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		RepositoryID: repoRec.ID,
+		Number:       16,
+		Kind:         store.WorkItemKindIssue,
+		State:        "open",
+		Title:        "Legacy sentinel labeled issue",
+		Author:       "bob",
+		LabelsJSON:   []any{"sentinel:bug"},
+	}, nil); err != nil {
+		t.Fatalf("upsert work item: %v", err)
+	}
+
+	engine.maybeAutoLabelIssue(ctx, "org/auto-label", 16, triageBug())
+
+	if addCalls != 0 {
+		t.Fatalf("存在 sentinel:bug 标签时不应重复打标，实际调用 %d 次", addCalls)
+	}
+}
+
+// TestMaybeAutoLabelIssue_AddsOnlyMissingLabels 若 Issue 已有部分标签，仅增量补齐缺失标签。
+func TestMaybeAutoLabelIssue_AddsOnlyMissingLabels(t *testing.T) {
+	var requestedLabels []string
+	key, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatalf("generate rsa key: %v", err)
+	}
+	keyPath := filepath.Join(t.TempDir(), "app.pem")
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{
+		Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/access_tokens"):
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"token":"ghu_stub","expires_at":"2030-01-01T00:00:00Z"}`))
+		case strings.HasSuffix(r.URL.Path, "/labels"):
+			var body struct {
+				Labels []string `json:"labels"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			requestedLabels = body.Labels
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"name":"enhancement"}]`))
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	t.Cleanup(fake.Close)
+	client := githubx.NewAppClient(1234, keyPath)
+	client.BaseURL = fake.URL
+
+	ctx := context.Background()
+	opened := openAutoLabelStore(t)
+	repoRec, err := opened.Repositories().Upsert(ctx, store.Repository{
+		ID:             "repo-partial-labels",
+		FullName:       "org/partial-labels",
+		InstallationID: strPtr("999"),
+		MonitorEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+	if _, err := opened.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        "s-auto-label-enabled",
+		Key:       "ai.auto_label_enabled",
+		ValueJSON: []byte(`true`),
+		UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("enable auto label: %v", err)
+	}
+
+	// Issue 已经有 "bug"，但 AI 分诊给出了 Category: "bug", Labels: ["enhancement"]
+	if _, _, err := opened.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		RepositoryID: repoRec.ID,
+		Number:       17,
+		Kind:         store.WorkItemKindIssue,
+		State:        "open",
+		Title:        "Partial labels issue",
+		Author:       "carol",
+		LabelsJSON:   []any{"bug"},
+	}, nil); err != nil {
+		t.Fatalf("upsert work item: %v", err)
+	}
+
+	engine := &Engine{Store: opened, GitHub: client}
+	triageRes := &ai.IssueTriageResult{
+		Category: "bug",
+		Labels:   []string{"enhancement"},
+	}
+
+	engine.maybeAutoLabelIssue(ctx, "org/partial-labels", 17, triageRes)
+
+	if len(requestedLabels) != 1 || requestedLabels[0] != "enhancement" {
+		t.Fatalf("期望仅补充缺失的 enhancement 标签，实际请求: %v", requestedLabels)
 	}
 }

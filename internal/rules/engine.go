@@ -714,6 +714,22 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 		return
 	}
 
+	// 检查 Issue 当前是否已挂载目标标签，若已包含则过滤/跳过
+	var existingLabels []string
+	if repoRec, err := e.Store.Repositories().GetByFullName(ctx, repoFullName); err == nil && repoRec.ID != "" {
+		if wi, err := e.Store.WorkItems().GetByRepoNumber(ctx, repoRec.ID, issueNumber); err == nil {
+			existingLabels = githubx.ExtractLabelNames(wi.LabelsJSON)
+		}
+	}
+	labelsToAdd := githubx.FilterUnappliedLabels(labels, existingLabels)
+	if len(labelsToAdd) == 0 {
+		if e.Logger != nil {
+			e.Logger.Debug("issue auto-label skipped, labels already exist on issue",
+				"repo", repoFullName, "issue", issueNumber, "target_labels", labels, "existing_labels", existingLabels)
+		}
+		return
+	}
+
 	target := res.Category
 	// 存量兼容：迁移前回执键为 github_label:<repo>:<num>:<category>，
 	// 命中说明该 Issue 已打标，跳过以免升级后重复调用打标接口。
@@ -749,13 +765,13 @@ func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, i
 
 		bgCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
-		if err := e.GitHub.AddIssueLabels(bgCtx, token, owner, repo, issueNumber, labels); err != nil {
+		if err := e.GitHub.AddIssueLabels(bgCtx, token, owner, repo, issueNumber, labelsToAdd); err != nil {
 			if e.Logger != nil {
-				e.Logger.Warn("issue auto-label failed", "repo", repoFullName, "issue", issueNumber, "labels", labels, "error", err.Error())
+				e.Logger.Warn("issue auto-label failed", "repo", repoFullName, "issue", issueNumber, "labels", labelsToAdd, "error", err.Error())
 			}
 			return "", err
 		}
-		return strings.Join(labels, ","), nil
+		return strings.Join(labelsToAdd, ","), nil
 	}); err != nil && e.Logger != nil {
 		// 回执写入异常等：留痕，避免副作用被静默丢弃。
 		e.Logger.Warn("issue auto-label skipped", "repo", repoFullName, "issue", issueNumber,

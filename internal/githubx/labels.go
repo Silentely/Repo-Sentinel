@@ -13,18 +13,19 @@ import (
 )
 
 // AllowedSentinelLabels maps normalized category names to canonical GitHub issue labels.
+// Values intentionally do not carry any "sentinel:" prefix to match standard repository labels.
 var AllowedSentinelLabels = map[string]string{
-	"bug":             "sentinel:bug",
-	"bug report":      "sentinel:bug",
-	"enhancement":     "sentinel:enhancement",
-	"feature":         "sentinel:feature",
-	"feature request": "sentinel:enhancement",
-	"question":        "sentinel:question",
-	"documentation":   "sentinel:documentation",
-	"help wanted":     "sentinel:help-wanted",
-	"help-wanted":     "sentinel:help-wanted",
-	"performance":     "sentinel:performance",
-	"security":        "sentinel:security",
+	"bug":             "bug",
+	"bug report":      "bug",
+	"enhancement":     "enhancement",
+	"feature":         "enhancement",
+	"feature request": "enhancement",
+	"question":        "question",
+	"documentation":   "documentation",
+	"help wanted":     "help wanted",
+	"help-wanted":     "help wanted",
+	"performance":     "performance",
+	"security":        "security",
 }
 
 // ErrLabelNotFound indicates GitHub returned 422 Unprocessable Entity (e.g. label does not exist).
@@ -69,6 +70,77 @@ func ShouldAutoLabelIssue(category string, labels []string) bool {
 		return false
 	}
 	return true
+}
+
+// HasLabel checks whether existing labels already contain the target label,
+// accounting for case insensitivity, optional "sentinel:" prefix, dash/space variations,
+// and canonical whitelist mapping (e.g. "bug report" matches "bug").
+func HasLabel(existing []string, target string) bool {
+	normTarget := normalizeLabel(target)
+	if normTarget == "" {
+		return false
+	}
+	for _, l := range existing {
+		normExisting := normalizeLabel(l)
+		if normExisting == normTarget {
+			return true
+		}
+		if mapped, ok := AllowedSentinelLabels[normExisting]; ok && normalizeLabel(mapped) == normTarget {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeLabel(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.TrimPrefix(s, "sentinel:")
+	s = strings.ReplaceAll(s, "-", " ")
+	return strings.TrimSpace(s)
+}
+
+// FilterUnappliedLabels returns only the labels in targetLabels that are not already
+// present in existing labels.
+func FilterUnappliedLabels(targetLabels []string, existing []string) []string {
+	if len(targetLabels) == 0 {
+		return []string{}
+	}
+	if len(existing) == 0 {
+		return targetLabels
+	}
+	var unapplied []string
+	for _, l := range targetLabels {
+		if !HasLabel(existing, l) {
+			unapplied = append(unapplied, l)
+		}
+	}
+	if len(unapplied) == 0 {
+		return []string{}
+	}
+	return unapplied
+}
+
+// ExtractLabelNames extracts label name strings from a raw labels slice (e.g. from WorkItem.LabelsJSON).
+func ExtractLabelNames(raw []any) []string {
+	if len(raw) == 0 {
+		return []string{}
+	}
+	var names []string
+	for _, item := range raw {
+		switch v := item.(type) {
+		case string:
+			if trimmed := strings.TrimSpace(v); trimmed != "" {
+				names = append(names, trimmed)
+			}
+		case map[string]any:
+			if name, ok := v["name"].(string); ok {
+				if trimmed := strings.TrimSpace(name); trimmed != "" {
+					names = append(names, trimmed)
+				}
+			}
+		}
+	}
+	return names
 }
 
 // AddIssueLabels calls GitHub API to attach labels to an issue.

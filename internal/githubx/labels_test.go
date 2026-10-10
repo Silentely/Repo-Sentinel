@@ -17,19 +17,19 @@ func TestFilterAndMapLabels(t *testing.T) {
 		expected []string
 	}{
 		{
-			name:     "Valid labels mapped to sentinel prefix",
+			name:     "Valid labels mapped without sentinel prefix",
 			input:    []string{"bug", "enhancement"},
-			expected: []string{"sentinel:bug", "sentinel:enhancement"},
+			expected: []string{"bug", "enhancement"},
 		},
 		{
 			name:     "Non-whitelisted labels stripped",
 			input:    []string{"bug", "custom-junk", "crypto-miner", "help wanted"},
-			expected: []string{"sentinel:bug", "sentinel:help-wanted"},
+			expected: []string{"bug", "help wanted"},
 		},
 		{
 			name:     "Case-insensitive matching and deduplication",
 			input:    []string{"BUG", "bug", "Security", "security"},
-			expected: []string{"sentinel:bug", "sentinel:security"},
+			expected: []string{"bug", "security"},
 		},
 		{
 			name:     "Empty input returns empty slice",
@@ -55,7 +55,7 @@ func TestFilterAndMapLabels(t *testing.T) {
 
 func TestFilterAndMapLabels_UsesIssueTriageCategories(t *testing.T) {
 	got := githubx.FilterAndMapLabels([]string{"Bug Report", "Feature Request"})
-	want := []string{"sentinel:bug", "sentinel:enhancement"}
+	want := []string{"bug", "enhancement"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("mapped labels = %#v, want %#v", got, want)
 	}
@@ -72,8 +72,144 @@ func TestShouldAutoLabelIssue(t *testing.T) {
 	if githubx.ShouldAutoLabelIssue("valid", []string{}) {
 		t.Error("expected false for empty labels")
 	}
-	if !githubx.ShouldAutoLabelIssue("valid", []string{"sentinel:bug"}) {
+	if !githubx.ShouldAutoLabelIssue("valid", []string{"bug"}) {
 		t.Error("expected true for valid category with mapped labels")
+	}
+}
+
+func TestHasLabel(t *testing.T) {
+	cases := []struct {
+		name     string
+		existing []string
+		target   string
+		expected bool
+	}{
+		{
+			name:     "exact match",
+			existing: []string{"bug"},
+			target:   "bug",
+			expected: true,
+		},
+		{
+			name:     "case-insensitive match",
+			existing: []string{"Bug"},
+			target:   "bug",
+			expected: true,
+		},
+		{
+			name:     "legacy sentinel prefix match",
+			existing: []string{"sentinel:bug"},
+			target:   "bug",
+			expected: true,
+		},
+		{
+			name:     "target with prefix matches clean existing",
+			existing: []string{"bug"},
+			target:   "sentinel:bug",
+			expected: true,
+		},
+		{
+			name:     "dash and space variation match",
+			existing: []string{"help-wanted"},
+			target:   "help wanted",
+			expected: true,
+		},
+		{
+			name:     "category alias match (bug report matches bug)",
+			existing: []string{"bug report"},
+			target:   "bug",
+			expected: true,
+		},
+		{
+			name:     "not found",
+			existing: []string{"documentation", "enhancement"},
+			target:   "bug",
+			expected: false,
+		},
+		{
+			name:     "empty existing",
+			existing: []string{},
+			target:   "bug",
+			expected: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := githubx.HasLabel(tc.existing, tc.target)
+			if got != tc.expected {
+				t.Fatalf("expected HasLabel(%v, %q) = %v, got %v", tc.existing, tc.target, tc.expected, got)
+			}
+		})
+	}
+}
+
+func TestFilterUnappliedLabels(t *testing.T) {
+	cases := []struct {
+		name     string
+		targets  []string
+		existing []string
+		expected []string
+	}{
+		{
+			name:     "all already exist",
+			targets:  []string{"bug"},
+			existing: []string{"bug"},
+			expected: []string{},
+		},
+		{
+			name:     "partial existing",
+			targets:  []string{"bug", "enhancement"},
+			existing: []string{"bug"},
+			expected: []string{"enhancement"},
+		},
+		{
+			name:     "none exist",
+			targets:  []string{"bug", "enhancement"},
+			existing: []string{"documentation"},
+			expected: []string{"bug", "enhancement"},
+		},
+		{
+			name:     "empty existing returns all targets",
+			targets:  []string{"bug"},
+			existing: []string{},
+			expected: []string{"bug"},
+		},
+		{
+			name:     "empty targets returns empty",
+			targets:  []string{},
+			existing: []string{"bug"},
+			expected: []string{},
+		},
+		{
+			name:     "case insensitive and prefix matching removes target",
+			targets:  []string{"bug"},
+			existing: []string{"sentinel:bug"},
+			expected: []string{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := githubx.FilterUnappliedLabels(tc.targets, tc.existing)
+			if len(got) != len(tc.expected) {
+				t.Fatalf("expected len %d, got %d: %v", len(tc.expected), len(got), got)
+			}
+			for i := range got {
+				if got[i] != tc.expected[i] {
+					t.Errorf("at index %d: expected %q, got %q", i, tc.expected[i], got[i])
+				}
+			}
+		})
+	}
+}
+
+func TestExtractLabelNames(t *testing.T) {
+	raw := []any{"bug", map[string]any{"name": "enhancement"}, "  documentation  ", 123}
+	got := githubx.ExtractLabelNames(raw)
+	want := []string{"bug", "enhancement", "documentation"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
 	}
 }
 
@@ -95,11 +231,11 @@ func TestAppClient_AddIssueLabels(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("failed to decode body: %v", err)
 			}
-			if len(body.Labels) != 1 || body.Labels[0] != "sentinel:bug" {
+			if len(body.Labels) != 1 || body.Labels[0] != "bug" {
 				t.Fatalf("unexpected labels in request: %v", body.Labels)
 			}
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`[{"name":"sentinel:bug"}]`))
+			_, _ = w.Write([]byte(`[{"name":"bug"}]`))
 		}))
 		defer ts.Close()
 
@@ -107,7 +243,7 @@ func TestAppClient_AddIssueLabels(t *testing.T) {
 		client.BaseURL = ts.URL
 		client.HTTP = ts.Client()
 
-		err := client.AddIssueLabels(t.Context(), "test-token", "owner", "repo", 42, []string{"sentinel:bug"})
+		err := client.AddIssueLabels(t.Context(), "test-token", "owner", "repo", 42, []string{"bug"})
 		if err != nil {
 			t.Fatalf("AddIssueLabels failed: %v", err)
 		}
@@ -124,7 +260,7 @@ func TestAppClient_AddIssueLabels(t *testing.T) {
 		client.BaseURL = ts.URL
 		client.HTTP = ts.Client()
 
-		err := client.AddIssueLabels(t.Context(), "test-token", "owner", "repo", 42, []string{"sentinel:nonexistent"})
+		err := client.AddIssueLabels(t.Context(), "test-token", "owner", "repo", 42, []string{"nonexistent"})
 		if err == nil {
 			t.Fatal("expected error on 422, got nil")
 		}
