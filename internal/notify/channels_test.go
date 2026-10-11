@@ -435,3 +435,29 @@ func TestHTMLToSlackMrkdwn(t *testing.T) {
 		t.Fatalf("Slack 超链接应为 <url|text>，实际: %s", output)
 	}
 }
+
+func TestSendBark_CustomLevelAndGroup(t *testing.T) {
+	var receivedBody map[string]any
+	w, ch, item := newChannelTestHarness(t, store.ChannelBark, func(rw http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &receivedBody)
+		rw.WriteHeader(http.StatusOK)
+		_, _ = rw.Write([]byte(`{"code":200,"message":"success"}`))
+	})
+	item.Title = "🚨 Silentely/xserver-vps-renew：高危安全告警"
+	item.BodyText = "发现 critical 漏洞"
+
+	err := w.sendBark(t.Context(), ch, "", item)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedBody["level"] != "critical" {
+		t.Errorf("高危告警应设为 critical level，got: %v", receivedBody["level"])
+	}
+	if receivedBody["sound"] != "alarm" {
+		t.Errorf("高危告警应设为 alarm 声音，got: %v", receivedBody["sound"])
+	}
+	if receivedBody["group"] != "Silentely/xserver-vps-renew" {
+		t.Errorf("应自动提取仓库名作为 group，got: %v", receivedBody["group"])
+	}
+}

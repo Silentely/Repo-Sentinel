@@ -433,10 +433,40 @@ func (w *Worker) sendBark(ctx context.Context, ch store.NotificationChannel, sec
 	}
 
 	plainBody := truncateRunes(htmlToPlainText(item.BodyText), 1000)
+	groupName := "RepoSentinel"
+	level := "active"
+	sound := ""
+
+	if repo, ok := item.BodyJSON["repository"].(string); ok && repo != "" {
+		groupName = repo
+	} else if strings.Contains(item.Title, "：") {
+		parts := strings.SplitN(item.Title, "：", 2)
+		trimmedRepo := strings.TrimSpace(parts[0])
+		trimmedRepo = strings.TrimPrefix(trimmedRepo, "📋 ")
+		trimmedRepo = strings.TrimPrefix(trimmedRepo, "🟢 ")
+		trimmedRepo = strings.TrimPrefix(trimmedRepo, "⚫ ")
+		trimmedRepo = strings.TrimPrefix(trimmedRepo, "🟣 ")
+		if strings.Contains(trimmedRepo, "/") {
+			groupName = trimmedRepo
+		}
+	}
+
+	titleLower := strings.ToLower(item.Title + " " + item.BodyText)
+	if strings.Contains(titleLower, "high") || strings.Contains(titleLower, "critical") || strings.Contains(titleLower, "高危") || strings.Contains(titleLower, "严重") {
+		level = "critical"
+		sound = "alarm"
+	} else if strings.Contains(titleLower, "renovate") || strings.Contains(titleLower, "dependabot") || strings.Contains(titleLower, "依赖更新") {
+		level = "passive"
+	}
+
 	payload := map[string]any{
 		"title": item.Title,
 		"body":  plainBody,
-		"group": "RepoSentinel",
+		"group": groupName,
+		"level": level,
+	}
+	if sound != "" {
+		payload["sound"] = sound
 	}
 	if item.HTMLURL != "" {
 		payload["url"] = item.HTMLURL
