@@ -549,3 +549,37 @@ func (s *server) handleTestAllChannels(w http.ResponseWriter, r *http.Request) {
 		"results": results,
 	})
 }
+
+func (s *server) handleListDigestHistory(w http.ResponseWriter, r *http.Request) {
+	items, total, err := s.dependencies.Store.Outbox().List(r.Context(), store.ListFilter{
+		Page:    1,
+		PerPage: 50,
+	})
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+
+	var results []map[string]any
+	for _, item := range items {
+		if strings.Contains(item.Title, "摘要") || strings.Contains(item.Title, "报告") || strings.Contains(item.Title, "Digest") {
+			aiUsed, _ := item.BodyJSON["ai"].(bool)
+			count, _ := item.BodyJSON["count"].(float64)
+			results = append(results, map[string]any{
+				"id":          item.ID,
+				"title":       item.Title,
+				"status":      item.Status,
+				"channel_id":  item.ChannelID,
+				"created_at":  item.CreatedAt,
+				"ai_used":     aiUsed,
+				"event_count": int(count),
+			})
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total":      len(results),
+		"items":      results,
+		"scan_total": total,
+	})
+}

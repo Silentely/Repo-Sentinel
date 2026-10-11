@@ -356,3 +356,45 @@ func TestBroadcastTestAllChannels(t *testing.T) {
 		t.Fatalf("expected 1 queued result, got %+v", res)
 	}
 }
+
+func TestDigestHistoryEndpoint(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	// 1. Create a telegram channel & trigger a periodic digest test notification
+	fixture.request(
+		t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"tg-digest","enabled":true,"target":"12345678"}`,
+		"127.0.0.1:49040", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	fixture.request(
+		t, http.MethodPost, "/api/v1/notifications/channels/telegram/test",
+		`{"scenario":"periodic_digest"}`,
+		"127.0.0.1:49041", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+
+	// 2. Call GET /api/v1/digest/history
+	resp := fixture.request(
+		t, http.MethodGet, "/api/v1/digest/history",
+		"", "127.0.0.1:49042", cookies, nil,
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d, body: %s", resp.Code, resp.Body.String())
+	}
+
+	var res struct {
+		Total int `json:"total"`
+		Items []struct {
+			Title string `json:"title"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal digest history failed: %v", err)
+	}
+
+	if res.Total < 1 || !strings.Contains(res.Items[0].Title, "每日摘要") {
+		t.Fatalf("expected at least 1 digest item containing 每日摘要, got %+v", res)
+	}
+}
