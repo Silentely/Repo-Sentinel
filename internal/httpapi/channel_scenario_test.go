@@ -398,3 +398,45 @@ func TestDigestHistoryEndpoint(t *testing.T) {
 		t.Fatalf("expected at least 1 digest item containing 每日摘要, got %+v", res)
 	}
 }
+
+func TestNotificationBackupEndpoint(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	// 1. Create a telegram channel
+	fixture.request(
+		t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"tg-backup","enabled":true,"target":"12345678"}`,
+		"127.0.0.1:49050", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+
+	// 2. Call GET /api/v1/notifications/backup
+	resp := fixture.request(
+		t, http.MethodGet, "/api/v1/notifications/backup",
+		"", "127.0.0.1:49051", cookies, nil,
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d, body: %s", resp.Code, resp.Body.String())
+	}
+
+	var res struct {
+		Version  string `json:"version"`
+		Total    int    `json:"total"`
+		Channels []struct {
+			Name        string `json:"name"`
+			ChannelType string `json:"channel_type"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal backup response failed: %v", err)
+	}
+
+	if res.Version != "1.0" || res.Total < 1 {
+		t.Fatalf("unexpected backup payload: %+v", res)
+	}
+	if res.Channels[0].Name != "tg-backup" {
+		t.Fatalf("expected channel name tg-backup, got: %s", res.Channels[0].Name)
+	}
+}

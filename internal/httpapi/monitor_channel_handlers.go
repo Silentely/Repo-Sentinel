@@ -583,3 +583,41 @@ func (s *server) handleListDigestHistory(w http.ResponseWriter, r *http.Request)
 		"scan_total": total,
 	})
 }
+
+func (s *server) handleExportNotificationBackup(w http.ResponseWriter, r *http.Request) {
+	channels, err := s.dependencies.Store.Channels().List(r.Context())
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+
+	exported := make([]map[string]any, 0, len(channels))
+	for _, ch := range channels {
+		exported = append(exported, map[string]any{
+			"channel_type":           ch.ChannelType,
+			"name":                   ch.Name,
+			"target":                 ch.Target,
+			"enabled":                ch.Enabled,
+			"allow_private":          ch.AllowPrivate,
+			"event_kinds":            ch.EventKinds,
+			"receive_daily_digest":   ch.ReceiveDailyDigest,
+			"receive_weekly_report":  ch.ReceiveWeeklyReport,
+			"receive_monthly_report": ch.ReceiveMonthlyReport,
+			"quiet_hours_enabled":    ch.QuietHoursEnabled,
+			"quiet_hours_start":      ch.QuietHoursStart,
+			"quiet_hours_end":        ch.QuietHoursEnd,
+			"quiet_hours_tz":         ch.QuietHoursTZ,
+			"ignore_bots":            ch.IgnoreBots,
+			"repo_pattern":           ch.RepoPattern,
+			"branch_filter":          ch.BranchFilter,
+			"min_severity":           ch.MinSeverity,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":     "1.0",
+		"exported_at": time.Now().UTC(),
+		"total":       len(exported),
+		"channels":    exported,
+	})
+}
