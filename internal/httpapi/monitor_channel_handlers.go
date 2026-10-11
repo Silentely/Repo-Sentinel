@@ -495,3 +495,57 @@ func (s *server) handleNotificationMetrics(w http.ResponseWriter, r *http.Reques
 		},
 	})
 }
+
+func (s *server) handleTestAllChannels(w http.ResponseWriter, r *http.Request) {
+	channels, err := s.dependencies.Store.Channels().List(r.Context())
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+
+	var enabled []store.NotificationChannel
+	for _, ch := range channels {
+		if ch.Enabled {
+			enabled = append(enabled, ch)
+		}
+	}
+
+	if len(enabled) == 0 {
+		s.writeAPIError(w, r, http.StatusBadRequest, "no_enabled_channels", map[string]any{
+			"message": "当前未启用任何通知渠道，请先启用至少一个渠道再进行全渠道体检",
+		})
+		return
+	}
+
+	now := time.Now().UTC()
+	title, bodyText, htmlURL := buildTestScenario("", now)
+	results := make([]map[string]any, 0, len(enabled))
+
+	for _, ch := range enabled {
+		_, err := s.dependencies.Store.Outbox().Create(r.Context(), store.NotificationOutbox{
+			ID:             ulid.Make().String(),
+			ChannelID:      ch.ID,
+			IdempotencyKey: "test-all|" + ch.ID + "|" + ulid.Make().String(),
+			Status:         store.OutboxPending,
+			NextAttemptAt:  now,
+			Title:          title,
+			BodyText:       bodyText,
+			HTMLURL:        htmlURL,
+			ParseMode:      "HTML",
+		})
+		st := "queued"
+		if err != nil {
+			st = "failed"
+		}
+		results = append(results, map[string]any{
+			"channel_type": ch.ChannelType,
+			"channel_id":   ch.ID,
+			"status":       st,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total":   len(enabled),
+		"results": results,
+	})
+}

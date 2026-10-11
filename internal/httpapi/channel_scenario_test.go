@@ -309,3 +309,50 @@ func TestNotificationMetricsEndpoint(t *testing.T) {
 		t.Errorf("expected operational runtime status, got %s", res.Runtime.Status)
 	}
 }
+
+func TestBroadcastTestAllChannels(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{CSRFHeaderName: csrf.Value}
+
+	// 1. 无任何启用渠道时测试应报错 400
+	badResp := fixture.request(
+		t, http.MethodPost, "/api/v1/notifications/channels/test-all",
+		"", "127.0.0.1:49030", cookies, headers,
+	)
+	if badResp.Code != http.StatusBadRequest {
+		t.Fatalf("无渠道时应返回 400, got %d", badResp.Code)
+	}
+
+	// 2. 启用一个 telegram 渠道
+	fixture.request(
+		t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"tg-all","enabled":true,"target":"12345678"}`,
+		"127.0.0.1:49031", cookies, headers,
+	)
+
+	// 3. 再次广播体检
+	okResp := fixture.request(
+		t, http.MethodPost, "/api/v1/notifications/channels/test-all",
+		"", "127.0.0.1:49032", cookies, headers,
+	)
+	if okResp.Code != http.StatusOK {
+		t.Fatalf("广播体检应成功 200, got %d, body: %s", okResp.Code, okResp.Body.String())
+	}
+
+	var res struct {
+		Total   int `json:"total"`
+		Results []struct {
+			ChannelType string `json:"channel_type"`
+			Status      string `json:"status"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(okResp.Body.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal broadcast resp failed: %v", err)
+	}
+	if res.Total != 1 || res.Results[0].Status != "queued" {
+		t.Fatalf("expected 1 queued result, got %+v", res)
+	}
+}
