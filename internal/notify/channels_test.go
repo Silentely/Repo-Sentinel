@@ -514,3 +514,41 @@ func TestSendDingTalk_MultiButton(t *testing.T) {
 		t.Fatalf("含有 chatops_token 时应渲染 2 个 btns，实际: %v", card["btns"])
 	}
 }
+
+func TestSendFeishu_NoteFooter(t *testing.T) {
+	var receivedBody map[string]any
+	w, ch, item := newChannelTestHarness(t, store.ChannelFeishu, func(rw http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &receivedBody)
+		rw.WriteHeader(http.StatusOK)
+		_, _ = rw.Write([]byte(`{"code":0,"msg":"success"}`))
+	})
+	item.Title = "测试飞书通知"
+	item.BodyText = "内容详情"
+
+	err := w.sendFeishu(t.Context(), ch, "", item)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	card, ok := receivedBody["card"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected card payload, got: %v", receivedBody)
+	}
+	elements, ok := card["elements"].([]any)
+	if !ok {
+		t.Fatalf("expected elements list, got: %v", card["elements"])
+	}
+
+	foundNote := false
+	for _, el := range elements {
+		m, ok := el.(map[string]any)
+		if ok && m["tag"] == "note" {
+			foundNote = true
+			break
+		}
+	}
+	if !foundNote {
+		t.Errorf("飞书卡片应包含 note 附注元素，实际: %+v", elements)
+	}
+}

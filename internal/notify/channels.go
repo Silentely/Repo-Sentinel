@@ -283,6 +283,12 @@ func (w *Worker) sendFeishu(ctx context.Context, ch store.NotificationChannel, s
 			},
 		})
 	}
+	elements = append(elements, map[string]any{
+		"tag": "note",
+		"elements": []any{
+			map[string]any{"tag": "plain_text", "content": "🔔 RepoSentinel · " + now.Format("15:04 UTC")},
+		},
+	})
 	if len(actions) > 0 {
 		elements = append(elements, map[string]any{
 			"tag":     "action",
