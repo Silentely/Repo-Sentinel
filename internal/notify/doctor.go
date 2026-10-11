@@ -2,7 +2,10 @@ package notify
 
 import (
 	"net/url"
+	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -17,13 +20,70 @@ const (
 )
 
 // ChannelDiagnostic 渠道诊断结论。
+// ChannelHealthTracker 内存中的运行时渠道健康追踪器（并发安全）。
+type ChannelHealthTracker struct {
+	mu       sync.RWMutex
+	failures map[string]int
+	lastErr  map[string]string
+	lastTime map[string]time.Time
+}
+
+// NewChannelHealthTracker 创建健康追踪器实例。
+func NewChannelHealthTracker() *ChannelHealthTracker {
+	return &ChannelHealthTracker{
+		failures: make(map[string]int),
+		lastErr:  make(map[string]string),
+		lastTime: make(map[string]time.Time),
+	}
+}
+
+// DefaultHealthTracker 全局默认渠道运行时健康追踪器。
+var DefaultHealthTracker = NewChannelHealthTracker()
+
+func (t *ChannelHealthTracker) RecordSuccess(channelID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.failures, channelID)
+	delete(t.lastErr, channelID)
+}
+
+func (t *ChannelHealthTracker) RecordFailure(channelID, reason string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.failures[channelID]++
+	t.lastErr[channelID] = reason
+	t.lastTime[channelID] = time.Now().UTC()
+}
+
+func (t *ChannelHealthTracker) GetHealth(channelID string) (int, string, time.Time) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.failures[channelID], t.lastErr[channelID], t.lastTime[channelID]
+}
+
 type ChannelDiagnostic struct {
 	Status  ChannelHealthStatus `json:"status"`
 	Message string              `json:"message"`
 }
 
 // DiagnoseChannel 对通知渠道的配置与目标进行静态健康诊断，提前指出潜在配置错误。
+// DiagnoseChannel 对通知渠道进行配置与运行时综合健康诊断。
 func DiagnoseChannel(ch store.NotificationChannel) ChannelDiagnostic {
+	return DiagnoseChannelWithRuntime(ch, DefaultHealthTracker)
+}
+
+// DiagnoseChannelWithRuntime 支持传入自定义运行时健康追踪器。
+func DiagnoseChannelWithRuntime(ch store.NotificationChannel, tracker *ChannelHealthTracker) ChannelDiagnostic {
+	if tracker != nil && ch.ID != "" {
+		fails, lastErr, _ := tracker.GetHealth(ch.ID)
+		if fails >= 3 {
+			return ChannelDiagnostic{
+				Status:  ChannelHealthError,
+				Message: fmt.Sprintf("运行时连续投递失败 %d 次 (最近错误: %s)", fails, lastErr),
+			}
+		}
+	}
+
 	if !ch.Enabled {
 		return ChannelDiagnostic{
 			Status:  ChannelHealthWarning,

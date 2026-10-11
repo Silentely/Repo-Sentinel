@@ -51,3 +51,36 @@ func TestDiagnoseChannel(t *testing.T) {
 		t.Errorf("正常 Webhook 状态应为 healthy, got %v", dOk.Status)
 	}
 }
+
+func TestChannelHealthTracker(t *testing.T) {
+	tracker := NewChannelHealthTracker()
+	ch := store.NotificationChannel{
+		ID:          "ch-1",
+		Enabled:     true,
+		ChannelType: store.ChannelTelegram,
+		Target:      "12345678",
+	}
+
+	// 1. 初始状态为 healthy
+	d := DiagnoseChannelWithRuntime(ch, tracker)
+	if d.Status != ChannelHealthOK {
+		t.Fatalf("初始状态应为 healthy, got %v", d.Status)
+	}
+
+	// 2. 模拟连续失败 3 次
+	tracker.RecordFailure("ch-1", "chat_not_found")
+	tracker.RecordFailure("ch-1", "chat_not_found")
+	tracker.RecordFailure("ch-1", "chat_not_found")
+
+	dFailing := DiagnoseChannelWithRuntime(ch, tracker)
+	if dFailing.Status != ChannelHealthError {
+		t.Fatalf("连续失败 3 次应转为 misconfigured/error, got %v", dFailing.Status)
+	}
+
+	// 3. 模拟成功发送后自愈
+	tracker.RecordSuccess("ch-1")
+	dRecovered := DiagnoseChannelWithRuntime(ch, tracker)
+	if dRecovered.Status != ChannelHealthOK {
+		t.Fatalf("成功投递后应自愈恢复为 healthy, got %v", dRecovered.Status)
+	}
+}

@@ -267,6 +267,7 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 				"title", truncateLogTitle(item.Title),
 			)
 		}
+		DefaultHealthTracker.RecordSuccess(item.ChannelID)
 		if w.OnSent != nil {
 			w.OnSent()
 		}
@@ -632,6 +633,7 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 
 func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbox, err error) {
 	code := deliveryErrorCode(err)
+	DefaultHealthTracker.RecordFailure(item.ChannelID, code)
 	var token string
 	if item.ClaimToken != nil {
 		token = *item.ClaimToken
