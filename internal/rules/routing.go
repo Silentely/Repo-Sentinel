@@ -183,3 +183,21 @@ func ExtractEventBranch(ev *store.Event) string {
 	}
 	return ""
 }
+
+// IsProductionBranch 判定分支是否为主生产/受保护关键分支。
+func IsProductionBranch(branch string) bool {
+	b := strings.ToLower(strings.TrimSpace(branch))
+	return b == "main" || b == "master" || b == "prod" || b == "production" || strings.HasPrefix(b, "release/") || strings.HasPrefix(b, "release-")
+}
+
+// BranchBadge 返回分支在 Telegram 富文本中的视觉徽章。
+func BranchBadge(branch string) string {
+	b := strings.TrimSpace(branch)
+	if b == "" {
+		return ""
+	}
+	if IsProductionBranch(b) {
+		return "⭐ <b>[" + b + " 主干]</b>"
+	}
+	return "<code>" + b + "</code>"
+}
