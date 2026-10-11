@@ -335,11 +335,28 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 		if action == ActionDeferQuietHours {
 			nextAttempt = resumeAt
 		}
+		var aggURL string
+		if b.repoName != "" {
+			aggURL = "https://github.com/" + b.repoName
+			switch b.category {
+			case "pull_request", "pr":
+				aggURL += "/pulls"
+			case "issue":
+				aggURL += "/issues"
+			case "workflow", "actions":
+				aggURL += "/actions"
+			case "release":
+				aggURL += "/releases"
+			case "security":
+				aggURL += "/security"
+			}
+		}
 		_, err := a.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eventID,
 			AggregateKey: idScope + "|" + b.category, IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: nextAttempt,
 			Title: title, BodyText: body, ParseMode: "HTML",
+			HTMLURL: aggURL,
 			BodyJSON: map[string]any{"aggregate": true, "count": len(sub), "category": b.category, "bucket": bucket},
 		})
 		if err != nil && !errors.Is(err, store.ErrConflict) {

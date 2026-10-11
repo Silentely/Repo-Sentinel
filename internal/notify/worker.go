@@ -503,6 +503,12 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 	// 4xx/5xx 读取响应体详情（截断），Telegram 会直接给出「chat not found」等可行动原因，
 	// 带进错误后日志与 Outbox 排障无需再抓包。
 	detail := readBodyDetail(resp)
+	if resp.StatusCode == 400 && parseMode != "" && (strings.Contains(detail, "can't parse entities") || strings.Contains(detail, "parsing entity")) {
+		if w.Logger != nil {
+			w.Logger.Warn("telegram html parse failed, auto falling back to plain text", "chat_id", chatID, "error", detail)
+		}
+		return w.sendTelegramDirect(ctx, api, chatID, token, htmlToPlainText(text), htmlURL, "", chatOpsToken...)
+	}
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 		// 客户端禁跟随重定向（ErrUseLastResponse 防 SSRF）：3xx 说明消息未送达，
 		// 必须按可重试错误处理，否则条目标记 sent 静默丢失。
@@ -854,7 +860,40 @@ func truncateTelegramText(text string) string {
 		}
 	}
 	s = strings.TrimRight(s, " \n")
-	return s + "…\n（内容过长，已截断）"
+	s = s + "…\n（内容过长，已截断）"
+	return balanceTelegramHTML(s)
+}
+
+// balanceTelegramHTML 补齐截断后所有未闭合的 Telegram 允许标签（如 </blockquote>, </code>, </b>）。
+func balanceTelegramHTML(s string) string {
+	var stack []string
+	matches := regexp.MustCompile(`(?i)</?([a-z0-9]+)(?:\s+[^>]*)?>`).FindAllStringSubmatchIndex(s, -1)
+	for _, m := range matches {
+		raw := s[m[0]:m[1]]
+		tagName := strings.ToLower(s[m[2]:m[3]])
+		switch tagName {
+		case "b", "strong", "i", "em", "u", "ins", "s", "strike", "del", "code", "pre", "blockquote", "a":
+			if strings.HasPrefix(raw, "</") {
+				for i := len(stack) - 1; i >= 0; i-- {
+					if stack[i] == tagName {
+						stack = append(stack[:i], stack[i+1:]...)
+						break
+					}
+				}
+			} else {
+				stack = append(stack, tagName)
+			}
+		}
+	}
+	if len(stack) == 0 {
+		return s
+	}
+	var sb strings.Builder
+	sb.WriteString(s)
+	for i := len(stack) - 1; i >= 0; i-- {
+		sb.WriteString("</" + stack[i] + ">")
+	}
+	return sb.String()
 }
 
 // isEntityTail 判断字符串是否全为 HTML 实体字符（字母/数字/#），用于识别未闭合实体。

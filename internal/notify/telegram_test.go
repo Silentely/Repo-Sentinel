@@ -266,3 +266,27 @@ func TestFormatTelegramExpandableBlocks_GeneralAISection(t *testing.T) {
 		t.Fatalf("Breaking Changes 应加粗，实际: %s", output)
 	}
 }
+
+func TestBalanceTelegramHTML(t *testing.T) {
+	// 1. 单个未闭合标签
+	unclosed := "<blockquote><b>这是粗体内容"
+	balanced := balanceTelegramHTML(unclosed)
+	if balanced != "<blockquote><b>这是粗体内容</b></blockquote>" {
+		t.Fatalf("应逆序闭合所有未闭合标签，实际: %s", balanced)
+	}
+
+	// 2. 已完全闭合的标签
+	closed := "<b>完全闭合</b>"
+	if balanceTelegramHTML(closed) != closed {
+		t.Fatalf("已闭合标签不应改变，实际: %s", balanceTelegramHTML(closed))
+	}
+}
+
+func TestTruncateTelegramTextBalancesOpenTags(t *testing.T) {
+	longText := "<blockquote expandable><b>" + strings.Repeat("长长长长", 1200)
+	truncated := truncateTelegramText(longText)
+
+	if !strings.HasSuffix(truncated, "</b></blockquote>") {
+		t.Fatalf("超长截断后末尾必须补齐闭合标签，避免 Telegram 报错 400，实际末尾: %s", truncated[len(truncated)-30:])
+	}
+}
