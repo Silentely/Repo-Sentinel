@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
@@ -297,6 +298,12 @@ func TestNotificationMetricsEndpoint(t *testing.T) {
 		Runtime struct {
 			Status string `json:"status"`
 		} `json:"runtime"`
+		DeliveryLatency struct {
+			SampleSize int    `json:"sample_size"`
+			Basis      string `json:"basis"`
+			Window     string `json:"window"`
+			P95MS      int64  `json:"p95_ms"`
+		} `json:"delivery_latency"`
 	}
 	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
 		t.Fatalf("unmarshal metrics response failed: %v", err)
@@ -307,6 +314,13 @@ func TestNotificationMetricsEndpoint(t *testing.T) {
 	}
 	if res.Runtime.Status != "operational" {
 		t.Errorf("expected operational runtime status, got %s", res.Runtime.Status)
+	}
+	// 尾延迟段必须声明样本口径，避免把固定窗口的估算当作全量统计。
+	if res.DeliveryLatency.Basis != "created_to_sent" || res.DeliveryLatency.Window != "last_200_sent" {
+		t.Errorf("投递延迟应标注样本口径，got %+v", res.DeliveryLatency)
+	}
+	if res.DeliveryLatency.SampleSize < 0 {
+		t.Errorf("样本量不应为负: %d", res.DeliveryLatency.SampleSize)
 	}
 }
 
@@ -385,8 +399,10 @@ func TestDigestHistoryEndpoint(t *testing.T) {
 	}
 
 	var res struct {
-		Total int `json:"total"`
-		Items []struct {
+		Total        int `json:"total"`
+		PagesScanned int `json:"pages_scanned"`
+		ScanLimit    int `json:"scan_limit"`
+		Items        []struct {
 			Title string `json:"title"`
 		} `json:"items"`
 	}
@@ -396,6 +412,10 @@ func TestDigestHistoryEndpoint(t *testing.T) {
 
 	if res.Total < 1 || !strings.Contains(res.Items[0].Title, "每日摘要") {
 		t.Fatalf("expected at least 1 digest item containing 每日摘要, got %+v", res)
+	}
+	// 扫描页数需反映实际扫描结果，并与上限一起返回，避免口径混用。
+	if res.PagesScanned < 1 || res.PagesScanned > res.ScanLimit {
+		t.Errorf("扫描页数应落在 1..%d 之间，got %d", res.ScanLimit, res.PagesScanned)
 	}
 }
 
@@ -425,8 +445,10 @@ func TestNotificationBackupEndpoint(t *testing.T) {
 		Version  string `json:"version"`
 		Total    int    `json:"total"`
 		Channels []struct {
-			Name        string `json:"name"`
-			ChannelType string `json:"channel_type"`
+			Name         string `json:"name"`
+			ChannelType  string `json:"channel_type"`
+			Target       string `json:"target"`
+			TargetMasked bool   `json:"target_masked"`
 		} `json:"channels"`
 	}
 	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
@@ -438,6 +460,46 @@ func TestNotificationBackupEndpoint(t *testing.T) {
 	}
 	if res.Channels[0].Name != "tg-backup" {
 		t.Fatalf("expected channel name tg-backup, got: %s", res.Channels[0].Name)
+	}
+
+	// 3. 含凭据的传入 Webhook：导出必须脱敏，路径密钥不得随备份外泄。
+	fixture.request(
+		t, http.MethodPut, "/api/v1/notifications/channels/slack",
+		`{"name":"slack-backup","enabled":true,"target":"https://hooks.slack.com/services/T00000000/B00000000/SecretPathValue"}`,
+		"127.0.0.1:49052", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	maskedResp := fixture.request(
+		t, http.MethodGet, "/api/v1/notifications/backup",
+		"", "127.0.0.1:49053", cookies, nil,
+	)
+	if maskedResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d, body: %s", maskedResp.Code, maskedResp.Body.String())
+	}
+	if strings.Contains(maskedResp.Body.String(), "SecretPathValue") {
+		t.Fatalf("备份导出不应包含 Webhook 路径凭据: %s", maskedResp.Body.String())
+	}
+	var masked struct {
+		Channels []struct {
+			ChannelType  string `json:"channel_type"`
+			Target       string `json:"target"`
+			TargetMasked bool   `json:"target_masked"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(maskedResp.Body.Bytes(), &masked); err != nil {
+		t.Fatalf("unmarshal masked backup failed: %v", err)
+	}
+	var slackFound bool
+	for _, ch := range masked.Channels {
+		if ch.ChannelType != store.ChannelSlack {
+			continue
+		}
+		slackFound = true
+		if !ch.TargetMasked || ch.Target != "https://hooks.slack.com/services/***" {
+			t.Errorf("Slack Webhook 应被脱敏导出，got target=%q masked=%v", ch.Target, ch.TargetMasked)
+		}
+	}
+	if !slackFound {
+		t.Fatalf("备份中未找到 slack 渠道: %+v", masked.Channels)
 	}
 }
 
@@ -481,12 +543,91 @@ func TestNotificationSLAEndpoint(t *testing.T) {
 	var res struct {
 		OverallSuccessRate string `json:"overall_success_rate"`
 		SLAStatus          string `json:"sla_status"`
+		InFlight           int    `json:"in_flight"`
+		SampleBasis        string `json:"sample_basis"`
 	}
 	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
 		t.Fatalf("unmarshal sla response failed: %v", err)
 	}
 	if res.SLAStatus != "unknown" {
 		t.Fatalf("expected unknown without delivery sample, got: %s", res.SLAStatus)
+	}
+	// 成功率只按已完成样本计算，口径与在途数量都必须显式返回。
+	if res.SampleBasis != "completed_only" {
+		t.Errorf("SLA 应声明样本口径，got %q", res.SampleBasis)
+	}
+	if res.InFlight < 0 {
+		t.Errorf("在途数量不应为负: %d", res.InFlight)
+	}
+}
+
+// TestOutboxListClassifiesDeadLetters 守护死信归因接线：死信条目附带分类与重试建议。
+func TestOutboxListClassifiesDeadLetters(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	if _, err := fixture.store.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: "ch-dead-classify", ChannelType: store.ChannelTelegram,
+		Name: "dead classify", Enabled: true, Target: "-100777", MinSeverity: "low",
+	}); err != nil {
+		t.Fatalf("创建渠道失败: %v", err)
+	}
+	if _, err := fixture.store.Outbox().Create(t.Context(), store.NotificationOutbox{
+		ID: "ob-dead-classify", ChannelID: "ch-dead-classify",
+		Status: store.OutboxDead, Title: "dead notification",
+		LastErrorCode: "rate_limited_429",
+	}); err != nil {
+		t.Fatalf("创建死信记录失败: %v", err)
+	}
+
+	resp := fixture.request(
+		t, http.MethodGet, "/api/v1/notifications/outbox?status=dead",
+		"", "127.0.0.1:49090", cookies, nil,
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d, body: %s", resp.Code, resp.Body.String())
+	}
+	var res struct {
+		Items []struct {
+			ID               string `json:"id"`
+			FailureCategory  string `json:"failure_category"`
+			RetryRecommended bool   `json:"retry_recommended"`
+			RetryHint        string `json:"retry_hint"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal outbox response failed: %v", err)
+	}
+	var found bool
+	for _, item := range res.Items {
+		if item.ID != "ob-dead-classify" {
+			continue
+		}
+		found = true
+		if item.FailureCategory != string(notify.DeadCauseTransient) || !item.RetryRecommended || item.RetryHint == "" {
+			t.Errorf("限流死信应归类为 transient 且建议重投，got %+v", item)
+		}
+	}
+	if !found {
+		t.Fatalf("未在死信列表中找到目标条目: %+v", res.Items)
+	}
+}
+
+// TestExplainDeliveryErrorCodeUsesSharedPlatformTable 守护平台错误码释义走共享转译器。
+func TestExplainDeliveryErrorCodeUsesSharedPlatformTable(t *testing.T) {
+	if got := explainDeliveryErrorCode("wecom_api_error_93000"); !strings.Contains(got, "机器人已被移出群聊") {
+		t.Errorf("企微 93000 应给出平台释义，got %q", got)
+	}
+	if got := explainDeliveryErrorCode("feishu_api_error_9499"); !strings.Contains(got, "卡片 JSON 请求体格式非法") {
+		t.Errorf("飞书 9499 应给出平台释义，got %q", got)
+	}
+	if got := explainDeliveryErrorCode("rate_limited_429"); !strings.Contains(got, "频率限制") {
+		t.Errorf("限流码应保留通用释义，got %q", got)
+	}
+	// 未知原因不得把内部原始错误串透传给前端。
+	if got := explainDeliveryErrorCode("mystery_internal_failure_xyz"); strings.Contains(got, "mystery_internal_failure_xyz") {
+		t.Errorf("未知错误码不应透传原始错误串，got %q", got)
 	}
 }
 

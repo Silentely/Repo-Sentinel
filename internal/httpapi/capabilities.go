@@ -1,68 +1,116 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"net/http"
+	"sort"
 	"time"
+
+	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
-// CapabilityFeature 描述单项核心能力
+// CapabilityFeature 描述系统的一项能力及其当前运行状态。
 type CapabilityFeature struct {
 	Name        string `json:"name"`
 	Category    string `json:"category"`
 	Description string `json:"description"`
-	Status      string `json:"status"` // active, ready
+	// Status 取值为 active（已装配且可用）或 unavailable（未启用，例如无可用渠道、AI 未开启）。
+	Status string `json:"status"`
 }
 
-// SystemCapabilitiesMatrix 百轮里程碑系统全景能力矩阵
+// SystemCapabilitiesMatrix 描述当前构建与运行时的能力清单。
 type SystemCapabilitiesMatrix struct {
-	Milestone       string              `json:"milestone"`
-	Version         string              `json:"version"`
-	TotalRounds     int                 `json:"total_rounds"`
-	SupportedChannels []string          `json:"supported_channels"`
-	Features        []CapabilityFeature `json:"features"`
-	Timestamp       time.Time           `json:"timestamp"`
+	Version           string              `json:"version"`
+	Commit            string              `json:"commit"`
+	BuildChannel      string              `json:"build_channel"`
+	EnabledChannels   []string            `json:"enabled_channels"`
+	SupportedChannels []string            `json:"supported_channels"`
+	Features          []CapabilityFeature `json:"features"`
+	Timestamp         time.Time           `json:"timestamp"`
 }
 
-// GetSystemCapabilitiesMatrix 获取系统当前全量装配能力清单
-func GetSystemCapabilitiesMatrix() SystemCapabilitiesMatrix {
+// SystemCapabilitiesInput 汇总构建信息与运行时开关，供能力清单判定状态。
+type SystemCapabilitiesInput struct {
+	BuildInfo       buildinfo.Info
+	EnabledChannels []string
+	AIEnabled       bool
+	DigestEnabled   bool
+}
+
+// supportedChannelTypes 列出代码支持的全部通知渠道类型（与 store 渠道常量保持一致）。
+var supportedChannelTypes = []string{
+	store.ChannelTelegram,
+	store.ChannelHTTPWebhook,
+	store.ChannelSlack,
+	store.ChannelFeishu,
+	store.ChannelDingTalk,
+	store.ChannelWeCom,
+	store.ChannelDiscord,
+	store.ChannelBark,
+}
+
+// BuildSystemCapabilitiesMatrix 组装能力矩阵：版本来自真实构建元数据，
+// 每项能力的状态由运行时开关推导，避免出现「清单已声明、实际未生效」的失实描述。
+func BuildSystemCapabilitiesMatrix(in SystemCapabilitiesInput) SystemCapabilitiesMatrix {
+	channels := in.EnabledChannels
+	if channels == nil {
+		channels = []string{}
+	}
+	sort.Strings(channels)
+
+	notifyStatus := "unavailable"
+	if len(channels) > 0 {
+		notifyStatus = "active"
+	}
+	aiStatus := "unavailable"
+	if in.AIEnabled {
+		aiStatus = "active"
+	}
+	digestStatus := "unavailable"
+	if in.DigestEnabled {
+		digestStatus = "active"
+	}
+
 	return SystemCapabilitiesMatrix{
-		Milestone:   "100-Rounds Polish Completed",
-		Version:     "v2.5.0-enterprise",
-		TotalRounds: 100,
-		SupportedChannels: []string{
-			"telegram",
-			"feishu",
-			"dingtalk",
-			"wecom",
-			"slack",
-			"bark",
-		},
+		Version:           in.BuildInfo.Version,
+		Commit:            in.BuildInfo.GitSHA,
+		BuildChannel:      in.BuildInfo.BuildChannel,
+		EnabledChannels:   channels,
+		SupportedChannels: supportedChannelTypes,
 		Features: []CapabilityFeature{
-			{Name: "telegram_rich_layout", Category: "notify", Description: "Telegram 原生 spoiler、可折叠引用与两阶段保真截断", Status: "active"},
-			{Name: "feishu_interactive_cards", Category: "notify", Description: "飞书自适应双语标题、折叠容器、图文卡片与富文本回退", Status: "active"},
-			{Name: "dingtalk_action_card", Category: "notify", Description: "钉钉独立多跳转按钮组、任务清单复选框与签名自验", Status: "active"},
-			{Name: "wecom_color_tags", Category: "notify", Description: "企业微信 Markdown 彩色标签与 TextCard 回退模式", Status: "active"},
-			{Name: "slack_block_kit", Category: "notify", Description: "Slack Block Kit 上下文附注与紧急警报全员呼叫块", Status: "active"},
-			{Name: "bark_priority_sound", Category: "notify", Description: "iOS Bark 角标管理与分级声音策略分配", Status: "active"},
-			{Name: "resilience_traffic_control", Category: "engine", Description: "平滑令牌桶、三态熔断器、指数退避上限与高并发去重缓存", Status: "active"},
-			{Name: "observability_and_audit", Category: "metrics", Description: "云原生存活探针、投递 P95/P99 度量、死信多维筛选与概览快照", Status: "active"},
+			{Name: "multichannel_delivery", Category: "notify", Description: "Telegram / 飞书 / 钉钉 / 企业微信 / Slack / Discord / Bark / HTTP Webhook 多渠道投递与渠道级过滤", Status: notifyStatus},
+			{Name: "delivery_retry_backoff", Category: "notify", Description: "投递失败指数退避重试上限、渠道健康度追踪与死信一键重投", Status: notifyStatus},
+			{Name: "quiet_hours", Category: "notify", Description: "渠道级免打扰时段与紧急安全告警穿透豁免", Status: notifyStatus},
+			{Name: "digest_reports", Category: "digest", Description: "日/周/月定期摘要、活跃仓库排行与历史归档查询", Status: digestStatus},
+			{Name: "ai_assistance", Category: "ai", Description: "PR 代码审查、Issue 智能分诊、安全告警分析与 CI 失败归因", Status: aiStatus},
+			{Name: "chatops_actions", Category: "ops", Description: "Telegram / 飞书 交互按钮触发 Actions 工作流重跑，一次性 Token 防重放", Status: "active"},
+			{Name: "webhook_integrity", Category: "security", Description: "GitHub Webhook HMAC-SHA256 验签、投递指纹去重与保留期清理", Status: "active"},
+			{Name: "outbound_ssrf_guard", Category: "security", Description: "出站 Webhook 私网与云元数据地址拦截、禁止重定向跟随", Status: "active"},
 		},
-		Timestamp: time.Now(),
+		Timestamp: time.Now().UTC(),
 	}
 }
 
-// CapabilitiesHandler 提供 GET /system/capabilities 端点服务
-func CapabilitiesHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		matrix := GetSystemCapabilitiesMatrix()
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(matrix)
+// handleCapabilities 提供 GET /system/capabilities：返回真实构建版本与当前生效的能力清单。
+func (s *server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	channels, err := s.dependencies.Store.Channels().List(r.Context())
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
 	}
+	enabled := make([]string, 0, len(channels))
+	seen := make(map[string]bool, len(channels))
+	for _, ch := range channels {
+		if ch.Enabled && !seen[ch.ChannelType] {
+			seen[ch.ChannelType] = true
+			enabled = append(enabled, ch.ChannelType)
+		}
+	}
+	writeJSON(w, http.StatusOK, BuildSystemCapabilitiesMatrix(SystemCapabilitiesInput{
+		BuildInfo:       s.dependencies.BuildInfo,
+		EnabledChannels: enabled,
+		AIEnabled:       s.dependencies.Config.AI.Enabled,
+		DigestEnabled:   s.dependencies.Config.AI.Enabled && s.dependencies.Config.AI.DigestEnabled,
+	}))
 }

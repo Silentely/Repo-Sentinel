@@ -3,7 +3,6 @@ package digest
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -97,36 +96,5 @@ func TestBuildDigestMetricsCard(t *testing.T) {
 	}
 	if !strings.Contains(card, "🚀 发布: 1") {
 		t.Fatalf("应包含发布数，实际:\n%s", card)
-	}
-}
-
-func TestFormatRelativeTime(t *testing.T) {
-	now := time.Now()
-	if got := FormatRelativeTime(now.Add(-10*time.Second), now); got != "刚刚" {
-		t.Errorf("expected 刚刚, got %s", got)
-	}
-	if got := FormatRelativeTime(now.Add(-15*time.Minute), now); got != "15 分钟前" {
-		t.Errorf("expected 15 分钟前, got %s", got)
-	}
-	if got := FormatRelativeTime(now.Add(-3*time.Hour), now); got != "3 小时前" {
-		t.Errorf("expected 3 小时前, got %s", got)
-	}
-	if got := FormatRelativeTime(now.Add(-48*time.Hour), now); got != "2 天前" {
-		t.Errorf("expected 2 天前, got %s", got)
-	}
-}
-
-func TestFormatDeltaBadge(t *testing.T) {
-	if got := FormatDeltaBadge(0, 10); got != "" {
-		t.Errorf("prev <= 0 应返回空，got: %s", got)
-	}
-	if got := FormatDeltaBadge(10, 10); !strings.Contains(got, "持平") {
-		t.Errorf("相等应返回持平，got: %s", got)
-	}
-	if got := FormatDeltaBadge(10, 15); !strings.Contains(got, "+50%") {
-		t.Errorf("增加应返回 +50%%，got: %s", got)
-	}
-	if got := FormatDeltaBadge(20, 10); !strings.Contains(got, "-50%") {
-		t.Errorf("减少应返回 -50%%，got: %s", got)
 	}
 }

@@ -176,7 +176,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	} else if res.Repository != nil {
 		repoID = res.Repository.ID
 	}
-	isMuted, _ := CheckEmergencyMute(ctx, e.Store, repoID)
+	isMuted, muteReason := CheckEmergencyMute(ctx, e.Store, repoID)
 
 	// 全部订阅渠道都会被过滤拦截或免打扰时不作 AI 分析：省下无效费用与等待。
 	if !isMuted && hasReceivingChannel(channels, res.Event, repoFullName, branch) {
@@ -231,6 +231,12 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			e.logNotifySkipped(res, repoFullName, "emergency_mute")
 			suppressedIdem := fmt.Sprintf("suppressed|%s|%s", res.Event.ID, ch.ID)
 			now := time.Now().UTC()
+			// SuppressedReason 保持稳定机器码（下游按码聚合统计），人类可读的静音原因与
+			// 解冻时刻随正文载荷入库，回溯时不必再查当时的 settings 快照。
+			if muteReason != "" {
+				bodyJSON["mute_reason"] = muteReason
+			}
+			bodyJSON["mute_reason_code"] = "emergency_mute"
 			if _, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
 				ID:               ulid.Make().String(),
 				ChannelID:        ch.ID,

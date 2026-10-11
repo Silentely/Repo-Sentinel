@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/Silentely/Repo-Sentinel/internal/webhooksvc"
@@ -516,6 +517,13 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 			"body_text":        item.BodyText,
 			"error_diagnostic": explainDeliveryErrorCode(item.LastErrorCode),
 		}
+		// 死信附加归因分类与重试建议：运维可据此区分「配置要修」与「可直接重投」。
+		if item.Status == store.OutboxDead {
+			category, retryRecommended, hint := notify.ClassifyDeadLetter(item.LastErrorCode)
+			entry["failure_category"] = category
+			entry["retry_recommended"] = retryRecommended
+			entry["retry_hint"] = hint
+		}
 		enriched = append(enriched, entry)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": enriched, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
@@ -525,6 +533,12 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 func explainDeliveryErrorCode(code string) string {
 	if code == "" {
 		return ""
+	}
+	// 平台数字错误码（企微/飞书等）走共享转译器，避免同一套码表在两处各写一份。
+	for _, channelType := range []string{store.ChannelWeCom, store.ChannelFeishu} {
+		if explanation := notify.InterpretPlatformError(channelType, code); explanation.Code != "general" {
+			return explanation.Meaning + "；" + explanation.FixGuidance
+		}
 	}
 	switch {
 	case strings.Contains(code, "rate_limited"):
@@ -542,7 +556,8 @@ func explainDeliveryErrorCode(code string) string {
 	case strings.Contains(code, "timeout"):
 		return "网络连接或网关超时，系统已自动排期重试"
 	default:
-		return "投递未完成：" + code
+		// 未知原因不透传内部原始错误串，原始码仍在 last_error_code 字段单独返回。
+		return "投递未完成：原因未归类，请结合渠道状态与系统日志排查"
 	}
 }
 

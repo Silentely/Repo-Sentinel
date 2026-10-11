@@ -572,8 +572,8 @@ func TestMultiInstanceAggregateIdempotency(t *testing.T) {
 	_ = agg2.Evaluate(ctx, normalizer.Result{Event: makeEvent("c")}, "acme/demo")
 	_ = agg2.Evaluate(ctx, normalizer.Result{Event: makeEvent("d")}, "acme/demo")
 	key := repoID + "|issue"
-	agg1.flush(key)
-	agg2.flush(key)
+	agg1.flush(key, nil)
+	agg2.flush(key, nil)
 	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
 	if err != nil {
 		t.Fatal(err)
@@ -581,6 +581,100 @@ func TestMultiInstanceAggregateIdempotency(t *testing.T) {
 	// 时间桶幂等：两实例合并通知应收敛为 1 条（同渠道同桶）。
 	if len(items) != 1 {
 		t.Fatalf("多实例应幂等为 1 条 outbox，got %d", len(items))
+	}
+}
+
+// TestSameWindowDoubleFlushEnqueuesBothBatches 守护「同窗口两次冲刷都不丢」：
+// 饱和提前冲刷与窗口收尾冲刷过去使用同一幂等键，第二批会撞 Outbox 唯一约束被静默丢弃。
+func TestSameWindowDoubleFlushEnqueuesBothBatches(t *testing.T) {
+	data := openTestStore(t)
+	_ = seedChannel(t, data)
+	// 窗口取 1 小时，保证两次手动冲刷落在同一时间桶内。
+	agg := NewAggregator(data, time.Hour, 100, time.Hour)
+	repoID := ulid.Make().String()
+	ctx := context.Background()
+	makeEvent := func(title string) *store.Event {
+		return &store.Event{
+			ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened",
+			Title: title, RepositoryID: &repoID,
+		}
+	}
+
+	key := repoID + "|issue"
+	_ = agg.Evaluate(ctx, normalizer.Result{Event: makeEvent("a")}, "acme/demo")
+	_ = agg.Evaluate(ctx, normalizer.Result{Event: makeEvent("b")}, "acme/demo")
+	agg.flush(key, nil)
+
+	// 同窗口内第二批事件重新成桶并冲刷：必须单独入库而不是被唯一约束吞掉。
+	_ = agg.Evaluate(ctx, normalizer.Result{Event: makeEvent("c")}, "acme/demo")
+	_ = agg.Evaluate(ctx, normalizer.Result{Event: makeEvent("d")}, "acme/demo")
+	agg.flush(key, nil)
+
+	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("同窗口两批冲刷都应入库，got %d 条", len(items))
+	}
+	keys := map[string]bool{}
+	for _, it := range items {
+		if keys[it.IdempotencyKey] {
+			t.Fatalf("两批次的幂等键必须不同，重复键: %s", it.IdempotencyKey)
+		}
+		keys[it.IdempotencyKey] = true
+	}
+}
+
+// TestMultiInstanceAggregateIdempotencyAcrossChannels 守护多渠道下的跨实例收敛：
+// 「本批次是否带批次指纹」必须按一次 flush 判定而不是按渠道判定，否则同一次 flush 的
+// 第 2..N 个渠道会在各副本落上不同的本地批指纹，同一条合并通知被重复投递。
+func TestMultiInstanceAggregateIdempotencyAcrossChannels(t *testing.T) {
+	data := openTestStore(t)
+	_ = seedChannel(t, data)
+	if _, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: ulid.Make().String(), ChannelType: store.ChannelSlack, Name: "slack",
+		Enabled: true, Target: "https://hooks.slack.com/services/T000/B000/XXXX",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	agg1 := NewAggregator(data, time.Minute, 100, time.Minute)
+	agg2 := NewAggregator(data, time.Minute, 100, time.Minute)
+	repoID := ulid.Make().String()
+	// 显式给出互不相同的去重指纹：批次标识取自首事件，两个副本的事件集不同，
+	// 若批次指纹按渠道分别判定，第二个渠道就会落上两把不同的键而重复投递。
+	makeEvent := func(title, fingerprint string) *store.Event {
+		return &store.Event{
+			ID: ulid.Make().String(), Kind: store.WorkItemKindIssue, Action: "opened",
+			Title: title, RepositoryID: &repoID, DedupeFingerprint: fingerprint,
+		}
+	}
+	ctx := context.Background()
+	_ = agg1.Evaluate(ctx, normalizer.Result{Event: makeEvent("a", "fp-instance1-batch1")}, "acme/demo")
+	_ = agg1.Evaluate(ctx, normalizer.Result{Event: makeEvent("b", "fp-instance1-batch2")}, "acme/demo")
+	_ = agg2.Evaluate(ctx, normalizer.Result{Event: makeEvent("c", "fp-instance2-batch1")}, "acme/demo")
+	_ = agg2.Evaluate(ctx, normalizer.Result{Event: makeEvent("d", "fp-instance2-batch2")}, "acme/demo")
+
+	key := repoID + "|issue"
+	agg1.flush(key, nil)
+	agg2.flush(key, nil)
+
+	items, _, err := data.Outbox().List(ctx, store.ListFilter{Page: 1, PerPage: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	perChannel := map[string]int{}
+	for _, it := range items {
+		perChannel[it.ChannelID]++
+	}
+	if len(perChannel) != 2 {
+		t.Fatalf("两个启用渠道都应收到合并通知，got %v", perChannel)
+	}
+	for chID, n := range perChannel {
+		if n != 1 {
+			t.Errorf("渠道 %s 收到 %d 条合并通知（跨实例应收敛为 1 条）", chID, n)
+		}
 	}
 }
 

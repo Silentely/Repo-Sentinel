@@ -36,6 +36,44 @@ func TestRedactSensitiveSecrets(t *testing.T) {
 			contains: "[REDACTED_PRIVATE_KEY]",
 			excludes: "BEGIN RSA PRIVATE KEY",
 		},
+		{
+			name:     "Private Key Body",
+			input:    "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA7xSecretMaterial\n-----END RSA PRIVATE KEY-----",
+			contains: "[REDACTED_PRIVATE_KEY]",
+			excludes: "MIIEowIBAAKCAQEA7xSecretMaterial",
+		},
+		{
+			name:     "Authorization Header",
+			input:    "headers: Authorization: Bearer ghp_1234567890abcdef1234567890abcdef12",
+			contains: "Authorization: Bearer ***",
+			excludes: "ghp_1234567890abcdef1234567890abcdef12",
+		},
+		{
+			name:     "Slack Webhook URL",
+			input:    "投递目标 https://hooks.slack.com/services/T00000000/B00000000/SuperSecretPath",
+			contains: "https://hooks.slack.com/services/***",
+			excludes: "SuperSecretPath",
+		},
+		{
+			name:     "URL Query Credential",
+			input:    "回调 https://example.com/hook?token=abc123secretvalue&page=2",
+			contains: "token=***",
+			excludes: "abc123secretvalue",
+		},
+		{
+			// 缺少 END 标记时只吃掉 base64 正文，后续正文不能被一起吞掉。
+			name:     "Truncated Private Key",
+			input:    "日志 -----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA7xSecretMaterial 后续正文保留",
+			contains: "后续正文保留",
+			excludes: "MIIEowIBAAKCAQEA7xSecretMaterial",
+		},
+		{
+			// 普通查询参数不属于凭据，不能被误掩码。
+			name:     "NonCredentialQueryParam",
+			input:    "下载 https://example.com/file?key=download&page=2",
+			contains: "key=download",
+			excludes: "key=***",
+		},
 	}
 
 	for _, tc := range cases {

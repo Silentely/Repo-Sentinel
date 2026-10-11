@@ -3,15 +3,11 @@ package notify
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -133,6 +129,32 @@ func determineMessageTheme(title, body string) (feishuColor string, discordColor
 		return "turquoise", 0x10B981
 	}
 	return "blue", 0x3B82F6
+}
+
+// Bark 严重度关键词与主题色关键词分开：主题色把 high 与 critical 一同渲染为红色，
+// 而 Bark 的 critical 档会穿透 iOS 专注模式，只有确实需要立刻处理的内容才应命中。
+var (
+	barkCriticalKeywords = []string{"critical", "severe", "blocker", "outage", "failure", "failed", "fail"}
+	barkHighKeywords     = []string{"high", "high severity", "high-severity", "warning", "warn"}
+	barkCriticalChinese  = []string{"严重", "阻断", "失败", "宕机"}
+	barkHighChinese      = []string{"高危", "警告", "中危", "需人工审查"}
+)
+
+// classifySeverity 按词边界把通知内容归入 Bark 分级的严重度档位，
+// 避免 "high" 命中 "highlight" 这类子串误判；依赖更新类机器人推送归入低打扰。
+func classifySeverity(title, body string) string {
+	combined := title + " " + body
+	lower := strings.ToLower(combined)
+	switch {
+	case containsAnyRune(title, "❌", "🚨", "🔴") || containsAnyWord(lower, barkCriticalKeywords) || containsAnySubstr(combined, barkCriticalChinese):
+		return "critical"
+	case containsAnyRune(title, "⚠️", "⚠", "🟠", "🟡") || containsAnyWord(lower, barkHighKeywords) || containsAnySubstr(combined, barkHighChinese):
+		return "high"
+	case containsAnyWord(lower, []string{"renovate", "dependabot"}) || containsAnySubstr(combined, []string{"依赖更新"}):
+		return "low"
+	default:
+		return "medium"
+	}
 }
 
 // containsAnySubstr 判定文本是否包含任一子串（如中文状态短语）。
@@ -315,12 +337,9 @@ func (w *Worker) sendFeishu(ctx context.Context, ch store.NotificationChannel, s
 
 	// 飞书签名校验
 	if secret != "" {
-		ts := strconv.FormatInt(now.Unix(), 10)
-		stringToSign := ts + "\n" + secret
-		mac := hmac.New(sha256.New, []byte(stringToSign))
-		sign := base64.StdEncoding.EncodeToString(mac.Sum(nil))
-		payload["timestamp"] = ts
-		payload["sign"] = sign
+		ts := now.Unix()
+		payload["timestamp"] = strconv.FormatInt(ts, 10)
+		payload["sign"] = SignFeishu(ts, secret)
 	}
 
 	return w.postJSONChannel(ctx, ch, target, "feishu", payload)
@@ -373,17 +392,15 @@ func (w *Worker) sendDingTalk(ctx context.Context, ch store.NotificationChannel,
 	// 如果有加签密钥，追加 timestamp 与 sign query 参数
 	reqURL := target
 	if secret != "" {
-		nowMs := strconv.FormatInt(time.Now().UTC().UnixMilli(), 10)
-		stringToSign := nowMs + "\n" + secret
-		mac := hmac.New(sha256.New, []byte(secret))
-		mac.Write([]byte(stringToSign))
-		sign := url.QueryEscape(base64.StdEncoding.EncodeToString(mac.Sum(nil)))
+		nowMs := time.Now().UTC().UnixMilli()
+		// SignDingTalk 已对 base64 结果做 URL 转义，这里不可再转义一次。
+		sign := SignDingTalk(nowMs, secret)
 
 		sep := "?"
 		if strings.Contains(reqURL, "?") {
 			sep = "&"
 		}
-		reqURL = reqURL + sep + "timestamp=" + nowMs + "&sign=" + sign
+		reqURL = reqURL + sep + "timestamp=" + strconv.FormatInt(nowMs, 10) + "&sign=" + sign
 	}
 
 	plainBody := truncateRunes(htmlToMarkdown(item.BodyText), 2000)
@@ -474,8 +491,6 @@ func (w *Worker) sendBark(ctx context.Context, ch store.NotificationChannel, sec
 
 	plainBody := truncateRunes(htmlToPlainText(item.BodyText), 1000)
 	groupName := "RepoSentinel"
-	level := "active"
-	sound := ""
 
 	if repo, ok := item.BodyJSON["repository"].(string); ok && repo != "" {
 		groupName = repo
@@ -493,13 +508,8 @@ func (w *Worker) sendBark(ctx context.Context, ch store.NotificationChannel, sec
 		}
 	}
 
-	titleLower := strings.ToLower(item.Title + " " + item.BodyText)
-	if strings.Contains(titleLower, "high") || strings.Contains(titleLower, "critical") || strings.Contains(titleLower, "高危") || strings.Contains(titleLower, "严重") {
-		level = "critical"
-		sound = "alarm"
-	} else if strings.Contains(titleLower, "renovate") || strings.Contains(titleLower, "dependabot") || strings.Contains(titleLower, "依赖更新") {
-		level = "passive"
-	}
+	// 严重度按词边界判定：直接子串匹配会让 high 命中 highlight、success 命中 successful。
+	sound, level := AssignBarkSoundAndLevel(classifySeverity(item.Title, item.BodyText))
 
 	payload := map[string]any{
 		"title": item.Title,

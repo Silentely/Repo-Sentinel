@@ -201,7 +201,10 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 			case <-time.After(channelPacingDelay):
 			}
 		}
-		channelType, err := w.deliver(ctx, item, channelMap, secrets)
+		// 每次投递尝试注入 TraceID：与入库侧的 delivery_id 一起把「一次投递的完整链路」
+		// 串起来，失败与成功日志携带同一个 trace_id，跨渠道排障时可直接按 ID 过滤。
+		itemCtx, traceID := EnsureDeliveryTraceID(ctx)
+		channelType, err := w.deliver(itemCtx, item, channelMap, secrets)
 		if err != nil {
 			if w.Logger != nil {
 				w.Logger.Warn(
@@ -210,12 +213,13 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 					"channel_id", item.ChannelID,
 					"channel_type", channelType,
 					"attempt", item.AttemptCount,
+					"trace_id", traceID,
 					// 与 outbox 行写入的 last_error_code 同源，便于按码聚合告警与对照排障文案。
 					"error_code", deliveryErrorCode(err),
 					"error", logSafeDeliveryError(err),
 				)
 			}
-			w.handleFailure(ctx, item, err)
+			w.handleFailure(itemCtx, item, err)
 			continue
 		}
 		token := ""
@@ -236,6 +240,7 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 					"outbox_id", item.ID,
 					"channel_id", item.ChannelID,
 					"channel_type", channelType,
+					"trace_id", traceID,
 					"error_code", "outbox_mark_failed",
 					"error", err.Error(),
 				)
@@ -252,6 +257,7 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 					"outbox_id", item.ID,
 					"channel_id", item.ChannelID,
 					"channel_type", channelType,
+					"trace_id", traceID,
 					"error_code", "outbox_state_advanced",
 				)
 			}
@@ -264,6 +270,7 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 				"channel_id", item.ChannelID,
 				"channel_type", channelType,
 				"attempt", item.AttemptCount,
+				"trace_id", traceID,
 				"title", truncateLogTitle(item.Title),
 			)
 		}
@@ -673,7 +680,7 @@ func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbo
 			_, markErr = w.Store.Outbox().MarkRetry(ctx, item.ID, retryAt, code)
 		}
 		if markErr != nil && w.Logger != nil {
-			w.Logger.Error("outbox retry mark failed", "outbox_id", item.ID, "error_code", "outbox_mark_failed", "error", markErr.Error())
+			w.Logger.Error("outbox retry mark failed", "outbox_id", item.ID, "trace_id", TraceIDFromContext(ctx), "error_code", "outbox_mark_failed", "error", markErr.Error())
 		}
 		return
 	}
@@ -720,14 +727,14 @@ func (w *Worker) markDead(ctx context.Context, id, code string, claimToken ...st
 	if err != nil {
 		// 死信写失败会让条目无限重投：必须记录，便于人工介入。
 		if w.Logger != nil {
-			w.Logger.Error("outbox dead mark failed", "outbox_id", id, "error_code", "outbox_mark_failed", "error", err.Error())
+			w.Logger.Error("outbox dead mark failed", "outbox_id", id, "trace_id", TraceIDFromContext(ctx), "error_code", "outbox_mark_failed", "error", err.Error())
 		}
 		return
 	}
 	if !transitioned {
 		// 该行已由并发传递推进到终态（guard 拒绝），本条不再改变状态。
 		if w.Logger != nil {
-			w.Logger.Warn("outbox dead mark skipped", "outbox_id", id, "error_code", "outbox_state_advanced")
+			w.Logger.Warn("outbox dead mark skipped", "outbox_id", id, "trace_id", TraceIDFromContext(ctx), "error_code", "outbox_state_advanced")
 		}
 		return
 	}
@@ -1038,8 +1045,7 @@ func validateWebhookURL(raw string, allowPrivate bool) error {
 	}
 	host := u.Hostname()
 	lower := strings.ToLower(host)
-	if host == "metadata.google.internal" || host == "169.254.169.254" || host == "metadata" ||
-		lower == "localhost" || strings.HasSuffix(lower, ".local") || strings.HasSuffix(lower, ".internal") {
+	if isMetadataHost(host) || isLocalHostName(host) || strings.HasSuffix(lower, ".local") || strings.HasSuffix(lower, ".internal") {
 		return fmt.Errorf("ssrf_blocked")
 	}
 	if allowPrivate {
@@ -1066,6 +1072,34 @@ func validateWebhookURL(raw string, allowPrivate bool) error {
 		}
 	}
 	return nil
+}
+
+// isMetadataHost 判定云元数据服务地址：这类目标在任何 allow_private 配置下都必须拒绝。
+func isMetadataHost(host string) bool {
+	switch strings.ToLower(strings.TrimSpace(host)) {
+	case "metadata.google.internal", "metadata", "169.254.169.254", "100.100.100.200":
+		return true
+	}
+	return false
+}
+
+// isLocalHostName 判定本机主机名（不做 DNS 解析）；这类目标同样不受 allow_private 影响。
+func isLocalHostName(host string) bool {
+	lower := strings.ToLower(strings.TrimSpace(host))
+	return lower == "localhost" || strings.HasPrefix(lower, "localhost.")
+}
+
+// isPrivateTargetHost 判定目标主机是否指向本机/私网/链路本地地址（不做 DNS 解析），
+// 供渠道诊断与投递前校验共用同一判定口径。
+func isPrivateTargetHost(host string) bool {
+	lower := strings.ToLower(strings.TrimSpace(host))
+	if isMetadataHost(lower) || isLocalHostName(lower) || strings.HasSuffix(lower, ".local") || strings.HasSuffix(lower, ".internal") {
+		return true
+	}
+	if ip := net.ParseIP(lower); ip != nil {
+		return isBlockedIP(ip)
+	}
+	return false
 }
 
 func isBlockedIP(ip net.IP) bool {

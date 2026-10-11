@@ -39,6 +39,10 @@ type Aggregator struct {
 	// burstNotified: repoID|category -> 最近一次已投递超频摘要的时间桶。
 	// 同桶内后续超频事件只计入窗口计数，不再重复写库与留痕。
 	burstNotified map[string]int64
+	// flushedVariants: 「窗口幂等变体」-> 该变体最近一次入队的时间桶。
+	// 用于区分「本进程同窗口的第二批事件」（必须补发，否则撞唯一约束丢失）
+	// 与「其他副本已入队」（保持原键，维持跨实例收敛）。
+	flushedVariants map[string]int64
 }
 
 type aggBucket struct {
@@ -63,8 +67,40 @@ func NewAggregator(st store.Store, window time.Duration, burstThreshold int, bur
 	return &Aggregator{
 		Store: st, Window: window, BurstThreshold: burstThreshold, BurstWindow: burstWindow,
 		buckets: make(map[string]*aggBucket), bursts: make(map[string][]time.Time),
-		burstNotified: make(map[string]int64),
+		burstNotified:   make(map[string]int64),
+		flushedVariants: make(map[string]int64),
 	}
+}
+
+// maxTrackedFlushedVariants 内存登记表上限：超过后按时间桶清理旧条目，避免长期运行无界增长。
+const maxTrackedFlushedVariants = 4096
+
+// markVariantFlushed 登记一次「窗口幂等变体」入队；返回该变体在本进程是否已被入队过。
+// 同一窗口内第二次及以后的入队需要带批次指纹区分，否则会撞 Outbox 唯一约束被静默丢弃。
+func (a *Aggregator) markVariantFlushed(variant string, bucket int64) (alreadyFlushed bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.flushedVariants == nil {
+		a.flushedVariants = make(map[string]int64)
+	}
+	if _, ok := a.flushedVariants[variant]; ok {
+		a.flushedVariants[variant] = bucket
+		return true
+	}
+	if len(a.flushedVariants) >= maxTrackedFlushedVariants {
+		for k, v := range a.flushedVariants {
+			if v < bucket {
+				delete(a.flushedVariants, k)
+			}
+		}
+		if len(a.flushedVariants) >= maxTrackedFlushedVariants {
+			// 同一时间桶内变体数异常膨胀：整体清空，最坏结果是同窗口多一条合并通知，
+			// 也不会让登记表无界增长。
+			a.flushedVariants = make(map[string]int64, maxTrackedFlushedVariants)
+		}
+	}
+	a.flushedVariants[variant] = bucket
+	return false
 }
 
 // FlushAll 立即清空并提交所有暂存中的聚合桶（如优雅停机或即时刷新）。
@@ -82,7 +118,7 @@ func (a *Aggregator) FlushAll() {
 	}
 	a.mu.Unlock()
 	for _, k := range keys {
-		a.flush(k)
+		a.flush(k, nil)
 	}
 }
 
@@ -238,8 +274,10 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	if !ok {
 		b = &aggBucket{category: cat, repoID: repoID, repoName: repoFullName, events: []*store.Event{res.Event}}
 		a.buckets[key] = b
+		// 计时器绑定当前桶实例：桶被提前冲刷并重建后，陈旧回调不得冲刷新桶。
+		bucketRef := b
 		b.timer = time.AfterFunc(a.Window, func() {
-			a.flush(key)
+			a.flush(key, bucketRef)
 		})
 		a.mu.Unlock()
 		return nil
@@ -251,9 +289,10 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	if shouldEarlyFlush && b.timer != nil {
 		b.timer.Stop()
 	}
+	bucketRef := b
 	a.mu.Unlock()
 	if shouldEarlyFlush {
-		go a.flush(key)
+		go a.flush(key, bucketRef)
 	}
 	return nil
 }
@@ -273,10 +312,12 @@ func (a *Aggregator) flushBudget() time.Duration {
 	return minBudget
 }
 
-func (a *Aggregator) flush(key string) {
+func (a *Aggregator) flush(key string, expect *aggBucket) {
 	a.mu.Lock()
 	b, ok := a.buckets[key]
-	if !ok {
+	if !ok || (expect != nil && b != expect) {
+		// 桶已被提前冲刷并重建（或已取消）：陈旧计时器回调不得冲刷新桶，
+		// 否则同一批次会被提前切分投递。
 		a.mu.Unlock()
 		return
 	}
@@ -316,6 +357,21 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 	// 多实例：幂等键按「渠道 + 仓 + 类别 + 时间桶」稳定，避免各副本各写一条合并通知。
 	// 进程内合并仍是 best-effort；跨实例重复事件靠 Outbox 唯一约束收敛。
 	bucket := timeBucket(time.Now().UTC(), a.Window)
+	// repoID 为空（事件未绑定仓库）时回退仓库名进幂等键与聚合键：
+	// 否则不同仓库同类同桶会生成相同幂等键，第二条被 Outbox 唯一约束静默丢弃。
+	idScope := b.repoID
+	if idScope == "" {
+		idScope = b.repoName
+	}
+	// 同一窗口内可能出现两次冲刷（饱和提前冲刷 + 窗口收尾）：本进程第二次入队必须带批次指纹，
+	// 否则会撞 Outbox 唯一约束被静默丢弃，导致一批事件永久不发。
+	// 判定按「一次 flush」而非按渠道进行，同一批次的所有渠道共用同一变体，跨副本才会算出同一批键；
+	// 其他副本先入队时保持原键，跨实例仍收敛为一条，不引入重复通知。
+	scopeVariant := "agg|" + idScope + "|" + b.category + "|" + strconv.FormatInt(bucket, 10)
+	variant := scopeVariant
+	if a.markVariantFlushed(scopeVariant, bucket) {
+		variant = scopeVariant + "|" + shortEventTag(b.events)
+	}
 	for _, ch := range channels {
 		if !ch.Enabled {
 			continue
@@ -330,13 +386,6 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 			continue
 		}
 		title, body := renderMergedMessage(b.repoName, b.category, sub, time.Now().UTC())
-		// repoID 为空（事件未绑定仓库）时回退仓库名进幂等键与聚合键：
-		// 否则不同仓库同类同桶会生成相同幂等键，第二条被 Outbox 唯一约束静默丢弃。
-		idScope := b.repoID
-		if idScope == "" {
-			idScope = b.repoName
-		}
-		variant := "agg|" + idScope + "|" + b.category + "|" + strconv.FormatInt(bucket, 10)
 		idem := idempotencyKey(ch.ID, idScope, variant)
 		eventID := sub[0].ID
 		nextAttempt := time.Now().UTC()
@@ -367,14 +416,44 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 			AggregateKey: idScope + "|" + b.category, IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: nextAttempt,
 			Title: title, BodyText: channelBody, ParseMode: "HTML",
-			HTMLURL: aggURL,
+			HTMLURL:  aggURL,
 			BodyJSON: map[string]any{"aggregate": true, "count": len(sub), "category": b.category, "bucket": bucket},
 		})
-		if err != nil && !errors.Is(err, store.ErrConflict) {
+		if err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				// 幂等键冲突说明该批次已入库（多为其他副本先写）：留痕便于分辨
+				// 「正常收敛」与「同窗口批次被吞」，不再静默忽略。
+				if a.Logger != nil {
+					a.Logger.Warn("aggregate enqueue conflict",
+						"repo", b.repoName, "category", b.category, "channel_id", ch.ID,
+						"events", len(sub), "reason", "idempotency_conflict")
+				}
+				continue
+			}
 			return err
 		}
 	}
 	return nil
+}
+
+// shortEventTag 取批次首事件的稳定短标识（去重指纹优先，回退事件 ID），
+// 用于区分同一时间桶内的不同批次。长值取尾部 12 个字符：ULID 的随机位在尾部，
+// 取前缀会让同一毫秒内生成的事件落入同一个批次标识。
+func shortEventTag(events []*store.Event) string {
+	if len(events) == 0 || events[0] == nil {
+		return "empty"
+	}
+	tag := events[0].DedupeFingerprint
+	if tag == "" {
+		tag = events[0].ID
+	}
+	if len(tag) > 12 {
+		tag = tag[len(tag)-12:]
+	}
+	if tag == "" {
+		return "empty"
+	}
+	return tag
 }
 
 // renderMergedMessage 由事件子集构建合并标题与正文（对 Telegram HTML 做转义）。

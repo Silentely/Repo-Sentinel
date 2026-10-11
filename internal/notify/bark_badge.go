@@ -1,48 +1,17 @@
 package notify
 
-// BarkNotificationOptions 描述 Bark 推送的高级配置项
-type BarkNotificationOptions struct {
-	Badge     int    `json:"badge"`      // 角标数字，设为 0 可清除
-	Sound     string `json:"sound"`      // 提醒声音名称
-	Group     string `json:"group"`      // 通知分组
-	IsArchive int    `json:"isArchive"`  // 1: 保存至历史, 0: 不保存
-	Level     string `json:"level"`      // active, timeSensitive, passive
-}
-
-// AssignBarkSoundAndLevel 根据事件严重度自动匹配最贴合的 iOS 声音与打扰级别
+// AssignBarkSoundAndLevel 按事件严重度给出 Bark 的提示音与打扰档位。
+// critical 档穿透专注与静音，需要 Bark 客户端具备相应权限；high 档使用 timeSensitive，
+// 仅在专注模式白名单内提示；medium/low 保持常规响铃与静默入历史。
 func AssignBarkSoundAndLevel(severity string) (sound string, level string) {
 	switch severity {
 	case "critical":
-		return "alarm.caf", "timeSensitive"
+		return "alarm", "critical"
 	case "high":
-		return "bell.caf", "active"
-	case "medium":
-		return "glass.caf", "active"
+		return "bell", "timeSensitive"
+	case "low":
+		return "", "passive"
 	default:
-		return "silence.caf", "passive"
+		return "", "active"
 	}
-}
-
-// BuildBarkPayloadWithExt 构建带角标和声音扩展的 Bark 推送 Payload 字典
-func BuildBarkPayloadWithExt(title, body, group string, opts BarkNotificationOptions) map[string]interface{} {
-	payload := map[string]interface{}{
-		"title": title,
-		"body":  body,
-		"group": group,
-	}
-
-	if opts.Badge >= 0 {
-		payload["badge"] = opts.Badge
-	}
-	if opts.Sound != "" {
-		payload["sound"] = opts.Sound
-	}
-	if opts.Level != "" {
-		payload["level"] = opts.Level
-	}
-	if opts.IsArchive == 0 || opts.IsArchive == 1 {
-		payload["isArchive"] = opts.IsArchive
-	}
-
-	return payload
 }

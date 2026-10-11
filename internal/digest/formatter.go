@@ -1,12 +1,10 @@
 package digest
 
 import (
-	"fmt"
 	htmlpkg "html"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -286,53 +284,4 @@ func emphasizePrefix(text string) string {
 		}
 	}
 	return text
-}
-
-// FormatRelativeTime 计算 target 相对于 now 的自然语言相对时间（如“刚刚”、“10 分钟前”、“2 小时前”）。
-func FormatRelativeTime(target, now time.Time) string {
-	if target.IsZero() {
-		return ""
-	}
-	diff := now.Sub(target)
-	if diff < 0 {
-		diff = -diff
-	}
-	switch {
-	case diff < time.Minute:
-		return "刚刚"
-	case diff < time.Hour:
-		mins := int(diff.Minutes())
-		if mins <= 0 {
-			mins = 1
-		}
-		return strconv.Itoa(mins) + " 分钟前"
-	case diff < 24*time.Hour:
-		hours := int(diff.Hours())
-		if hours <= 0 {
-			hours = 1
-		}
-		return strconv.Itoa(hours) + " 小时前"
-	default:
-		days := int(diff.Hours() / 24)
-		if days <= 0 {
-			days = 1
-		}
-		return strconv.Itoa(days) + " 天前"
-	}
-}
-
-// FormatDeltaBadge 计算当前周期与上一周期事件量的环比变化徽章。
-func FormatDeltaBadge(prev, curr int) string {
-	if prev <= 0 {
-		return ""
-	}
-	diff := curr - prev
-	if diff == 0 {
-		return " (环比持平 ➖)"
-	}
-	pct := int(float64(diff) / float64(prev) * 100)
-	if pct > 0 {
-		return fmt.Sprintf(" (环比 🔺 +%d%%)", pct)
-	}
-	return fmt.Sprintf(" (环比 🔻 %d%%)", pct)
 }

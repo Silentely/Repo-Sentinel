@@ -647,6 +647,31 @@ func (s *server) openAPISpec(r *http.Request) map[string]any {
 				})},
 			},
 		},
+		"/api/v1/system/capabilities": map[string]any{
+			"get": map[string]any{
+				"summary":     "运行时能力矩阵（真实版本与启用渠道）",
+				"operationId": "systemCapabilities",
+				"security":    []any{authed},
+				"responses": map[string]any{"200": jsonResponse("能力清单", map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"version":            map[string]any{"type": "string"},
+						"commit":             map[string]any{"type": "string"},
+						"enabled_channels":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+						"supported_channels": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+						"features": map[string]any{"type": "array", "items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"name":        map[string]any{"type": "string"},
+								"category":    map[string]any{"type": "string"},
+								"description": map[string]any{"type": "string"},
+								"status":      map[string]any{"type": "string", "enum": []string{"active", "unavailable"}},
+							},
+						}},
+					},
+				})},
+			},
+		},
 		"/api/v1/dashboard": map[string]any{
 			"get": map[string]any{
 				"summary":     "概览统计",

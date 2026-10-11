@@ -1,8 +1,8 @@
 package notify
 
 import (
-	"net/url"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -121,8 +121,16 @@ func DiagnoseChannelWithRuntime(ch store.NotificationChannel, tracker *ChannelHe
 				Message: "Webhook 目标必须为以 http:// 或 https:// 开头的有效完整 URL",
 			}
 		}
-		// 私网地址保护检查
-		if (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || strings.HasPrefix(u.Hostname(), "192.168.") || strings.HasPrefix(u.Hostname(), "10.")) && !ch.AllowPrivate {
+		// 私网地址保护检查：判定口径与投递前 validateWebhookURL 一致，
+		// 避免诊断给出「配置有效」而真实投递被 SSRF 校验拒绝。
+		host := u.Hostname()
+		if isMetadataHost(host) {
+			return ChannelDiagnostic{
+				Status:  ChannelHealthError,
+				Message: "目标为云元数据地址，系统在任何配置下都会拒绝投递",
+			}
+		}
+		if !ch.AllowPrivate && isPrivateTargetHost(host) {
 			return ChannelDiagnostic{
 				Status:  ChannelHealthWarning,
 				Message: "目标为本地或局域网私有地址，需勾选「允许私网地址」方可投递",

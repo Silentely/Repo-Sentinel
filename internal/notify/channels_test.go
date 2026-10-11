@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -451,6 +453,8 @@ func TestSendBark_CustomLevelAndGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	// Bark 的最高档用于穿透专注/静音的告警；档位与提示音由 AssignBarkSoundAndLevel 统一给出，
+	// 避免内联子串判定把 highlight 之类文本误判为高危。
 	if receivedBody["level"] != "critical" {
 		t.Errorf("高危告警应设为 critical level，got: %v", receivedBody["level"])
 	}
@@ -485,6 +489,52 @@ func TestSendWeCom_ColoredTitle(t *testing.T) {
 	content := md["content"].(string)
 	if !strings.Contains(content, `<font color="warning">🚨 关键高危安全告警</font>`) {
 		t.Errorf("企业微信告警标题应包含 warning 彩色字体标签，实际 content: %s", content)
+	}
+}
+
+// TestSendDingTalk_SignNotDoubleEscaped 守护加签渠道的 URL 组装：
+// SignDingTalk 已做 URL 转义，调用方再转义一次会让 sign 变成 %252B/%253D 并被钉钉判为签名不匹配。
+func TestSendDingTalk_SignNotDoubleEscaped(t *testing.T) {
+	var (
+		receivedQuery url.Values
+		rawQuery      string
+	)
+	w, ch, item := newChannelTestHarness(t, store.ChannelDingTalk, func(rw http.ResponseWriter, r *http.Request) {
+		receivedQuery = r.URL.Query()
+		rawQuery = r.URL.RawQuery
+		rw.WriteHeader(http.StatusOK)
+		_, _ = rw.Write([]byte(`{"errcode":0,"errmsg":"ok"}`))
+	})
+
+	const secret = "SECtestsecret0123456789abcdef"
+	if err := w.sendDingTalk(t.Context(), ch, secret, item); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	rawTimestamp := receivedQuery.Get("timestamp")
+	gotSign := receivedQuery.Get("sign")
+	if rawTimestamp == "" || gotSign == "" {
+		t.Fatalf("加签渠道应携带 timestamp 与 sign，got: %v", receivedQuery)
+	}
+	ts, err := strconv.ParseInt(rawTimestamp, 10, 64)
+	if err != nil {
+		t.Fatalf("timestamp 应为毫秒整数，got %q", rawTimestamp)
+	}
+	// SignDingTalk 返回的是 URL 转义后的签名，查询串解析会解回原文，两者需一致。
+	wantEscaped := SignDingTalk(ts, secret)
+	wantPlain, err := url.QueryUnescape(wantEscaped)
+	if err != nil {
+		t.Fatalf("签名解转义失败: %v", err)
+	}
+	if gotSign != wantPlain {
+		t.Fatalf("sign 必须与 SignDingTalk 一致（不得二次转义），got %q want %q", gotSign, wantPlain)
+	}
+	if !strings.Contains(rawQuery, wantEscaped) {
+		t.Fatalf("raw query 应携带转义后的签名，got %q want 含 %q", rawQuery, wantEscaped)
+	}
+	// 双重转义的典型特征：出现 %25 表示 % 被再次编码。
+	if strings.Contains(rawQuery, "%25") {
+		t.Fatalf("sign 不应被二次 URL 编码，raw query: %s", rawQuery)
 	}
 }
 

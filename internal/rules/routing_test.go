@@ -256,6 +256,10 @@ func TestPersistSuppressedNotification_EmergencyMute(t *testing.T) {
 			if it.IdempotencyKey != "suppressed|ev-muted-1|ch-tg-mute-test" {
 				t.Errorf("IdempotencyKey = %q, want suppressed namespace key", it.IdempotencyKey)
 			}
+			// SuppressedReason 保持稳定机器码，人类可读的静音原因随载荷入库，便于事后回溯。
+			if reason, _ := it.BodyJSON["mute_reason"].(string); reason == "" {
+				t.Errorf("BodyJSON 应记录人类可读的 mute_reason，实际: %+v", it.BodyJSON)
+			}
 		}
 		if it.Status == store.OutboxPending || it.Status == store.OutboxSending {
 			t.Errorf("unexpected active outbox item found during emergency mute: %+v", it)

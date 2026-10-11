@@ -6,32 +6,41 @@ import (
 
 func TestAssignBarkSoundAndLevel(t *testing.T) {
 	sndCrit, lvlCrit := AssignBarkSoundAndLevel("critical")
-	if sndCrit != "alarm.caf" || lvlCrit != "timeSensitive" {
+	if sndCrit != "alarm" || lvlCrit != "critical" {
 		t.Errorf("unexpected critical bark sound/level: %s, %s", sndCrit, lvlCrit)
 	}
 
+	sndHigh, lvlHigh := AssignBarkSoundAndLevel("high")
+	if sndHigh != "bell" || lvlHigh != "timeSensitive" {
+		t.Errorf("unexpected high bark sound/level: %s, %s", sndHigh, lvlHigh)
+	}
+
 	sndMed, lvlMed := AssignBarkSoundAndLevel("medium")
-	if sndMed != "glass.caf" || lvlMed != "active" {
+	if sndMed != "" || lvlMed != "active" {
 		t.Errorf("unexpected medium bark sound/level: %s, %s", sndMed, lvlMed)
+	}
+
+	// 低打扰档位用于依赖更新类推送：静默且不点亮屏幕。
+	if sndLow, lvlLow := AssignBarkSoundAndLevel("low"); lvlLow != "passive" || sndLow != "" {
+		t.Errorf("unexpected low bark sound/level: %s, %s", sndLow, lvlLow)
 	}
 }
 
-func TestBuildBarkPayloadWithExt(t *testing.T) {
-	opts := BarkNotificationOptions{
-		Badge:     2,
-		Sound:     "bell.caf",
-		Level:     "active",
-		IsArchive: 1,
+// TestClassifySeverityUsesWordBoundary 覆盖子串误判回归：highlight 不应被当作 high 高危。
+func TestClassifySeverityUsesWordBoundary(t *testing.T) {
+	cases := []struct {
+		title string
+		body  string
+		want  string
+	}{
+		{"highlight 变更说明", "", "medium"},
+		{"Renovate 依赖更新：foo 1.2.3 → 1.2.4", "", "low"},
+		{"⚠️ high severity 漏洞", "", "high"},
+		{"❌ CI 构建失败", "", "critical"},
 	}
-
-	p := BuildBarkPayloadWithExt("服务告警", "CPU 使用率过高", "server-monitor", opts)
-	if p["title"] != "服务告警" || p["group"] != "server-monitor" {
-		t.Errorf("unexpected title/group: %+v", p)
-	}
-	if p["badge"] != 2 || p["sound"] != "bell.caf" {
-		t.Errorf("unexpected badge/sound: %+v", p)
-	}
-	if p["level"] != "active" || p["isArchive"] != 1 {
-		t.Errorf("unexpected level/archive: %+v", p)
+	for _, tc := range cases {
+		if got := classifySeverity(tc.title, tc.body); got != tc.want {
+			t.Errorf("classifySeverity(%q) = %q, want %q", tc.title, got, tc.want)
+		}
 	}
 }

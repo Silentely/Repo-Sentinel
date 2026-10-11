@@ -486,6 +486,24 @@ func (s *server) handleNotificationMetrics(w http.ResponseWriter, r *http.Reques
 	if errorCount > 0 {
 		runtimeStatus = "degraded"
 	}
+
+	// 投递耗时分位数：以最近已送达记录的「入队→送达」时长估算排队与重试带来的尾延迟，
+	// 采样窗口固定为最近 200 条，避免在大表上做全量统计。
+	latencyMetrics := notify.DeliveryLatencyMetrics{}
+	if sentItems, _, listErr := s.dependencies.Store.Outbox().List(r.Context(), store.ListFilter{
+		Status:  store.OutboxSent,
+		Page:    1,
+		PerPage: 200,
+	}); listErr == nil {
+		latencies := make([]time.Duration, 0, len(sentItems))
+		for _, item := range sentItems {
+			if item.UpdatedAt.After(item.CreatedAt) {
+				latencies = append(latencies, item.UpdatedAt.Sub(item.CreatedAt))
+			}
+		}
+		latencyMetrics = notify.CalculateLatencyPercentiles(latencies)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"channels": map[string]any{
 			"total":         len(items),
@@ -496,6 +514,16 @@ func (s *server) handleNotificationMetrics(w http.ResponseWriter, r *http.Reques
 		},
 		"runtime": map[string]any{
 			"status": runtimeStatus,
+		},
+		"delivery_latency": map[string]any{
+			"sample_size": latencyMetrics.Count,
+			"basis":       "created_to_sent",
+			"window":      "last_200_sent",
+			"p50_ms":      latencyMetrics.P50.Milliseconds(),
+			"p90_ms":      latencyMetrics.P90.Milliseconds(),
+			"p95_ms":      latencyMetrics.P95.Milliseconds(),
+			"p99_ms":      latencyMetrics.P99.Milliseconds(),
+			"max_ms":      latencyMetrics.Max.Milliseconds(),
 		},
 	})
 }
@@ -555,18 +583,33 @@ func (s *server) handleTestAllChannels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleListDigestHistory(w http.ResponseWriter, r *http.Request) {
-	items, total, err := s.dependencies.Store.Outbox().List(r.Context(), store.ListFilter{
-		Page:    1,
-		PerPage: 50,
-	})
-	if err != nil {
-		s.writeMappedError(w, r, err)
-		return
-	}
-
-	var results []map[string]any
-	for _, item := range items {
-		if strings.Contains(item.Title, "摘要") || strings.Contains(item.Title, "报告") || strings.Contains(item.Title, "Digest") {
+	// 摘要通知在标题上没有可靠的类型标记，这里按有界多页扫描后过滤：单页只看 50 条会让
+	// 较早的摘要永久不可见；上限 10 页保证查询开销可控，scan_total 如实反映已扫描条数。
+	const (
+		pageSize  = 50
+		maxPages  = 10
+		pageFirst = 1
+	)
+	var (
+		results      []map[string]any
+		scanTotal    int
+		pagesScanned int
+	)
+	for page := pageFirst; page < pageFirst+maxPages; page++ {
+		items, pageResult, err := s.dependencies.Store.Outbox().List(r.Context(), store.ListFilter{
+			Page:    page,
+			PerPage: pageSize,
+		})
+		if err != nil {
+			s.writeMappedError(w, r, err)
+			return
+		}
+		scanTotal = pageResult.Total
+		pagesScanned++
+		for _, item := range items {
+			if !isDigestNotificationTitle(item.Title) {
+				continue
+			}
 			aiUsed, _ := item.BodyJSON["ai"].(bool)
 			count, _ := item.BodyJSON["count"].(float64)
 			results = append(results, map[string]any{
@@ -579,13 +622,24 @@ func (s *server) handleListDigestHistory(w http.ResponseWriter, r *http.Request)
 				"event_count": int(count),
 			})
 		}
+		// 已取完全部记录或命中扫描上限时结束。
+		if page*pageSize >= pageResult.Total || len(items) == 0 {
+			break
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"total":      len(results),
-		"items":      results,
-		"scan_total": total,
+		"total":         len(results),
+		"items":         results,
+		"scan_total":    scanTotal,
+		"pages_scanned": pagesScanned,
+		"scan_limit":    maxPages,
 	})
+}
+
+// isDigestNotificationTitle 判定通知标题是否属于定期摘要/报告，供历史归档查询过滤。
+func isDigestNotificationTitle(title string) bool {
+	return strings.Contains(title, "摘要") || strings.Contains(title, "报告") || strings.Contains(title, "Digest")
 }
 
 func (s *server) handleExportNotificationBackup(w http.ResponseWriter, r *http.Request) {
@@ -597,10 +651,14 @@ func (s *server) handleExportNotificationBackup(w http.ResponseWriter, r *http.R
 
 	exported := make([]map[string]any, 0, len(channels))
 	for _, ch := range channels {
+		// target 可能是内嵌凭据的传入 Webhook（Slack/Discord 的路径即密钥），
+		// 导出前统一脱敏，避免 read 作用域令牌把渠道凭据整仓拉走。
+		maskedTarget := notify.RedactSensitiveSecrets(ch.Target)
 		exported = append(exported, map[string]any{
 			"channel_type":           ch.ChannelType,
 			"name":                   ch.Name,
-			"target":                 ch.Target,
+			"target":                 maskedTarget,
+			"target_masked":          maskedTarget != ch.Target,
 			"enabled":                ch.Enabled,
 			"allow_private":          ch.AllowPrivate,
 			"event_kinds":            ch.EventKinds,
@@ -657,6 +715,17 @@ func (s *server) handleNotificationSLA(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
+	// 在途数量单独返回：成功率只按已完成样本计算，在途量大时样本口径必须让运维看得见，
+	// 否则大批量投递过程中会被误读为「已达 SLA」。
+	inFlight := 0
+	for _, status := range []string{store.OutboxPending, store.OutboxSending} {
+		count, countErr := s.dependencies.Store.Outbox().CountByStatus(r.Context(), status)
+		if countErr != nil {
+			s.writeMappedError(w, r, countErr)
+			return
+		}
+		inFlight += count
+	}
 	completed := sent + dead
 	status := "unknown"
 	rate := "N/A"
@@ -676,6 +745,8 @@ func (s *server) handleNotificationSLA(w http.ResponseWriter, r *http.Request) {
 		"target_sla":           "99.0%",
 		"sent":                 sent,
 		"dead":                 dead,
+		"in_flight":            inFlight,
 		"sample_size":          completed,
+		"sample_basis":         "completed_only",
 	})
 }
