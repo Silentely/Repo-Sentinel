@@ -489,3 +489,19 @@ func TestNotificationSLAEndpoint(t *testing.T) {
 		t.Fatalf("expected meeting_target, got: %s", res.SLAStatus)
 	}
 }
+
+func TestProbeEndpoints(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+
+	// 1. GET /healthz
+	liveResp := fixture.request(t, http.MethodGet, "/healthz", "", "127.0.0.1:49080", nil, nil)
+	if liveResp.Code != http.StatusOK {
+		t.Fatalf("expected /healthz 200 OK, got: %d", liveResp.Code)
+	}
+
+	// 2. GET /readyz
+	readyResp := fixture.request(t, http.MethodGet, "/readyz", "", "127.0.0.1:49081", nil, nil)
+	if readyResp.Code != http.StatusOK {
+		t.Fatalf("expected /readyz 200 OK, got: %d", readyResp.Code)
+	}
+}

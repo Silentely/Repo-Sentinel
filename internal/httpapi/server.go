@@ -306,6 +306,8 @@ func New(dependencies Dependencies) http.Handler {
 
 	router.Get("/health/live", s.handleLive)
 	router.Get("/health/ready", s.handleReady)
+	router.Get("/healthz", s.handleLive)
+	router.Get("/readyz", s.handleReady)
 	if dependencies.Config.Metrics.Enabled {
 		router.Get("/metrics", s.handleMetrics)
 	}
