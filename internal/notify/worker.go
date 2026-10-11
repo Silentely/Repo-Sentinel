@@ -491,6 +491,7 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 	}
 	if parseMode == "HTML" {
 		text = formatTelegramExpandableBlocks(text, htmlURL != "")
+		text = SanitizeTelegramHTML(text)
 	}
 	text = truncateTelegramText(text)
 	payload := map[string]any{
