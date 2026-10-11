@@ -115,3 +115,18 @@ func TestFormatRelativeTime(t *testing.T) {
 		t.Errorf("expected 2 天前, got %s", got)
 	}
 }
+
+func TestFormatDeltaBadge(t *testing.T) {
+	if got := FormatDeltaBadge(0, 10); got != "" {
+		t.Errorf("prev <= 0 应返回空，got: %s", got)
+	}
+	if got := FormatDeltaBadge(10, 10); !strings.Contains(got, "持平") {
+		t.Errorf("相等应返回持平，got: %s", got)
+	}
+	if got := FormatDeltaBadge(10, 15); !strings.Contains(got, "+50%") {
+		t.Errorf("增加应返回 +50%，got: %s", got)
+	}
+	if got := FormatDeltaBadge(20, 10); !strings.Contains(got, "-50%") {
+		t.Errorf("减少应返回 -50%，got: %s", got)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	htmlpkg "html"
 	"regexp"
 	"strconv"
+	"fmt"
 	"strings"
 	"time"
 
@@ -319,4 +320,20 @@ func FormatRelativeTime(target, now time.Time) string {
 		}
 		return strconv.Itoa(days) + " 天前"
 	}
+}
+
+// FormatDeltaBadge 计算当前周期与上一周期事件量的环比变化徽章。
+func FormatDeltaBadge(prev, curr int) string {
+	if prev <= 0 {
+		return ""
+	}
+	diff := curr - prev
+	if diff == 0 {
+		return " (环比持平 ➖)"
+	}
+	pct := int(float64(diff) / float64(prev) * 100)
+	if pct > 0 {
+		return fmt.Sprintf(" (环比 🔺 +%d%%)", pct)
+	}
+	return fmt.Sprintf(" (环比 🔻 %d%%)", pct)
 }
