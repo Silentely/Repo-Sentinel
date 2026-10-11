@@ -389,7 +389,27 @@ func renderMergedMessage(repoName, category string, events []*store.Event, windo
 			statusSuffix = " " + firstEmoji + " [" + firstLabel + "]"
 		}
 	}
-	title := "📋 " + repoName + "：" + categoryCN + statusSuffix + " × " + strconv.Itoa(len(events)) + "（已聚合）"
+	var botBadge string
+	if len(events) > 0 {
+		allRenovate := true
+		allDependabot := true
+		for _, ev := range events {
+			tLower := strings.ToLower(ev.Title)
+			aLower := strings.ToLower(ev.Actor)
+			if !strings.Contains(tLower, "renovate") && !strings.Contains(aLower, "renovate") {
+				allRenovate = false
+			}
+			if !strings.Contains(tLower, "dependabot") && !strings.Contains(aLower, "dependabot") {
+				allDependabot = false
+			}
+		}
+		if allRenovate {
+			botBadge = " · 📦 Renovate"
+		} else if allDependabot {
+			botBadge = " · 🤖 Dependabot"
+		}
+	}
+	title := "📋 " + repoName + "：" + categoryCN + botBadge + statusSuffix + " × " + strconv.Itoa(len(events)) + "（已聚合）"
 	var body strings.Builder
 	body.WriteString("<b>" + htmlpkg.EscapeString(title) + "</b>\n")
 	body.WriteString("────────────────\n")

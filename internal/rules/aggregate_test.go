@@ -862,3 +862,17 @@ func TestEnqueueBurstSummaryFormatting(t *testing.T) {
 		t.Fatalf("无直接事件链接时应降级回退到仓库主页链接，实际: %s", items[0].HTMLURL)
 	}
 }
+
+func TestRenderMergedMessageBotBadge(t *testing.T) {
+	num1, num2 := int64(24), int64(25)
+	ev1 := &store.Event{Kind: store.WorkItemKindPR, Action: "opened", Title: "Update actions/setup-node to v7 (Renovate)", SubjectNumber: &num1}
+	ev2 := &store.Event{Kind: store.WorkItemKindPR, Action: "opened", Title: "Update dependency @evomap/evolver to v2 (renovate)", SubjectNumber: &num2}
+	title, _ := renderMergedMessage("Silentely/xserver-vps-renew", "pull_request", []*store.Event{ev1, ev2}, time.Time{})
+
+	if !strings.Contains(title, "· 📦 Renovate") {
+		t.Fatalf("全 Renovate 事件聚合标题应包含机器人专属徽标，实际: %s", title)
+	}
+	if !strings.Contains(title, "🟢 [已打开] × 2") {
+		t.Fatalf("聚合标题状态后缀应正常保留，实际: %s", title)
+	}
+}
