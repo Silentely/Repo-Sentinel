@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
+	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
@@ -60,6 +61,9 @@ type apiErrorResponse struct {
 func (s *server) appendAudit(ctx context.Context, entry store.AuditLog) {
 	if s.dependencies.Store == nil {
 		return
+	}
+	if len(entry.MetadataJSON) > 0 {
+		entry.MetadataJSON = []byte(notify.RedactSensitiveSecrets(string(entry.MetadataJSON)))
 	}
 	if _, err := s.dependencies.Store.Audits().Append(ctx, entry); err != nil {
 		s.dependencies.Logger.Warn("audit log append failed",

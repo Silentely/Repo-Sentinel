@@ -123,3 +123,32 @@ func TestChannelIgnoreBotsHandler(t *testing.T) {
 		t.Fatalf("expected ignore_bots=false, got %+v", resp.Items)
 	}
 }
+
+func TestAppendAuditRedactsSecrets(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	s := &server{dependencies: fixture.dependencies}
+
+	token := "ghp_111122223333444455556666777788889999"
+	s.appendAudit(t.Context(), store.AuditLog{
+		ID:           "audit-test",
+		Action:       "test.redact",
+		ActorType:    "admin",
+		ActorID:      "admin-1",
+		TargetType:   "channel",
+		TargetID:     "ch-1",
+		MetadataJSON: []byte(`{"token":"` + token + `"}`),
+		CreatedAt:    time.Now().UTC(),
+	})
+
+	audits, err := fixture.store.Audits().List(t.Context(), 10, 0)
+	if err != nil || len(audits) == 0 {
+		t.Fatalf("expected audit log, got err: %v", err)
+	}
+	rawMeta := string(audits[0].MetadataJSON)
+	if strings.Contains(rawMeta, token) {
+		t.Fatalf("审计日志中不应包含真实 token 原文: %s", rawMeta)
+	}
+	if !strings.Contains(rawMeta, "[REDACTED_GITHUB_TOKEN]") {
+		t.Fatalf("审计日志应包含脱敏标记: %s", rawMeta)
+	}
+}
