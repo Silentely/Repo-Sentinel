@@ -245,7 +245,16 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 		return nil
 	}
 	b.events = append(b.events, res.Event)
+	// 聚合桶饱和主动冲刷：积攒事件达到上限（如 15 条）时无需等待窗口计时结束，立即提前触发合并推送。
+	const maxBucketBatch = 15
+	shouldEarlyFlush := len(b.events) >= maxBucketBatch
+	if shouldEarlyFlush && b.timer != nil {
+		b.timer.Stop()
+	}
 	a.mu.Unlock()
+	if shouldEarlyFlush {
+		go a.flush(key)
+	}
 	return nil
 }
 

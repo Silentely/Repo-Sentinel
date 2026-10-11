@@ -876,3 +876,36 @@ func TestRenderMergedMessageBotBadge(t *testing.T) {
 		t.Fatalf("聚合标题状态后缀应正常保留，实际: %s", title)
 	}
 }
+
+func TestBucketSaturationEagerFlush(t *testing.T) {
+	st := newFakeAggregateStore()
+	agg := NewAggregator(st, 10*time.Minute, 100, 5*time.Minute)
+
+	repoID := "repo_sat"
+	for i := 0; i < 15; i++ {
+		num := int64(i + 1)
+		ev := &store.Event{
+			ID:            fmt.Sprintf("ev_%d", i),
+			Kind:          store.WorkItemKindPR,
+			Action:        "opened",
+			Title:         fmt.Sprintf("PR %d", i),
+			SubjectNumber: &num,
+			RepositoryID:  &repoID,
+		}
+		_ = agg.Enqueue(context.Background(), EvaluationResult{
+			Event:        ev,
+			MatchedRules: []string{"rule1"},
+		}, "org/repo")
+	}
+
+	// 饱和提前冲刷通过异步 goroutine flush，等待片刻
+	time.Sleep(50 * time.Millisecond)
+
+	agg.mu.Lock()
+	bucketLen := len(agg.buckets)
+	agg.mu.Unlock()
+
+	if bucketLen != 0 {
+		t.Fatalf("达到 15 个事件饱和时应提前 flush 清空桶，当前剩余桶数: %d", bucketLen)
+	}
+}
