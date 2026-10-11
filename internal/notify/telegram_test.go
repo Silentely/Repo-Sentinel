@@ -290,3 +290,34 @@ func TestTruncateTelegramTextBalancesOpenTags(t *testing.T) {
 		t.Fatalf("超长截断后末尾必须补齐闭合标签，避免 Telegram 报错 400，实际末尾: %s", truncated[len(truncated)-30:])
 	}
 }
+
+func TestBuildTelegramInlineKeyboard_MultiRow(t *testing.T) {
+	// 1. 无任何按钮时返回 nil
+	if kb := buildTelegramInlineKeyboard("", ""); kb != nil {
+		t.Fatalf("空参数应返回 nil, got %v", kb)
+	}
+
+	// 2. 主操作按钮（GitHub 链接 + 重试 token）
+	kb := buildTelegramInlineKeyboard("https://github.com/test", "token123")
+	if kb == nil {
+		t.Fatal("期望返回 inline_keyboard")
+	}
+	rows := kb["inline_keyboard"].([][]map[string]string)
+	if len(rows) != 1 || len(rows[0]) != 2 {
+		t.Fatalf("期望 1 行 2 个按钮，got %v", rows)
+	}
+
+	// 3. 带有附加快捷操作行（如一键确认回执、静音）
+	extraRow := []map[string]string{
+		{"text": "✅ 确认已知", "callback_data": "ack:123"},
+		{"text": "🔕 静音 1 小时", "callback_data": "mute:repo:1h"},
+	}
+	multiKb := buildTelegramInlineKeyboard("https://github.com/test", "", extraRow)
+	multiRows := multiKb["inline_keyboard"].([][]map[string]string)
+	if len(multiRows) != 2 {
+		t.Fatalf("期望 2 行键盘，got %d 行", len(multiRows))
+	}
+	if multiRows[1][0]["callback_data"] != "ack:123" {
+		t.Fatalf("第二行首个按钮 callback_data 不符: %v", multiRows[1][0])
+	}
+}

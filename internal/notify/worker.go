@@ -458,6 +458,33 @@ func formatTelegramExpandableBlocks(text string, hasInlineURL ...bool) string {
 	return sb.String()
 }
 
+// buildTelegramInlineKeyboard 构建 Telegram 内联键盘标记。
+// 支持主操作（直达 GitHub、重试工作流）以及附加的快捷动作行（如一键确认、静音等）。
+func buildTelegramInlineKeyboard(htmlURL, opToken string, extraRows ...[]map[string]string) map[string]any {
+	var rows [][]map[string]string
+	var primaryRow []map[string]string
+	if htmlURL != "" {
+		primaryRow = append(primaryRow, map[string]string{"text": store.GitHubViewLabel, "url": htmlURL})
+	}
+	if opToken != "" {
+		primaryRow = append(primaryRow, map[string]string{"text": "🔄 重试工作流", "callback_data": "rerun:" + opToken})
+	}
+	if len(primaryRow) > 0 {
+		rows = append(rows, primaryRow)
+	}
+	for _, row := range extraRows {
+		if len(row) > 0 {
+			rows = append(rows, row)
+		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	return map[string]any{
+		"inline_keyboard": rows,
+	}
+}
+
 func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, text, htmlURL, parseMode string, chatOpsToken ...string) error {
 	if parseMode == "" {
 		parseMode = "HTML"
@@ -476,17 +503,8 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 	if len(chatOpsToken) > 0 {
 		opToken = chatOpsToken[0]
 	}
-	var keyboardRow []map[string]string
-	if htmlURL != "" {
-		keyboardRow = append(keyboardRow, map[string]string{"text": store.GitHubViewLabel, "url": htmlURL})
-	}
-	if opToken != "" {
-		keyboardRow = append(keyboardRow, map[string]string{"text": "🔄 重试工作流", "callback_data": "rerun:" + opToken})
-	}
-	if len(keyboardRow) > 0 {
-		payload["reply_markup"] = map[string]any{
-			"inline_keyboard": [][]map[string]string{keyboardRow},
-		}
+	if markup := buildTelegramInlineKeyboard(htmlURL, opToken); markup != nil {
+		payload["reply_markup"] = markup
 	}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, api, bytes.NewReader(body))
