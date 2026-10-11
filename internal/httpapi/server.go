@@ -363,6 +363,7 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/notifications/metrics", s.handleNotificationMetrics)
 			protected.Get("/notifications/backup", s.handleExportNotificationBackup)
 			protected.Get("/digest/history", s.handleListDigestHistory)
+			protected.Get("/widget/status", s.handleWidgetStatus)
 			protected.Get("/github/installations", s.handleListInstallations)
 			protected.Get("/github/config", s.handleGetGitHubConfig)
 			protected.Get("/ai/config", s.handleGetAIConfig)

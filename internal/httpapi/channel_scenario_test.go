@@ -440,3 +440,27 @@ func TestNotificationBackupEndpoint(t *testing.T) {
 		t.Fatalf("expected channel name tg-backup, got: %s", res.Channels[0].Name)
 	}
 }
+
+func TestWidgetStatusEndpoint(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	resp := fixture.request(
+		t, http.MethodGet, "/api/v1/widget/status",
+		"", "127.0.0.1:49060", cookies, nil,
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d, body: %s", resp.Code, resp.Body.String())
+	}
+
+	var res struct {
+		System string `json:"system"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal widget status failed: %v", err)
+	}
+	if res.System != "healthy" {
+		t.Fatalf("expected healthy, got %s", res.System)
+	}
+}

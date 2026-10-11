@@ -621,3 +621,11 @@ func (s *server) handleExportNotificationBackup(w http.ResponseWriter, r *http.R
 		"channels":    exported,
 	})
 }
+
+func (s *server) handleWidgetStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"system":       "healthy",
+		"status_code":  200,
+		"last_updated": time.Now().UTC().Format(time.RFC3339),
+	})
+}
