@@ -399,3 +399,21 @@ func TestSplitAISections(t *testing.T) {
 		t.Errorf("无 AI 段落时应原样返回，got prefix=%q sections=%v", prefix, sections)
 	}
 }
+
+func TestHTMLToMarkdown(t *testing.T) {
+	input := "<b>标题</b>\n<code>代码</code>\n<a href=\"https://github.com/\">链接</a>\n<blockquote expandable>\n第一行\n第二行\n</blockquote>"
+	output := htmlToMarkdown(input)
+
+	if !strings.Contains(output, "**标题**") {
+		t.Fatalf("粗体应转换为 **标题**，实际: %s", output)
+	}
+	if !strings.Contains(output, "`代码`") {
+		t.Fatalf("行内代码应转换为 `代码`，实际: %s", output)
+	}
+	if !strings.Contains(output, "[链接](https://github.com/)") {
+		t.Fatalf("超链接应转换为 [链接](url)，实际: %s", output)
+	}
+	if !strings.Contains(output, "> 第一行") || !strings.Contains(output, "> 第二行") {
+		t.Fatalf("blockquote 应转换为 Markdown 引用行，实际: %s", output)
+	}
+}

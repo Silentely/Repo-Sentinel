@@ -320,11 +320,18 @@ func buildTestScenario(scenario string, now time.Time) (title, bodyText, htmlURL
 		htmlURL = "https://github.com/org/web/actions/runs/142"
 	case "periodic_digest":
 		title = fmt.Sprintf("📊 每日摘要 %s", now.Format("2006-01-02"))
-		bodyText = fmt.Sprintf("📊 <b>每日运维摘要</b>\n────────────────\n"+
-			"过去 24 小时监控活动汇总：\n"+
-			"• 新建 Issue: 3 条\n• 合并 PR: 5 个\n• 工作流执行: 18 次（1 次失败）\n"+
+		bodyText = fmt.Sprintf("<b>📊 每日运维摘要 %s</b>\n────────────────\n"+
+			"📈 <b>过去 24 小时 · 共 26 条监控活动</b>\n"+
+			"🚨 告警: 1  |  🐛 缺陷: 2  |  🚀 发布: 1  |  📦 依赖/更新: 22\n"+
 			"────────────────\n"+
-			"🤖 运维总结\n项目整体运行平稳，核心 PR #89 已并入主干，建议跟进已关闭的 2 个高优先级 Bug。\n生成于 %s", ts)
+			"• 🚨 <b>安全告警：</b> <code>org/api</code> <b>#89</b> 发现依赖漏洞 <b>HIGH</b>，需尽快升级\n"+
+			"• 🐛 <b>问题跟踪：</b> <code>org/web</code> <b>#45</b> [Bug] 登录态偶发失效已修复并关闭\n"+
+			"• 🚀 <b>版本发布：</b> <code>org/web</code> <code>v1.2.0</code> 正式发布\n"+
+			"<blockquote expandable>\n"+
+			"<b>📦 常规依赖更新与次要动态（点击展开）</b>\n"+
+			"• 自动化依赖升级：新建 Issue 3 条、合并 PR 5 个、工作流正常执行 18 次\n"+
+			"</blockquote>\n"+
+			"<i>⏰ 生成时间：%s</i>", now.Format("2006-01-02"), ts)
 		htmlURL = "https://github.com/org/api"
 	default:
 		title = "🔔 测试通知"

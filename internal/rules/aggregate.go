@@ -372,7 +372,22 @@ func renderMergedMessage(repoName, category string, events []*store.Event, windo
 	categoryCN := categoryDisplayName(category)
 	// 「已聚合」而非「已合并」：避免与 PR 的「已合并」状态语义混淆
 	//（同一条通知里既可能包含已合并的 PR，也可能表示本通知是聚合产物）。
-	title := "📋 " + repoName + "：" + categoryCN + " × " + strconv.Itoa(len(events)) + "（已聚合）"
+	var statusSuffix string
+	if len(events) > 0 {
+		allSame := true
+		firstEmoji, firstLabel := statusDisplay(events[0])
+		for _, ev := range events[1:] {
+			_, label := statusDisplay(ev)
+			if label != firstLabel {
+				allSame = false
+				break
+			}
+		}
+		if allSame {
+			statusSuffix = " " + firstEmoji + " [" + firstLabel + "]"
+		}
+	}
+	title := "📋 " + repoName + "：" + categoryCN + statusSuffix + " × " + strconv.Itoa(len(events)) + "（已聚合）"
 	var body strings.Builder
 	body.WriteString("<b>" + htmlpkg.EscapeString(title) + "</b>\n")
 	body.WriteString("────────────────\n")

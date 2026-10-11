@@ -58,6 +58,17 @@ func TestRenderMergedMessageRichText(t *testing.T) {
 	}
 }
 
+func TestRenderMergedMessageUniformStatusTitle(t *testing.T) {
+	num1, num2 := int64(1), int64(2)
+	ev1 := &store.Event{Kind: store.WorkItemKindPR, Action: "opened", Title: "t1", SubjectNumber: &num1}
+	ev2 := &store.Event{Kind: store.WorkItemKindPR, Action: "opened", Title: "t2", SubjectNumber: &num2}
+	title, _ := renderMergedMessage("acme/demo", "pull_request", []*store.Event{ev1, ev2}, time.Time{})
+
+	if !strings.Contains(title, "🟢 [已打开] × 2") {
+		t.Fatalf("全相同状态事件聚合标题应标明具体状态，实际: %s", title)
+	}
+}
+
 func TestRenderMergedMessageIncludesWindowEnd(t *testing.T) {
 	ev := &store.Event{Kind: store.WorkItemKindIssue, Action: "opened", Title: "t1"}
 	windowEnd := time.Date(2026, 8, 8, 12, 34, 0, 0, time.UTC)

@@ -198,6 +198,55 @@ func formatQuotedAISections(text string) string {
 	return sb.String()
 }
 
+var (
+	reHTMLStrong = regexp.MustCompile(`(?i)<(?:b|strong)>(.*?)</(?:b|strong)>`)
+	reHTMLEm     = regexp.MustCompile(`(?i)<(?:i|em)>(.*?)</(?:i|em)>`)
+	reHTMLCode   = regexp.MustCompile(`(?i)<code>(.*?)</code>`)
+	reHTMLPre    = regexp.MustCompile(`(?is)<pre>(?:<code>)?(.*?)(?:</code>)?</pre>`)
+	reHTMLBlock  = regexp.MustCompile(`(?is)<blockquote(?:[^>]*)>(.*?)</blockquote>`)
+	reHTMLLinkMD = regexp.MustCompile(`(?i)<a\s+(?:[^>]*?\s+)?href=["']([^"']*)["'][^>]*>(.*?)</a>`)
+	reHTMLTagsMD = regexp.MustCompile(`<[^>]+>`)
+)
+
+// htmlToMarkdown 将 HTML 转换为结构完备的 Markdown 格式，供企微、钉钉、飞书、Discord 等 Markdown 渠道渲染。
+func htmlToMarkdown(s string) string {
+	if !strings.Contains(s, "<") && !strings.Contains(s, "&") {
+		return s
+	}
+
+	// 1. 代码块与引用块
+	s = reHTMLPre.ReplaceAllString(s, "```\n$1\n```")
+	s = reHTMLBlock.ReplaceAllStringFunc(s, func(m string) string {
+		sub := reHTMLBlock.FindStringSubmatch(m)
+		if len(sub) < 2 {
+			return m
+		}
+		lines := strings.Split(strings.TrimSpace(sub[1]), "\n")
+		var quoted []string
+		for _, line := range lines {
+			trimmed := strings.TrimRight(line, "\r")
+			if strings.TrimSpace(trimmed) == "" {
+				quoted = append(quoted, ">")
+			} else {
+				quoted = append(quoted, "> "+trimmed)
+			}
+		}
+		return "\n" + strings.Join(quoted, "\n") + "\n"
+	})
+
+	// 2. 行内样式
+	s = reHTMLStrong.ReplaceAllString(s, "**$1**")
+	s = reHTMLEm.ReplaceAllString(s, "*$1*")
+	s = reHTMLCode.ReplaceAllString(s, "`$1`")
+	s = reHTMLLinkMD.ReplaceAllString(s, "[$2]($1)")
+
+	// 3. 剥离无用标签并反转义
+	if strings.Contains(s, "<") {
+		s = reHTMLTagsMD.ReplaceAllString(s, "")
+	}
+	return strings.TrimSpace(html.UnescapeString(s))
+}
+
 // sendFeishu 发送飞书/Lark 自定义机器人消息。
 func (w *Worker) sendFeishu(ctx context.Context, ch store.NotificationChannel, secret string, item store.NotificationOutbox) error {
 	target := strings.TrimSpace(ch.Target)
@@ -206,7 +255,7 @@ func (w *Worker) sendFeishu(ctx context.Context, ch store.NotificationChannel, s
 	}
 
 	now := time.Now().UTC()
-	plainBody := truncateRunes(htmlToPlainText(item.BodyText), 1500)
+	plainBody := truncateRunes(htmlToMarkdown(item.BodyText), 1500)
 
 	elements := []any{
 		map[string]any{
@@ -273,7 +322,7 @@ func (w *Worker) sendWeCom(ctx context.Context, ch store.NotificationChannel, se
 		return err
 	}
 
-	plainBody := truncateRunes(htmlToPlainText(item.BodyText), 2000)
+	plainBody := truncateRunes(htmlToMarkdown(item.BodyText), 2000)
 	plainBody = formatQuotedAISections(plainBody)
 	var sb strings.Builder
 	sb.WriteString("### " + item.Title + "\n\n")
@@ -315,7 +364,7 @@ func (w *Worker) sendDingTalk(ctx context.Context, ch store.NotificationChannel,
 		reqURL = reqURL + sep + "timestamp=" + nowMs + "&sign=" + sign
 	}
 
-	plainBody := truncateRunes(htmlToPlainText(item.BodyText), 2000)
+	plainBody := truncateRunes(htmlToMarkdown(item.BodyText), 2000)
 	plainBody = formatQuotedAISections(plainBody)
 	var payload map[string]any
 
@@ -350,7 +399,7 @@ func (w *Worker) sendDiscord(ctx context.Context, ch store.NotificationChannel, 
 		return err
 	}
 
-	plainBody := truncateRunes(htmlToPlainText(item.BodyText), 2000)
+	plainBody := truncateRunes(htmlToMarkdown(item.BodyText), 2000)
 	_, discordColor := determineMessageTheme(item.Title, item.BodyText)
 	embed := map[string]any{
 		"title":       item.Title,
