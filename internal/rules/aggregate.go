@@ -332,8 +332,10 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 		eventID := sub[0].ID
 		nextAttempt := time.Now().UTC()
 		action, resumeAt := DecideQuietHoursForEvents(ch, sub, nextAttempt)
+		channelBody := body
 		if action == ActionDeferQuietHours {
 			nextAttempt = resumeAt
+			channelBody = channelBody + "\n<i>🌙 免打扰时段暂存，送达时刻 " + resumeAt.Format("15:04") + "</i>"
 		}
 		var aggURL string
 		if b.repoName != "" {
@@ -355,7 +357,7 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &eventID,
 			AggregateKey: idScope + "|" + b.category, IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: nextAttempt,
-			Title: title, BodyText: body, ParseMode: "HTML",
+			Title: title, BodyText: channelBody, ParseMode: "HTML",
 			HTMLURL: aggURL,
 			BodyJSON: map[string]any{"aggregate": true, "count": len(sub), "category": b.category, "bucket": bucket},
 		})

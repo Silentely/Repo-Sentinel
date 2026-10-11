@@ -253,8 +253,11 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		idem := idempotencyKey(ch.ID, res.Event.ID, "realtime")
 		nextAttempt := time.Now().UTC()
 		action, resumeAt := DecideQuietHours(ch, res.Event, nextAttempt)
+		channelBody := body
 		if action == ActionDeferQuietHours {
 			nextAttempt = resumeAt
+			bodyJSON["deferred_quiet_hours"] = true
+			channelBody = channelBody + "\n<i>🌙 免打扰时段暂存，送达时刻 " + resumeAt.Format("15:04") + "</i>"
 		}
 		if chatOpsToken != "" {
 			bodyJSON["chatops_token"] = chatOpsToken
@@ -263,7 +266,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		if _, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &res.Event.ID,
 			IdempotencyKey: idem, Status: store.OutboxPending, NextAttemptAt: nextAttempt,
-			Title: title, BodyText: body, HTMLURL: htmlURL, BodyJSON: bodyJSON,
+			Title: title, BodyText: channelBody, HTMLURL: htmlURL, BodyJSON: bodyJSON,
 			ParseMode: "HTML",
 		}); err != nil && !errors.Is(err, store.ErrConflict) {
 			return err
