@@ -2,8 +2,8 @@ package digest
 
 import (
 	"strings"
-	"time"
 	"testing"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -124,9 +124,9 @@ func TestFormatDeltaBadge(t *testing.T) {
 		t.Errorf("相等应返回持平，got: %s", got)
 	}
 	if got := FormatDeltaBadge(10, 15); !strings.Contains(got, "+50%") {
-		t.Errorf("增加应返回 +50%，got: %s", got)
+		t.Errorf("增加应返回 +50%%，got: %s", got)
 	}
 	if got := FormatDeltaBadge(20, 10); !strings.Contains(got, "-50%") {
-		t.Errorf("减少应返回 -50%，got: %s", got)
+		t.Errorf("减少应返回 -50%%，got: %s", got)
 	}
 }

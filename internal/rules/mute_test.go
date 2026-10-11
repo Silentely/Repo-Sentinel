@@ -39,12 +39,22 @@ func (d *dummySettingsStore) Upsert(ctx context.Context, s store.SystemSetting) 
 	return s, nil
 }
 
+func (d *dummySettingsStore) Create(ctx context.Context, s store.SystemSetting) (store.SystemSetting, error) {
+	return s, nil
+}
+
+func (d *dummySettingsStore) Delete(ctx context.Context, key string) error { return nil }
+
+func (d *dummySettingsStore) UpdateAIBudgetUsageAtomic(ctx context.Context, todayKey string, tokens int, costCents int, budgetLimitCents int) (bool, error) {
+	return false, nil
+}
+
 type dummyStore struct {
 	store.Store
 	settings dummySettingsStore
 }
 
-func (d *dummyStore) Settings() store.SystemSettingsStore {
+func (d *dummyStore) Settings() store.SettingsStore {
 	return &d.settings
 }
 

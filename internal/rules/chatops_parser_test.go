@@ -28,3 +28,13 @@ func TestParseAndAuthorizeChatOps(t *testing.T) {
 		t.Fatalf("expected regular text to be invalid command")
 	}
 }
+
+func TestParseAndAuthorizeChatOpsEmptyWhitelistDenies(t *testing.T) {
+	cmd := ParseAndAuthorizeChatOps("/retry job-1", nil)
+	if !cmd.IsValid {
+		t.Fatalf("expected syntactically valid command: %+v", cmd)
+	}
+	if cmd.Allowed {
+		t.Fatalf("empty ChatOps whitelist must deny commands: %+v", cmd)
+	}
+}

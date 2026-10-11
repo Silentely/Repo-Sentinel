@@ -575,7 +575,7 @@ func TestComputeBackoffWithJitter(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		got := computeBackoffWithJitter(base)
 		if got < 8*time.Second || got > 12*time.Second {
-			t.Fatalf("computeBackoffWithJitter 超出 ±20% 范围: %v (base: %v)", got, base)
+			t.Fatalf("computeBackoffWithJitter 超出 +/-20%% 范围: %v (base: %v)", got, base)
 		}
 	}
 	if got := computeBackoffWithJitter(0); got != 0 {

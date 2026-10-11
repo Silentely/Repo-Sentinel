@@ -1,10 +1,10 @@
 package digest
 
 import (
+	"fmt"
 	htmlpkg "html"
 	"regexp"
 	"strconv"
-	"fmt"
 	"strings"
 	"time"
 
@@ -149,7 +149,6 @@ func formatDigestSummaryHTML(summary string) string {
 		// 如果未明确处于版块中，通过前缀关键词自动识别归类
 		bucket := currentBucket
 		if bucket == "overview" && isBullet {
-			lower := strings.ToLower(text)
 			if strings.Contains(text, "安全告警") || strings.Contains(text, "漏洞") ||
 				strings.Contains(text, "CI") || strings.Contains(text, "失败") ||
 				strings.Contains(text, "Bug") || strings.Contains(text, "缺陷") ||

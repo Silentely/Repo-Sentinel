@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"repo-sentinel/internal/notify"
+	"github.com/Silentely/Repo-Sentinel/internal/notify"
 )
 
 func TestFilterDeadLetters(t *testing.T) {
@@ -84,5 +84,31 @@ func TestFilterDeadLettersHandler(t *testing.T) {
 	}
 	if resp.Count != 1 || resp.Items[0].Channel != "slack" {
 		t.Errorf("unexpected response body: %+v", resp)
+	}
+}
+
+func TestFilterDeadLettersHandlerParsesTimeAndLimit(t *testing.T) {
+	now := time.Now().UTC()
+	items := []DeadLetterItem{
+		{ID: "old", Channel: "slack", Timestamp: now.Add(-2 * time.Hour)},
+		{ID: "new-1", Channel: "slack", Timestamp: now.Add(-10 * time.Minute)},
+		{ID: "new-2", Channel: "slack", Timestamp: now.Add(-5 * time.Minute)},
+	}
+	handler := FilterDeadLettersHandler(func() []DeadLetterItem { return items })
+	path := "/api/v1/dead-letters?channel=slack&start_time=" + now.Add(-30*time.Minute).Format(time.RFC3339) + "&end_time=" + now.Format(time.RFC3339) + "&limit=1"
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Items []DeadLetterItem `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 1 || resp.Items[0].ID != "new-1" {
+		t.Fatalf("expected filtered first item, got %+v", resp.Items)
 	}
 }

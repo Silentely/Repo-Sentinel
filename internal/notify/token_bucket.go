@@ -52,7 +52,10 @@ func (tb *SmoothTokenBucket) AllowN(now time.Time, requested float64) (allowed b
 		tb.lastRefill = now
 	}
 
-	if tb.tokens >= requested {
+	if tb.tokens+1e-6 >= requested {
+		if tb.tokens < requested {
+			tb.tokens = requested
+		}
 		tb.tokens -= requested
 		return true, 0
 	}

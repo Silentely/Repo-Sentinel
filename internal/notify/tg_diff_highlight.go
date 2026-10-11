@@ -2,8 +2,14 @@ package notify
 
 import (
 	"fmt"
+	"html"
 	"strings"
 )
+
+// EscapeHTML escapes text inserted into Telegram HTML fragments.
+func EscapeHTML(text string) string {
+	return html.EscapeString(text)
+}
 
 // FormatTelegramDiffSnippet 将代码 Diff 补丁转换为 Telegram 原生着色代码块
 func FormatTelegramDiffSnippet(diffText string, maxLines int) string {

@@ -3,6 +3,7 @@ package notify
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"net/url"
 	"strconv"
@@ -20,7 +21,7 @@ func SignDingTalk(timestampMs int64, secret string) string {
 // VerifyDingTalk 校验钉钉签名是否一致。
 func VerifyDingTalk(timestampMs int64, secret, sign string) bool {
 	expected := SignDingTalk(timestampMs, secret)
-	return expected == sign
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(sign)) == 1
 }
 
 // SignFeishu 计算飞书机器人加签签名。
@@ -34,5 +35,5 @@ func SignFeishu(timestampSec int64, secret string) string {
 // VerifyFeishu 校验飞书签名是否一致。
 func VerifyFeishu(timestampSec int64, secret, sign string) bool {
 	expected := SignFeishu(timestampSec, secret)
-	return expected == sign
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(sign)) == 1
 }

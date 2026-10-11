@@ -77,6 +77,28 @@ func TestSendHTTPHonorsRetryAfterHeader(t *testing.T) {
 	}
 }
 
+func TestSendHTTPMasksSensitiveBodyJSON(t *testing.T) {
+	var received map[string]any
+	w, ch, item := newWebhookHarness(t, func(rw http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatalf("decode webhook payload: %v", err)
+		}
+		rw.WriteHeader(http.StatusAccepted)
+	})
+	item.BodyJSON = map[string]any{
+		"kind":          "workflow_run",
+		"chatops_token": "secret-chatops-token",
+		"nested":        map[string]any{"access_token": "secret-access-token"},
+	}
+	if err := w.sendHTTP(t.Context(), ch, "", item); err != nil {
+		t.Fatalf("sendHTTP failed: %v", err)
+	}
+	raw, _ := json.Marshal(received["event"])
+	if strings.Contains(string(raw), "secret-chatops-token") || strings.Contains(string(raw), "secret-access-token") {
+		t.Fatalf("sensitive BodyJSON value leaked: %s", raw)
+	}
+}
+
 // Retry-After 为 HTTP 日期时按剩余秒数退避；日期已过期则回退固定阶梯。
 func TestSendHTTPHonorsRetryAfterHTTPDate(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)

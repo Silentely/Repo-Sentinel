@@ -485,8 +485,8 @@ func TestNotificationSLAEndpoint(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
 		t.Fatalf("unmarshal sla response failed: %v", err)
 	}
-	if res.SLAStatus != "meeting_target" {
-		t.Fatalf("expected meeting_target, got: %s", res.SLAStatus)
+	if res.SLAStatus != "unknown" {
+		t.Fatalf("expected unknown without delivery sample, got: %s", res.SLAStatus)
 	}
 }
 

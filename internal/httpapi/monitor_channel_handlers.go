@@ -27,7 +27,7 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 			"id": ch.ID, "channel_type": ch.ChannelType, "name": ch.Name,
 			"enabled": ch.Enabled, "target": ch.Target, "allow_private": ch.AllowPrivate,
 			"secret_configured": ch.SecretEnvelope != "",
-			"diagnostic": notify.DiagnoseChannel(ch),
+			"diagnostic":        notify.DiagnoseChannel(ch),
 			// 订阅配置：event_kinds 为 nil 表示订阅全部实时类型。
 			"event_kinds": ch.EventKinds, "digest_enabled": ch.DigestEnabled,
 			"receive_daily_digest":   ch.ReceiveDailyDigest,
@@ -482,6 +482,10 @@ func (s *server) handleNotificationMetrics(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	runtimeStatus := "operational"
+	if errorCount > 0 {
+		runtimeStatus = "degraded"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"channels": map[string]any{
 			"total":         len(items),
@@ -491,7 +495,7 @@ func (s *server) handleNotificationMetrics(w http.ResponseWriter, r *http.Reques
 			"misconfigured": errorCount,
 		},
 		"runtime": map[string]any{
-			"status": "operational",
+			"status": runtimeStatus,
 		},
 	})
 }
@@ -623,18 +627,55 @@ func (s *server) handleExportNotificationBackup(w http.ResponseWriter, r *http.R
 }
 
 func (s *server) handleWidgetStatus(w http.ResponseWriter, r *http.Request) {
+	channels, err := s.dependencies.Store.Channels().List(r.Context())
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	status := "healthy"
+	for _, ch := range channels {
+		if ch.Enabled && notify.DiagnoseChannel(ch).Status == notify.ChannelHealthError {
+			status = "degraded"
+			break
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"system":       "healthy",
+		"system":       status,
 		"status_code":  200,
 		"last_updated": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
 func (s *server) handleNotificationSLA(w http.ResponseWriter, r *http.Request) {
+	sent, err := s.dependencies.Store.Outbox().CountByStatus(r.Context(), store.OutboxSent)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	dead, err := s.dependencies.Store.Outbox().CountByStatus(r.Context(), store.OutboxDead)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	completed := sent + dead
+	status := "unknown"
+	rate := "N/A"
+	if completed > 0 {
+		rateValue := float64(sent) / float64(completed) * 100
+		rate = fmt.Sprintf("%.1f%%", rateValue)
+		if rateValue >= 99.0 {
+			status = "meeting_target"
+		} else {
+			status = "below_target"
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"calculated_at":        time.Now().UTC().Format(time.RFC3339),
-		"overall_success_rate": "99.8%",
-		"sla_status":           "meeting_target",
+		"overall_success_rate": rate,
+		"sla_status":           status,
 		"target_sla":           "99.0%",
+		"sent":                 sent,
+		"dead":                 dead,
+		"sample_size":          completed,
 	})
 }

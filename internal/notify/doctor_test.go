@@ -55,10 +55,11 @@ func TestDiagnoseChannel(t *testing.T) {
 func TestChannelHealthTracker(t *testing.T) {
 	tracker := NewChannelHealthTracker()
 	ch := store.NotificationChannel{
-		ID:          "ch-1",
-		Enabled:     true,
-		ChannelType: store.ChannelTelegram,
-		Target:      "12345678",
+		ID:             "ch-1",
+		Enabled:        true,
+		ChannelType:    store.ChannelTelegram,
+		Target:         "12345678",
+		SecretEnvelope: "configured",
 	}
 
 	// 1. 初始状态为 healthy

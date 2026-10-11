@@ -22,7 +22,7 @@ func TestDedupeCache(t *testing.T) {
 		t.Fatalf("expected duplicate hit within ttl")
 	}
 	if cache.DuplicateCount() != 1 {
-		t.Errorf("expected 1 duplicate hit, got %d", cache.DuplicateCount)
+		t.Errorf("expected 1 duplicate hit, got %d", cache.DuplicateCount())
 	}
 
 	// 15 秒后过期，再次写入，不再判定为重复

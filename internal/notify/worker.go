@@ -576,11 +576,25 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 		return err
 	}
 	now := time.Now().UTC()
+	eventPayload := map[string]any{}
+	if item.BodyJSON != nil {
+		rawEvent, err := json.Marshal(item.BodyJSON)
+		if err != nil {
+			return fmt.Errorf("marshal_event: %w", err)
+		}
+		maskedEvent, err := MaskSensitiveJSON(rawEvent)
+		if err != nil {
+			return fmt.Errorf("mask_event: %w", err)
+		}
+		if err := json.Unmarshal(maskedEvent, &eventPayload); err != nil {
+			return fmt.Errorf("unmarshal_masked_event: %w", err)
+		}
+	}
 	payload := map[string]any{
 		"spec_version": "1",
 		"delivery_id":  item.ID,
 		"emitted_at":   now.Format(time.RFC3339),
-		"event":        item.BodyJSON,
+		"event":        eventPayload,
 		"title":        item.Title,
 		// body_text 为 Telegram HTML 格式正文（保留兼容）；body_plain 为同一内容的纯文本，
 		// 供不具备 HTML 解析能力的接收端直接消费。

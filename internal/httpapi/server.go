@@ -351,6 +351,7 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/events/stream", s.handleEventStream)
 			protected.Get("/system/version", s.handleVersion)
 			protected.Get("/system/health", s.handleSystemHealth)
+			protected.Get("/system/capabilities", CapabilitiesHandler())
 			protected.Get("/dashboard", s.handleDashboard)
 			protected.Get("/stats/star-trend", s.handleStarTrend)
 			protected.Get("/repositories", s.handleListRepositories)

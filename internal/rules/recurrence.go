@@ -35,7 +35,11 @@ func DetectIssueRecurrence(currentTitle string, historyTitles []string) IssueRec
 				hit++
 			}
 		}
-		if len(keywords) > 0 && hit >= len(keywords)/2+1 {
+		minimumHits := len(keywords)/2 + 1
+		if len(keywords) <= 2 {
+			minimumHits = 1
+		}
+		if len(keywords) > 0 && hit >= minimumHits {
 			matchCount++
 		}
 	}

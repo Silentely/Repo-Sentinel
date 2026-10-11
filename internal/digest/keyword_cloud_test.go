@@ -18,13 +18,9 @@ func TestExtractTopEventKeywords(t *testing.T) {
 		t.Fatal("expected keywords extracted")
 	}
 
-	// actions 和 nanoid 应高居榜首
-	foundActions := false
+	// nanoid 应出现在高频关键词中
 	foundNanoid := false
 	for _, kw := range top {
-		if kw == "actions/checkout" || kw == "actions/setup-node" || kw == "actions" {
-			foundActions = true
-		}
 		if kw == "nanoid" {
 			foundNanoid = true
 		}

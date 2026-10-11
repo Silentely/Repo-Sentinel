@@ -344,7 +344,7 @@ func TestRenderMessage_IssueOpened(t *testing.T) {
 	if !strings.Contains(body, "#8") {
 		t.Error("期望包含编号")
 	}
-	if !strings.Contains(body, "bug, urgent") {
+	if !strings.Contains(body, "<code>bug</code>, <code>urgent</code>") {
 		t.Errorf("期望包含标签，实际: %s", body)
 	}
 	if !strings.Contains(body, "user1") {

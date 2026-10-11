@@ -518,7 +518,10 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 		}
 		enriched = append(enriched, entry)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": enri// explainDeliveryErrorCode 提供人类友好的投递错误诊断释义，辅助运维在控制台一眼定位问题根因。
+	writeJSON(w, http.StatusOK, map[string]any{"items": enriched, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+}
+
+// explainDeliveryErrorCode 提供人类友好的投递错误诊断释义，辅助运维在控制台一眼定位问题根因。
 func explainDeliveryErrorCode(code string) string {
 	if code == "" {
 		return ""
@@ -541,9 +544,6 @@ func explainDeliveryErrorCode(code string) string {
 	default:
 		return "投递未完成：" + code
 	}
-}
-
-ched, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
 }
 
 func queryTrimmed(q url.Values, key string) string {

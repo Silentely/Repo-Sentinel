@@ -7,9 +7,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -201,6 +204,8 @@ func formatQuotedAISections(text string) string {
 var (
 	reHTMLStrong = regexp.MustCompile(`(?i)<(?:b|strong)>(.*?)</(?:b|strong)>`)
 	reHTMLEm     = regexp.MustCompile(`(?i)<(?:i|em)>(.*?)</(?:i|em)>`)
+	reHTMLEmTag  = regexp.MustCompile(`(?i)<em>([^<]*)</em>`)
+	reHTMLITag   = regexp.MustCompile(`(?i)<i>([^<]*)</i>`)
 	reHTMLCode   = regexp.MustCompile(`(?i)<code>(.*?)</code>`)
 	reHTMLPre    = regexp.MustCompile(`(?is)<pre>(?:<code>)?(.*?)(?:</code>)?</pre>`)
 	reHTMLBlock  = regexp.MustCompile(`(?is)<blockquote(?:[^>]*)>(.*?)</blockquote>`)
@@ -477,7 +482,9 @@ func (w *Worker) sendBark(ctx context.Context, ch store.NotificationChannel, sec
 	} else if strings.Contains(item.Title, "：") {
 		parts := strings.SplitN(item.Title, "：", 2)
 		trimmedRepo := strings.TrimSpace(parts[0])
-		trimmedRepo = strings.TrimPrefix(trimmedRepo, "📋 ")
+		for _, prefix := range []string{"📋 ", "🚨 ", "⚠️ ", "📌 ", "🔔 "} {
+			trimmedRepo = strings.TrimPrefix(trimmedRepo, prefix)
+		}
 		trimmedRepo = strings.TrimPrefix(trimmedRepo, "🟢 ")
 		trimmedRepo = strings.TrimPrefix(trimmedRepo, "⚫ ")
 		trimmedRepo = strings.TrimPrefix(trimmedRepo, "🟣 ")
@@ -538,13 +545,27 @@ func htmlToSlackMrkdwn(s string) string {
 
 	// 2. 行内样式：Slack 特有语法
 	s = reHTMLStrong.ReplaceAllString(s, "*$1*")
-	s = reHTMLEm.ReplaceAllString(s, "_$1_")
+	s = reHTMLEm.ReplaceAllString(s, "_${1}_")
+	s = reHTMLEmTag.ReplaceAllString(s, "_${1}_")
+	s = reHTMLITag.ReplaceAllString(s, "_${1}_")
 	s = reHTMLCode.ReplaceAllString(s, "`$1`")
-	s = reHTMLLinkMD.ReplaceAllString(s, "<$1|$2>")
+	// 3. 暂存 Slack 链接语法，避免后续 HTML 标签清理把其尖括号误删。
+	var slackLinks []string
+	s = reHTMLLinkMD.ReplaceAllStringFunc(s, func(raw string) string {
+		parts := reHTMLLinkMD.FindStringSubmatch(raw)
+		if len(parts) != 3 {
+			return raw
+		}
+		slackLinks = append(slackLinks, "<"+parts[1]+"|"+parts[2]+">")
+		return fmt.Sprintf("\x00SLACK_LINK_%d\x00", len(slackLinks)-1)
+	})
 
-	// 3. 剥离无用标签并反转义
+	// 4. 剥离无用标签并反转义
 	if strings.Contains(s, "<") {
 		s = reHTMLTagsMD.ReplaceAllString(s, "")
+	}
+	for i, link := range slackLinks {
+		s = strings.ReplaceAll(s, fmt.Sprintf("\x00SLACK_LINK_%d\x00", i), link)
 	}
 	return strings.TrimSpace(html.UnescapeString(s))
 }

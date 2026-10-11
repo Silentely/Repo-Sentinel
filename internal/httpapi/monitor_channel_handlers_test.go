@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -126,7 +128,7 @@ func TestChannelIgnoreBotsHandler(t *testing.T) {
 
 func TestAppendAuditRedactsSecrets(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
-	s := &server{dependencies: fixture.dependencies}
+	s := &server{dependencies: Dependencies{Store: fixture.store}}
 
 	token := "ghp_111122223333444455556666777788889999"
 	s.appendAudit(t.Context(), store.AuditLog{
@@ -148,7 +150,7 @@ func TestAppendAuditRedactsSecrets(t *testing.T) {
 	if strings.Contains(rawMeta, token) {
 		t.Fatalf("审计日志中不应包含真实 token 原文: %s", rawMeta)
 	}
-	if !strings.Contains(rawMeta, "[REDACTED_GITHUB_TOKEN]") {
+	if !strings.Contains(rawMeta, "ghp_***") {
 		t.Fatalf("审计日志应包含脱敏标记: %s", rawMeta)
 	}
 }

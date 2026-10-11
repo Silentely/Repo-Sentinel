@@ -176,7 +176,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	} else if res.Repository != nil {
 		repoID = res.Repository.ID
 	}
-	isMuted, muteReason := CheckEmergencyMute(ctx, e.Store, repoID)
+	isMuted, _ := CheckEmergencyMute(ctx, e.Store, repoID)
 
 	// 全部订阅渠道都会被过滤拦截或免打扰时不作 AI 分析：省下无效费用与等待。
 	if !isMuted && hasReceivingChannel(channels, res.Event, repoFullName, branch) {
@@ -237,7 +237,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 				EventID:          &res.Event.ID,
 				IdempotencyKey:   suppressedIdem,
 				Status:           store.OutboxSuppressed,
-				SuppressedReason: muteReason,
+				SuppressedReason: "emergency_mute",
 				NextAttemptAt:    now,
 				Title:            title,
 				BodyText:         body,

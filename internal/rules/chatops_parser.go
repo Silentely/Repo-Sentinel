@@ -51,9 +51,7 @@ func ParseAndAuthorizeChatOps(text string, allowedCommands []string) ChatOpsComm
 
 	// 白名单校验
 	allowed := false
-	if len(allowedCommands) == 0 {
-		allowed = true // 未指定白名单时默认放行合法语法
-	} else {
+	if len(allowedCommands) > 0 {
 		for _, cmd := range allowedCommands {
 			cleanCmd := strings.ToLower(strings.TrimPrefix(cmd, "/"))
 			if cleanCmd == rootCmd {

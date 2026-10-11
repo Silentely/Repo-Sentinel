@@ -3,10 +3,11 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
-	"repo-sentinel/internal/notify"
+	"github.com/Silentely/Repo-Sentinel/internal/notify"
 )
 
 // DeadLetterFilterParams 死信查询筛选条件
@@ -20,14 +21,14 @@ type DeadLetterFilterParams struct {
 
 // DeadLetterItem 描述单条死信展示模型
 type DeadLetterItem struct {
-	ID               string                 `json:"id"`
-	Channel          string                 `json:"channel"`
-	ErrorCode        string                 `json:"error_code"`
+	ID               string                   `json:"id"`
+	Channel          string                   `json:"channel"`
+	ErrorCode        string                   `json:"error_code"`
 	Category         notify.DeadCauseCategory `json:"category"`
-	RetryRecommended bool                   `json:"retry_recommended"`
-	Hint             string                 `json:"hint"`
-	Timestamp        time.Time              `json:"timestamp"`
-	PayloadSummary   string                 `json:"payload_summary"`
+	RetryRecommended bool                     `json:"retry_recommended"`
+	Hint             string                   `json:"hint"`
+	Timestamp        time.Time                `json:"timestamp"`
+	PayloadSummary   string                   `json:"payload_summary"`
 }
 
 // FilterDeadLetters 在死信切片中执行多维度过滤
@@ -72,6 +73,28 @@ func FilterDeadLettersHandler(provider func() []DeadLetterItem) http.HandlerFunc
 		params := DeadLetterFilterParams{
 			Channel:  q.Get("channel"),
 			Category: q.Get("category"),
+		}
+		var err error
+		if raw := q.Get("start_time"); raw != "" {
+			params.StartTime, err = time.Parse(time.RFC3339, raw)
+			if err != nil {
+				http.Error(w, "invalid start_time", http.StatusBadRequest)
+				return
+			}
+		}
+		if raw := q.Get("end_time"); raw != "" {
+			params.EndTime, err = time.Parse(time.RFC3339, raw)
+			if err != nil {
+				http.Error(w, "invalid end_time", http.StatusBadRequest)
+				return
+			}
+		}
+		if raw := q.Get("limit"); raw != "" {
+			params.Limit, err = strconv.Atoi(raw)
+			if err != nil || params.Limit <= 0 || params.Limit > 500 {
+				http.Error(w, "invalid limit", http.StatusBadRequest)
+				return
+			}
 		}
 
 		var items []DeadLetterItem

@@ -847,10 +847,10 @@ func TestTestChannelCreatesDatedOutbox(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("期望 1 条测试通知，got %d", len(items))
 	}
-	if items[0].Title != "🔔 测试通知" {
+	if items[0].Title != "🔔 渠道连通性与渲染能力验证" {
 		t.Fatalf("标题不符: %q", items[0].Title)
 	}
-	if !strings.Contains(items[0].BodyText, "发送于 ") || !strings.Contains(items[0].BodyText, " UTC") {
+	if !strings.Contains(items[0].BodyText, "验证时刻：") || !strings.Contains(items[0].BodyText, " UTC") {
 		t.Fatalf("测试通知正文应带发送时刻（UTC），实际: %q", items[0].BodyText)
 	}
 }

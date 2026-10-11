@@ -3,6 +3,7 @@ package rules
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )

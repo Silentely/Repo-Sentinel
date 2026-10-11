@@ -480,7 +480,7 @@ func TestAggregatorBurstWindowDedup(t *testing.T) {
 	out := waitOutboxCount(t, ctx, data, 2)
 	var digest, burst bool
 	for _, it := range out {
-		digest = digest || strings.Contains(it.Title, "安全告警 × 15（已聚合）")
+		digest = digest || (strings.Contains(it.Title, "安全告警") && strings.Contains(it.Title, "× 15（已聚合）"))
 		burst = burst || strings.Contains(it.Title, "通知频率超限")
 	}
 	if !digest || !burst {
@@ -878,7 +878,7 @@ func TestRenderMergedMessageBotBadge(t *testing.T) {
 }
 
 func TestBucketSaturationEagerFlush(t *testing.T) {
-	st := newFakeAggregateStore()
+	st := openTestStore(t)
 	agg := NewAggregator(st, 10*time.Minute, 100, 5*time.Minute)
 
 	repoID := "repo_sat"
@@ -892,10 +892,9 @@ func TestBucketSaturationEagerFlush(t *testing.T) {
 			SubjectNumber: &num,
 			RepositoryID:  &repoID,
 		}
-		_ = agg.Enqueue(context.Background(), EvaluationResult{
-			Event:        ev,
-			MatchedRules: []string{"rule1"},
-		}, "org/repo")
+		if err := agg.Evaluate(context.Background(), normalizer.Result{Event: ev}, "org/repo"); err != nil {
+			t.Fatalf("evaluate event %d: %v", i, err)
+		}
 	}
 
 	// 饱和提前冲刷通过异步 goroutine flush，等待片刻
