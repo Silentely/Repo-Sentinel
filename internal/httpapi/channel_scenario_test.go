@@ -228,3 +228,38 @@ func TestChannelQuietHoursValidation(t *testing.T) {
 		t.Fatal("非法配置不应创建渠道")
 	}
 }
+
+func TestDefaultTestNotificationScenario(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	// Create a telegram channel
+	fixture.request(
+		t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"tg","enabled":true,"target":"123456"}`,
+		"127.0.0.1:49010", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+
+	// Trigger default test notification
+	resp := fixture.request(
+		t, http.MethodPost, "/api/v1/notifications/channels/telegram/test",
+		"", "127.0.0.1:49011", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("test default failed status=%d", resp.Code)
+	}
+
+	items, _, err := fixture.store.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 5})
+	if err != nil || len(items) == 0 {
+		t.Fatalf("outbox items missing, err=%v", err)
+	}
+	item := items[0]
+	if !strings.Contains(item.Title, "渠道连通性与渲染能力验证") {
+		t.Errorf("expected new default title, got %s", item.Title)
+	}
+	if !strings.Contains(item.BodyText, "<blockquote expandable>") {
+		t.Errorf("expected expandable block in test notification, got %s", item.BodyText)
+	}
+}

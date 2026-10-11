@@ -335,11 +335,17 @@ func buildTestScenario(scenario string, now time.Time) (title, bodyText, htmlURL
 			"<i>⏰ 生成时间：%s</i>", now.Format("2006-01-02"), ts)
 		htmlURL = "https://github.com/org/api"
 	default:
-		title = "🔔 测试通知"
-		bodyText = fmt.Sprintf("🔔 <b>测试通知</b>\n────────────────\n"+
-			"来自 RepoSentinel 的测试消息，发送于 %s。\n"+
-			"如果您收到了这条消息，说明通知渠道配置正确！", ts)
-		htmlURL = ""
+		title = "🔔 渠道连通性与渲染能力验证"
+		bodyText = fmt.Sprintf("🔔 <b>渠道连通性验证成功</b>\n────────────────\n"+
+			"<b>测试状态：</b> 🟢 正常通畅\n"+
+			"<b>验证时刻：</b> %s\n"+
+			"<b>富文本支持：</b> <b>加粗</b> · <i>斜体</i> · <code>代码</code>\n"+
+			"────────────────\n"+
+			"<blockquote expandable>\n"+
+			"<b>💡 渲染能力自检说明</b>\n"+
+			"若您看到本折叠块与等宽代码，说明通知渠道富文本引擎运行正常！系统告警、聚合卡片与 AI 诊断将获得最佳排版体验。\n"+
+			"</blockquote>", ts)
+		htmlURL = "https://github.com"
 	}
 	return title, bodyText, htmlURL
 }
