@@ -5,15 +5,18 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
 var (
-	reRepoName = regexp.MustCompile(`\b([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)\b`)
-	reIssueNum = regexp.MustCompile(`(#\d+)\b`)
-	reVersion  = regexp.MustCompile(`\b(v\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9.]+)?)\b`)
-	reSeverity = regexp.MustCompile(`(?i)\b(critical|high|medium|low)\b`)
+	reRepoName          = regexp.MustCompile(`\b([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)\b`)
+	reIssueNum          = regexp.MustCompile(`(#\d+)\b`)
+	reVersionTransition = regexp.MustCompile(`(v?\d+\.\d+(?:\.\d+)?)\s*(?:→|->|➔|➜)\s*(v?\d+\.\d+(?:\.\d+)?)`)
+	reVersion           = regexp.MustCompile(`\b(v\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9.]+)?)\b`)
+	reSeverity          = regexp.MustCompile(`(?i)\b(critical|high|medium|low)\b`)
+	reUrgentKeywords    = regexp.MustCompile(`(需尽快确认|尽快确认|需人工介入|紧急处理)`)
 )
 
 // buildDigestMetricsCard 基于实际事件集生成紧凑的指标统计速览卡。
@@ -235,6 +238,12 @@ func highlightEntities(text string) string {
 		return m
 	})
 
+	// 版本迁移 1.2.1→1.2.2 -> <code>1.2.1</code> ➔ <code>1.2.2</code>
+	escaped = reVersionTransition.ReplaceAllString(escaped, `<code>$1</code> ➔ <code>$2</code>`)
+
+	// 紧急行动项关键词高亮
+	escaped = reUrgentKeywords.ReplaceAllString(escaped, `<b><u>$1</u></b>`)
+
 	return escaped
 }
 
@@ -266,4 +275,37 @@ func emphasizePrefix(text string) string {
 		}
 	}
 	return text
+}
+
+// FormatRelativeTime 计算 target 相对于 now 的自然语言相对时间（如“刚刚”、“10 分钟前”、“2 小时前”）。
+func FormatRelativeTime(target, now time.Time) string {
+	if target.IsZero() {
+		return ""
+	}
+	diff := now.Sub(target)
+	if diff < 0 {
+		diff = -diff
+	}
+	switch {
+	case diff < time.Minute:
+		return "刚刚"
+	case diff < time.Hour:
+		mins := int(diff.Minutes())
+		if mins <= 0 {
+			mins = 1
+		}
+		return strconv.Itoa(mins) + " 分钟前"
+	case diff < 24*time.Hour:
+		hours := int(diff.Hours())
+		if hours <= 0 {
+			hours = 1
+		}
+		return strconv.Itoa(hours) + " 小时前"
+	default:
+		days := int(diff.Hours() / 24)
+		if days <= 0 {
+			days = 1
+		}
+		return strconv.Itoa(days) + " 天前"
+	}
 }

@@ -2,6 +2,7 @@ package digest
 
 import (
 	"strings"
+	"time"
 	"testing"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -44,6 +45,16 @@ func TestFormatDigestSummaryHTML_UserScenario(t *testing.T) {
 		t.Fatalf("编号应使用 <b> 加粗，实际:\n%s", output)
 	}
 
+	// 验证版本号迁移格式化
+	if !strings.Contains(output, "<code>1.2.1</code> ➔ <code>1.2.2</code>") {
+		t.Fatalf("版本迁移应高亮为 <code>1.2.1</code> ➔ <code>1.2.2</code>，实际:\n%s", output)
+	}
+
+	// 验证紧急行动项高亮
+	if !strings.Contains(output, "<b><u>需尽快确认</u></b>") {
+		t.Fatalf("需尽快确认应带有 <b><u> 强调标签，实际:\n%s", output)
+	}
+
 	// 4. 验证版本发布
 	if !strings.Contains(output, "🚀 <b>版本发布：</b>") {
 		t.Fatalf("版本发布应加粗突出，实际:\n%s", output)
@@ -83,5 +94,21 @@ func TestBuildDigestMetricsCard(t *testing.T) {
 	}
 	if !strings.Contains(card, "🚀 发布: 1") {
 		t.Fatalf("应包含发布数，实际:\n%s", card)
+	}
+}
+
+func TestFormatRelativeTime(t *testing.T) {
+	now := time.Now()
+	if got := FormatRelativeTime(now.Add(-10*time.Second), now); got != "刚刚" {
+		t.Errorf("expected 刚刚, got %s", got)
+	}
+	if got := FormatRelativeTime(now.Add(-15*time.Minute), now); got != "15 分钟前" {
+		t.Errorf("expected 15 分钟前, got %s", got)
+	}
+	if got := FormatRelativeTime(now.Add(-3*time.Hour), now); got != "3 小时前" {
+		t.Errorf("expected 3 小时前, got %s", got)
+	}
+	if got := FormatRelativeTime(now.Add(-48*time.Hour), now); got != "2 天前" {
+		t.Errorf("expected 2 天前, got %s", got)
 	}
 }
