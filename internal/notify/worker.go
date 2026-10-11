@@ -274,6 +274,8 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 		}
 		secrets[item.ChannelID] = secret
 	}
+	item.Title = RedactSensitiveSecrets(item.Title)
+	item.BodyText = RedactSensitiveSecrets(item.BodyText)
 	switch ch.ChannelType {
 	case store.ChannelTelegram:
 		token, _ := item.BodyJSON["chatops_token"].(string)
