@@ -452,3 +452,46 @@ func (s *server) handleToggleChannel(w http.ResponseWriter, r *http.Request) {
 		"enabled":      body.Enabled,
 	})
 }
+
+func (s *server) handleNotificationMetrics(w http.ResponseWriter, r *http.Request) {
+	items, err := s.dependencies.Store.Channels().List(r.Context())
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+
+	var (
+		enabledCount int
+		healthyCount int
+		warningCount int
+		errorCount   int
+	)
+
+	for _, ch := range items {
+		if ch.Enabled {
+			enabledCount++
+		}
+		diag := notify.DiagnoseChannel(ch)
+		switch diag.Status {
+		case notify.ChannelHealthOK:
+			healthyCount++
+		case notify.ChannelHealthWarning:
+			warningCount++
+		case notify.ChannelHealthError:
+			errorCount++
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"channels": map[string]any{
+			"total":         len(items),
+			"enabled":       enabledCount,
+			"healthy":       healthyCount,
+			"warning":       warningCount,
+			"misconfigured": errorCount,
+		},
+		"runtime": map[string]any{
+			"status": "operational",
+		},
+	})
+}

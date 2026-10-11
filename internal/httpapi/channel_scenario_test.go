@@ -263,3 +263,49 @@ func TestDefaultTestNotificationScenario(t *testing.T) {
 		t.Errorf("expected expandable block in test notification, got %s", item.BodyText)
 	}
 }
+
+func TestNotificationMetricsEndpoint(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	// Create a telegram channel
+	fixture.request(
+		t, http.MethodPut, "/api/v1/notifications/channels/telegram",
+		`{"name":"tg-metrics","enabled":true,"target":"12345678"}`,
+		"127.0.0.1:49020", cookies, map[string]string{CSRFHeaderName: csrf.Value},
+	)
+
+	// Call GET /api/v1/notifications/metrics
+	resp := fixture.request(
+		t, http.MethodGet, "/api/v1/notifications/metrics",
+		"", "127.0.0.1:49021", cookies, nil,
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d, body: %s", resp.Code, resp.Body.String())
+	}
+
+	var res struct {
+		Channels struct {
+			Total         int `json:"total"`
+			Enabled       int `json:"enabled"`
+			Healthy       int `json:"healthy"`
+			Warning       int `json:"warning"`
+			Misconfigured int `json:"misconfigured"`
+		} `json:"channels"`
+		Runtime struct {
+			Status string `json:"status"`
+		} `json:"runtime"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal metrics response failed: %v", err)
+	}
+
+	if res.Channels.Total < 1 || res.Channels.Enabled < 1 {
+		t.Errorf("expected at least 1 channel, got %+v", res.Channels)
+	}
+	if res.Runtime.Status != "operational" {
+		t.Errorf("expected operational runtime status, got %s", res.Runtime.Status)
+	}
+}
