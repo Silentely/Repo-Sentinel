@@ -417,3 +417,21 @@ func TestHTMLToMarkdown(t *testing.T) {
 		t.Fatalf("blockquote 应转换为 Markdown 引用行，实际: %s", output)
 	}
 }
+
+func TestHTMLToSlackMrkdwn(t *testing.T) {
+	input := "<b>粗体</b> <i>斜体</i> <code>代码</code> <a href=\"https://github.com/\">链接</a>"
+	output := htmlToSlackMrkdwn(input)
+
+	if !strings.Contains(output, "*粗体*") {
+		t.Fatalf("Slack 粗体应为 *粗体*，实际: %s", output)
+	}
+	if !strings.Contains(output, "_斜体_") {
+		t.Fatalf("Slack 斜体应为 _斜体_，实际: %s", output)
+	}
+	if !strings.Contains(output, "`代码`") {
+		t.Fatalf("Slack 行内代码应为 `代码`，实际: %s", output)
+	}
+	if !strings.Contains(output, "<https://github.com/|链接>") {
+		t.Fatalf("Slack 超链接应为 <url|text>，实际: %s", output)
+	}
+}

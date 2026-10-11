@@ -445,6 +445,45 @@ func (w *Worker) sendBark(ctx context.Context, ch store.NotificationChannel, sec
 	return w.postJSONChannel(ctx, ch, target, "bark", payload)
 }
 
+// htmlToSlackMrkdwn 将 HTML 转换为 Slack 专属 mrkdwn 语法（粗体 *text*、链接 <url|text>、斜体 _text_ 等）。
+func htmlToSlackMrkdwn(s string) string {
+	if !strings.Contains(s, "<") && !strings.Contains(s, "&") {
+		return s
+	}
+
+	// 1. 块级标签
+	s = reHTMLPre.ReplaceAllString(s, "```\n$1\n```")
+	s = reHTMLBlock.ReplaceAllStringFunc(s, func(m string) string {
+		sub := reHTMLBlock.FindStringSubmatch(m)
+		if len(sub) < 2 {
+			return m
+		}
+		lines := strings.Split(strings.TrimSpace(sub[1]), "\n")
+		var quoted []string
+		for _, line := range lines {
+			trimmed := strings.TrimRight(line, "\r")
+			if strings.TrimSpace(trimmed) == "" {
+				quoted = append(quoted, ">")
+			} else {
+				quoted = append(quoted, "> "+trimmed)
+			}
+		}
+		return "\n" + strings.Join(quoted, "\n") + "\n"
+	})
+
+	// 2. 行内样式：Slack 特有语法
+	s = reHTMLStrong.ReplaceAllString(s, "*$1*")
+	s = reHTMLEm.ReplaceAllString(s, "_$1_")
+	s = reHTMLCode.ReplaceAllString(s, "`$1`")
+	s = reHTMLLinkMD.ReplaceAllString(s, "<$1|$2>")
+
+	// 3. 剥离无用标签并反转义
+	if strings.Contains(s, "<") {
+		s = reHTMLTagsMD.ReplaceAllString(s, "")
+	}
+	return strings.TrimSpace(html.UnescapeString(s))
+}
+
 // sendSlack 发送 Slack Incoming Webhook 消息（Block Kit 格式）。
 func (w *Worker) sendSlack(ctx context.Context, ch store.NotificationChannel, secret string, item store.NotificationOutbox) error {
 	target := strings.TrimSpace(ch.Target)
@@ -453,7 +492,7 @@ func (w *Worker) sendSlack(ctx context.Context, ch store.NotificationChannel, se
 	}
 
 	headerText := truncateRunes(item.Title, 150)
-	plainBody := truncateRunes(htmlToPlainText(item.BodyText), 2800)
+	plainBody := truncateRunes(htmlToSlackMrkdwn(item.BodyText), 2800)
 
 	blocks := []any{
 		map[string]any{
