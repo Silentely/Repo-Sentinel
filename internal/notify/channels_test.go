@@ -487,3 +487,30 @@ func TestSendWeCom_ColoredTitle(t *testing.T) {
 		t.Errorf("企业微信告警标题应包含 warning 彩色字体标签，实际 content: %s", content)
 	}
 }
+
+func TestSendDingTalk_MultiButton(t *testing.T) {
+	var receivedBody map[string]any
+	w, ch, item := newChannelTestHarness(t, store.ChannelDingTalk, func(rw http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &receivedBody)
+		rw.WriteHeader(http.StatusOK)
+		_, _ = rw.Write([]byte(`{"errcode":0,"errmsg":"ok"}`))
+	})
+	item.Title = "构建失败"
+	item.HTMLURL = "https://github.com/test/repo"
+	item.BodyJSON = map[string]any{"chatops_token": "token123"}
+
+	err := w.sendDingTalk(t.Context(), ch, "", item)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	card, ok := receivedBody["actionCard"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected actionCard payload, got: %v", receivedBody)
+	}
+	btns, ok := card["btns"].([]any)
+	if !ok || len(btns) != 2 {
+		t.Fatalf("含有 chatops_token 时应渲染 2 个 btns，实际: %v", card["btns"])
+	}
+}

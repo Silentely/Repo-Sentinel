@@ -379,14 +379,32 @@ func (w *Worker) sendDingTalk(ctx context.Context, ch store.NotificationChannel,
 	plainBody = formatQuotedAISections(plainBody)
 	var payload map[string]any
 
+	var dingBtns []map[string]string
 	if item.HTMLURL != "" {
+		dingBtns = append(dingBtns, map[string]string{"title": store.GitHubViewLabel, "actionURL": item.HTMLURL})
+	}
+	if opToken, ok := item.BodyJSON["chatops_token"].(string); ok && opToken != "" {
+		dingBtns = append(dingBtns, map[string]string{"title": "🔄 重试工作流", "actionURL": item.HTMLURL})
+	}
+
+	if len(dingBtns) > 1 {
 		payload = map[string]any{
 			"msgtype": "actionCard",
 			"actionCard": map[string]any{
 				"title":          item.Title,
 				"text":           "### " + item.Title + "\n\n" + plainBody,
-				"singleTitle":    store.GitHubViewLabel,
-				"singleURL":      item.HTMLURL,
+				"btnOrientation": "0",
+				"btns":           dingBtns,
+			},
+		}
+	} else if len(dingBtns) == 1 {
+		payload = map[string]any{
+			"msgtype": "actionCard",
+			"actionCard": map[string]any{
+				"title":          item.Title,
+				"text":           "### " + item.Title + "\n\n" + plainBody,
+				"singleTitle":    dingBtns[0]["title"],
+				"singleURL":      dingBtns[0]["actionURL"],
 				"btnOrientation": "0",
 			},
 		}
