@@ -838,3 +838,27 @@ func TestRenderMergedMessageTitlePlainText(t *testing.T) {
 		t.Fatalf("body 列表项必须转义，got: %s", body)
 	}
 }
+
+func TestEnqueueBurstSummaryFormatting(t *testing.T) {
+	data := openTestStore(t)
+	_, _ = data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: "ch-burst-2", ChannelType: store.ChannelTelegram, Name: "tg", Enabled: true, Target: "chat-1",
+	})
+	sample := &store.Event{ID: "ev-2", Kind: store.WorkItemKindIssue, Action: "opened"}
+	a := NewAggregator(data, 60*time.Second, 15, 5*time.Minute)
+	_, _, err := a.enqueueBurstSummary(t.Context(), "repo-2", "org/repo", "issue", "⚠️ 通知频率超限", sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, _, _ := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if len(items) == 0 {
+		t.Fatal("应生成超频降级消息")
+	}
+	body := items[0].BodyText
+	if !strings.Contains(body, "🛡️ 防风暴熔断机制已生效") {
+		t.Fatalf("超频通知应包含风暴熔断卡片说明，实际: %s", body)
+	}
+	if items[0].HTMLURL != "https://github.com/org/repo" {
+		t.Fatalf("无直接事件链接时应降级回退到仓库主页链接，实际: %s", items[0].HTMLURL)
+	}
+}

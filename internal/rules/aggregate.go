@@ -431,7 +431,19 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 	safeTitle := htmlpkg.EscapeString(title)
 	safeRepo := htmlpkg.EscapeString(repoName)
 	safeCat := htmlpkg.EscapeString(categoryCN)
-	body := "<b>" + safeTitle + "</b>\n────────────────\n📦 仓库：<code>" + safeRepo + "</code>\n📋 类型：" + safeCat + "\n🔇 已降级为摘要模式，请在仪表盘查看详情\n<i>⏰ 时间：" + now.Format("2006-01-02 15:04 UTC") + "</i>"
+	body := "<b>" + safeTitle + "</b>\n────────────────\n" +
+		"📦 仓库：<code>" + safeRepo + "</code>\n" +
+		"📋 类型：" + safeCat + "\n" +
+		"⚠️ <b>已触发短时事件风暴保护（限流收敛）</b>\n" +
+		"<blockquote expandable>\n" +
+		"<b>🛡️ 防风暴熔断机制已生效</b>\n" +
+		"为避免通知通道被突发高频事件刷屏，当前窗口内的同类事件已自动降级，完整动态请登录仪表盘查看。\n" +
+		"</blockquote>\n" +
+		"<i>⏰ 时间：" + now.Format("2006-01-02 15:04 UTC") + "</i>"
+	burstURL := sample.HTMLURL
+	if burstURL == "" && repoName != "" {
+		burstURL = "https://github.com/" + repoName
+	}
 	enqueued := false
 	duplicate := false
 	for _, ch := range channels {
@@ -458,7 +470,7 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 			Status: store.OutboxPending, NextAttemptAt: nextAttempt,
 			Title: title, BodyText: body, ParseMode: "HTML",
 			// 有事件链接时附带跳转按钮，用户可从摘要直达原始事件。
-			HTMLURL: sample.HTMLURL,
+			HTMLURL: burstURL,
 		})
 		if err != nil {
 			if errors.Is(err, store.ErrConflict) {
