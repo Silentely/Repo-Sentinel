@@ -61,12 +61,23 @@ func buildDigestMetricsCard(events []store.Event, period string) string {
 		}
 	}
 
+	var pulseBadge string
+	if highAlerts > 0 || ciFails >= 3 {
+		pulseBadge = " · 🚨 <b>[需紧急介入]</b>"
+	} else if alerts > 0 || ciFails > 0 || issues >= 5 {
+		pulseBadge = " · ⚠️ <b>[需重点关注]</b>"
+	} else {
+		pulseBadge = " · 🟢 <b>[健康平稳]</b>"
+	}
+
 	var sb strings.Builder
 	sb.WriteString("📈 <b>")
 	sb.WriteString(htmlpkg.EscapeString(period))
 	sb.WriteString(" · 共 ")
 	sb.WriteString(strconv.Itoa(len(events)))
-	sb.WriteString(" 条事件</b>\n")
+	sb.WriteString(" 条事件</b>")
+	sb.WriteString(pulseBadge)
+	sb.WriteString("\n")
 
 	var parts []string
 	if highAlerts > 0 {

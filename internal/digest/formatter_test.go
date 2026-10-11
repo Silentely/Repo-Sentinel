@@ -80,6 +80,9 @@ func TestBuildDigestMetricsCard(t *testing.T) {
 
 	card := buildDigestMetricsCard(events, "过去 24 小时")
 
+	if !strings.Contains(card, "🚨 <b>[需紧急介入]</b>") {
+		t.Fatalf("含有高危告警时应显示紧急介入态势徽标，实际:\n%s", card)
+	}
 	if !strings.Contains(card, "过去 24 小时 · 共 5 条事件") {
 		t.Fatalf("指标卡应包含统计时段和总数，实际:\n%s", card)
 	}
