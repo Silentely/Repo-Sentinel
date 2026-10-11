@@ -609,6 +609,15 @@ func (w *Worker) sendSlack(ctx context.Context, ch store.NotificationChannel, se
 			"elements": actionElements,
 		})
 	}
+	blocks = append(blocks, map[string]any{
+		"type": "context",
+		"elements": []any{
+			map[string]any{
+				"type": "mrkdwn",
+				"text": "⏰ *RepoSentinel* · " + time.Now().UTC().Format("15:04 UTC"),
+			},
+		},
+	})
 
 	payload := map[string]any{
 		"text":   truncateRunes(item.Title, 200),

@@ -80,6 +80,14 @@ func TestSendSlack_BlockKitPayload(t *testing.T) {
 	if button["type"] != "button" || button["url"] != item.HTMLURL {
 		t.Errorf("unexpected button element: %+v", button)
 	}
+
+	// Block 3: Context
+	if len(blocks) >= 4 {
+		ctxBlock := blocks[3].(map[string]any)
+		if ctxBlock["type"] != "context" {
+			t.Errorf("expected context block type, got %v", ctxBlock["type"])
+		}
+	}
 }
 
 func TestSendSlack_DeliverRouter(t *testing.T) {
