@@ -123,8 +123,14 @@ type mutePayload struct {
 
 // CheckEmergencyMute 检查全局或仓库级紧急静音。
 func CheckEmergencyMute(ctx context.Context, st store.Store, repoID string) (bool, string) {
+	muted, reason, _ := CheckEmergencyMuteWithExpiry(ctx, st, repoID)
+	return muted, reason
+}
+
+// CheckEmergencyMuteWithExpiry 检查紧急静音并返回具体过期时间点。
+func CheckEmergencyMuteWithExpiry(ctx context.Context, st store.Store, repoID string) (bool, string, time.Time) {
 	if st == nil {
-		return false, ""
+		return false, "", time.Time{}
 	}
 
 	keys := []string{store.MuteAllSettingKey()}
@@ -134,7 +140,7 @@ func CheckEmergencyMute(ctx context.Context, st store.Store, repoID string) (boo
 
 	settings, err := st.Settings().GetMany(ctx, keys...)
 	if err != nil || len(settings) == 0 {
-		return false, ""
+		return false, "", time.Time{}
 	}
 
 	now := time.Now().UTC()
@@ -148,11 +154,14 @@ func CheckEmergencyMute(ctx context.Context, st store.Store, repoID string) (boo
 			if reason == "" {
 				reason = "emergency_mute"
 			}
-			return true, reason
+			if !p.ExpiresAt.IsZero() {
+				reason += fmt.Sprintf(" (将在 %s 自动解冻)", p.ExpiresAt.UTC().Format("15:04 UTC"))
+			}
+			return true, reason, p.ExpiresAt
 		}
 	}
 
-	return false, ""
+	return false, "", time.Time{}
 }
 
 // ExtractEventBranch 从规范化事件负载中提取目标分支。
