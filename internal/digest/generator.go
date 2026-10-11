@@ -253,13 +253,17 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 		g.Logger.Info("digest ai used", "req_id", reqID, "title", title, "events", len(events), "duration_ms", duration.Milliseconds())
 	}
 	var b strings.Builder
-	b.Grow(len(title) + len(summary) + 64)
+	b.Grow(len(title) + len(summary) + 256)
 	b.WriteString("<b>")
 	b.WriteString(htmlpkg.EscapeString(title))
 	b.WriteString("</b>\n")
 	b.WriteString("────────────────\n")
-	// AI 输出为模型生成文本，嵌入 HTML 正文前必须转义，避免破坏 parse_mode=HTML。
-	b.WriteString(htmlpkg.EscapeString(summary))
+	// 顶部生成紧凑的数据速览看板（高危告警、缺陷、发布、依赖），0.5 秒感知全局健康度
+	if card := buildDigestMetricsCard(events, period); card != "" {
+		b.WriteString(card)
+	}
+	// 将 AI 总结格式化为视觉分层且支持 Telegram 原生折叠块（<blockquote expandable>）的高级富文本
+	b.WriteString(formatDigestSummaryHTML(summary))
 	return b.String(), true
 }
 

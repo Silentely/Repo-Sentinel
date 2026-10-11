@@ -368,14 +368,19 @@ func renderMergedMessage(repoName, category string, events []*store.Event, windo
 		statusEmoji, statusLabel := statusDisplay(ev)
 		numStr := ""
 		if ev.SubjectNumber != nil {
-			numStr = " #" + strconv.FormatInt(*ev.SubjectNumber, 10)
+			rawNum := "#" + strconv.FormatInt(*ev.SubjectNumber, 10)
+			if ev.HTMLURL != "" {
+				numStr = `<a href="` + htmlpkg.EscapeString(ev.HTMLURL) + `">` + rawNum + `</a> `
+			} else {
+				numStr = `<code>` + rawNum + `</code> `
+			}
 		}
-		// 状态中文放标题前，合并列表同样一眼可读。
-		body.WriteString(statusEmoji + " [" + htmlpkg.EscapeString(statusLabel) + "]" + numStr + " " + htmlpkg.EscapeString(ev.Title) + "\n")
+		// 状态中文加粗置前，编号加超链接或等宽，富文本排版更清晰易读。
+		body.WriteString(statusEmoji + " <b>[" + htmlpkg.EscapeString(statusLabel) + "]</b> " + numStr + htmlpkg.EscapeString(ev.Title) + "\n")
 	}
 	if !windowEnd.IsZero() {
 		body.WriteString("────────────────\n")
-		body.WriteString("⏰ 时间：" + windowEnd.UTC().Format("2006-01-02 15:04 UTC") + "\n")
+		body.WriteString("<i>⏰ 时间：" + windowEnd.UTC().Format("2006-01-02 15:04 UTC") + "</i>\n")
 	}
 	return title, body.String()
 }

@@ -29,6 +29,35 @@ func openTestStore(t *testing.T) store.Store {
 }
 
 // renderMergedMessage 合并正文应包含批次时间，便于用户判断这批通知对应的合并窗口。
+func TestRenderMergedMessageRichText(t *testing.T) {
+	num := int64(24)
+	evWithURL := &store.Event{
+		Kind:          store.WorkItemKindPR,
+		Action:        "opened",
+		Title:         "Update actions/setup-node",
+		SubjectNumber: &num,
+		HTMLURL:       "https://github.com/Silentely/xserver-vps-renew/pull/24",
+	}
+	evNoURL := &store.Event{
+		Kind:          store.WorkItemKindPR,
+		Action:        "closed",
+		Title:         "Update dependency",
+		SubjectNumber: &num,
+	}
+	windowEnd := time.Date(2026, 10, 11, 9, 34, 0, 0, time.UTC)
+	_, body := renderMergedMessage("Silentely/xserver-vps-renew", "pull_request", []*store.Event{evWithURL, evNoURL}, windowEnd)
+
+	if !strings.Contains(body, "<b>[已打开]</b> <a href=\"https://github.com/Silentely/xserver-vps-renew/pull/24\">#24</a> Update actions/setup-node") {
+		t.Fatalf("带 URL 事件应渲染为粗体状态加超链接编号，实际: %s", body)
+	}
+	if !strings.Contains(body, "<b>[已关闭]</b> <code>#24</code> Update dependency") {
+		t.Fatalf("无 URL 事件应渲染为粗体状态加等宽编号，实际: %s", body)
+	}
+	if !strings.Contains(body, "<i>⏰ 时间：2026-10-11 09:34 UTC</i>") {
+		t.Fatalf("批次时间应渲染为斜体，实际: %s", body)
+	}
+}
+
 func TestRenderMergedMessageIncludesWindowEnd(t *testing.T) {
 	ev := &store.Event{Kind: store.WorkItemKindIssue, Action: "opened", Title: "t1"}
 	windowEnd := time.Date(2026, 8, 8, 12, 34, 0, 0, time.UTC)
