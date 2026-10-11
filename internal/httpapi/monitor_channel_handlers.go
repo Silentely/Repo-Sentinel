@@ -27,6 +27,7 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 			"id": ch.ID, "channel_type": ch.ChannelType, "name": ch.Name,
 			"enabled": ch.Enabled, "target": ch.Target, "allow_private": ch.AllowPrivate,
 			"secret_configured": ch.SecretEnvelope != "",
+			"diagnostic": notify.DiagnoseChannel(ch),
 			// 订阅配置：event_kinds 为 nil 表示订阅全部实时类型。
 			"event_kinds": ch.EventKinds, "digest_enabled": ch.DigestEnabled,
 			"receive_daily_digest":   ch.ReceiveDailyDigest,
