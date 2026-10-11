@@ -429,10 +429,11 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 
 	if len(events) == 0 {
 		// 空事件文案带上周期（过去 24 小时/7 天/30 天），避免三类报告共用一句含糊的「期间」。
-		// 用 📭 而非庆祝 emoji：无事发生不宜用庆祝语气。
+		b.WriteString("✨ <b>系统运行平稳 · 监控哨兵持续值守</b>\n")
 		b.WriteString("📭 ")
 		b.WriteString(period)
 		b.WriteString("无新事件\n")
+		b.WriteString("<blockquote expandable>\n<b>🛡️ 值守状态说明</b>\n受监控仓库未发生新的安全告警、CI 异常中断或阻塞性问题，代码资产运行处于健康状态。\n</blockquote>\n")
 		appendReportFooter(&b, generatedAt)
 		return b.String()
 	}
