@@ -865,9 +865,15 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 		b.WriteString("</code>\n")
 	}
 
+	link := SafeHTTPURL(ev.HTMLURL)
 	if ev.SubjectNumber != nil && ev.Kind != store.ReleaseKind {
-		b.WriteString("🔢 编号：#")
-		b.WriteString(strconv.FormatInt(*ev.SubjectNumber, 10))
+		b.WriteString("🔢 编号：")
+		numStr := "#" + strconv.FormatInt(*ev.SubjectNumber, 10)
+		if link != "" {
+			b.WriteString(`<a href="` + htmlpkg.EscapeString(link) + `">` + numStr + `</a>`)
+		} else {
+			b.WriteString(`<code>` + numStr + `</code>`)
+		}
 		b.WriteString("\n")
 	}
 
@@ -916,7 +922,11 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 
 	if labels := payloadStringSlice(ev.PayloadSummary, "labels"); len(labels) > 0 {
 		b.WriteString("🏷️ 标签：")
-		b.WriteString(htmlpkg.EscapeString(strings.Join(labels, ", ")))
+		escapedLabels := make([]string, len(labels))
+		for i, lbl := range labels {
+			escapedLabels[i] = "<code>" + htmlpkg.EscapeString(lbl) + "</code>"
+		}
+		b.WriteString(strings.Join(escapedLabels, ", "))
 		b.WriteString("\n")
 	}
 
@@ -933,9 +943,9 @@ func renderMessage(ev *store.Event, repo string) (title, body, htmlURL string) {
 	}
 
 	if !ev.OccurredAt.IsZero() {
-		b.WriteString("⏰ 时间：")
+		b.WriteString("<i>⏰ 时间：")
 		b.WriteString(ev.OccurredAt.UTC().Format("2006-01-02 15:04 UTC"))
-		b.WriteString("\n")
+		b.WriteString("</i>\n")
 	}
 
 	if link := SafeHTTPURL(ev.HTMLURL); link != "" {

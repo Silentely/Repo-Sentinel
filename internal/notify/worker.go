@@ -381,6 +381,37 @@ func renderTelegramIssueTriageSection(sb *strings.Builder, title, body string) {
 	}
 }
 
+// renderTelegramAISectionBody 对告警分析、故障诊断、更新速览等 AI 段落进行 Telegram 富文本增强：
+// 1. 将 影响：、建议：、诊断：、原因：、排查： 等前缀加粗突出；
+// 2. 将 Breaking Changes / 破坏性变更 加上粗体强调。
+func renderTelegramAISectionBody(body string) string {
+	lines := strings.Split(body, "\n")
+	formatted := make([]string, 0, len(lines))
+	prefixes := []string{"影响：", "影响:", "建议：", "建议:", "诊断：", "诊断:", "原因：", "原因:", "排查：", "排查:"}
+
+	for _, line := range lines {
+		trimmed := strings.TrimRight(line, "\r")
+		matchedPrefix := false
+		for _, p := range prefixes {
+			if strings.HasPrefix(trimmed, p) {
+				trimmed = "<b>" + p + "</b>" + trimmed[len(p):]
+				matchedPrefix = true
+				break
+			}
+		}
+		if !matchedPrefix {
+			if strings.Contains(trimmed, "Breaking Changes") {
+				trimmed = strings.ReplaceAll(trimmed, "Breaking Changes", "<b>Breaking Changes</b>")
+			}
+			if strings.Contains(trimmed, "破坏性变更") {
+				trimmed = strings.ReplaceAll(trimmed, "破坏性变更", "<b>破坏性变更</b>")
+			}
+		}
+		formatted = append(formatted, trimmed)
+	}
+	return strings.Join(formatted, "\n")
+}
+
 // formatTelegramExpandableBlocks 将正文中的 AI 分析/诊断/分诊段落包装为 Telegram 7.3+ 原生支持的可折叠长引用块。
 // 当 hasInlineURL 为 true 时，移除正文末尾内嵌的「在 GitHub 中查看」链接与冗余分隔线（因为已有 inline keyboard 按钮，避免重复与割裂）。
 // 段落拆分复用 splitAISections，与其它渠道共用同一分隔符口径。
@@ -407,7 +438,7 @@ func formatTelegramExpandableBlocks(text string, hasInlineURL ...bool) string {
 		} else {
 			sb.WriteString("\n\n<blockquote expandable><b>🤖 " + title + "</b>")
 			if body != "" {
-				sb.WriteString("\n" + body)
+				sb.WriteString("\n" + renderTelegramAISectionBody(body))
 			}
 			sb.WriteString("</blockquote>")
 		}

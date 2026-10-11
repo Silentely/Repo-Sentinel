@@ -399,7 +399,7 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 	safeTitle := htmlpkg.EscapeString(title)
 	safeRepo := htmlpkg.EscapeString(repoName)
 	safeCat := htmlpkg.EscapeString(categoryCN)
-	body := "<b>" + safeTitle + "</b>\n────────────────\n📦 仓库：<code>" + safeRepo + "</code>\n📋 类型：" + safeCat + "\n🔇 已降级为摘要模式，请在仪表盘查看详情\n⏰ 时间：" + now.Format("2006-01-02 15:04 UTC")
+	body := "<b>" + safeTitle + "</b>\n────────────────\n📦 仓库：<code>" + safeRepo + "</code>\n📋 类型：" + safeCat + "\n🔇 已降级为摘要模式，请在仪表盘查看详情\n<i>⏰ 时间：" + now.Format("2006-01-02 15:04 UTC") + "</i>"
 	enqueued := false
 	duplicate := false
 	for _, ch := range channels {

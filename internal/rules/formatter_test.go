@@ -7,6 +7,33 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
+func TestRenderMessage_RichFormatting(t *testing.T) {
+	num := int64(99)
+	now := time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)
+	ev := &store.Event{
+		Kind:          store.WorkItemKindIssue,
+		Action:        "opened",
+		Title:         "崩溃问题",
+		SubjectNumber: &num,
+		OccurredAt:    now,
+		HTMLURL:       "https://github.com/org/repo/issues/99",
+		PayloadSummary: map[string]any{
+			"labels": []any{"bug", "critical"},
+		},
+	}
+	_, body, _ := renderMessage(ev, "org/repo")
+
+	if !strings.Contains(body, `<a href="https://github.com/org/repo/issues/99">#99</a>`) {
+		t.Fatalf("编号应渲染为指向 GitHub 的超链接，实际: %s", body)
+	}
+	if !strings.Contains(body, "<code>bug</code>, <code>critical</code>") {
+		t.Fatalf("标签应渲染为等宽药丸代码样式，实际: %s", body)
+	}
+	if !strings.Contains(body, "<i>⏰ 时间：2026-10-11 10:00 UTC</i>") {
+		t.Fatalf("时间应渲染为斜体，实际: %s", body)
+	}
+}
+
 func TestRenderMessageNilSafe(t *testing.T) {
 	title, body, url := renderMessage(nil, "repo")
 	if title != "" || body != "" || url != "" {

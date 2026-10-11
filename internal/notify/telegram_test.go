@@ -248,3 +248,21 @@ func TestSendTelegramIssueTriageFormattingAndDedupLink(t *testing.T) {
 		t.Errorf("期望按钮 URL 正确，got: %v", btn["url"])
 	}
 }
+
+func TestFormatTelegramExpandableBlocks_GeneralAISection(t *testing.T) {
+	input := "通知主体前缀\n────────────────\n🤖 告警分析\n影响：该漏洞可能导致远程代码执行。\n建议：尽快升级至最新版本。\n注意包含 Breaking Changes 变更。"
+	output := formatTelegramExpandableBlocks(input)
+
+	if !strings.Contains(output, "<blockquote expandable><b>🤖 告警分析</b>") {
+		t.Fatalf("应包含可折叠块及标题，实际: %s", output)
+	}
+	if !strings.Contains(output, "<b>影响：</b>该漏洞可能导致远程代码执行。") {
+		t.Fatalf("影响前缀应加粗，实际: %s", output)
+	}
+	if !strings.Contains(output, "<b>建议：</b>尽快升级至最新版本。") {
+		t.Fatalf("建议前缀应加粗，实际: %s", output)
+	}
+	if !strings.Contains(output, "<b>Breaking Changes</b>") {
+		t.Fatalf("Breaking Changes 应加粗，实际: %s", output)
+	}
+}

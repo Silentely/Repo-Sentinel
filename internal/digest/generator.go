@@ -518,9 +518,9 @@ func appendReportFooter(b *strings.Builder, generatedAt time.Time) {
 	if generatedAt.IsZero() {
 		return
 	}
-	b.WriteString("────────────────\n⏰ 生成时间：")
+	b.WriteString("────────────────\n<i>⏰ 生成时间：")
 	b.WriteString(generatedAt.UTC().Format("2006-01-02 15:04 UTC"))
-	b.WriteString("\n")
+	b.WriteString("</i>\n")
 }
 
 // parseWeekday 将英文周名解析为 time.Weekday；非法返回 false。
