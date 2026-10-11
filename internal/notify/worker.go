@@ -168,13 +168,23 @@ func (w *Worker) tick(ctx context.Context) {
 // maxConcurrentChannels 单批内并发投递的不同渠道数上限，消除慢 Webhook 对 Telegram 等渠道的队头阻塞。
 const maxConcurrentChannels = 5
 
+// channelPacingDelay 控制同一渠道连续多条消息之间的平滑微退避间隔，防止瞬时并发打满上游速率限制。
+var channelPacingDelay = 25 * time.Millisecond
+
 // deliverChannelItems 串行投递指定渠道的任务切片，渠道级局部缓存密钥明文。
 func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, items []store.NotificationOutbox, channelMap map[string]store.NotificationChannel) {
 	// 同一渠道单协程串行消费，密钥明文在本协程内局部缓存复用，无需跨协程互斥锁。
 	secrets := make(map[string]string)
-	for _, item := range items {
+	for idx, item := range items {
 		if ctx.Err() != nil {
 			return
+		}
+		if idx > 0 && channelPacingDelay > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(channelPacingDelay):
+			}
 		}
 		channelType, err := w.deliver(ctx, item, channelMap, secrets)
 		if err != nil {
