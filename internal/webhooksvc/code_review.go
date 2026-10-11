@@ -618,7 +618,7 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		}
 	}
 	if res.Summary != "" {
-		sb.WriteString("\n📝 <b>审查结论：</b>\n" + htmlpkg.EscapeString(res.Summary) + "\n")
+		sb.WriteString("\n<blockquote expandable><b>📝 审查结论（点击展开）</b>\n" + htmlpkg.EscapeString(res.Summary) + "\n</blockquote>\n")
 	}
 
 	// 增加处置建议
