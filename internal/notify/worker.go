@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -26,6 +27,20 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
+
+// computeBackoffWithJitter 在基础退避时间上增加平滑抖动，防止批量失败时的雷鸣蜂拥效应。
+func computeBackoffWithJitter(base time.Duration) time.Duration {
+	if base <= 0 {
+		return base
+	}
+	// 引入 ±20% 的安全浮动范围 [0.8*base, 1.2*base]
+	factor := 0.8 + rand.Float64()*0.4
+	res := time.Duration(float64(base) * factor)
+	if res < time.Second {
+		return time.Second
+	}
+	return res
+}
 
 // defaultBackoff 固定退避阶梯（数组不可变：长度固定，避免误 append 打乱节奏）。
 var defaultBackoff = [...]time.Duration{
@@ -657,7 +672,7 @@ func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbo
 	if idx >= len(defaultBackoff) {
 		idx = len(defaultBackoff) - 1
 	}
-	retryAt := time.Now().UTC().Add(defaultBackoff[idx])
+	retryAt := time.Now().UTC().Add(computeBackoffWithJitter(defaultBackoff[idx]))
 	var markErr error
 	if token != "" {
 		_, markErr = w.Store.Outbox().MarkFailedWithToken(ctx, item.ID, token, code, &retryAt)

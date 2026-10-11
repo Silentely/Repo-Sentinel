@@ -569,3 +569,16 @@ func TestTruncateLogTitleOptimization(t *testing.T) {
 		t.Fatalf("截断后码点数应为 %d, 实际为 %d", logTitleLimit+1, utf8.RuneCountInString(got))
 	}
 }
+
+func TestComputeBackoffWithJitter(t *testing.T) {
+	base := 10 * time.Second
+	for i := 0; i < 50; i++ {
+		got := computeBackoffWithJitter(base)
+		if got < 8*time.Second || got > 12*time.Second {
+			t.Fatalf("computeBackoffWithJitter 超出 ±20% 范围: %v (base: %v)", got, base)
+		}
+	}
+	if got := computeBackoffWithJitter(0); got != 0 {
+		t.Errorf("zero base 应返回 0, got %v", got)
+	}
+}
