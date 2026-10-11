@@ -472,6 +472,40 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 		b.WriteString("\n")
 	}
 
+	// 多仓监控时呈现焦点活跃仓库排行
+	repoCounts := make(map[string]int)
+	for _, ev := range events {
+		if name := store.EventRepoName(ev, repoNames); name != "" && name != ev.Title {
+			repoCounts[name]++
+		}
+	}
+	if len(repoCounts) > 1 {
+		type rkv struct {
+			name  string
+			count int
+		}
+		var rsorted []rkv
+		for k, v := range repoCounts {
+			rsorted = append(rsorted, rkv{k, v})
+		}
+		sort.Slice(rsorted, func(i, j int) bool {
+			if rsorted[i].count != rsorted[j].count {
+				return rsorted[i].count > rsorted[j].count
+			}
+			return rsorted[i].name < rsorted[j].name
+		})
+		b.WriteString("────────────────\n🔥 活跃仓库：")
+		var topList []string
+		for idx, r := range rsorted {
+			if idx >= 3 {
+				break
+			}
+			topList = append(topList, fmt.Sprintf("%s (%d)", r.name, r.count))
+		}
+		b.WriteString(strings.Join(topList, " · "))
+		b.WriteString("\n")
+	}
+
 	// 最近活动预览（状态中文一眼可读，多仓用户靠仓库名区分归属；条数见 maxPreviewEvents）
 	b.WriteString("────────────────\n最近活动：\n")
 	for i, ev := range events {

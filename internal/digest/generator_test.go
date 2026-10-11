@@ -1081,3 +1081,24 @@ func TestPeriodicReportGranularSubscriptions(t *testing.T) {
 		t.Fatalf("expected weekly outbox for ch2")
 	}
 }
+
+func TestBuildReportBody_TopActiveRepos(t *testing.T) {
+	repo1ID := "repo_1"
+	repo2ID := "repo_2"
+	names := map[string]string{
+		repo1ID: "owner/heavy-repo",
+		repo2ID: "owner/light-repo",
+	}
+
+	events := []store.Event{
+		{Kind: store.WorkItemKindPR, Title: "PR 1", RepositoryID: &repo1ID},
+		{Kind: store.WorkItemKindPR, Title: "PR 2", RepositoryID: &repo1ID},
+		{Kind: store.WorkItemKindPR, Title: "PR 3", RepositoryID: &repo1ID},
+		{Kind: store.WorkItemKindIssue, Title: "Issue 1", RepositoryID: &repo2ID},
+	}
+
+	body := buildReportBody("每日摘要", events, "过去 24 小时", names, reportGeneratedAt)
+	if !strings.Contains(body, "🔥 活跃仓库：owner/heavy-repo (3) · owner/light-repo (1)") {
+		t.Fatalf("多仓摘要应渲染活跃仓库排行，实际:\n%s", body)
+	}
+}
