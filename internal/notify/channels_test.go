@@ -461,3 +461,29 @@ func TestSendBark_CustomLevelAndGroup(t *testing.T) {
 		t.Errorf("应自动提取仓库名作为 group，got: %v", receivedBody["group"])
 	}
 }
+
+func TestSendWeCom_ColoredTitle(t *testing.T) {
+	var receivedBody map[string]any
+	w, ch, item := newChannelTestHarness(t, store.ChannelWeCom, func(rw http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &receivedBody)
+		rw.WriteHeader(http.StatusOK)
+		_, _ = rw.Write([]byte(`{"errcode":0,"errmsg":"ok"}`))
+	})
+	item.Title = "🚨 关键高危安全告警"
+	item.BodyText = "发现 critical 漏洞"
+
+	err := w.sendWeCom(t.Context(), ch, "", item)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	md, ok := receivedBody["markdown"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected markdown payload, got: %v", receivedBody)
+	}
+	content := md["content"].(string)
+	if !strings.Contains(content, `<font color="warning">🚨 关键高危安全告警</font>`) {
+		t.Errorf("企业微信告警标题应包含 warning 彩色字体标签，实际 content: %s", content)
+	}
+}

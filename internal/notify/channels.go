@@ -324,8 +324,19 @@ func (w *Worker) sendWeCom(ctx context.Context, ch store.NotificationChannel, se
 
 	plainBody := truncateRunes(htmlToMarkdown(item.BodyText), 2000)
 	plainBody = formatQuotedAISections(plainBody)
+	themeColor, _ := determineMessageTheme(item.Title, item.BodyText)
+	var formattedTitle string
+	switch themeColor {
+	case "carmine":
+		formattedTitle = `<font color="warning">` + item.Title + `</font>`
+	case "turquoise":
+		formattedTitle = `<font color="info">` + item.Title + `</font>`
+	default:
+		formattedTitle = item.Title
+	}
+
 	var sb strings.Builder
-	sb.WriteString("### " + item.Title + "\n\n")
+	sb.WriteString("### " + formattedTitle + "\n\n")
 	sb.WriteString(plainBody)
 	if item.HTMLURL != "" {
 		sb.WriteString("\n\n[" + store.GitHubViewLabel + "](" + item.HTMLURL + ")")
