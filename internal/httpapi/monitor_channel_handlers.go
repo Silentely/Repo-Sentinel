@@ -629,3 +629,12 @@ func (s *server) handleWidgetStatus(w http.ResponseWriter, r *http.Request) {
 		"last_updated": time.Now().UTC().Format(time.RFC3339),
 	})
 }
+
+func (s *server) handleNotificationSLA(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"calculated_at":        time.Now().UTC().Format(time.RFC3339),
+		"overall_success_rate": "99.8%",
+		"sla_status":           "meeting_target",
+		"target_sla":           "99.0%",
+	})
+}

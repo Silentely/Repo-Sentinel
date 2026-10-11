@@ -464,3 +464,28 @@ func TestWidgetStatusEndpoint(t *testing.T) {
 		t.Fatalf("expected healthy, got %s", res.System)
 	}
 }
+
+func TestNotificationSLAEndpoint(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	resp := fixture.request(
+		t, http.MethodGet, "/api/v1/notifications/sla",
+		"", "127.0.0.1:49070", cookies, nil,
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d, body: %s", resp.Code, resp.Body.String())
+	}
+
+	var res struct {
+		OverallSuccessRate string `json:"overall_success_rate"`
+		SLAStatus          string `json:"sla_status"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal sla response failed: %v", err)
+	}
+	if res.SLAStatus != "meeting_target" {
+		t.Fatalf("expected meeting_target, got: %s", res.SLAStatus)
+	}
+}
