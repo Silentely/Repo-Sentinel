@@ -513,11 +513,37 @@ func (s *server) handleListOutbox(w http.ResponseWriter, r *http.Request) {
 			"created_at": item.CreatedAt, "updated_at": item.UpdatedAt,
 			"channel_type": chMap[item.ChannelID],
 			// 正文随列表返回：详情抽屉展示通知内容（管理台内部，不做明文过滤）。
-			"body_text": item.BodyText,
+			"body_text":        item.BodyText,
+			"error_diagnostic": explainDeliveryErrorCode(item.LastErrorCode),
 		}
 		enriched = append(enriched, entry)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": enriched, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
+	writeJSON(w, http.StatusOK, map[string]any{"items": enri// explainDeliveryErrorCode 提供人类友好的投递错误诊断释义，辅助运维在控制台一眼定位问题根因。
+func explainDeliveryErrorCode(code string) string {
+	if code == "" {
+		return ""
+	}
+	switch {
+	case strings.Contains(code, "rate_limited"):
+		return "触发上游服务端频率限制（429），系统已自动设置退避重试"
+	case strings.Contains(code, "client_error_400"):
+		return "客户端参数错误（400），请检查 Target 地址、Chat ID 是否正确或机器人是否已加入群组"
+	case strings.Contains(code, "client_error_401") || strings.Contains(code, "client_error_403"):
+		return "凭证鉴权失败（401/403），Token 或 Webhook 密钥无效或无权限"
+	case strings.Contains(code, "client_error_404") || strings.Contains(code, "not_found"):
+		return "目标资源不存在（404）或通知渠道配置已丢失"
+	case strings.Contains(code, "not_configured"):
+		return "通知渠道关键配置缺失（未提供 Token 或目标地址）"
+	case strings.Contains(code, "decrypt_secret") || strings.Contains(code, "keyring"):
+		return "渠道密文解密失败，请检查 KeyRing 密钥环状态"
+	case strings.Contains(code, "timeout"):
+		return "网络连接或网关超时，系统已自动排期重试"
+	default:
+		return "投递未完成：" + code
+	}
+}
+
+ched, "page": page.Page, "per_page": page.PerPage, "total": page.Total})
 }
 
 func queryTrimmed(q url.Values, key string) string {
