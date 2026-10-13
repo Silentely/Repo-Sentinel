@@ -939,7 +939,7 @@ func applyScoreAndRiskGuards(res *CodeReviewResult, rep heuristicReport) {
 	// 强规则收敛：维护者行动建议、决策提要与预估精力由确定性规则计算，免疫模型幻觉与提示词注入
 	res.MaintainerAction = deriveMaintainerAction(res, res.IsSelfPR)
 	res.EffortEstimate = deriveEffortEstimate(res, rep)
-	res.MaintainerTip = deriveMaintainerTip(res, rep, res.IsSelfPR)
+	res.MaintainerTip = deriveMaintainerTip(res, res.IsSelfPR)
 	// 严格安全防守：模型返回的任意 CLI 指令一律清空，仅允许系统在 webhooksvc 层结构化构造受信指令
 	res.QuickCommand = ""
 }
@@ -950,17 +950,21 @@ func IsAuthorMaintainer(repo, author string) bool {
 	if author == "" {
 		return false
 	}
-	owner, _, ok := strings.Cut(strings.TrimSpace(repo), "/")
+	repo = strings.TrimSpace(repo)
+	owner, _, ok := strings.Cut(repo, "/")
 	if !ok {
-		return false
+		owner = repo
 	}
 	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return false
+	}
 	// 1. 仓库 Owner 严格精确匹配（大小写不敏感）
 	if strings.EqualFold(owner, author) {
 		return true
 	}
 	// 2. 项目专属唯一维护者账号映射（仅当仓库归属于主维护者或官方组织时有效）
-	if strings.EqualFold(owner, "Silentely") && (strings.EqualFold(author, "kafei") || author == "咖啡啊") {
+	if strings.EqualFold(owner, "Silentely") && strings.EqualFold(author, "kafei") {
 		return true
 	}
 	return false
@@ -1004,24 +1008,27 @@ func deriveEffortEstimate(res *CodeReviewResult, rep heuristicReport) string {
 	for _, f := range rep.fileManifest {
 		totalLines += f.adds + f.dels
 	}
-	if len(rep.sensitiveAssets) > 0 || res.Score < 60 || res.DiffTruncated || totalLines > 300 || res.MergeRisk == "Critical" {
+	if len(res.SensitiveAssets) > 0 || len(rep.sensitiveAssets) > 0 || res.Score < 60 || res.DiffTruncated || totalLines > 300 || res.MergeRisk == "Critical" || res.MaintainerVerdict == "Block Risk" || res.MaintainerVerdict == "Needs Manual Review" {
 		return "需深度审计与本地验证 (15-30min)"
 	}
-	if totalLines > 80 || len(res.MissingTests) > 0 || len(res.BreakingRisks) > 0 {
+	if totalLines > 80 || len(res.MissingTests) > 0 || len(res.BreakingRisks) > 0 || res.MaintainerVerdict == "Needs Tests" {
 		return "常规核验 (3-5min)"
 	}
 	return "极速审阅 (1-2min)"
 }
 
 // deriveMaintainerTip 提炼一句话直切要害给个人维护者（咖啡啊）的提示。
-func deriveMaintainerTip(res *CodeReviewResult, rep heuristicReport, isSelf bool) string {
-	if len(res.SecurityRisks) > 0 {
+func deriveMaintainerTip(res *CodeReviewResult, isSelf bool) string {
+	if len(res.SecurityRisks) > 0 || res.MaintainerVerdict == "Block Risk" {
 		return "存在明确安全风险或不可信外链，切勿盲目合入，务必核验漏洞阻断情况。"
 	}
-	if len(rep.sensitiveAssets) > 0 {
-		return fmt.Sprintf("改动涉及 %d 处敏感资产（CI/依赖/配置/迁移），请防范非预期副作用与供应链风险。", len(rep.sensitiveAssets))
+	if len(res.SensitiveAssets) > 0 || res.MaintainerVerdict == "Needs Manual Review" {
+		if len(res.SensitiveAssets) > 0 {
+			return fmt.Sprintf("改动涉及 %d 处敏感资产（CI/依赖/配置/迁移），请防范非预期副作用与供应链风险。", len(res.SensitiveAssets))
+		}
+		return "改动涉及核心敏感资产变动，请防范非预期副作用与供应链风险。"
 	}
-	if len(res.MissingTests) > 0 {
+	if len(res.MissingTests) > 0 || res.MaintainerVerdict == "Needs Tests" {
 		return "生产业务逻辑发生变更但缺少测试覆盖，建议补测后合入。"
 	}
 	if res.Score >= 85 {

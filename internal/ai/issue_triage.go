@@ -166,8 +166,13 @@ func (c *Client) TriageIssue(ctx context.Context, repo, title, author, body stri
 	res.IsSelfIssue = isSelf
 	// 强规则收敛：维护者行动建议由确定性规则计算，免疫模型幻觉与提示词注入
 	res.MaintainerAction = deriveTriageMaintainerAction(&res, isSelf)
-	if strings.TrimSpace(res.SuspectedModule) == "" {
-		res.SuspectedModule = deriveSuspectedModule(title, body)
+	derivedModule := deriveSuspectedModule(title, body)
+	if derivedModule != "待定位模块" {
+		res.SuspectedModule = derivedModule
+	} else if strings.TrimSpace(res.SuspectedModule) != "" {
+		res.SuspectedModule = sanitizeSuspectedModule(res.SuspectedModule)
+	} else {
+		res.SuspectedModule = derivedModule
 	}
 	res.Labels = DeriveTriageLabels(&res, c.TriageMappings())
 	res.TriagedAt = time.Now().UTC()
@@ -215,6 +220,22 @@ func deriveSuspectedModule(title, body string) string {
 	default:
 		return "待定位模块"
 	}
+}
+
+// sanitizeSuspectedModule 对模型返回的疑似模块进行单行化与长度截断，防范跨行注入与超长污染。
+func sanitizeSuspectedModule(m string) string {
+	m = strings.TrimSpace(m)
+	m = strings.ReplaceAll(m, "\n", " ")
+	m = strings.ReplaceAll(m, "\r", " ")
+	m = strings.ReplaceAll(m, "\t", " ")
+	for strings.Contains(m, "  ") {
+		m = strings.ReplaceAll(m, "  ", " ")
+	}
+	runes := []rune(m)
+	if len(runes) > 60 {
+		return string(runes[:60]) + "..."
+	}
+	return m
 }
 
 // deriveTriageMaintainerAction 依据分诊分类与作者身份推导维护者行动策略。

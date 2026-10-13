@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { filterWorkItemsByText, resolveRepoId, type WorkItem } from "./list-pages";
+import { filterWorkItemsByText, maintainerActionStyle, resolveRepoId, type WorkItem } from "./list-pages";
 import type { Repository } from "./api";
 
 const item = (id: string, title: string): WorkItem => ({
@@ -57,5 +57,37 @@ describe("resolveRepoId", () => {
     expect(resolveRepoId(repos, "")).toBe("");
     expect(resolveRepoId(repos, undefined)).toBe("");
     expect(resolveRepoId([], "acme/sentinel")).toBe("");
+  });
+});
+
+describe("maintainerActionStyle", () => {
+  it("动态映射阻断与拒绝动作到 danger 语义", () => {
+    const s1 = maintainerActionStyle("拒绝合入：检测到漏洞", "Block Risk");
+    expect(s1.background).toBe("var(--danger-bg)");
+    expect(s1.color).toBe("var(--danger-fg)");
+
+    const s2 = maintainerActionStyle("垃圾内容：建议直接关闭", "Invalid");
+    expect(s2.background).toBe("var(--danger-bg)");
+    expect(s2.color).toBe("var(--danger-fg)");
+  });
+
+  it("动态映射人工复核与补测到 warning 语义", () => {
+    const s1 = maintainerActionStyle("人工复核：涉及敏感资产", "Needs Manual Review");
+    expect(s1.background).toBe("var(--warning-bg)");
+    expect(s1.color).toBe("var(--warning-fg)");
+
+    const s2 = maintainerActionStyle("要求修改：建议补测", "Needs Tests");
+    expect(s2.background).toBe("var(--warning-bg)");
+    expect(s2.color).toBe("var(--warning-fg)");
+  });
+
+  it("动态映射放心合入与自检通过到 success 语义", () => {
+    const s1 = maintainerActionStyle("放心合入：代码质量高", "Ready to Merge");
+    expect(s1.background).toBe("var(--success-bg)");
+    expect(s1.color).toBe("var(--success-fg)");
+
+    const s2 = maintainerActionStyle("自检通过：改动安全规范", "Ready to Merge");
+    expect(s2.background).toBe("var(--success-bg)");
+    expect(s2.color).toBe("var(--success-fg)");
   });
 });

@@ -241,3 +241,22 @@ func TestPersonalMaintainerTriageOptimizations(t *testing.T) {
 		t.Errorf("FormatIssueTriage missing 疑似模块, got: %s", formatted)
 	}
 }
+
+func TestSanitizeSuspectedModule(t *testing.T) {
+	// 跨行、注入与过长截断测试
+	injected := "internal/auth\n<script>alert(1)</script>\r\n   extra   spaces   and very very very very long text exceeding sixty runes limit for suspected module"
+	sanitized := sanitizeSuspectedModule(injected)
+
+	if strings.Contains(sanitized, "\n") || strings.Contains(sanitized, "\r") {
+		t.Errorf("sanitized module must not contain newlines: %q", sanitized)
+	}
+	if strings.Contains(sanitized, "  ") {
+		t.Errorf("sanitized module must collapse multiple spaces: %q", sanitized)
+	}
+	if len([]rune(sanitized)) > 65 {
+		t.Errorf("sanitized module exceeds length threshold: %d", len([]rune(sanitized)))
+	}
+	if !strings.HasSuffix(sanitized, "...") {
+		t.Errorf("long module should end with ellipsis: %q", sanitized)
+	}
+}

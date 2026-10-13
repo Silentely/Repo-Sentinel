@@ -1066,3 +1066,46 @@ func TestReviewPRTruncatedDiffRaisesEffortEstimate(t *testing.T) {
 		t.Errorf("expected EffortEstimate to raise to 需深度审计 when DiffTruncated, got: %s", res.EffortEstimate)
 	}
 }
+
+func TestSensitiveAssetConsistencyInTipAndEffortEstimate(t *testing.T) {
+	// 场景：模型/外部上报了敏感资产，即使启发式未捕获，res.SensitiveAssets 依然生效，
+	// 此时 MaintainerVerdict 必须为 Needs Manual Review，
+	// MaintainerTip 绝不可输出“可放心快速合入”，且 EffortEstimate 必须提升为深度审计。
+	res := &CodeReviewResult{
+		Score:           92, // 高分
+		SensitiveAssets: []string{"ci/workflows/deploy.yml"},
+	}
+	rep := heuristicReport{
+		fileManifest: []fileStat{{adds: 5, dels: 2}}, // 小变更，启发式无敏感资产
+	}
+	applyScoreAndRiskGuards(res, rep)
+
+	if res.MaintainerVerdict != "Needs Manual Review" {
+		t.Errorf("expected MaintainerVerdict Needs Manual Review, got %s", res.MaintainerVerdict)
+	}
+	if strings.Contains(res.MaintainerTip, "放心快速合入") {
+		t.Errorf("MaintainerTip must NOT say 放心快速合入 when sensitive assets exist, got: %s", res.MaintainerTip)
+	}
+	if !strings.Contains(res.MaintainerTip, "敏感资产") {
+		t.Errorf("MaintainerTip should mention 敏感资产, got: %s", res.MaintainerTip)
+	}
+	if !strings.Contains(res.EffortEstimate, "需深度审计与本地验证") {
+		t.Errorf("EffortEstimate should raise to 需深度审计与本地验证, got: %s", res.EffortEstimate)
+	}
+}
+
+func TestIsAuthorMaintainerBareRepoAndCaseInsensitive(t *testing.T) {
+	// 裸仓库名回退（不包含 "/" 的情况）
+	if !IsAuthorMaintainer("Silentely", "silentely") {
+		t.Errorf("expected bare repo Silentely to match author silentely")
+	}
+	if !IsAuthorMaintainer("Silentely", "kafei") {
+		t.Errorf("expected bare repo Silentely to match alias kafei")
+	}
+	if !IsAuthorMaintainer("Silentely/Repo-Sentinel", "KAFEI") {
+		t.Errorf("expected uppercase KAFEI to match")
+	}
+	if IsAuthorMaintainer("other-repo", "kafei") {
+		t.Errorf("expected other-repo NOT to match kafei")
+	}
+}

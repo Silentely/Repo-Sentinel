@@ -337,7 +337,7 @@ function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string
  * key 带下标前缀：同一条目文本在结果里可能重复，仅用文本作 key 会撞键导致渲染错乱。
  */
 function ReviewRiskList({ label, tone, items }: { label: string; tone: "danger" | "warning" | "muted"; items: string[] }) {
-  const color = tone === "danger" ? "var(--color-danger, #ef4444)" : tone === "warning" ? "var(--color-warning, #f59e0b)" : undefined;
+  const color = tone === "danger" ? "var(--danger-fg)" : tone === "warning" ? "var(--warning-fg)" : undefined;
   return (
     <div style={{ marginTop: "0.5rem" }}>
       <strong className={tone === "muted" ? "muted" : undefined} style={color ? { color } : undefined}>
@@ -345,7 +345,7 @@ function ReviewRiskList({ label, tone, items }: { label: string; tone: "danger" 
       </strong>
       <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0, listStyleType: "disc" }}>
         {items.map((item, idx) => (
-          <li key={`${idx}-${item}`} style={{ marginTop: "0.15rem", lineHeight: 1.45, color: "var(--color-text-secondary, #4b5563)" }}>{item}</li>
+          <li key={`${idx}-${item}`} style={{ marginTop: "0.15rem", lineHeight: 1.45, color: "var(--text-secondary)" }}>{item}</li>
         ))}
       </ul>
     </div>
@@ -393,6 +393,64 @@ const VERDICT_STYLES: Record<string, { background: string; color: string }> = {
 /** 裁决徽章配色；未知裁决回退为成功色，与徽章文案的回显策略一致。 */
 export function verdictStyle(verdict: string): { background: string; color: string } {
   return VERDICT_STYLES[verdict] ?? VERDICT_STYLE_DEFAULT;
+}
+
+/**
+ * 维护者行动胶囊配色：按动作与裁决语义动态映射（危险红 / 警告橙 / 成功绿），避免盲目硬编码成功色误导维护者。
+ */
+export function maintainerActionStyle(action: string, verdict?: string): { background: string; color: string; border?: string } {
+  const act = (action || "").toLowerCase();
+  const verd = (verdict || "").toLowerCase();
+  if (
+    verd.includes("block") ||
+    act.includes("阻断") ||
+    act.includes("拒绝") ||
+    act.includes("垃圾") ||
+    act.includes("invalid") ||
+    act.includes("关闭")
+  ) {
+    return {
+      background: "var(--danger-bg)",
+      color: "var(--danger-fg)",
+      border: "1px solid var(--border-subtle)",
+    };
+  }
+  if (
+    act.includes("通过") ||
+    act.includes("放心合入") ||
+    verd === "ready to merge"
+  ) {
+    return {
+      background: "var(--success-bg)",
+      color: "var(--success-fg)",
+      border: "1px solid var(--border-subtle)",
+    };
+  }
+  if (
+    verd.includes("review") ||
+    verd.includes("tests") ||
+    act.includes("复核") ||
+    act.includes("自检") ||
+    act.includes("补测") ||
+    act.includes("修改") ||
+    act.includes("待补充") ||
+    act.includes("待定") ||
+    act.includes("规划") ||
+    act.includes("评估") ||
+    act.includes("待办") ||
+    act.includes("待修")
+  ) {
+    return {
+      background: "var(--warning-bg)",
+      color: "var(--warning-fg)",
+      border: "1px solid var(--border-subtle)",
+    };
+  }
+  return {
+    background: "var(--success-bg)",
+    color: "var(--success-fg)",
+    border: "1px solid var(--border-subtle)",
+  };
 }
 
 export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { workItemId: string; item?: WorkItem }) {
@@ -526,9 +584,9 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
           style={{
             marginTop: "0.5rem",
             padding: "0.75rem 1rem",
-            background: "var(--bg-card-subtle, rgba(0,0,0,0.03))",
+            background: "var(--bg-surface)",
             borderRadius: "6px",
-            border: "1px solid var(--border-default, #e5e7eb)",
+            border: "1px solid var(--border-subtle)",
             fontSize: "0.85rem",
           }}
         >
@@ -574,7 +632,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                   flexWrap: "wrap",
                   gap: "0.5rem",
                   marginBottom: "0.5rem",
-                  borderBottom: "1px dashed var(--border-default, #e5e7eb)",
+                  borderBottom: "1px dashed var(--border-subtle)",
                   paddingBottom: "0.5rem",
                 }}
               >
@@ -585,10 +643,10 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                       fontWeight: 600,
                       color:
                         hasSecurityRisks || review.score < 60
-                          ? "var(--color-danger, #ef4444)"
+                          ? "var(--danger-fg)"
                           : review.score >= 80
-                          ? "var(--color-success, #10b981)"
-                          : "var(--color-warning, #f59e0b)",
+                          ? "var(--success-fg)"
+                          : "var(--warning-fg)",
                     }}
                   >
                     {review.score} / 100
@@ -604,7 +662,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                   {review.category && (
                     <span
                       className="label"
-                      style={{ fontSize: "0.75rem", background: "rgba(107, 114, 128, 0.12)", color: "var(--color-text-secondary, #4b5563)" }}
+                      style={{ fontSize: "0.75rem", background: "var(--bg-muted)", color: "var(--text-secondary)" }}
                     >
                       🏷️ {review.category}
                     </span>
@@ -616,16 +674,17 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                         fontSize: "0.75rem",
                         background:
                           review.merge_risk === "Critical" || review.merge_risk === "High"
-                            ? "rgba(239, 68, 68, 0.12)"
+                            ? "var(--danger-bg)"
                             : review.merge_risk === "Medium"
-                            ? "rgba(245, 158, 11, 0.12)"
-                            : "rgba(16, 185, 129, 0.12)",
+                            ? "var(--warning-bg)"
+                            : "var(--success-bg)",
                         color:
                           review.merge_risk === "Critical" || review.merge_risk === "High"
-                            ? "var(--color-danger, #ef4444)"
+                            ? "var(--danger-fg)"
                             : review.merge_risk === "Medium"
-                            ? "var(--color-warning, #f59e0b)"
-                            : "var(--color-success, #10b981)",
+                            ? "var(--warning-fg)"
+                            : "var(--success-fg)",
+                        border: "1px solid var(--border-subtle)",
                       }}
                     >
                       合并风险: {review.merge_risk}
@@ -642,7 +701,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                   {review.maintainer_action && (
                     <span
                       className="label"
-                      style={{ fontSize: "0.75rem", background: "rgba(16, 185, 129, 0.12)", color: "var(--color-success, #10b981)", fontWeight: 700 }}
+                      style={{ fontSize: "0.75rem", fontWeight: 700, ...maintainerActionStyle(review.maintainer_action, review.maintainer_verdict) }}
                     >
                       ☕ 行动: {review.maintainer_action}
                     </span>
@@ -650,7 +709,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                   {review.effort_estimate && (
                     <span
                       className="label"
-                      style={{ fontSize: "0.75rem", background: "rgba(107, 114, 128, 0.12)", color: "var(--color-text-secondary, #4b5563)" }}
+                      style={{ fontSize: "0.75rem", background: "var(--bg-muted)", color: "var(--text-secondary)" }}
                     >
                       ⏱️ {review.effort_estimate}
                     </span>
@@ -658,7 +717,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                   {hasSecurityRisks && (
                     <span
                       className="label"
-                      style={{ fontSize: "0.75rem", background: "rgba(239, 68, 68, 0.1)", color: "#ef4444" }}
+                      style={{ fontSize: "0.75rem", background: "var(--danger-bg)", color: "var(--danger-fg)" }}
                     >
                       存在安全风险
                     </span>
@@ -716,13 +775,13 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
               </div>
               <p style={{ margin: "0.25rem 0 0.5rem" }}>{review.summary}</p>
               {review.maintainer_tip && (
-                <div style={{ margin: "0.35rem 0", padding: "0.4rem 0.6rem", background: "var(--bg-panel-warm-light, rgba(245, 158, 11, 0.08))", borderLeft: "3px solid var(--color-warning, #f59e0b)", borderRadius: "4px", fontSize: "0.82rem", color: "var(--color-text-primary)" }}>
+                <div style={{ margin: "0.35rem 0", padding: "0.4rem 0.6rem", background: "var(--bg-panel-warm-light)", borderLeft: "3px solid var(--warning)", borderRadius: "4px", fontSize: "0.82rem", color: "var(--text-primary)" }}>
                   💡 <strong>维护者速览:</strong> {review.maintainer_tip}
                 </div>
               )}
               {review.quick_command && (
-                <div style={{ margin: "0.35rem 0 0.5rem", padding: "0.35rem 0.6rem", background: "var(--bg-surface, #f9fafb)", border: "1px dashed var(--border-default, #d1d5db)", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
-                  <code style={{ fontSize: "0.8rem", color: "var(--color-text-primary, #111827)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ margin: "0.35rem 0 0.5rem", padding: "0.35rem 0.6rem", background: "var(--bg-muted)", border: "1px dashed var(--border-subtle)", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+                  <code style={{ fontSize: "0.8rem", color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     $ {review.quick_command}
                   </code>
                   <button
@@ -767,7 +826,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
               )}
               {review.suggestions && review.suggestions.length > 0 && (
                 <div style={{ marginTop: "0.75rem" }}>
-                  <strong style={{ color: "var(--color-text-primary, #111827)" }}>🛠️ 建议采纳与重构示范:</strong>
+                  <strong style={{ color: "var(--text-primary)" }}>🛠️ 建议采纳与重构示范:</strong>
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.35rem" }}>
                     {review.suggestions.map((s, idx) => (
                       <div
@@ -784,7 +843,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                           建议 {idx + 1}: {s.title}
                           {s.file_path && <span className="muted" style={{ fontWeight: 400, marginLeft: "0.4rem" }}>({s.file_path})</span>}
                         </div>
-                        {s.description && <div style={{ marginTop: "0.25rem", color: "var(--color-text-secondary, #4b5563)" }}>{s.description}</div>}
+                        {s.description && <div style={{ marginTop: "0.25rem", color: "var(--text-secondary)" }}>{s.description}</div>}
                         {s.suggested_code && (
                           <pre style={{ marginTop: "0.4rem", padding: "0.6rem", borderRadius: "8px", border: "1.5px solid var(--border-subtle)", background: "var(--bg-surface)", overflowX: "auto", fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>
                             <code>{s.suggested_code}</code>
@@ -906,15 +965,15 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
 
   const getPriorityStyle = (priority: string) => {
     if (priority.includes("P0") || priority.toLowerCase().includes("blocker")) {
-      return { background: "rgba(239, 68, 68, 0.12)", color: "var(--color-danger, #ef4444)" };
+      return { background: "var(--danger-bg)", color: "var(--danger-fg)" };
     }
     if (priority.includes("P1") || priority.toLowerCase().includes("high")) {
-      return { background: "rgba(245, 158, 11, 0.12)", color: "var(--color-warning, #f59e0b)" };
+      return { background: "var(--warning-bg)", color: "var(--warning-fg)" };
     }
     if (priority.includes("P2") || priority.toLowerCase().includes("normal")) {
-      return { background: "rgba(59, 130, 246, 0.12)", color: "var(--color-primary, #3b82f6)" };
+      return { background: "var(--info-bg)", color: "var(--info-fg)" };
     }
-    return { background: "rgba(107, 114, 128, 0.12)", color: "var(--color-text-secondary, #6b7280)" };
+    return { background: "var(--bg-muted)", color: "var(--text-secondary)" };
   };
 
   return (
@@ -947,9 +1006,9 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                 fontSize: "0.75rem",
                 padding: "0.1rem 0.4rem",
                 borderRadius: "4px",
-                background: "var(--bg-card-subtle, rgba(0,0,0,0.04))",
-                color: "var(--color-text-secondary, #4b5563)",
-                border: "1px solid var(--border-default, #e5e7eb)",
+                background: "var(--bg-muted)",
+                color: "var(--text-secondary)",
+                border: "1px solid var(--border-subtle)",
               }}
             >
               {triage.category}
@@ -961,8 +1020,7 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                   fontWeight: 600,
                   padding: "0.1rem 0.4rem",
                   borderRadius: "4px",
-                  background: "rgba(16, 185, 129, 0.12)",
-                  color: "var(--color-success, #059669)",
+                  ...maintainerActionStyle(triage.maintainer_action),
                 }}
               >
                 ☕ 建议: {triage.maintainer_action}
@@ -974,9 +1032,9 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                   fontSize: "0.75rem",
                   padding: "0.1rem 0.4rem",
                   borderRadius: "4px",
-                  background: "rgba(107, 114, 128, 0.12)",
-                  color: "var(--color-text-secondary, #4b5563)",
-                  border: "1px solid var(--border-default, #e5e7eb)",
+                  background: "var(--bg-muted)",
+                  color: "var(--text-secondary)",
+                  border: "1px solid var(--border-subtle)",
                 }}
               >
                 🧩 {triage.suspected_module}
@@ -989,8 +1047,9 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                   fontWeight: 600,
                   padding: "0.1rem 0.4rem",
                   borderRadius: "4px",
-                  background: "rgba(245, 158, 11, 0.15)",
-                  color: "var(--color-warning, #d97706)",
+                  background: "var(--warning-bg)",
+                  color: "var(--warning-fg)",
+                  border: "1px solid var(--border-subtle)",
                 }}
               >
                 👤 自建任务
@@ -1004,8 +1063,8 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
           style={{
             marginTop: "0.4rem",
             padding: "0.6rem 0.75rem",
-            background: "var(--bg-card, #ffffff)",
-            border: "1px solid var(--border-default, #e5e7eb)",
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-subtle)",
             borderRadius: "6px",
             fontSize: "0.85rem",
             lineHeight: 1.5,
@@ -1013,7 +1072,7 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
         >
           {loading && <p className="muted" style={{ margin: 0 }}>正在拉取 AI 分诊数据…</p>}
           {error && (
-            <p style={{ margin: 0, color: "var(--color-danger, #ef4444)" }}>{error}</p>
+            <p style={{ margin: 0, color: "var(--danger-fg)" }}>{error}</p>
           )}
           {!loading && !error && triage === null && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -1074,20 +1133,20 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                 </div>
               </div>
 
-              <div style={{ marginTop: "0.4rem", color: "var(--color-text-primary, #111827)" }}>
+              <div style={{ marginTop: "0.4rem", color: "var(--text-primary)" }}>
                 <strong>🎯 诉求摘要: </strong>
                 <span>{triage.summary}</span>
               </div>
 
               {triage.maintainer_action && (
-                <div style={{ marginTop: "0.35rem", padding: "0.35rem 0.6rem", background: "var(--bg-panel-warm-light, rgba(16, 185, 129, 0.08))", borderLeft: "3px solid var(--color-success, #10b981)", borderRadius: "4px", fontSize: "0.82rem" }}>
+                <div style={{ marginTop: "0.35rem", padding: "0.35rem 0.6rem", background: "var(--bg-panel-warm-light)", borderLeft: "3px solid var(--success)", borderRadius: "4px", fontSize: "0.82rem", color: "var(--text-primary)" }}>
                   ☕ <strong>致维护者行动建议: </strong>
                   <span>{triage.maintainer_action}</span>
                 </div>
               )}
 
               {triage.suspected_module && (
-                <div style={{ marginTop: "0.35rem", fontSize: "0.82rem", color: "var(--color-text-secondary, #4b5563)" }}>
+                <div style={{ marginTop: "0.35rem", fontSize: "0.82rem", color: "var(--text-secondary)" }}>
                   🧩 <strong>疑似涉及模块: </strong>
                   <span>{triage.suspected_module}</span>
                 </div>
@@ -1095,7 +1154,7 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
 
               {triage.labels && triage.labels.length > 0 && (
                 <div style={{ marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
-                  <strong style={{ fontSize: "0.8rem", color: "var(--color-text-primary, #111827)" }}>🏷️ 建议标签: </strong>
+                  <strong style={{ fontSize: "0.8rem", color: "var(--text-primary)" }}>🏷️ 建议标签: </strong>
                   {triage.labels.map((lbl) => (
                     <span
                       key={lbl}
@@ -1103,9 +1162,9 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                         fontSize: "0.75rem",
                         padding: "0.1rem 0.5rem",
                         borderRadius: "9999px",
-                        background: "rgba(59, 130, 246, 0.08)",
-                        color: "var(--color-primary, #2563eb)",
-                        border: "1px solid rgba(59, 130, 246, 0.25)",
+                        background: "var(--info-bg)",
+                        color: "var(--info-fg)",
+                        border: "1px solid var(--border-subtle)",
                         fontWeight: 600,
                       }}
                     >
@@ -1124,7 +1183,7 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
               {triage.suggested_reply && (
                 <div style={{ marginTop: "0.6rem" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem", gap: "0.5rem" }}>
-                    <strong style={{ fontSize: "0.8rem", color: "var(--color-text-primary, #111827)" }}>
+                    <strong style={{ fontSize: "0.8rem", color: "var(--text-primary)" }}>
                       💬 建议维护者首响应草稿 (可一键复制直接回复):
                     </strong>
                     <button
@@ -1153,11 +1212,11 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                         margin: 0,
                         padding: "0.5rem 0.65rem",
                         borderRadius: "4px",
-                        background: "var(--bg-code, #f9fafb)",
-                        border: "1px solid var(--border-default, #e5e7eb)",
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border-subtle)",
                         fontSize: "0.8rem",
                         fontFamily: "inherit",
-                        color: "var(--color-text-primary, #1f2937)",
+                        color: "var(--text-primary)",
                         resize: "vertical",
                       }}
                     />
@@ -1167,13 +1226,13 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                         margin: 0,
                         padding: "0.5rem 0.65rem",
                         borderRadius: "4px",
-                        background: "var(--bg-code, #f9fafb)",
-                        border: "1px solid var(--border-default, #e5e7eb)",
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border-subtle)",
                         overflowX: "auto",
                         fontSize: "0.8rem",
                         whiteSpace: "pre-wrap",
                         fontFamily: "inherit",
-                        color: "var(--color-text-primary, #1f2937)",
+                        color: "var(--text-primary)",
                       }}
                     >
                       {activeReplyText}
