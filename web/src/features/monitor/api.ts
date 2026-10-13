@@ -827,6 +827,11 @@ export interface CodeReviewResult {
   category?: string;
   merge_risk?: string;
   maintainer_verdict?: string;
+  maintainer_action?: string;
+  maintainer_tip?: string;
+  effort_estimate?: string;
+  quick_command?: string;
+  is_self_pr?: boolean;
   sensitive_assets?: string[];
   security_risks: string[];
   breaking_risks: string[];
@@ -873,6 +878,9 @@ export interface IssueTriageResult {
   suggested_reply: string;
   confidence: number;
   labels?: string[];
+  maintainer_action?: string;
+  suspected_module?: string;
+  is_self_issue?: boolean;
   triaged_at: string;
 }
 

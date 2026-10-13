@@ -248,6 +248,15 @@ func (s *Service) runPRReview(ctx context.Context, req prReviewRequest) (*ai.Cod
 		return nil, fmt.Errorf("ai review pr: %w", err)
 	}
 	reviewRes.HeadSHA = req.headSHA
+	if reviewRes.QuickCommand == "" && req.prNum > 0 {
+		if reviewRes.MaintainerVerdict == "Ready to Merge" {
+			reviewRes.QuickCommand = fmt.Sprintf("gh pr merge %d --squash --repo %s", req.prNum, req.fullName)
+		} else if reviewRes.MaintainerVerdict == "Block Risk" {
+			reviewRes.QuickCommand = fmt.Sprintf("gh pr close %d --repo %s", req.prNum, req.fullName)
+		} else {
+			reviewRes.QuickCommand = fmt.Sprintf("gh pr checkout %d --repo %s", req.prNum, req.fullName)
+		}
+	}
 
 	// 先持久化审查结果，评论回写失败时管理台仍可查看报告。
 	if err := s.persistPRReview(ctx, req, reviewRes); err != nil {
@@ -604,6 +613,16 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 	sb.WriteString(" / 100</b> (")
 	sb.WriteString(scoreBadge)
 	sb.WriteString(")\n")
+	if res.MaintainerAction != "" {
+		sb.WriteString("🎯 <b>建议操作：</b>")
+		sb.WriteString(htmlpkg.EscapeString(res.MaintainerAction))
+		sb.WriteString("\n")
+	}
+	if res.EffortEstimate != "" {
+		sb.WriteString("⏱️ <b>预估精力：</b>")
+		sb.WriteString(htmlpkg.EscapeString(res.EffortEstimate))
+		sb.WriteString("\n")
+	}
 
 	if len(res.SecurityRisks) > 0 {
 		sb.WriteString("\n🚨 <b>安全风险：</b>\n")

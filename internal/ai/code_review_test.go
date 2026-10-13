@@ -936,3 +936,62 @@ func TestFlexibleStringListUnmarshal_EdgeCasesAndValidation(t *testing.T) {
 		t.Fatalf("expected %q, got %q", expected, multiKeyList[0])
 	}
 }
+
+
+func TestPersonalMaintainerOptimizationsAndActionDerivation(t *testing.T) {
+	// 1. IsAuthorMaintainer 识别测试
+	if !IsAuthorMaintainer("Silentely/Repo-Sentinel", "Silentely") {
+		t.Errorf("expected Silentely to be identified as maintainer")
+	}
+	if !IsAuthorMaintainer("Silentely/Repo-Sentinel", "kafei") {
+		t.Errorf("expected kafei to be identified as maintainer")
+	}
+	if IsAuthorMaintainer("Silentely/Repo-Sentinel", "bob-external") {
+		t.Errorf("expected bob-external NOT to be identified as maintainer")
+	}
+
+	// 2. deriveMaintainerAction 针对个人维护者自建 PR vs 外部贡献者 PR
+	resBlock := &CodeReviewResult{MaintainerVerdict: "Block Risk", Score: 30}
+	if action := deriveMaintainerAction(resBlock, true); !strings.Contains(action, "自建分支存在安全") {
+		t.Errorf("unexpected self action for Block Risk: %s", action)
+	}
+	if action := deriveMaintainerAction(resBlock, false); !strings.Contains(action, "拒绝合入") {
+		t.Errorf("unexpected external action for Block Risk: %s", action)
+	}
+
+	resMerge := &CodeReviewResult{MaintainerVerdict: "Ready to Merge", Score: 95}
+	if action := deriveMaintainerAction(resMerge, true); !strings.Contains(action, "自检通过") {
+		t.Errorf("unexpected self action for Ready to Merge: %s", action)
+	}
+	if action := deriveMaintainerAction(resMerge, false); !strings.Contains(action, "放心合入") {
+		t.Errorf("unexpected external action for Ready to Merge: %s", action)
+	}
+
+	// 3. deriveEffortEstimate 预估精力
+	repSmall := heuristicReport{fileManifest: []fileStat{{adds: 5, dels: 2}}}
+	if eff := deriveEffortEstimate(resMerge, repSmall); !strings.Contains(eff, "极速审阅") {
+		t.Errorf("unexpected effort for small PR: %s", eff)
+	}
+
+	repSensitive := heuristicReport{sensitiveAssets: []string{"ci.yml"}}
+	if eff := deriveEffortEstimate(resMerge, repSensitive); !strings.Contains(eff, "需深度审计") {
+		t.Errorf("unexpected effort for sensitive PR: %s", eff)
+	}
+
+	// 4. FormatPRComment 包含致维护者行动建议与预估精力
+	resMerge.MaintainerAction = "放心合入：代码高质量且无风险，建议直接 Merge 合入"
+	resMerge.EffortEstimate = "极速审阅 (1-2min)"
+	resMerge.MaintainerTip = "改动聚焦且已覆盖测试"
+	resMerge.QuickCommand = "gh pr merge 12 --squash --repo Silentely/Repo-Sentinel"
+
+	comment := FormatPRComment(resMerge)
+	if !strings.Contains(comment, "致维护者行动建议") {
+		t.Errorf("FormatPRComment missing 致维护者行动建议: %s", comment)
+	}
+	if !strings.Contains(comment, "极速审阅 (1-2min)") {
+		t.Errorf("FormatPRComment missing 极速审阅: %s", comment)
+	}
+	if !strings.Contains(comment, "gh pr merge 12 --squash") {
+		t.Errorf("FormatPRComment missing quick command: %s", comment)
+	}
+}

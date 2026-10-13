@@ -289,6 +289,18 @@ function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string
   if (review.summary) {
     parts.push(`> **概要评估**: ${review.summary}\n`);
   }
+  if (review.maintainer_action) {
+    parts.push(`> ☕ **致维护者行动建议**: ${review.maintainer_action}\n`);
+  }
+  if (review.effort_estimate) {
+    parts.push(`> ⏱️ **预估精力**: ${review.effort_estimate}\n`);
+  }
+  if (review.maintainer_tip) {
+    parts.push(`> 💡 **决策提要**: ${review.maintainer_tip}\n`);
+  }
+  if (review.quick_command) {
+    parts.push(`> 💻 **推荐执行指令**: \`${review.quick_command}\`\n`);
+  }
   if (review.sensitive_assets && review.sensitive_assets.length > 0) {
     parts.push(`\n### 🚨 哨兵关键资产变动预警\n` + review.sensitive_assets.map((a) => `- ${a}`).join("\n"));
   }
@@ -388,6 +400,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
   const [loading, setLoading] = useState(false);
   const [triggering, setTriggering] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedCmd, setCopiedCmd] = useState(false);
   const [review, setReview] = useState<CodeReviewResult | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   // 审查轮询循环在组件卸载后立即停止：卸载不会取消进行中的 async 函数，
@@ -624,6 +637,22 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                       裁决: {review.maintainer_verdict}
                     </span>
                   )}
+                  {review.maintainer_action && (
+                    <span
+                      className="label"
+                      style={{ fontSize: "0.75rem", background: "rgba(16, 185, 129, 0.12)", color: "var(--color-success, #10b981)", fontWeight: 700 }}
+                    >
+                      ☕ 行动: {review.maintainer_action}
+                    </span>
+                  )}
+                  {review.effort_estimate && (
+                    <span
+                      className="label"
+                      style={{ fontSize: "0.75rem", background: "rgba(107, 114, 128, 0.12)", color: "var(--color-text-secondary, #4b5563)" }}
+                    >
+                      ⏱️ {review.effort_estimate}
+                    </span>
+                  )}
                   {hasSecurityRisks && (
                     <span
                       className="label"
@@ -684,6 +713,30 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                 </div>
               </div>
               <p style={{ margin: "0.25rem 0 0.5rem" }}>{review.summary}</p>
+              {review.maintainer_tip && (
+                <div style={{ margin: "0.35rem 0", padding: "0.4rem 0.6rem", background: "var(--bg-panel-warm-light, rgba(245, 158, 11, 0.08))", borderLeft: "3px solid var(--color-warning, #f59e0b)", borderRadius: "4px", fontSize: "0.82rem", color: "var(--color-text-primary)" }}>
+                  💡 <strong>维护者速览:</strong> {review.maintainer_tip}
+                </div>
+              )}
+              {review.quick_command && (
+                <div style={{ margin: "0.35rem 0 0.5rem", padding: "0.35rem 0.6rem", background: "var(--bg-surface, #f9fafb)", border: "1px dashed var(--border-default, #d1d5db)", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+                  <code style={{ fontSize: "0.8rem", color: "var(--color-text-primary, #111827)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    $ {review.quick_command}
+                  </code>
+                  <button
+                    type="button"
+                    className="quiet-button quiet-button--compact"
+                    onClick={() => {
+                      navigator.clipboard.writeText(review.quick_command!);
+                      setCopiedCmd(true);
+                      setTimeout(() => setCopiedCmd(false), 2000);
+                    }}
+                    style={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}
+                  >
+                    {copiedCmd ? "✓ 已复制 CLI" : "📋 复制 CLI"}
+                  </button>
+                </div>
+              )}
               {review.diff_truncated && (
                 <p className="field-hint">Diff 超过审查输入上限，本报告仅覆盖前部变更。</p>
               )}
@@ -891,6 +944,48 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
             >
               {triage.category}
             </span>
+            {triage.maintainer_action && (
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  padding: "0.1rem 0.4rem",
+                  borderRadius: "4px",
+                  background: "rgba(16, 185, 129, 0.12)",
+                  color: "var(--color-success, #059669)",
+                }}
+              >
+                ☕ 建议: {triage.maintainer_action}
+              </span>
+            )}
+            {triage.suspected_module && (
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  padding: "0.1rem 0.4rem",
+                  borderRadius: "4px",
+                  background: "rgba(107, 114, 128, 0.12)",
+                  color: "var(--color-text-secondary, #4b5563)",
+                  border: "1px solid var(--border-default, #e5e7eb)",
+                }}
+              >
+                🧩 {triage.suspected_module}
+              </span>
+            )}
+            {triage.is_self_issue && (
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  padding: "0.1rem 0.4rem",
+                  borderRadius: "4px",
+                  background: "rgba(245, 158, 11, 0.15)",
+                  color: "var(--color-warning, #d97706)",
+                }}
+              >
+                👤 自建任务
+              </span>
+            )}
           </>
         )}
       </div>
@@ -973,6 +1068,20 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                 <strong>🎯 诉求摘要: </strong>
                 <span>{triage.summary}</span>
               </div>
+
+              {triage.maintainer_action && (
+                <div style={{ marginTop: "0.35rem", padding: "0.35rem 0.6rem", background: "var(--bg-panel-warm-light, rgba(16, 185, 129, 0.08))", borderLeft: "3px solid var(--color-success, #10b981)", borderRadius: "4px", fontSize: "0.82rem" }}>
+                  ☕ <strong>致维护者行动建议: </strong>
+                  <span>{triage.maintainer_action}</span>
+                </div>
+              )}
+
+              {triage.suspected_module && (
+                <div style={{ marginTop: "0.35rem", fontSize: "0.82rem", color: "var(--color-text-secondary, #4b5563)" }}>
+                  🧩 <strong>疑似涉及模块: </strong>
+                  <span>{triage.suspected_module}</span>
+                </div>
+              )}
 
               {triage.labels && triage.labels.length > 0 && (
                 <div style={{ marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>

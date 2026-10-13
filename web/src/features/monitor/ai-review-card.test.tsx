@@ -218,6 +218,36 @@ describe("AIReviewCard", () => {
     expect(copiedText).toContain("🔴 Block Risk");
     view.unmount();
   });
+
+  it("渲染面向个人维护者（咖啡啊）的行动建议、预估精力、决策速览与可复制 CLI 命令", async () => {
+    fetchMock.mockResolvedValue({
+      ...review,
+      reviewed_at: "2026-09-07T00:00:00Z",
+      maintainer_action: "放心合入：代码高质量且无风险，建议直接 Merge",
+      effort_estimate: "极速审阅 (1-2min)",
+      maintainer_tip: "改动聚焦且已覆盖关键单元测试",
+      quick_command: "gh pr merge 42 --squash --repo Silentely/Repo-Sentinel",
+    });
+    const view = renderCard();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /AI 代码审查报告/ }));
+    });
+
+    expect(screen.getByText(/☕ 行动: 放心合入/)).toBeInTheDocument();
+    expect(screen.getByText(/⏱️ 极速审阅/)).toBeInTheDocument();
+    expect(screen.getByText(/改动聚焦且已覆盖关键单元测试/)).toBeInTheDocument();
+    expect(screen.getByText(/gh pr merge 42 --squash/)).toBeInTheDocument();
+
+    const copyCliBtn = screen.getByRole("button", { name: /复制 CLI/ });
+    await act(async () => {
+      fireEvent.click(copyCliBtn);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("gh pr merge 42 --squash --repo Silentely/Repo-Sentinel");
+    expect(screen.getByRole("button", { name: /已复制 CLI/ })).toBeInTheDocument();
+
+    view.unmount();
+  });
 });
 
 describe("deriveMaintainerVerdict", () => {

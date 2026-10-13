@@ -174,4 +174,22 @@ describe("IssueTriageCard", () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockTriage.suggested_reply);
     expect(screen.getByRole("button", { name: /✓ 已复制回复/ })).toBeInTheDocument();
   });
+
+  it("渲染面向维护者（咖啡啊）的行动建议、疑似模块与自建任务标识", async () => {
+    fetchTriageMock.mockResolvedValue({
+      ...mockTriage,
+      maintainer_action: "高危缺陷：已确认为高优先级 Bug，建议优先修复",
+      suspected_module: "internal/webhooksvc (Webhook 接收与处理)",
+      is_self_issue: true,
+    });
+    renderCard();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /AI Issue 分诊与首响应/ }));
+    });
+
+    expect(screen.getAllByText(/高危缺陷：已确认为高优先级 Bug/)).toHaveLength(2);
+    expect(screen.getAllByText(/internal\/webhooksvc/)).toHaveLength(2);
+    expect(screen.getByText(/👤 自建任务/)).toBeInTheDocument();
+  });
 });

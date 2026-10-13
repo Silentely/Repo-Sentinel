@@ -200,3 +200,44 @@ func TestTriageLabelMappingsAndDerivation(t *testing.T) {
 		t.Errorf("Snapshot mutation mutated original client mappings")
 	}
 }
+
+
+func TestPersonalMaintainerTriageOptimizations(t *testing.T) {
+	// 1. deriveSuspectedModule 模块推导
+	if mod := deriveSuspectedModule("Webhook payload timeout", "delivery error"); !strings.Contains(mod, "webhooksvc") {
+		t.Errorf("expected webhooksvc module, got %s", mod)
+	}
+	if mod := deriveSuspectedModule("规则引擎在静音期不生效", "quiet hour bug"); !strings.Contains(mod, "rules") {
+		t.Errorf("expected rules module, got %s", mod)
+	}
+	if mod := deriveSuspectedModule("Web 前端卡片折叠按钮无响应", "ui click failed"); !strings.Contains(mod, "web/src") {
+		t.Errorf("expected web/src module, got %s", mod)
+	}
+
+	// 2. deriveTriageMaintainerAction 针对外部用户 vs 个人维护者自建
+	resBug := &IssueTriageResult{Category: "Bug Report", Priority: "P1 High"}
+	if action := deriveTriageMaintainerAction(resBug, false); !strings.Contains(action, "高危缺陷") {
+		t.Errorf("unexpected action for P1 bug: %s", action)
+	}
+	if action := deriveTriageMaintainerAction(resBug, true); !strings.Contains(action, "自建待修") {
+		t.Errorf("unexpected action for self bug: %s", action)
+	}
+
+	resInvalid := &IssueTriageResult{Category: "Invalid", Priority: "P3 Low"}
+	if action := deriveTriageMaintainerAction(resInvalid, false); !strings.Contains(action, "垃圾内容：建议直接关闭") {
+		t.Errorf("unexpected action for invalid: %s", action)
+	}
+
+	// 3. FormatIssueTriage 包含维护者建议与模块
+	resBug.MaintainerAction = "高危缺陷：已确认为高优先级 Bug，建议优先跟进修复"
+	resBug.SuspectedModule = "internal/webhooksvc (Webhook 接收与处理)"
+	resBug.Summary = "高并发下 Webhook 投递超时"
+	formatted := FormatIssueTriage(resBug)
+
+	if !strings.Contains(formatted, "🎯 建议处理：高危缺陷") {
+		t.Errorf("FormatIssueTriage missing 建议处理, got: %s", formatted)
+	}
+	if !strings.Contains(formatted, "🧩 疑似模块：internal/webhooksvc") {
+		t.Errorf("FormatIssueTriage missing 疑似模块, got: %s", formatted)
+	}
+}
