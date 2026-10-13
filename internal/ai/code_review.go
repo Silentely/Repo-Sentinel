@@ -936,30 +936,34 @@ func applyScoreAndRiskGuards(res *CodeReviewResult, rep heuristicReport) {
 
 	// 校验与修正维护者裁决指引（MaintainerVerdict）：按安全等级确定优先级阶梯，不可越级绕过
 	res.MaintainerVerdict = deriveMaintainerVerdict(res)
-	if strings.TrimSpace(res.MaintainerAction) == "" {
-		res.MaintainerAction = deriveMaintainerAction(res, res.IsSelfPR)
-	}
-	if strings.TrimSpace(res.EffortEstimate) == "" {
-		res.EffortEstimate = deriveEffortEstimate(res, rep)
-	}
-	if strings.TrimSpace(res.MaintainerTip) == "" {
-		res.MaintainerTip = deriveMaintainerTip(res, rep, res.IsSelfPR)
-	}
+	// 强规则收敛：维护者行动建议、决策提要与预估精力由确定性规则计算，免疫模型幻觉与提示词注入
+	res.MaintainerAction = deriveMaintainerAction(res, res.IsSelfPR)
+	res.EffortEstimate = deriveEffortEstimate(res, rep)
+	res.MaintainerTip = deriveMaintainerTip(res, rep, res.IsSelfPR)
+	// 严格安全防守：模型返回的任意 CLI 指令一律清空，仅允许系统在 webhooksvc 层结构化构造受信指令
+	res.QuickCommand = ""
 }
 
-// IsAuthorMaintainer 判断给定作者是否为仓库的唯一维护者（咖啡啊/仓库 Owner）。
+// IsAuthorMaintainer 判断给定作者是否为仓库的维护者（仓库 Owner 或项目主维护者）。
 func IsAuthorMaintainer(repo, author string) bool {
 	author = strings.TrimSpace(author)
 	if author == "" {
 		return false
 	}
-	repo = strings.TrimSpace(repo)
-	parts := strings.Split(repo, "/")
-	if len(parts) > 0 && strings.EqualFold(strings.TrimSpace(parts[0]), author) {
+	owner, _, ok := strings.Cut(strings.TrimSpace(repo), "/")
+	if !ok {
+		return false
+	}
+	owner = strings.TrimSpace(owner)
+	// 1. 仓库 Owner 严格精确匹配（大小写不敏感）
+	if strings.EqualFold(owner, author) {
 		return true
 	}
-	authorLower := strings.ToLower(author)
-	return authorLower == "silentely" || authorLower == "kafei" || strings.Contains(authorLower, "kafei")
+	// 2. 项目专属唯一维护者账号映射（仅当仓库归属于主维护者或官方组织时有效）
+	if strings.EqualFold(owner, "Silentely") && (strings.EqualFold(author, "kafei") || author == "咖啡啊") {
+		return true
+	}
+	return false
 }
 
 // deriveMaintainerAction 依据裁决与提交者身份推导面向个人维护者（咖啡啊）的立即可行动策略。
@@ -1151,9 +1155,9 @@ func (c *Client) ReviewPR(ctx context.Context, repo, title, author, diff string)
 	}
 
 	res.IsSelfPR = isSelfPR
+	res.DiffTruncated = diffTruncated
 	applyScoreAndRiskGuards(&res, heuristics)
 	res.ReviewedAt = time.Now().UTC()
-	res.DiffTruncated = diffTruncated
 	return &res, nil
 }
 

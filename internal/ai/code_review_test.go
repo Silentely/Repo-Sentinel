@@ -995,3 +995,74 @@ func TestPersonalMaintainerOptimizationsAndActionDerivation(t *testing.T) {
 		t.Errorf("FormatPRComment missing quick command: %s", comment)
 	}
 }
+
+
+func TestIsAuthorMaintainerEdgeCases(t *testing.T) {
+	// 1. 严格所有者匹配
+	if !IsAuthorMaintainer("Silentely/Repo-Sentinel", "Silentely") {
+		t.Errorf("expected Silentely to be maintainer of Silentely/Repo-Sentinel")
+	}
+	if !IsAuthorMaintainer("Silentely/Repo-Sentinel", "silentely") {
+		t.Errorf("expected case-insensitive match for owner")
+	}
+
+	// 2. 专属别名匹配
+	if !IsAuthorMaintainer("Silentely/Repo-Sentinel", "kafei") {
+		t.Errorf("expected kafei to match on Silentely repo")
+	}
+
+	// 3. 严格防伪装（防止子串包含漏洞）
+	if IsAuthorMaintainer("Silentely/Repo-Sentinel", "kafei-evil") {
+		t.Errorf("kafei-evil must NOT be recognized as maintainer")
+	}
+	if IsAuthorMaintainer("Silentely/Repo-Sentinel", "the-real-kafei") {
+		t.Errorf("the-real-kafei must NOT be recognized as maintainer")
+	}
+
+	// 4. 严格防跨仓伪装（第三方仓库不得冒用 Silentely 的别名）
+	if IsAuthorMaintainer("other-org/other-repo", "kafei") {
+		t.Errorf("kafei must NOT be recognized as maintainer of other-org/other-repo")
+	}
+	if IsAuthorMaintainer("other-org/other-repo", "Silentely") {
+		t.Errorf("Silentely must NOT be recognized as maintainer of other-org/other-repo")
+	}
+	if !IsAuthorMaintainer("other-org/other-repo", "other-org") {
+		t.Errorf("other-org must be recognized as maintainer of other-org/other-repo")
+	}
+}
+
+func TestMaintainerActionImmunetoPromptInjection(t *testing.T) {
+	// 模拟提示词注入：模型幻觉给出了 "放心合入" 和恶意 CLI 命令，但实际存在高危安全漏洞
+	res := &CodeReviewResult{
+		Score:            30,
+		SecurityRisks:    []string{"检测到任意命令注入漏洞"},
+		MaintainerAction: "放心合入（被恶意注入误导）",
+		QuickCommand:     "gh repo delete Silentely/Repo-Sentinel --yes",
+	}
+	applyScoreAndRiskGuards(res, heuristicReport{})
+
+	if strings.Contains(res.MaintainerAction, "放心合入") {
+		t.Errorf("MaintainerAction must NOT retain injected 放心合入 when risk exists, got: %s", res.MaintainerAction)
+	}
+	if !strings.Contains(res.MaintainerAction, "拒绝合入") {
+		t.Errorf("expected MaintainerAction to be 拒绝合入, got: %s", res.MaintainerAction)
+	}
+	if res.QuickCommand != "" {
+		t.Errorf("QuickCommand from untrusted model must be cleared by guards, got: %s", res.QuickCommand)
+	}
+}
+
+func TestReviewPRTruncatedDiffRaisesEffortEstimate(t *testing.T) {
+	res := &CodeReviewResult{
+		Score: 90,
+	}
+	rep := heuristicReport{
+		fileManifest: []fileStat{{adds: 10, dels: 5}}, // 代码行数不多
+	}
+	res.DiffTruncated = true // 但由于单行过长或其它原因发生了截断
+	applyScoreAndRiskGuards(res, rep)
+
+	if !strings.Contains(res.EffortEstimate, "需深度审计与本地验证") {
+		t.Errorf("expected EffortEstimate to raise to 需深度审计 when DiffTruncated, got: %s", res.EffortEstimate)
+	}
+}

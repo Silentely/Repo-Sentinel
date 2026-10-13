@@ -164,9 +164,8 @@ func (c *Client) TriageIssue(ctx context.Context, repo, title, author, body stri
 		return nil, fmt.Errorf("invalid issue triage confidence %d", res.Confidence)
 	}
 	res.IsSelfIssue = isSelf
-	if strings.TrimSpace(res.MaintainerAction) == "" {
-		res.MaintainerAction = deriveTriageMaintainerAction(&res, isSelf)
-	}
+	// 强规则收敛：维护者行动建议由确定性规则计算，免疫模型幻觉与提示词注入
+	res.MaintainerAction = deriveTriageMaintainerAction(&res, isSelf)
 	if strings.TrimSpace(res.SuspectedModule) == "" {
 		res.SuspectedModule = deriveSuspectedModule(title, body)
 	}

@@ -408,11 +408,13 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
   const mountedRef = useRef(true);
   // 复制成功提示的复位定时器：卸载或再次复制时清除，避免悬挂定时器在卸载后写状态。
   const copiedTimerRef = useRef<number | undefined>(undefined);
+  const copiedCmdTimerRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       if (copiedTimerRef.current !== undefined) window.clearTimeout(copiedTimerRef.current);
+      if (copiedCmdTimerRef.current !== undefined) window.clearTimeout(copiedCmdTimerRef.current);
     };
   }, []);
 
@@ -726,10 +728,18 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                   <button
                     type="button"
                     className="quiet-button quiet-button--compact"
-                    onClick={() => {
-                      navigator.clipboard.writeText(review.quick_command!);
-                      setCopiedCmd(true);
-                      setTimeout(() => setCopiedCmd(false), 2000);
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(review.quick_command!);
+                        setCopiedCmd(true);
+                        if (copiedCmdTimerRef.current !== undefined) window.clearTimeout(copiedCmdTimerRef.current);
+                        copiedCmdTimerRef.current = window.setTimeout(() => {
+                          copiedCmdTimerRef.current = undefined;
+                          setCopiedCmd(false);
+                        }, 2000);
+                      } catch {
+                        // 剪贴板异常静默降级
+                      }
                     }}
                     style={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}
                   >
