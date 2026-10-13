@@ -220,34 +220,68 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			}
 		} else {
 			if strings.TrimSpace(triageResult.SuggestedReply) != "" && !triageResult.IsSelfIssue {
-			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_reply_draft", *res.Event.RepositoryID, issueNum, triageResult.SuggestedReply, "", 24*time.Hour); err == nil {
+				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_reply_draft", *res.Event.RepositoryID, issueNum, triageResult.SuggestedReply, "", 24*time.Hour); err == nil {
+					chatOpsActions = append(chatOpsActions, map[string]string{
+						"text":   "💬 采纳建议一键回复",
+						"action": "issue_reply_draft",
+						"token":  tokenID,
+					})
+				}
+			}
+			if len(triageResult.MissingDetails) > 0 {
+				var reqSb strings.Builder
+				reqSb.WriteString("你好，感谢提交 Issue！为了能更快速定位与处理该问题，请协助补充以下复现要素：\n")
+				for _, d := range triageResult.MissingDetails {
+					if trimmed := strings.TrimSpace(d); trimmed != "" {
+						reqSb.WriteString("- " + trimmed + "\n")
+					}
+				}
+				reqSb.WriteString("\n感谢配合！")
+				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_request_details", *res.Event.RepositoryID, issueNum, reqSb.String(), "", 24*time.Hour); err == nil {
+					chatOpsActions = append(chatOpsActions, map[string]string{
+						"text":   "📋 索取复现要素",
+						"action": "issue_request_details",
+						"token":  tokenID,
+					})
+				}
+			}
+			var rawLabels []string
+			if triageResult.Category != "" {
+				rawLabels = append(rawLabels, triageResult.Category)
+			}
+			rawLabels = append(rawLabels, triageResult.Labels...)
+			labels := githubx.FilterAndMapLabels(rawLabels)
+			if len(labels) > 0 {
+				labelsStr := strings.Join(labels, ",")
+				btnLabel := "🏷️ 一键应用标签 (" + strings.Join(labels, ", ") + ")"
+				if len([]rune(btnLabel)) > 26 {
+					btnLabel = "🏷️ 一键应用建议标签"
+				}
+				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_apply_labels", *res.Event.RepositoryID, issueNum, labelsStr, "", 24*time.Hour); err == nil {
+					chatOpsActions = append(chatOpsActions, map[string]string{
+						"text":   btnLabel,
+						"action": "issue_apply_labels",
+						"token":  tokenID,
+					})
+				}
+			}
+			snoozePayload := fmt.Sprintf("%s|%d|%s", repoFullName, issueNum, htmlURL)
+			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_snooze", *res.Event.RepositoryID, issueNum, snoozePayload, "", 24*time.Hour); err == nil {
 				chatOpsActions = append(chatOpsActions, map[string]string{
-					"text":   "💬 采纳建议一键回复",
-					"action": "issue_reply_draft",
+					"text":   "💤 延迟2小时提醒",
+					"action": "issue_snooze",
 					"token":  tokenID,
 				})
 			}
 		}
-		var rawLabels []string
-		if triageResult.Category != "" {
-			rawLabels = append(rawLabels, triageResult.Category)
-		}
-		rawLabels = append(rawLabels, triageResult.Labels...)
-		labels := githubx.FilterAndMapLabels(rawLabels)
-		if len(labels) > 0 {
-			labelsStr := strings.Join(labels, ",")
-			btnLabel := "🏷️ 一键应用标签 (" + strings.Join(labels, ", ") + ")"
-			if len([]rune(btnLabel)) > 26 {
-				btnLabel = "🏷️ 一键应用建议标签"
-			}
-			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_apply_labels", *res.Event.RepositoryID, issueNum, labelsStr, "", 24*time.Hour); err == nil {
-				chatOpsActions = append(chatOpsActions, map[string]string{
-					"text":   btnLabel,
-					"action": "issue_apply_labels",
-					"token":  tokenID,
-				})
-			}
-		}
+	} else if res.Event.Kind == store.WorkItemKindPR && (res.Event.Action == "opened" || res.Event.Action == "ready_for_review" || res.Event.Action == "reopened") && res.Event.SubjectNumber != nil && res.Event.RepositoryID != nil {
+		prNum := int(*res.Event.SubjectNumber)
+		if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "pr_quick_approve", *res.Event.RepositoryID, prNum, "", "", 24*time.Hour); err == nil {
+			chatOpsActions = append(chatOpsActions, map[string]string{
+				"text":   "✅ 快捷批准合入",
+				"action": "pr_quick_approve",
+				"token":  tokenID,
+			})
 		}
 	}
 

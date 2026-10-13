@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -225,6 +227,24 @@ func TestChatOps_IssueActions_CallbackDispatch(t *testing.T) {
 			issueNumber: 101,
 			payload:     "bug,triage",
 		},
+		{
+			name:        "索取复现要素",
+			action:      "issue_request_details",
+			issueNumber: 77,
+			payload:     "请提供复现步骤与日志",
+		},
+		{
+			name:        "延迟提醒",
+			action:      "issue_snooze",
+			issueNumber: 88,
+			payload:     "acme/repo|88|https://github.com/acme/repo/issues/88",
+		},
+		{
+			name:        "快捷批准PR",
+			action:      "pr_quick_approve",
+			issueNumber: 99,
+			payload:     "",
+		},
 	}
 
 	for _, tc := range tests {
@@ -264,5 +284,111 @@ func TestChatOps_IssueActions_CallbackDispatch(t *testing.T) {
 				t.Fatalf("期望载荷 %q, 实际: %q", tc.payload, exec.action.Payload)
 			}
 		})
+	}
+}
+
+func TestChatOps_Telegram_EditMessageReplyMarkup(t *testing.T) {
+	var receivedEditBody map[string]any
+	editCalled := make(chan struct{}, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/editMessageReplyMarkup" {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &receivedEditBody)
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+			select {
+			case editCalled <- struct{}{}:
+			default:
+			}
+			return
+		}
+		if r.URL.Path == "/answerCallbackQuery" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	exec := &recordingChatOpsExecutor{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		chatOpsExecutor: exec,
+	})
+
+	// 配置 bot token 为 mock server URL
+	_, err := fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		Key:       "chatops.telegram.bot_token",
+		ValueJSON: json.RawMessage(fmt.Sprintf("%q", srv.URL)),
+	})
+	if err != nil {
+		t.Fatalf("配置 bot_token 失败: %v", err)
+	}
+
+	tokenID, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_reply_draft", "repo-1", 42, "draft", "", 10*time.Minute)
+	if err != nil {
+		t.Fatalf("创建令牌失败: %v", err)
+	}
+
+	tgBody := map[string]any{
+		"update_id": 1,
+		"callback_query": map[string]any{
+			"id":   "cb-1",
+			"data": "act:" + tokenID,
+			"from": map[string]any{"id": 123456, "username": "boss"},
+			"message": map[string]any{
+				"message_id": 999,
+				"chat":       map[string]any{"id": -100123},
+				"reply_markup": map[string]any{
+					"inline_keyboard": [][]map[string]any{
+						{
+							{"text": "🔗 前往 GitHub", "url": "https://github.com/o/r/issues/42"},
+						},
+						{
+							{"text": "💬 采纳建议一键回复", "callback_data": "act:" + tokenID},
+						},
+					},
+				},
+			},
+		},
+	}
+	raw, _ := json.Marshal(tgBody)
+	req := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("期望 200, 实际: %d", w.Code)
+	}
+
+	select {
+	case <-editCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("超时未收到 editMessageReplyMarkup 调用")
+	}
+
+	if chatID, _ := receivedEditBody["chat_id"].(float64); int64(chatID) != -100123 {
+		t.Fatalf("chat_id 期望 -100123, 实际: %v", receivedEditBody["chat_id"])
+	}
+	if msgID, _ := receivedEditBody["message_id"].(float64); int(msgID) != 999 {
+		t.Fatalf("message_id 期望 999, 实际: %v", receivedEditBody["message_id"])
+	}
+	rm, ok := receivedEditBody["reply_markup"].(map[string]any)
+	if !ok {
+		t.Fatalf("期望 reply_markup 存在: %v", receivedEditBody)
+	}
+	kb, ok := rm["inline_keyboard"].([]any)
+	if !ok || len(kb) != 2 {
+		t.Fatalf("期望 inline_keyboard 有 2 行: %v", kb)
+	}
+	row1 := kb[1].([]any)
+	btn1 := row1[0].(map[string]any)
+	if btn1["text"] != "✅ 已采纳回复" {
+		t.Fatalf("期望按钮文案变为 ✅ 已采纳回复, 实际: %v", btn1["text"])
+	}
+	if btn1["callback_data"] != "done:issue_reply_draft" {
+		t.Fatalf("期望 callback_data 变为 done:issue_reply_draft, 实际: %v", btn1["callback_data"])
 	}
 }

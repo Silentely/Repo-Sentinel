@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -219,6 +220,10 @@ func TestChatOps_IssueActions_E2E(t *testing.T) {
 		labelsAdded42     []string
 		labelsAdded99     []string
 		closePatch99      map[string]any
+		commentBody77     string
+		labelsAdded77     []string
+		reviewEvent88     string
+		reviewBody88      string
 	)
 
 	mockGitHubServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -252,6 +257,30 @@ func TestChatOps_IssueActions_E2E(t *testing.T) {
 			labelsAdded42 = body.Labels
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode([]any{})
+
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/sentinel-repo/issues/77/comments":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			commentBody77 = body["body"]
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1002, "body": commentBody77})
+
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/sentinel-repo/issues/77/labels":
+			var body struct {
+				Labels []string `json:"labels"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			labelsAdded77 = body.Labels
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode([]any{})
+
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/sentinel-repo/pulls/88/reviews":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			reviewEvent88 = body["event"]
+			reviewBody88 = body["body"]
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 2001, "state": "APPROVED"})
 
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -352,5 +381,105 @@ func TestChatOps_IssueActions_E2E(t *testing.T) {
 	}
 	if len(labelsAdded42) != 2 || labelsAdded42[0] != "bug" || labelsAdded42[1] != "frontend" {
 		t.Fatalf("应用标签不符，实际: %v", labelsAdded42)
+	}
+
+	// 4. 测试索取复现要素（发追问评论 + 贴 needs-more-info 标签）
+	reqDetailsToken, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_request_details", repo.ID, 77, "请协助补充复现 Demo 与运行日志。", "", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("创建索取要素令牌失败: %v", err)
+	}
+	tgDetails := map[string]any{
+		"update_id": 4,
+		"callback_query": map[string]any{
+			"id":   "cb-details",
+			"data": "act:" + reqDetailsToken,
+			"from": map[string]any{"id": 1234, "username": "boss"},
+		},
+	}
+	rawDetails, _ := json.Marshal(tgDetails)
+	reqD := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawDetails))
+	recD := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(recD, reqD)
+	if recD.Code != http.StatusOK {
+		t.Fatalf("索取要素回调失败: %d, %s", recD.Code, recD.Body.String())
+	}
+	if commentBody77 != "请协助补充复现 Demo 与运行日志。" {
+		t.Fatalf("追问评论不符，实际: %q", commentBody77)
+	}
+	if len(labelsAdded77) != 1 || labelsAdded77[0] != "needs-more-info" {
+		t.Fatalf("标签不符，实际: %v", labelsAdded77)
+	}
+
+	// 5. 测试极速稍后处理（生成 2 小时后的待办 Outbox）
+	_, _ = fixture.store.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID:          "ch-snooze",
+		ChannelType: store.ChannelTelegram,
+		Enabled:     true,
+		EventKinds:  []string{store.WorkItemKindIssue},
+	})
+	snoozePayload := "acme/sentinel-repo|99|https://github.com/acme/sentinel-repo/issues/99"
+	snoozeToken, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_snooze", repo.ID, 99, snoozePayload, "", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("创建延迟令牌失败: %v", err)
+	}
+	tgSnooze := map[string]any{
+		"update_id": 5,
+		"callback_query": map[string]any{
+			"id":   "cb-snooze",
+			"data": "act:" + snoozeToken,
+			"from": map[string]any{"id": 1234, "username": "boss"},
+		},
+	}
+	rawSnooze, _ := json.Marshal(tgSnooze)
+	reqS := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawSnooze))
+	recS := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(recS, reqS)
+	if recS.Code != http.StatusOK {
+		t.Fatalf("延迟提醒回调失败: %d, %s", recS.Code, recS.Body.String())
+	}
+	// 验证 Outbox 中已写入待办提醒
+	outboxList, _, err := fixture.store.Outbox().List(t.Context(), store.ListFilter{PerPage: 20})
+	if err != nil {
+		t.Fatalf("读取 Outbox 失败: %v", err)
+	}
+	foundSnooze := false
+	for _, o := range outboxList {
+		if strings.Contains(o.Title, "[待办提醒]") && strings.Contains(o.Title, "#99") {
+			foundSnooze = true
+			if !o.NextAttemptAt.After(time.Now().UTC().Add(1 * time.Hour)) {
+				t.Fatalf("期望延后大约 2 小时，实际 NextAttemptAt: %v", o.NextAttemptAt)
+			}
+			break
+		}
+	}
+	if !foundSnooze {
+		t.Fatal("未在 Outbox 中找到延迟提醒条目")
+	}
+
+	// 6. 测试低风险 PR 快捷批准合入
+	prApproveToken, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "pr_quick_approve", repo.ID, 88, "", "", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("创建快捷批准令牌失败: %v", err)
+	}
+	tgApprove := map[string]any{
+		"update_id": 6,
+		"callback_query": map[string]any{
+			"id":   "cb-approve",
+			"data": "act:" + prApproveToken,
+			"from": map[string]any{"id": 1234, "username": "boss"},
+		},
+	}
+	rawApprove, _ := json.Marshal(tgApprove)
+	reqA := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawApprove))
+	recA := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(recA, reqA)
+	if recA.Code != http.StatusOK {
+		t.Fatalf("快捷批准回调失败: %d, %s", recA.Code, recA.Body.String())
+	}
+	if reviewEvent88 != "APPROVE" {
+		t.Fatalf("期望提交 APPROVE，实际: %q", reviewEvent88)
+	}
+	if !strings.Contains(reviewBody88, "LGTM") {
+		t.Fatalf("期望包含 LGTM，实际: %q", reviewBody88)
 	}
 }

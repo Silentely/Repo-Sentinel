@@ -335,3 +335,36 @@ func TestCloseIssue(t *testing.T) {
 		t.Errorf("unexpected body payload: %v", receivedBody)
 	}
 }
+
+func TestCreatePullRequestReview(t *testing.T) {
+	var receivedMethod, receivedPath, receivedAuth string
+	var receivedBody map[string]string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedMethod = r.Method
+		receivedPath = r.URL.Path
+		receivedAuth = r.Header.Get("Authorization")
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":1001,"state":"APPROVED"}`))
+	}))
+	defer srv.Close()
+
+	c := &AppClient{HTTP: srv.Client(), BaseURL: srv.URL}
+	err := c.CreatePullRequestReview(context.Background(), "token123", "owner", "repo", 55, "APPROVE", "LGTM")
+	if err != nil {
+		t.Fatalf("CreatePullRequestReview failed: %v", err)
+	}
+	if receivedMethod != http.MethodPost {
+		t.Errorf("expected POST, got %s", receivedMethod)
+	}
+	if receivedPath != "/repos/owner/repo/pulls/55/reviews" {
+		t.Errorf("expected path /repos/owner/repo/pulls/55/reviews, got %s", receivedPath)
+	}
+	if receivedAuth != "Bearer token123" {
+		t.Errorf("expected Bearer token123, got %s", receivedAuth)
+	}
+	if receivedBody["event"] != "APPROVE" || receivedBody["body"] != "LGTM" {
+		t.Errorf("unexpected body payload: %v", receivedBody)
+	}
+}

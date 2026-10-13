@@ -1330,3 +1330,144 @@ func TestEngine_AIBudgetRecordThenExceeded(t *testing.T) {
 		t.Fatal("记录超限用量后应判定超限")
 	}
 }
+
+func TestEvaluateIssueTriageGeneratesExpandedActions(t *testing.T) {
+	data := openEngineStore(t)
+	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID:          ulid.Make().String(),
+		ChannelType: store.ChannelTelegram,
+		Name:        "tg",
+		Enabled:     true,
+		Target:      "123",
+		EventKinds:  []string{store.WorkItemKindIssue},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	aiResp := `{"choices":[{"message":{"content":"{\"category\":\"Bug Report\",\"priority\":\"P1 High\",\"summary\":\"崩溃\",\"missing_details\":[\"复现步骤\",\"系统版本\"],\"suggested_reply\":\"建议核验配置\",\"confidence\":5}"}}]}`
+	e := &Engine{Store: data, AI: aiStub(t, aiResp)}
+
+	subjectNum := int64(100)
+	repoID := "repo-123"
+	res := normalizer.Result{Event: &store.Event{
+		Kind:          store.WorkItemKindIssue,
+		Action:        "opened",
+		Title:         "崩溃问题",
+		Actor:         "alice",
+		SubjectNumber: &subjectNum,
+		RepositoryID:  &repoID,
+		PayloadSummary: map[string]any{
+			"body": "无法启动",
+		},
+	}}
+
+	if err := e.Evaluate(t.Context(), res, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("期望产生 1 条通知，实际: %d", len(items))
+	}
+
+	var actions []map[string]string
+	switch raw := items[0].BodyJSON["chatops_actions"].(type) {
+	case []map[string]string:
+		actions = raw
+	case []any:
+		for _, it := range raw {
+			if m, ok := it.(map[string]any); ok {
+				itemAct, _ := m["action"].(string)
+				itemText, _ := m["text"].(string)
+				actions = append(actions, map[string]string{"action": itemAct, "text": itemText})
+			}
+		}
+	}
+	if len(actions) == 0 {
+		t.Fatalf("期望 chatops_actions 存在: %v", items[0].BodyJSON)
+	}
+
+	actionMap := make(map[string]string)
+	for _, a := range actions {
+		actionMap[a["action"]] = a["text"]
+	}
+
+	if _, ok := actionMap["issue_reply_draft"]; !ok {
+		t.Error("未找到 issue_reply_draft 动作")
+	}
+	if _, ok := actionMap["issue_request_details"]; !ok {
+		t.Error("未找到 issue_request_details 动作")
+	}
+	if _, ok := actionMap["issue_apply_labels"]; !ok {
+		t.Error("未找到 issue_apply_labels 动作")
+	}
+	if _, ok := actionMap["issue_snooze"]; !ok {
+		t.Error("未找到 issue_snooze 动作")
+	}
+}
+
+func TestEvaluatePRGeneratesQuickApproveAction(t *testing.T) {
+	data := openEngineStore(t)
+	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID:          ulid.Make().String(),
+		ChannelType: store.ChannelTelegram,
+		Name:        "tg",
+		Enabled:     true,
+		Target:      "123",
+		EventKinds:  []string{store.WorkItemKindPR},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	e := &Engine{Store: data}
+	subjectNum := int64(200)
+	repoID := "repo-123"
+	res := normalizer.Result{Event: &store.Event{
+		Kind:          store.WorkItemKindPR,
+		Action:        "opened",
+		Title:         "fix: bump version",
+		Actor:         "bob",
+		SubjectNumber: &subjectNum,
+		RepositoryID:  &repoID,
+		PayloadSummary: map[string]any{
+			"body": "simple bump",
+		},
+	}}
+
+	if err := e.Evaluate(t.Context(), res, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("期望产生 1 条通知，实际: %d", len(items))
+	}
+
+	var actions []map[string]string
+	switch raw := items[0].BodyJSON["chatops_actions"].(type) {
+	case []map[string]string:
+		actions = raw
+	case []any:
+		for _, it := range raw {
+			if m, ok := it.(map[string]any); ok {
+				itemAct, _ := m["action"].(string)
+				itemText, _ := m["text"].(string)
+				actions = append(actions, map[string]string{"action": itemAct, "text": itemText})
+			}
+		}
+	}
+	if len(actions) == 0 {
+		t.Fatalf("期望 chatops_actions 存在: %v", items[0].BodyJSON)
+	}
+	if len(actions) == 0 || actions[0]["action"] != "pr_quick_approve" {
+		t.Fatalf("期望 pr_quick_approve 动作，实际: %v", actions)
+	}
+}
