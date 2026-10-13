@@ -8,10 +8,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
 
 type recordingChatOpsExecutor struct {
@@ -390,5 +393,177 @@ func TestChatOps_Telegram_EditMessageReplyMarkup(t *testing.T) {
 	}
 	if btn1["callback_data"] != "done:issue_reply_draft" {
 		t.Fatalf("期望 callback_data 变为 done:issue_reply_draft, 实际: %v", btn1["callback_data"])
+	}
+}
+
+func TestChatOps_Telegram_AllowedUserIDsGuard(t *testing.T) {
+	exec := &recordingChatOpsExecutor{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		chatOpsExecutor: exec,
+	})
+
+	// 设置仅允许维护者 88888 操作
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		Key:       "chatops.telegram.allowed_user_ids",
+		ValueJSON: json.RawMessage(`"88888,99999"`),
+	})
+
+	tokenID, _ := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_mark_spam_and_close", "repo-1", 123, "", "", 10*time.Minute)
+
+	// Case 1: 未授权用户 11111 点击 -> 403 Forbidden（直接提前拦截，无需且未消费令牌）
+	tgUnauthorized := map[string]any{
+		"update_id": 1,
+		"callback_query": map[string]any{
+			"id":   "cb-unauth",
+			"data": "act:" + tokenID,
+			"from": map[string]any{"id": 11111, "username": "stranger"},
+		},
+	}
+	raw1, _ := json.Marshal(tgUnauthorized)
+	req1 := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(raw1))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusForbidden {
+		t.Fatalf("未授权用户期望 403, 实际: %d", w1.Code)
+	}
+	if exec.calls != 0 {
+		t.Fatalf("未授权用户不应触发执行器，实际调用次数: %d", exec.calls)
+	}
+
+	// Case 2: 授权用户 88888 点击 -> 200 OK，正常消费未被未授权用户污染的令牌
+	tgAuthorized := map[string]any{
+		"update_id": 2,
+		"callback_query": map[string]any{
+			"id":   "cb-auth",
+			"data": "act:" + tokenID,
+			"from": map[string]any{"id": 88888, "username": "maintainer"},
+		},
+	}
+	raw2, _ := json.Marshal(tgAuthorized)
+	req2 := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(raw2))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("授权用户期望 200, 实际: %d", w2.Code)
+	}
+	if exec.calls != 1 {
+		t.Fatalf("授权用户应成功触发执行器，实际调用次数: %d", exec.calls)
+	}
+}
+
+func TestGitHubChatOpsExecutor_CompositeActionHandling(t *testing.T) {
+	var labelCalls int
+	var closeCalls int
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/labels") && r.Method == http.MethodPost:
+			labelCalls++
+			if strings.Contains(r.URL.Path, "/issues/500/labels") {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"name":"invalid"}]`))
+		case strings.HasSuffix(r.URL.Path, "/issues/100") && r.Method == http.MethodPatch:
+			closeCalls++
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"state":"closed"}`))
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer mockServer.Close()
+
+	ghClient := githubx.NewAppClient(1, "")
+	ghClient.BaseURL = mockServer.URL
+	ghClient.HTTP = mockServer.Client()
+
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		githubClient: ghClient,
+	})
+
+	repo, err := fixture.store.Repositories().Upsert(t.Context(), store.Repository{
+		ID:             ulid.Make().String(),
+		Owner:          "acme",
+		Name:           "repo-composite",
+		FullName:       "acme/repo-composite",
+		DefaultBranch:  "main",
+		MonitorEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("创建仓库失败: %v", err)
+	}
+
+	exec := &GitHubChatOpsExecutor{
+		Store:  fixture.store,
+		Client: ghClient,
+	}
+
+	// 1. 测试 issue_mark_spam_and_close 正常闭环
+	err = exec.Execute(t.Context(), ChatOpsActionData{
+		ID:          "act-spam-1",
+		Action:      "issue_mark_spam_and_close",
+		RepoID:      repo.ID,
+		IssueNumber: 100,
+	})
+	if err != nil {
+		t.Fatalf("issue_mark_spam_and_close 期望执行成功，实际: %v", err)
+	}
+	if labelCalls != 1 || closeCalls != 1 {
+		t.Fatalf("期望打标与关闭均被调用，实际 labelCalls: %d, closeCalls: %d", labelCalls, closeCalls)
+	}
+
+	// 2. 测试 issue_snooze 正常写入 Outbox 并正确转义 link
+	_, err = fixture.store.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID:          ulid.Make().String(),
+		ChannelType: store.ChannelTelegram,
+		Target:      "chat-snooze",
+		Enabled:     true,
+		EventKinds:  []string{store.WorkItemKindIssue},
+	})
+	if err != nil {
+		t.Fatalf("创建通道失败: %v", err)
+	}
+
+	err = exec.Execute(t.Context(), ChatOpsActionData{
+		ID:          "act-snooze-1",
+		Action:      "issue_snooze",
+		RepoID:      repo.ID,
+		IssueNumber: 100,
+		Payload:     "acme/repo-composite|Issue Title|https://github.com/acme/repo-composite/issues/100?a=1&b=2",
+	})
+	if err != nil {
+		t.Fatalf("issue_snooze 期望成功，实际: %v", err)
+	}
+
+	outboxList, _, err := fixture.store.Outbox().List(t.Context(), store.ListFilter{PerPage: 10})
+	if err != nil || len(outboxList) == 0 {
+		t.Fatalf("期望在 Outbox 生成待办提醒，实际: %v, count: %d", err, len(outboxList))
+	}
+	foundSnooze := false
+	for _, o := range outboxList {
+		if strings.Contains(o.Title, "[待办提醒]") {
+			foundSnooze = true
+			if !strings.Contains(o.BodyText, "https://github.com/acme/repo-composite/issues/100?a=1&amp;b=2") {
+				t.Fatalf("HTML 链接应正确进行转义，实际正文: %s", o.BodyText)
+			}
+		}
+	}
+	if !foundSnooze {
+		t.Fatalf("未找到生成的待办提醒消息")
+	}
+
+	// 3. 测试打标失败时正确暴露错误，不静默丢弃
+	err = exec.Execute(t.Context(), ChatOpsActionData{
+		ID:          "act-spam-err",
+		Action:      "issue_mark_spam_and_close",
+		RepoID:      repo.ID,
+		IssueNumber: 500,
+	})
+	if err == nil || !strings.Contains(err.Error(), "add spam label") {
+		t.Fatalf("期望暴露打标失败错误，实际: %v", err)
 	}
 }

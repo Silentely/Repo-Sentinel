@@ -367,6 +367,7 @@ func (w *Worker) sendTelegramWithActions(ctx context.Context, chatID, token, tex
 }
 
 // extractTelegramChatOpsActionRows 从 bodyJSON 中提取附加的 Telegram 快捷动作行。
+// 规则：支持将相邻的次级操作按钮（如索取要素与延迟提醒）两两并排，显著节省移动端纵向屏幕高度。
 func extractTelegramChatOpsActionRows(bodyJSON map[string]any) [][]map[string]string {
 	if bodyJSON == nil {
 		return nil
@@ -375,39 +376,63 @@ func extractTelegramChatOpsActionRows(bodyJSON map[string]any) [][]map[string]st
 	if !ok || raw == nil {
 		return nil
 	}
-	var rows [][]map[string]string
-	switch items := raw.(type) {
+	type actionItem struct {
+		text   string
+		token  string
+		action string
+	}
+	var items []actionItem
+	switch rawItems := raw.(type) {
 	case []map[string]string:
-		for _, item := range items {
-			btnText := item["text"]
-			token := item["token"]
-			if btnText != "" && token != "" {
-				rows = append(rows, []map[string]string{
-					{"text": btnText, "callback_data": "act:" + token},
-				})
+		for _, m := range rawItems {
+			if m["text"] != "" && m["token"] != "" {
+				items = append(items, actionItem{text: m["text"], token: m["token"], action: m["action"]})
 			}
 		}
 	case []any:
-		for _, rawItem := range items {
+		for _, rawItem := range rawItems {
 			if m, ok := rawItem.(map[string]any); ok {
 				btnText, _ := m["text"].(string)
 				token, _ := m["token"].(string)
+				act, _ := m["action"].(string)
 				if btnText != "" && token != "" {
-					rows = append(rows, []map[string]string{
-						{"text": btnText, "callback_data": "act:" + token},
-					})
+					items = append(items, actionItem{text: btnText, token: token, action: act})
 				}
 			} else if m, ok := rawItem.(map[string]string); ok {
-				btnText := m["text"]
-				token := m["token"]
-				if btnText != "" && token != "" {
-					rows = append(rows, []map[string]string{
-						{"text": btnText, "callback_data": "act:" + token},
-					})
+				if m["text"] != "" && m["token"] != "" {
+					items = append(items, actionItem{text: m["text"], token: m["token"], action: m["action"]})
 				}
 			}
 		}
 	}
+	if len(items) == 0 {
+		return nil
+	}
+
+	var rows [][]map[string]string
+	var pendingPair []map[string]string
+
+	flushPending := func() {
+		if len(pendingPair) > 0 {
+			rows = append(rows, pendingPair)
+			pendingPair = nil
+		}
+	}
+
+	for _, it := range items {
+		btn := map[string]string{"text": it.text, "callback_data": "act:" + it.token}
+		canPair := (it.action == "issue_request_details" || it.action == "issue_snooze") && len([]rune(it.text)) <= 12
+		if canPair {
+			pendingPair = append(pendingPair, btn)
+			if len(pendingPair) == 2 {
+				flushPending()
+			}
+		} else {
+			flushPending()
+			rows = append(rows, []map[string]string{btn})
+		}
+	}
+	flushPending()
 	return rows
 }
 

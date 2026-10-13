@@ -116,7 +116,7 @@ const ReleaseListPerPage = 30
 // page=1 且 ifNoneMatch 非空时带 If-None-Match 条件请求；304 时 modified=false、items 为空。
 // page>1 忽略 ifNoneMatch（存储的 ETag 仅对应列表资源第 1 页，翻页不做条件请求）。
 // 返回第 1 页的响应 ETag 供下次条件请求；错误分类复用 doJSONReq（限流 / HTTPStatusError），
-// 避免与其它 REST 调用两套错误行为漂移。
+// 避免与其他 REST 调用两套错误行为漂移。
 func (c *AppClient) ListReleases(ctx context.Context, token, owner, repo string, page int, ifNoneMatch string) ([]ReleaseItem, string, bool, int, error) {
 	if page < 1 {
 		page = 1
@@ -240,7 +240,7 @@ func (c *AppClient) ListSecretScanningAlerts(ctx context.Context, token, owner, 
 	return items, remaining, err
 }
 
-// PRReviewItem PR 审核条目。
+// PRReviewItem PR 评估条目。
 type PRReviewItem struct {
 	ID    int64  `json:"id"`
 	State string `json:"state"`
@@ -251,7 +251,7 @@ type PRReviewItem struct {
 	SubmittedAt time.Time `json:"submitted_at"`
 }
 
-// ListPRReviews 拉取 PR 的审核列表。
+// ListPRReviews 拉取 PR 的评估意见列表。
 func (c *AppClient) ListPRReviews(ctx context.Context, token, owner, repo string, prNumber int) ([]PRReviewItem, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", owner, repo, prNumber)
 	var items []PRReviewItem
@@ -259,7 +259,7 @@ func (c *AppClient) ListPRReviews(ctx context.Context, token, owner, repo string
 	return items, err
 }
 
-// CheckRunItem 检查运行条目。
+// CheckRunItem 校验运行条目。
 type CheckRunItem struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`
@@ -309,7 +309,7 @@ func (c *AppClient) ListWorkflowJobs(ctx context.Context, token, owner, repo str
 	return all, nil
 }
 
-// ListCheckRuns 拉取 commit 的检查运行列表。
+// ListCheckRuns 拉取 commit 的校验运行列表。
 func (c *AppClient) ListCheckRuns(ctx context.Context, token, owner, repo, ref string) ([]CheckRunItem, error) {
 	path := fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", owner, repo, ref)
 	var payload struct {
@@ -319,7 +319,7 @@ func (c *AppClient) ListCheckRuns(ctx context.Context, token, owner, repo, ref s
 	return payload.CheckRuns, err
 }
 
-// ListRequestedReviewers 拉取 PR 的请求审核人列表。
+// ListRequestedReviewers 拉取 PR 的协同评定人列表。
 func (c *AppClient) ListRequestedReviewers(ctx context.Context, token, owner, repo string, prNumber int) ([]string, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/requested_reviewers", owner, repo, prNumber)
 	var payload struct {
@@ -551,6 +551,9 @@ func (c *AppClient) CreateIssueComment(ctx context.Context, token, owner, repo s
 
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if ok, rle := parseRateLimitError(resp, b); ok {
+			return rle
+		}
 		return statusError(resp.StatusCode, b)
 	}
 	return nil
@@ -593,6 +596,9 @@ func (c *AppClient) CreatePullRequestReview(ctx context.Context, token, owner, r
 
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if ok, rle := parseRateLimitError(resp, b); ok {
+			return rle
+		}
 		return statusError(resp.StatusCode, b)
 	}
 	return nil
@@ -635,6 +641,9 @@ func (c *AppClient) CloseIssue(ctx context.Context, token, owner, repo string, n
 
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if ok, rle := parseRateLimitError(resp, b); ok {
+			return rle
+		}
 		return statusError(resp.StatusCode, b)
 	}
 	return nil

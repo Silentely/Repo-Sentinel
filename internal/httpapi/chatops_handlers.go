@@ -108,7 +108,9 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 		}
 		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
 		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_mark_spam_and_close", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
-			_ = e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"invalid"})
+			if err := e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"invalid"}); err != nil {
+				return "", fmt.Errorf("add spam label: %w", err)
+			}
 			err := e.Client.CloseIssue(ctx, token, parts[0], parts[1], action.IssueNumber, "not_planned")
 			if err != nil {
 				return "", err
@@ -155,7 +157,9 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 			if err != nil {
 				return "", err
 			}
-			_ = e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"needs-more-info"})
+			if err := e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"needs-more-info"}); err != nil {
+				return "", fmt.Errorf("add needs-more-info label: %w", err)
+			}
 			return scopeKey, nil
 		})
 
@@ -184,10 +188,10 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 				remindTitle := fmt.Sprintf("⏰ [待办提醒] %s #%d", repoFull, issueNum)
 				remindBody := fmt.Sprintf("<b>⏰ 稍后处理待办提醒</b>\n────────\n您在 2 小时前延迟了此 Issue 的处理：\n仓库：<code>%s</code>\nIssue：#%d", htmlpkg.EscapeString(repoFull), issueNum)
 				if link != "" {
-					remindBody += fmt.Sprintf("\n────────\n<a href=\"%s\">🔗 前往 GitHub</a>", link)
+					remindBody += fmt.Sprintf("\n────────\n<a href=\"%s\">🔗 前往 GitHub</a>", htmlpkg.EscapeString(link))
 				}
 				snoozeIdem := fmt.Sprintf("snooze|%s|%d|%s", ch.ID, issueNum, action.ID)
-				_, _ = e.Store.Outbox().Create(ctx, store.NotificationOutbox{
+				_, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
 					ID:             ulid.Make().String(),
 					ChannelID:      ch.ID,
 					IdempotencyKey: snoozeIdem,
@@ -198,6 +202,9 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 					HTMLURL:        link,
 					ParseMode:      "HTML",
 				})
+				if err != nil {
+					return "", fmt.Errorf("create snooze outbox: %w", err)
+				}
 			}
 			return scopeKey, nil
 		})
@@ -297,6 +304,9 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 
 	data := update.CallbackQuery.Data
 	if strings.HasPrefix(data, "done:") {
+		if update.CallbackQuery.ID != "" {
+			go answerTelegramCallback(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, data)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
@@ -306,6 +316,33 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	}
 
 	tokenID := strings.TrimPrefix(strings.TrimPrefix(data, "act:"), "rerun:")
+
+	// 1. 先验证是否属于授权的维护者用户（单兵安全边界，避免未授权用户抢占/消费令牌）
+	if s.dependencies.Store != nil {
+		setting, err := s.dependencies.Store.Settings().Get(r.Context(), "chatops.telegram.allowed_user_ids")
+		if err == nil && len(setting.ValueJSON) > 0 {
+			var allowedStr string
+			if err := json.Unmarshal(setting.ValueJSON, &allowedStr); err == nil && strings.TrimSpace(allowedStr) != "" {
+				userID := strconv.FormatInt(update.CallbackQuery.From.ID, 10)
+				allowed := false
+				for _, uid := range strings.Split(allowedStr, ",") {
+					if strings.TrimSpace(uid) == userID {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					if update.CallbackQuery.ID != "" {
+						go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 仅受信任的维护者有权执行此操作", true)
+					}
+					writeJSON(w, http.StatusForbidden, map[string]string{"error": "telegram_user_not_allowed"})
+					return
+				}
+			}
+		}
+	}
+
+	// 2. 白名单通过后，原子消费单次操作令牌
 	action, err := ConsumeChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 	if err != nil {
 		if s.dependencies.Logger != nil {
@@ -314,6 +351,7 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "ignored", "reason": err.Error()})
 		return
 	}
+
 	if action.ActorID != "" && strconv.FormatInt(update.CallbackQuery.From.ID, 10) != action.ActorID {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "chatops_actor_forbidden"})
@@ -465,6 +503,10 @@ func answerTelegramCallback(ctx context.Context, st store.Store, callbackID, act
 		return
 	}
 	var text string
+	if strings.HasPrefix(actionName, "done:") {
+		answerTelegramCustom(ctx, st, callbackID, "ℹ️ 该操作已完成，无需重复操作", false)
+		return
+	}
 	switch actionName {
 	case "issue_reply_draft":
 		text = "✅ 已成功在 GitHub 发布建议回复"
@@ -504,7 +546,6 @@ func answerTelegramCallback(ctx context.Context, st store.Store, callbackID, act
 		_ = resp.Body.Close()
 	}
 }
-
 
 func editTelegramMessageReplyMarkup(ctx context.Context, st store.Store, chatID int64, messageID int, clickedData, actionName string, keyboard [][]map[string]any) {
 	if chatID == 0 || messageID == 0 || st == nil || len(keyboard) == 0 {
@@ -569,6 +610,40 @@ func editTelegramMessageReplyMarkup(ctx context.Context, st store.Store, chatID 
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/editMessageReplyMarkup", botToken)
 	if strings.HasPrefix(botToken, "http://") || strings.HasPrefix(botToken, "https://") {
 		url = botToken + "/editMessageReplyMarkup"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err == nil && resp != nil {
+		_ = resp.Body.Close()
+	}
+}
+
+func answerTelegramCustom(ctx context.Context, st store.Store, callbackID, text string, showAlert bool) {
+	if callbackID == "" || st == nil {
+		return
+	}
+	setting, err := st.Settings().Get(ctx, "chatops.telegram.bot_token")
+	if err != nil || len(setting.ValueJSON) == 0 {
+		return
+	}
+	var botToken string
+	if err := json.Unmarshal(setting.ValueJSON, &botToken); err != nil || botToken == "" {
+		return
+	}
+	payload := map[string]any{
+		"callback_query_id": callbackID,
+		"text":              text,
+		"show_alert":        showAlert,
+	}
+	raw, _ := json.Marshal(payload)
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/answerCallbackQuery", botToken)
+	if strings.HasPrefix(botToken, "http://") || strings.HasPrefix(botToken, "https://") {
+		url = botToken + "/answerCallbackQuery"
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {

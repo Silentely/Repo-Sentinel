@@ -390,3 +390,27 @@ func TestExtractTelegramChatOpsActionRows(t *testing.T) {
 		t.Fatalf("期望 act:tok_reply，实际: %s", rows[1][0]["callback_data"])
 	}
 }
+
+func TestExtractTelegramChatOpsActionRows_Pairing(t *testing.T) {
+	bodyJSON := map[string]any{
+		"chatops_actions": []any{
+			map[string]any{"action": "issue_reply_draft", "text": "💬 采纳建议一键回复", "token": "tok_reply"},
+			map[string]any{"action": "issue_request_details", "text": "📋 索取复现要素", "token": "tok_details"},
+			map[string]any{"action": "issue_snooze", "text": "💤 延迟2小时提醒", "token": "tok_snooze"},
+			map[string]any{"action": "issue_apply_labels", "text": "🏷️ 一键应用标签 (bug)", "token": "tok_labels"},
+		},
+	}
+	rows := extractTelegramChatOpsActionRows(bodyJSON)
+	if len(rows) != 3 {
+		t.Fatalf("期望排版为 3 行（主操作独占、次要操作合并2列、标签独占），实际行数: %d", len(rows))
+	}
+	if len(rows[0]) != 1 || rows[0][0]["callback_data"] != "act:tok_reply" {
+		t.Errorf("第一行应为主操作单按钮，实际: %v", rows[0])
+	}
+	if len(rows[1]) != 2 || rows[1][0]["callback_data"] != "act:tok_details" || rows[1][1]["callback_data"] != "act:tok_snooze" {
+		t.Errorf("第二行应为索取要素与延迟提醒并排两列，实际: %v", rows[1])
+	}
+	if len(rows[2]) != 1 || rows[2][0]["callback_data"] != "act:tok_labels" {
+		t.Errorf("第三行应为标签单按钮，实际: %v", rows[2])
+	}
+}
