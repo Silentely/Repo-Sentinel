@@ -312,6 +312,10 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 	switch ch.ChannelType {
 	case store.ChannelTelegram:
 		token, _ := item.BodyJSON["chatops_token"].(string)
+		extraRows := extractTelegramChatOpsActionRows(item.BodyJSON)
+		if len(extraRows) > 0 {
+			return ch.ChannelType, w.sendTelegramWithActions(ctx, ch.Target, secret, item.BodyText, item.HTMLURL, item.ParseMode, token, extraRows...)
+		}
 		return ch.ChannelType, w.sendTelegram(ctx, ch.Target, secret, item.BodyText, item.HTMLURL, item.ParseMode, token)
 	case store.ChannelHTTPWebhook:
 		return ch.ChannelType, w.sendHTTP(ctx, ch, secret, item)
@@ -352,6 +356,59 @@ func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text, htmlURL,
 	}
 	api := "https://api.telegram.org/bot" + token + "/sendMessage"
 	return w.sendTelegramDirect(ctx, api, chatID, token, text, htmlURL, parseMode, chatOpsToken...)
+}
+
+func (w *Worker) sendTelegramWithActions(ctx context.Context, chatID, token, text, htmlURL, parseMode, chatOpsToken string, extraRows ...[]map[string]string) error {
+	if token == "" || chatID == "" {
+		return fmt.Errorf("telegram_not_configured")
+	}
+	api := "https://api.telegram.org/bot" + token + "/sendMessage"
+	return w.sendTelegramDirectWithActions(ctx, api, chatID, token, text, htmlURL, parseMode, chatOpsToken, extraRows...)
+}
+
+// extractTelegramChatOpsActionRows 从 bodyJSON 中提取附加的 Telegram 快捷动作行。
+func extractTelegramChatOpsActionRows(bodyJSON map[string]any) [][]map[string]string {
+	if bodyJSON == nil {
+		return nil
+	}
+	raw, ok := bodyJSON["chatops_actions"]
+	if !ok || raw == nil {
+		return nil
+	}
+	var rows [][]map[string]string
+	switch items := raw.(type) {
+	case []map[string]string:
+		for _, item := range items {
+			btnText := item["text"]
+			token := item["token"]
+			if btnText != "" && token != "" {
+				rows = append(rows, []map[string]string{
+					{"text": btnText, "callback_data": "act:" + token},
+				})
+			}
+		}
+	case []any:
+		for _, rawItem := range items {
+			if m, ok := rawItem.(map[string]any); ok {
+				btnText, _ := m["text"].(string)
+				token, _ := m["token"].(string)
+				if btnText != "" && token != "" {
+					rows = append(rows, []map[string]string{
+						{"text": btnText, "callback_data": "act:" + token},
+					})
+				}
+			} else if m, ok := rawItem.(map[string]string); ok {
+				btnText := m["text"]
+				token := m["token"]
+				if btnText != "" && token != "" {
+					rows = append(rows, []map[string]string{
+						{"text": btnText, "callback_data": "act:" + token},
+					})
+				}
+			}
+		}
+	}
+	return rows
 }
 
 // sendTelegramDirect 发送 Telegram 消息，api 参数为完整 URL，便于测试时替换端点。
@@ -509,6 +566,14 @@ func buildTelegramInlineKeyboard(htmlURL, opToken string, extraRows ...[]map[str
 }
 
 func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, text, htmlURL, parseMode string, chatOpsToken ...string) error {
+	var opToken string
+	if len(chatOpsToken) > 0 {
+		opToken = chatOpsToken[0]
+	}
+	return w.sendTelegramDirectWithActions(ctx, api, chatID, token, text, htmlURL, parseMode, opToken)
+}
+
+func (w *Worker) sendTelegramDirectWithActions(ctx context.Context, api, chatID, token, text, htmlURL, parseMode, chatOpsToken string, extraRows ...[]map[string]string) error {
 	if parseMode == "" {
 		parseMode = "HTML"
 	}
@@ -523,11 +588,7 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 		"parse_mode":               parseMode,
 		"disable_web_page_preview": true,
 	}
-	var opToken string
-	if len(chatOpsToken) > 0 {
-		opToken = chatOpsToken[0]
-	}
-	if markup := buildTelegramInlineKeyboard(htmlURL, opToken); markup != nil {
+	if markup := buildTelegramInlineKeyboard(htmlURL, chatOpsToken, extraRows...); markup != nil {
 		payload["reply_markup"] = markup
 	}
 	body, _ := json.Marshal(payload)
@@ -542,7 +603,7 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusTooManyRequests {
-		// 先读限流响应体，再从中解析 retry_after 字段。
+		// 先读限流响应体，再从其中解析 retry_after 字段。
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, bodyDetailLimit))
 		var tgResp struct {
 			Parameters struct {
@@ -561,7 +622,7 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 		if w.Logger != nil {
 			w.Logger.Warn("telegram html parse failed, auto falling back to plain text", "chat_id", chatID, "error", detail)
 		}
-		return w.sendTelegramDirect(ctx, api, chatID, token, htmlToPlainText(text), htmlURL, "", chatOpsToken...)
+		return w.sendTelegramDirectWithActions(ctx, api, chatID, token, htmlToPlainText(text), htmlURL, "", chatOpsToken, extraRows...)
 	}
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 		// 客户端禁跟随重定向（ErrUseLastResponse 防 SSRF）：3xx 说明消息未送达，

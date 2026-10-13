@@ -194,3 +194,75 @@ func TestChatOps_ActionToken_ReleaseAllowsRetry(t *testing.T) {
 		t.Fatalf("released token should be retryable: %v", err)
 	}
 }
+
+func TestChatOps_IssueActions_CallbackDispatch(t *testing.T) {
+	exec := &recordingChatOpsExecutor{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		chatOpsExecutor: exec,
+	})
+
+	tests := []struct {
+		name        string
+		action      string
+		issueNumber int
+		payload     string
+	}{
+		{
+			name:        "采纳建议首响应草稿",
+			action:      "issue_reply_draft",
+			issueNumber: 42,
+			payload:     "你好，感谢反馈，请问是否有完整复现步骤？",
+		},
+		{
+			name:        "标记垃圾并关闭Issue",
+			action:      "issue_mark_spam_and_close",
+			issueNumber: 99,
+			payload:     "",
+		},
+		{
+			name:        "应用建议标签",
+			action:      "issue_apply_labels",
+			issueNumber: 101,
+			payload:     "bug,triage",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tokenID, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, tc.action, "repo-1", tc.issueNumber, tc.payload, "", 10*time.Minute)
+			if err != nil {
+				t.Fatalf("创建令牌失败: %v", err)
+			}
+
+			tgBody := map[string]any{
+				"update_id": 1,
+				"callback_query": map[string]any{
+					"id":   "cb-" + tc.action,
+					"data": "act:" + tokenID,
+					"from": map[string]any{
+						"id":       123456,
+						"username": "maintainer",
+					},
+				},
+			}
+			raw, _ := json.Marshal(tgBody)
+			req := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(raw))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			fixture.handler.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("期望状态码 200, 实际: %d, body: %s", w.Code, w.Body.String())
+			}
+			if exec.action.Action != tc.action {
+				t.Fatalf("期望执行动作 %s, 实际: %s", tc.action, exec.action.Action)
+			}
+			if exec.action.IssueNumber != tc.issueNumber {
+				t.Fatalf("期望Issue编号 %d, 实际: %d", tc.issueNumber, exec.action.IssueNumber)
+			}
+			if exec.action.Payload != tc.payload {
+				t.Fatalf("期望载荷 %q, 实际: %q", tc.payload, exec.action.Payload)
+			}
+		})
+	}
+}

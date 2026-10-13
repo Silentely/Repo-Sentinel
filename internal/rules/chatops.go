@@ -13,18 +13,41 @@ import (
 
 // ChatOpsActionData represents the payload for an interactive button action.
 type ChatOpsActionData struct {
-	ID         string    `json:"id"`
-	Action     string    `json:"action"` // e.g. "workflow_rerun"
-	RepoID     string    `json:"repo_id"`
-	RunID      string    `json:"run_id"`
-	ActorID    string    `json:"actor_id,omitempty"`
-	ExpiresAt  time.Time `json:"expires_at"`
-	Consumed   bool      `json:"consumed,omitempty"`
-	ConsumedAt time.Time `json:"consumed_at,omitempty"`
+	ID          string    `json:"id"`
+	Action      string    `json:"action"` // e.g. "workflow_rerun", "issue_reply_draft", "issue_mark_spam_and_close"
+	RepoID      string    `json:"repo_id"`
+	RunID       string    `json:"run_id,omitempty"`
+	IssueNumber int       `json:"issue_number,omitempty"`
+	Payload     string    `json:"payload,omitempty"`
+	ActorID     string    `json:"actor_id,omitempty"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	Consumed    bool      `json:"consumed,omitempty"`
+	ConsumedAt  time.Time `json:"consumed_at,omitempty"`
 }
 
 // CreateChatOpsToken stores a single-use action token with a specified TTL.
 func CreateChatOpsToken(ctx context.Context, st store.Store, action, repoID, runID, actorID string, ttl time.Duration) (string, error) {
+	return CreateChatOpsTokenFull(ctx, st, ChatOpsActionData{
+		Action:  action,
+		RepoID:  repoID,
+		RunID:   runID,
+		ActorID: actorID,
+	}, ttl)
+}
+
+// CreateChatOpsTokenWithPayload 创建包含扩展载荷（如 Issue 编号与回复草稿）的单次操作令牌。
+func CreateChatOpsTokenWithPayload(ctx context.Context, st store.Store, action, repoID string, issueNumber int, payload, actorID string, ttl time.Duration) (string, error) {
+	return CreateChatOpsTokenFull(ctx, st, ChatOpsActionData{
+		Action:      action,
+		RepoID:      repoID,
+		IssueNumber: issueNumber,
+		Payload:     payload,
+		ActorID:     actorID,
+	}, ttl)
+}
+
+// CreateChatOpsTokenFull 存储包含完整配置的单次操作令牌。
+func CreateChatOpsTokenFull(ctx context.Context, st store.Store, data ChatOpsActionData, ttl time.Duration) (string, error) {
 	if st == nil {
 		return "", errors.New("store not available")
 	}
@@ -33,14 +56,8 @@ func CreateChatOpsToken(ctx context.Context, st store.Store, action, repoID, run
 		expiresAt = time.Now().UTC().Add(15 * time.Minute)
 	}
 	id := ulid.Make().String()
-	data := ChatOpsActionData{
-		ID:        id,
-		Action:    action,
-		RepoID:    repoID,
-		RunID:     runID,
-		ActorID:   actorID,
-		ExpiresAt: expiresAt,
-	}
+	data.ID = id
+	data.ExpiresAt = expiresAt
 	raw, err := json.Marshal(data)
 	if err != nil {
 		return "", err

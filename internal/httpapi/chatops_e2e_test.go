@@ -208,3 +208,149 @@ func TestChatOpsE2E(t *testing.T) {
 		t.Fatalf("Feishu 回调成功执行后总 Rerun 次数期望为 2, 实际: %d", calls)
 	}
 }
+
+// TestChatOps_IssueActions_E2E 测试 Issue 快捷菜单动作全链路闭环：
+// 1. 采纳建议回复草稿：通过 Telegram act:<token> 触发，调用 GitHub API 发布 Issue 评论；
+// 2. 标记垃圾并关闭：打上 invalid 标签并将状态变更为 closed (not_planned)；
+// 3. 应用建议标签：调用 AddIssueLabels 将建议分类与标签贴到 Issue。
+func TestChatOps_IssueActions_E2E(t *testing.T) {
+	var (
+		commentBodyPosted string
+		labelsAdded42     []string
+		labelsAdded99     []string
+		closePatch99      map[string]any
+	)
+
+	mockGitHubServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/sentinel-repo/issues/42/comments":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			commentBodyPosted = body["body"]
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1001, "body": commentBodyPosted})
+
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/sentinel-repo/issues/99/labels":
+			var body struct {
+				Labels []string `json:"labels"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			labelsAdded99 = body.Labels
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode([]any{})
+
+		case r.Method == http.MethodPatch && r.URL.Path == "/repos/acme/sentinel-repo/issues/99":
+			_ = json.NewDecoder(r.Body).Decode(&closePatch99)
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{"state": "closed"})
+
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/sentinel-repo/issues/101/labels":
+			var body struct {
+				Labels []string `json:"labels"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			labelsAdded42 = body.Labels
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode([]any{})
+
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockGitHubServer.Close()
+
+	ghClient := githubx.NewAppClient(1, "")
+	ghClient.BaseURL = mockGitHubServer.URL
+	ghClient.HTTP = mockGitHubServer.Client()
+
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		githubClient: ghClient,
+	})
+
+	repo, err := fixture.store.Repositories().Upsert(t.Context(), store.Repository{
+		ID:             ulid.Make().String(),
+		Owner:          "acme",
+		Name:           "sentinel-repo",
+		FullName:       "acme/sentinel-repo",
+		DefaultBranch:  "main",
+		MonitorEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("创建仓库失败: %v", err)
+	}
+
+	// 1. 测试一键采纳建议回复
+	replyToken, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_reply_draft", repo.ID, 42, "感谢反馈！建议先核验配置项。", "", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("创建回复令牌失败: %v", err)
+	}
+	tgReply := map[string]any{
+		"update_id": 1,
+		"callback_query": map[string]any{
+			"id":   "cb-reply",
+			"data": "act:" + replyToken,
+			"from": map[string]any{"id": 1234, "username": "boss"},
+		},
+	}
+	rawReply, _ := json.Marshal(tgReply)
+	reqReply := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawReply))
+	recReply := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(recReply, reqReply)
+	if recReply.Code != http.StatusOK {
+		t.Fatalf("回复回调失败: %d, %s", recReply.Code, recReply.Body.String())
+	}
+	if commentBodyPosted != "感谢反馈！建议先核验配置项。" {
+		t.Fatalf("发布的回复内容不符，实际: %q", commentBodyPosted)
+	}
+
+	// 2. 测试标记垃圾内容并关闭
+	spamToken, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_mark_spam_and_close", repo.ID, 99, "", "", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("创建垃圾关闭令牌失败: %v", err)
+	}
+	tgSpam := map[string]any{
+		"update_id": 2,
+		"callback_query": map[string]any{
+			"id":   "cb-spam",
+			"data": "act:" + spamToken,
+			"from": map[string]any{"id": 1234, "username": "boss"},
+		},
+	}
+	rawSpam, _ := json.Marshal(tgSpam)
+	reqSpam := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawSpam))
+	recSpam := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(recSpam, reqSpam)
+	if recSpam.Code != http.StatusOK {
+		t.Fatalf("垃圾关闭回调失败: %d, %s", recSpam.Code, recSpam.Body.String())
+	}
+	if len(labelsAdded99) != 1 || labelsAdded99[0] != "invalid" {
+		t.Fatalf("垃圾打标不符，实际: %v", labelsAdded99)
+	}
+	if closePatch99["state"] != "closed" || closePatch99["state_reason"] != "not_planned" {
+		t.Fatalf("关闭参数不符，实际: %v", closePatch99)
+	}
+
+	// 3. 测试一键应用建议标签
+	labelsToken, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_apply_labels", repo.ID, 101, "bug,frontend", "", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("创建标签令牌失败: %v", err)
+	}
+	tgLabels := map[string]any{
+		"update_id": 3,
+		"callback_query": map[string]any{
+			"id":   "cb-labels",
+			"data": "act:" + labelsToken,
+			"from": map[string]any{"id": 1234, "username": "boss"},
+		},
+	}
+	rawLabels, _ := json.Marshal(tgLabels)
+	reqLabels := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawLabels))
+	recLabels := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(recLabels, reqLabels)
+	if recLabels.Code != http.StatusOK {
+		t.Fatalf("标签回调失败: %d, %s", recLabels.Code, recLabels.Body.String())
+	}
+	if len(labelsAdded42) != 2 || labelsAdded42[0] != "bug" || labelsAdded42[1] != "frontend" {
+		t.Fatalf("应用标签不符，实际: %v", labelsAdded42)
+	}
+}

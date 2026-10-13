@@ -555,3 +555,45 @@ func (c *AppClient) CreateIssueComment(ctx context.Context, token, owner, repo s
 	}
 	return nil
 }
+
+// CloseIssue 关闭指定的 Issue，支持传递可选的关闭原因（如 "not_planned" 或 "completed"）。
+func (c *AppClient) CloseIssue(ctx context.Context, token, owner, repo string, number int, reason string) error {
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d", owner, repo, number)
+	full := path
+	if strings.HasPrefix(path, "/") {
+		full = c.baseURL() + path
+	}
+	payload := map[string]string{
+		"state": "closed",
+	}
+	if reason != "" {
+		payload["state_reason"] = reason
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, full, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", githubClientUA)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return statusError(resp.StatusCode, b)
+	}
+	return nil
+}

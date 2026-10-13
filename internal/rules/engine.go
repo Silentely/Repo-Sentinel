@@ -178,6 +178,8 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	}
 	isMuted, muteReason := CheckEmergencyMute(ctx, e.Store, repoID)
 
+	var triageResult *ai.IssueTriageResult
+
 	// 全部订阅渠道都会被过滤拦截或免打扰时不作 AI 分析：省下无效费用与等待。
 	if !isMuted && hasReceivingChannel(channels, res.Event, repoFullName, branch) {
 		// 安全告警分诊：新告警附带影响分析与处理建议；失败保持原文，不阻塞入库。
@@ -194,15 +196,58 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			body = body + "\n────────────────\n🤖 故障诊断\n" + htmlpkg.EscapeString(diagnosis)
 		}
 		// Issue 智能分析与首响建议：新 Issue 附带分类、要素完整度与维护者回复建议
-		if issueTriage := e.issueAnalysis(ctx, res.Event, repoFullName, channels); issueTriage != "" {
+		if issueTriage, tr := e.issueAnalysis(ctx, res.Event, repoFullName, channels); issueTriage != "" {
 			body = body + "\n────────────────\n🤖 Issue 智能分析与回复建议\n" + htmlpkg.EscapeString(issueTriage)
+			triageResult = tr
 		}
 	}
 	var chatOpsToken string
+	var chatOpsActions []map[string]string
 	if res.Event.Kind == store.WorkflowRunKind && store.IsFailureConclusion(res.Event.WorkflowConclusion) && res.Event.WorkflowRunID != nil && res.Event.RepositoryID != nil {
 		runIDStr := strconv.FormatInt(*res.Event.WorkflowRunID, 10)
 		if tokenID, err := CreateChatOpsToken(ctx, e.Store, "workflow_rerun", *res.Event.RepositoryID, runIDStr, "", 2*time.Hour); err == nil {
 			chatOpsToken = tokenID
+		}
+	} else if res.Event.Kind == store.WorkItemKindIssue && res.Event.Action == "opened" && res.Event.SubjectNumber != nil && res.Event.RepositoryID != nil && triageResult != nil {
+		issueNum := int(*res.Event.SubjectNumber)
+		if triageResult.Category == "Invalid" {
+			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_mark_spam_and_close", *res.Event.RepositoryID, issueNum, "", "", 24*time.Hour); err == nil {
+				chatOpsActions = append(chatOpsActions, map[string]string{
+					"text":   "🚫 标记垃圾并关闭",
+					"action": "issue_mark_spam_and_close",
+					"token":  tokenID,
+				})
+			}
+		} else {
+			if strings.TrimSpace(triageResult.SuggestedReply) != "" && !triageResult.IsSelfIssue {
+			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_reply_draft", *res.Event.RepositoryID, issueNum, triageResult.SuggestedReply, "", 24*time.Hour); err == nil {
+				chatOpsActions = append(chatOpsActions, map[string]string{
+					"text":   "💬 采纳建议一键回复",
+					"action": "issue_reply_draft",
+					"token":  tokenID,
+				})
+			}
+		}
+		var rawLabels []string
+		if triageResult.Category != "" {
+			rawLabels = append(rawLabels, triageResult.Category)
+		}
+		rawLabels = append(rawLabels, triageResult.Labels...)
+		labels := githubx.FilterAndMapLabels(rawLabels)
+		if len(labels) > 0 {
+			labelsStr := strings.Join(labels, ",")
+			btnLabel := "🏷️ 一键应用标签 (" + strings.Join(labels, ", ") + ")"
+			if len([]rune(btnLabel)) > 26 {
+				btnLabel = "🏷️ 一键应用建议标签"
+			}
+			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_apply_labels", *res.Event.RepositoryID, issueNum, labelsStr, "", 24*time.Hour); err == nil {
+				chatOpsActions = append(chatOpsActions, map[string]string{
+					"text":   btnLabel,
+					"action": "issue_apply_labels",
+					"token":  tokenID,
+				})
+			}
+		}
 		}
 	}
 
@@ -268,6 +313,9 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		if chatOpsToken != "" {
 			bodyJSON["chatops_token"] = chatOpsToken
 			bodyJSON["chatops_action"] = "workflow_rerun"
+		}
+		if len(chatOpsActions) > 0 {
+			bodyJSON["chatops_actions"] = chatOpsActions
 		}
 		if _, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
 			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &res.Event.ID,
@@ -621,15 +669,15 @@ func (e *Engine) workflowFailureAnalysis(ctx context.Context, ev *store.Event, r
 }
 
 // issueAnalysis 生成新创建 Issue 的 AI 智能分诊与首响回复建议；未启用、非新 Issue、无订阅频道或调用失败时返回空串。
-func (e *Engine) issueAnalysis(ctx context.Context, ev *store.Event, repo string, channels []store.NotificationChannel) string {
+func (e *Engine) issueAnalysis(ctx context.Context, ev *store.Event, repo string, channels []store.NotificationChannel) (string, *ai.IssueTriageResult) {
 	if ev.Kind != store.WorkItemKindIssue || ev.Action != "opened" {
-		return ""
+		return "", nil
 	}
-	skip := func(reason string) string {
+	skip := func(reason string) (string, *ai.IssueTriageResult) {
 		if e.Logger != nil {
 			e.Logger.Info("issue triage ai skipped", "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "reason", reason)
 		}
-		return ""
+		return "", nil
 	}
 	if e.AI == nil || !e.AI.IsIssueTriageEnabled() {
 		return skip("issue_triage_not_enabled")
@@ -668,7 +716,7 @@ func (e *Engine) issueAnalysis(ctx context.Context, ev *store.Event, repo string
 			}
 			e.Logger.Warn("issue triage ai fallback", attrs...)
 		}
-		return ""
+		return "", nil
 	}
 	// AI 调用已实际执行（无传输错误）：计入当日用量；失败调用不计费。
 	e.recordAIUsage(ctx, 400, 2)
@@ -694,7 +742,7 @@ func (e *Engine) issueAnalysis(ctx context.Context, ev *store.Event, repo string
 		}
 		e.maybeAutoLabelIssue(parentCtx, repo, int(*ev.SubjectNumber), res)
 	}
-	return ai.FormatIssueTriage(res)
+	return ai.FormatIssueTriage(res), res
 }
 
 func (e *Engine) maybeAutoLabelIssue(ctx context.Context, repoFullName string, issueNumber int, res *ai.IssueTriageResult) {

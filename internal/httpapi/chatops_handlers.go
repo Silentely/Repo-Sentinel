@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -35,13 +36,6 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 	if e == nil || e.Store == nil || e.Client == nil {
 		return errors.New("chatops executor unavailable")
 	}
-	if action.Action != "workflow_rerun" {
-		return fmt.Errorf("unsupported chatops action: %s", action.Action)
-	}
-	runID, err := strconv.ParseInt(strings.TrimSpace(action.RunID), 10, 64)
-	if err != nil || runID <= 0 {
-		return errors.New("invalid workflow run id")
-	}
 	repo, err := e.Store.Repositories().Get(ctx, action.RepoID)
 	if err != nil {
 		return fmt.Errorf("load repository: %w", err)
@@ -75,18 +69,90 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 	if e.Store != nil {
 		settingsStore = e.Store.Settings()
 	}
-	return rules.ExecuteWithReceipt(ctx, settingsStore, "workflow_rerun", action.RepoID, action.RunID, "v1", strconv.FormatInt(runID, 10), func() (string, error) {
-		err := e.Client.RerunWorkflow(ctx, token, parts[0], parts[1], runID)
-		if err != nil {
-			return "", err
+
+	switch action.Action {
+	case "workflow_rerun":
+		runID, err := strconv.ParseInt(strings.TrimSpace(action.RunID), 10, 64)
+		if err != nil || runID <= 0 {
+			return errors.New("invalid workflow run id")
 		}
-		return action.RunID, nil
-	})
+		return rules.ExecuteWithReceipt(ctx, settingsStore, "workflow_rerun", action.RepoID, action.RunID, "v1", strconv.FormatInt(runID, 10), func() (string, error) {
+			err := e.Client.RerunWorkflow(ctx, token, parts[0], parts[1], runID)
+			if err != nil {
+				return "", err
+			}
+			return action.RunID, nil
+		})
+
+	case "issue_reply_draft":
+		if action.IssueNumber <= 0 {
+			return errors.New("invalid issue number")
+		}
+		if strings.TrimSpace(action.Payload) == "" {
+			return errors.New("empty reply draft payload")
+		}
+		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
+		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_reply_draft", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
+			err := e.Client.CreateIssueComment(ctx, token, parts[0], parts[1], action.IssueNumber, action.Payload)
+			if err != nil {
+				return "", err
+			}
+			return scopeKey, nil
+		})
+
+	case "issue_mark_spam_and_close":
+		if action.IssueNumber <= 0 {
+			return errors.New("invalid issue number")
+		}
+		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
+		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_mark_spam_and_close", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
+			_ = e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"invalid"})
+			err := e.Client.CloseIssue(ctx, token, parts[0], parts[1], action.IssueNumber, "not_planned")
+			if err != nil {
+				return "", err
+			}
+			return scopeKey, nil
+		})
+
+	case "issue_apply_labels":
+		if action.IssueNumber <= 0 {
+			return errors.New("invalid issue number")
+		}
+		if strings.TrimSpace(action.Payload) == "" {
+			return errors.New("empty labels payload")
+		}
+		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
+		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_apply_labels", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
+			partsList := strings.Split(action.Payload, ",")
+			var cleanLabels []string
+			for _, l := range partsList {
+				if trimmed := strings.TrimSpace(l); trimmed != "" {
+					cleanLabels = append(cleanLabels, trimmed)
+				}
+			}
+			if len(cleanLabels) == 0 {
+				return scopeKey, nil
+			}
+			err := e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, cleanLabels)
+			if err != nil {
+				return "", err
+			}
+			return scopeKey, nil
+		})
+
+	default:
+		return fmt.Errorf("unsupported chatops action: %s", action.Action)
+	}
 }
 
 // CreateChatOpsToken stores a single-use action token with a specified TTL.
 func CreateChatOpsToken(ctx context.Context, st store.Store, action, repoID, runID, actorID string, ttl time.Duration) (string, error) {
 	return rules.CreateChatOpsToken(ctx, st, action, repoID, runID, actorID, ttl)
+}
+
+// CreateChatOpsTokenWithPayload 创建包含扩展载荷（如 Issue 编号与草稿文本）的单次操作令牌。
+func CreateChatOpsTokenWithPayload(ctx context.Context, st store.Store, action, repoID string, issueNumber int, payload, actorID string, ttl time.Duration) (string, error) {
+	return rules.CreateChatOpsTokenWithPayload(ctx, st, action, repoID, issueNumber, payload, actorID, ttl)
 }
 
 // ConsumeChatOpsToken atomically retrieves and marks an action token as consumed.
@@ -173,6 +239,10 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "chatops_action_failed"})
 		return
+	}
+
+	if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
+		go answerTelegramCallback(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, action.Action)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -286,4 +356,48 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 			"content": "Action queued successfully",
 		},
 	})
+}
+
+func answerTelegramCallback(ctx context.Context, st store.Store, callbackID, actionName string) {
+	if callbackID == "" || st == nil {
+		return
+	}
+	setting, err := st.Settings().Get(ctx, "chatops.telegram.bot_token")
+	if err != nil || len(setting.ValueJSON) == 0 {
+		return
+	}
+	var botToken string
+	if err := json.Unmarshal(setting.ValueJSON, &botToken); err != nil || botToken == "" {
+		return
+	}
+	var text string
+	switch actionName {
+	case "issue_reply_draft":
+		text = "✅ 已成功在 GitHub 发布建议回复"
+	case "issue_mark_spam_and_close":
+		text = "🚫 已在 GitHub 标记垃圾内容并关闭"
+	case "issue_apply_labels":
+		text = "🏷️ 已成功在 GitHub 应用建议标签"
+	case "workflow_rerun":
+		text = "🔄 已触发重新运行工作流"
+	default:
+		text = "✅ 操作已成功完成"
+	}
+	payload := map[string]any{
+		"callback_query_id": callbackID,
+		"text":              text,
+		"show_alert":        false,
+	}
+	raw, _ := json.Marshal(payload)
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/answerCallbackQuery", botToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err == nil && resp != nil {
+		_ = resp.Body.Close()
+	}
 }

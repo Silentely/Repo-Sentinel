@@ -321,3 +321,72 @@ func TestBuildTelegramInlineKeyboard_MultiRow(t *testing.T) {
 		t.Fatalf("第二行首个按钮 callback_data 不符: %v", multiRows[1][0])
 	}
 }
+
+func TestSendTelegramWithExtraChatOpsActionRows(t *testing.T) {
+	var receivedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &receivedBody); err != nil {
+			t.Fatalf("无法解析请求体: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	w := &Worker{Client: srv.Client()}
+	extraRows := [][]map[string]string{
+		{{"text": "💬 采纳建议一键回复", "callback_data": "act:tok1"}},
+		{{"text": "🏷️ 一键应用建议标签", "callback_data": "act:tok2"}},
+	}
+	err := w.sendTelegramDirectWithActions(t.Context(), srv.URL+"/sendMessage", "123", "fake-token", "test message", "https://github.com/test/repo", "HTML", "", extraRows...)
+	if err != nil {
+		t.Fatalf("不期望错误: %v", err)
+	}
+
+	rm, ok := receivedBody["reply_markup"].(map[string]any)
+	if !ok {
+		t.Fatal("期望 reply_markup 存在")
+	}
+	kb, ok := rm["inline_keyboard"].([]any)
+	if !ok || len(kb) != 3 {
+		t.Fatalf("期望 inline_keyboard 有 3 行 (1行URL + 2行动作)，实际: %d", len(kb))
+	}
+	// Row 1: URL
+	row0 := kb[0].([]any)
+	btn0 := row0[0].(map[string]any)
+	if btn0["url"] != "https://github.com/test/repo" {
+		t.Fatalf("期望第1行按钮为 GitHub 链接: %v", btn0)
+	}
+	// Row 2: Reply draft
+	row1 := kb[1].([]any)
+	btn1 := row1[0].(map[string]any)
+	if btn1["text"] != "💬 采纳建议一键回复" || btn1["callback_data"] != "act:tok1" {
+		t.Fatalf("期望第2行按钮为建议回复: %v", btn1)
+	}
+	// Row 3: Apply labels
+	row2 := kb[2].([]any)
+	btn2 := row2[0].(map[string]any)
+	if btn2["text"] != "🏷️ 一键应用建议标签" || btn2["callback_data"] != "act:tok2" {
+		t.Fatalf("期望第3行按钮为标签操作: %v", btn2)
+	}
+}
+
+func TestExtractTelegramChatOpsActionRows(t *testing.T) {
+	bodyJSON := map[string]any{
+		"chatops_actions": []any{
+			map[string]any{"text": "🚫 标记垃圾并关闭", "token": "tok_spam"},
+			map[string]any{"text": "💬 采纳建议一键回复", "token": "tok_reply"},
+		},
+	}
+	rows := extractTelegramChatOpsActionRows(bodyJSON)
+	if len(rows) != 2 {
+		t.Fatalf("期望提取 2 行按钮，实际: %d", len(rows))
+	}
+	if rows[0][0]["callback_data"] != "act:tok_spam" {
+		t.Fatalf("期望 act:tok_spam，实际: %s", rows[0][0]["callback_data"])
+	}
+	if rows[1][0]["callback_data"] != "act:tok_reply" {
+		t.Fatalf("期望 act:tok_reply，实际: %s", rows[1][0]["callback_data"])
+	}
+}

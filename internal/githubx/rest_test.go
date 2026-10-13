@@ -2,6 +2,7 @@ package githubx
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -299,5 +300,38 @@ func TestListUserStarredEscapesUsername(t *testing.T) {
 	}
 	if gotPath != "/users/..%2Fevil/starred" {
 		t.Fatalf("path = %q, 用户名应被转义为单一路径段", gotPath)
+	}
+}
+
+func TestCloseIssue(t *testing.T) {
+	var receivedMethod, receivedPath, receivedAuth string
+	var receivedBody map[string]string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedMethod = r.Method
+		receivedPath = r.URL.Path
+		receivedAuth = r.Header.Get("Authorization")
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"state":"closed"}`))
+	}))
+	defer srv.Close()
+
+	c := &AppClient{HTTP: srv.Client(), BaseURL: srv.URL}
+	err := c.CloseIssue(context.Background(), "token123", "owner", "repo", 42, "not_planned")
+	if err != nil {
+		t.Fatalf("CloseIssue failed: %v", err)
+	}
+	if receivedMethod != http.MethodPatch {
+		t.Errorf("expected PATCH, got %s", receivedMethod)
+	}
+	if receivedPath != "/repos/owner/repo/issues/42" {
+		t.Errorf("expected path /repos/owner/repo/issues/42, got %s", receivedPath)
+	}
+	if receivedAuth != "Bearer token123" {
+		t.Errorf("expected Bearer token123, got %s", receivedAuth)
+	}
+	if receivedBody["state"] != "closed" || receivedBody["state_reason"] != "not_planned" {
+		t.Errorf("unexpected body payload: %v", receivedBody)
 	}
 }

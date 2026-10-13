@@ -1074,7 +1074,7 @@ func TestIssueAnalysis(t *testing.T) {
 	t.Run("Issue打开返回分诊与首响建议", func(t *testing.T) {
 		aiResp := `{"choices":[{"message":{"content":"{\"category\":\"Bug Report\",\"priority\":\"P1 High\",\"summary\":\"Safari 17 下登录崩溃\",\"missing_details\":[\"控制台报错\"],\"suggested_reply\":\"感谢反馈！能否提供控制台报错日志？\",\"confidence\":5}"}}]}`
 		e := &Engine{AI: aiStub(t, aiResp)}
-		got := e.issueAnalysis(t.Context(), ev, "acme/web", subscribed)
+		got, _ := e.issueAnalysis(t.Context(), ev, "acme/web", subscribed)
 		if !strings.Contains(got, "🐛 类别：Bug Report") {
 			t.Fatalf("期望包含 Bug Report 类别，实际: %q", got)
 		}
@@ -1086,7 +1086,7 @@ func TestIssueAnalysis(t *testing.T) {
 	t.Run("非打开动作返回空", func(t *testing.T) {
 		closedEv := &store.Event{Kind: store.WorkItemKindIssue, Action: "closed"}
 		e := &Engine{AI: aiStub(t, `{"choices":[{"message":{"content":"ignored"}}]}`)}
-		if got := e.issueAnalysis(t.Context(), closedEv, "acme/web", subscribed); got != "" {
+		if got, _ := e.issueAnalysis(t.Context(), closedEv, "acme/web", subscribed); got != "" {
 			t.Fatalf("非 opened 事件不应分诊，实际: %q", got)
 		}
 	})
