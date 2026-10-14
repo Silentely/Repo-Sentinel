@@ -855,3 +855,77 @@ func TestServiceAICodeReviewDebounce(t *testing.T) {
 		t.Fatalf("expected review setting for latest commit-sha-2, got: %s", string(reviewSetting.ValueJSON))
 	}
 }
+
+func TestBuildCodeReviewGlanceableCapsule(t *testing.T) {
+	cases := []struct {
+		name     string
+		res      *ai.CodeReviewResult
+		expected string
+	}{
+		{
+			name: "Ready to Merge with high score and effort",
+			res: &ai.CodeReviewResult{
+				Score:             92,
+				MaintainerVerdict: "Ready to Merge",
+				EffortEstimate:    "极速核验 (1-2min)",
+			},
+			expected: "[🟢 建议合入 · 评分 92 · 优秀 · 极速核验 (1-2min)]",
+		},
+		{
+			name: "Needs Tests with medium score",
+			res: &ai.CodeReviewResult{
+				Score:             75,
+				MaintainerVerdict: "Needs Tests",
+				EffortEstimate:    "快速补测 (5-10min)",
+			},
+			expected: "[🟡 建议补测 · 评分 75 · 良好 · 快速补测 (5-10min)]",
+		},
+		{
+			name: "Needs Manual Review with effort",
+			res: &ai.CodeReviewResult{
+				Score:             68,
+				MaintainerVerdict: "Needs Manual Review",
+				EffortEstimate:    "需深度验证 (15-30min)",
+			},
+			expected: "[🟠 需重点核验 · 评分 68 · 良好 · 需深度验证 (15-30min)]",
+		},
+		{
+			name: "Block Risk with low score",
+			res: &ai.CodeReviewResult{
+				Score:             35,
+				MaintainerVerdict: "Block Risk",
+				EffortEstimate:    "需深度验证 (15-30min)",
+			},
+			expected: "[🔴 建议阻断 · 评分 35 · 高危风险 · 需深度验证 (15-30min)]",
+		},
+		{
+			name: "Fallback with SecurityRisks",
+			res: &ai.CodeReviewResult{
+				Score:         55,
+				SecurityRisks: []string{"硬编码密码泄露"},
+			},
+			expected: "[🔴 高危阻断 · 评分 55 · 高危风险]",
+		},
+		{
+			name: "Fallback with high score and no effort",
+			res: &ai.CodeReviewResult{
+				Score: 88,
+			},
+			expected: "[🟢 建议合入 · 评分 88 · 优秀]",
+		},
+		{
+			name:     "Nil input",
+			res:      nil,
+			expected: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := webhooksvc.BuildCodeReviewGlanceableCapsule(tc.res)
+			if got != tc.expected {
+				t.Fatalf("expected %q, got %q", tc.expected, got)
+			}
+		})
+	}
+}

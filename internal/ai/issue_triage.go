@@ -74,15 +74,15 @@ const maxIssueBodyChars = textutil.MaxBodyTextBytes
 
 // IssueTriageResult 保存单条 Issue 智能分诊与首响回复的结构化结果。
 type IssueTriageResult struct {
-	Category         string    `json:"category"`                    // 类别：Bug Report / Feature Request / Question / Incomplete / Invalid
-	Priority         string    `json:"priority"`                    // 优先级：P0 Blocker / P1 High / P2 Normal / P3 Low
-	Summary          string    `json:"summary"`                     // 1-2 句核心诉求浓缩
-	MissingDetails   []string  `json:"missing_details"`             // 缺失的排查要素
-	SuggestedReply   string    `json:"suggested_reply"`             // 适合仓库维护者发给提问者的首响回复草稿
-	Confidence       int       `json:"confidence"`                  // 置信度 (1-5)
-	Labels           []string  `json:"labels,omitempty"`            // 推荐标签（类别映射与优先级映射）
-	MaintainerAction string    `json:"maintainer_action,omitempty"` // 给个人维护者咖啡啊的极速行动建议
-	SuspectedModule  string    `json:"suspected_module,omitempty"`  // 疑似关联模块与代码路径
+	Category         string             `json:"category"`                    // 类别：Bug Report / Feature Request / Question / Incomplete / Invalid
+	Priority         string             `json:"priority"`                    // 优先级：P0 Blocker / P1 High / P2 Normal / P3 Low
+	Summary          string             `json:"summary"`                     // 1-2 句核心诉求浓缩
+	MissingDetails   []string           `json:"missing_details"`             // 缺失的复现与诊断要素
+	SuggestedReply   string             `json:"suggested_reply"`             // 适合仓库维护者发给提问者的首响回复草稿
+	Confidence       int                `json:"confidence"`                  // 置信度 (1-5)
+	Labels           []string           `json:"labels,omitempty"`            // 推荐标签（类别映射与优先级映射）
+	MaintainerAction string             `json:"maintainer_action,omitempty"` // 给个人维护者咖啡啊的极速行动建议
+	SuspectedModule  string             `json:"suspected_module,omitempty"`  // 疑似关联模块与代码路径
 	IsSelfIssue      bool               `json:"is_self_issue,omitempty"`     // 是否为维护者自建 Issue
 	SimilarIssues    []SimilarIssueItem `json:"similar_issues,omitempty"`    // 疑似相似的历史 Issue 候选
 	TriagedAt        time.Time          `json:"triaged_at"`                  // 分诊分析时间
@@ -445,9 +445,10 @@ func BuildRequestDetailsReply(category string, missingDetails []string, suspecte
 
 // SimilarIssueItem 描述一个疑似相似的历史 Issue 条目。
 type SimilarIssueItem struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	State  string `json:"state"`
+	Number int     `json:"number"`
+	Title  string  `json:"title"`
+	State  string  `json:"state"`
+	Score  float64 `json:"score,omitempty"`
 }
 
 // SimilarCandidate 供相似度匹配的历史候选。
@@ -492,7 +493,8 @@ func FindSimilarIssues(currentTitle string, candidates []SimilarCandidate, limit
 					Number: cand.Number,
 					Title:  cand.Title,
 					State:  cand.State,
-					},
+					Score:  sim,
+				},
 				score: sim,
 			})
 		}

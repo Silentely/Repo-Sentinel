@@ -586,35 +586,7 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		scoreBadge = "高危风险"
 	}
 
-	// 构建一瞥式决策胶囊（Glanceable Capsule）
-	capsuleEmoji := "🟢"
-	capsuleText := "建议合入"
-	switch res.MaintainerVerdict {
-	case "Ready to Merge":
-		capsuleEmoji = "🟢"
-		capsuleText = "建议合入"
-	case "Needs Tests":
-		capsuleEmoji = "🟡"
-		capsuleText = "建议补测"
-	case "Needs Manual Review":
-		capsuleEmoji = "🟠"
-		capsuleText = "需重点核验"
-	case "Block Risk":
-		capsuleEmoji = "🔴"
-		capsuleText = "建议阻断"
-	default:
-		if len(res.SecurityRisks) > 0 || res.Score < 60 {
-			capsuleEmoji = "🔴"
-			capsuleText = "高危阻断"
-		} else {
-			capsuleEmoji = "🟢"
-			capsuleText = "建议合入"
-		}
-	}
-	capsule := fmt.Sprintf("[%s %s · 评分 %d · %s]", capsuleEmoji, capsuleText, res.Score, scoreBadge)
-	if res.EffortEstimate != "" {
-		capsule = fmt.Sprintf("[%s %s · 评分 %d · %s · %s]", capsuleEmoji, capsuleText, res.Score, scoreBadge, res.EffortEstimate)
-	}
+	capsule := BuildCodeReviewGlanceableCapsule(res)
 
 	title := levelEmoji + " [" + titlePrefix + "] " + repoFullName + " PR #" + strconv.Itoa(prNum) + " 发现潜在风险 (评分: " + strconv.Itoa(res.Score) + ")"
 	var sb strings.Builder
@@ -722,4 +694,49 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 			s.Logger.Warn("ai code review: create outbox alert failed", "repo", repoFullName, "pr", prNum, "channel", ch.ID, "error", err)
 		}
 	}
+}
+
+// BuildCodeReviewGlanceableCapsule 构建一瞥式决策胶囊（Glanceable Capsule）。
+func BuildCodeReviewGlanceableCapsule(res *ai.CodeReviewResult) string {
+	if res == nil {
+		return ""
+	}
+	scoreBadge := "需关注"
+	if res.Score >= 85 {
+		scoreBadge = "优秀"
+	} else if res.Score >= 60 {
+		scoreBadge = "良好"
+	} else {
+		scoreBadge = "高危风险"
+	}
+
+	capsuleEmoji := "🟢"
+	capsuleText := "建议合入"
+	switch res.MaintainerVerdict {
+	case "Ready to Merge":
+		capsuleEmoji = "🟢"
+		capsuleText = "建议合入"
+	case "Needs Tests":
+		capsuleEmoji = "🟡"
+		capsuleText = "建议补测"
+	case "Needs Manual Review":
+		capsuleEmoji = "🟠"
+		capsuleText = "需重点核验"
+	case "Block Risk":
+		capsuleEmoji = "🔴"
+		capsuleText = "建议阻断"
+	default:
+		if len(res.SecurityRisks) > 0 || res.Score < 60 {
+			capsuleEmoji = "🔴"
+			capsuleText = "高危阻断"
+		} else {
+			capsuleEmoji = "🟢"
+			capsuleText = "建议合入"
+		}
+	}
+	capsule := fmt.Sprintf("[%s %s · 评分 %d · %s]", capsuleEmoji, capsuleText, res.Score, scoreBadge)
+	if res.EffortEstimate != "" {
+		capsule = fmt.Sprintf("[%s %s · 评分 %d · %s · %s]", capsuleEmoji, capsuleText, res.Score, scoreBadge, res.EffortEstimate)
+	}
+	return capsule
 }

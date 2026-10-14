@@ -329,7 +329,7 @@ func (w *Worker) sendFeishu(ctx context.Context, ch store.NotificationChannel, s
 				if m, ok := rawItem.(map[string]any); ok {
 					btnText, _ := m["text"].(string)
 					token, _ := m["token"].(string)
-				act, _ := m["action"].(string)
+					act, _ := m["action"].(string)
 					if btnText != "" && token != "" {
 						items = append(items, actionItem{text: btnText, token: token, action: act})
 					}
@@ -701,7 +701,7 @@ func (w *Worker) sendSlack(ctx context.Context, ch store.NotificationChannel, se
 				if m, ok := rawItem.(map[string]any); ok {
 					btnText, _ := m["text"].(string)
 					token, _ := m["token"].(string)
-				act, _ := m["action"].(string)
+					act, _ := m["action"].(string)
 					if btnText != "" && token != "" {
 						items = append(items, actionItem{text: btnText, token: token, action: act})
 					}

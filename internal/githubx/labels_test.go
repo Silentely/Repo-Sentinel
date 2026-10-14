@@ -121,6 +121,18 @@ func TestHasLabel(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "need more info with dashes matches needs-more-info",
+			existing: []string{"need-more-info"},
+			target:   "needs-more-info",
+			expected: true,
+		},
+		{
+			name:     "needs more info with spaces matches needs-more-info",
+			existing: []string{"needs more info"},
+			target:   "needs-more-info",
+			expected: true,
+		},
+		{
 			name:     "not found",
 			existing: []string{"documentation", "enhancement"},
 			target:   "bug",

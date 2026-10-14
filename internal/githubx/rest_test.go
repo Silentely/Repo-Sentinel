@@ -368,3 +368,26 @@ func TestCreatePullRequestReview(t *testing.T) {
 		t.Errorf("unexpected body payload: %v", receivedBody)
 	}
 }
+
+func TestCreatePullRequestReview_ValidationAndEscape(t *testing.T) {
+	c := &AppClient{}
+	if err := c.CreatePullRequestReview(context.Background(), "token", "owner", "repo", 1, "INVALID_EVENT", ""); err == nil {
+		t.Fatalf("expected error for invalid review event")
+	}
+
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":1002}`))
+	}))
+	defer srv.Close()
+
+	c2 := &AppClient{HTTP: srv.Client(), BaseURL: srv.URL}
+	if err := c2.CreatePullRequestReview(context.Background(), "token", "owner/sub", "repo/special", 1, "approve", ""); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	if gotPath != "/repos/owner%2Fsub/repo%2Fspecial/pulls/1/reviews" {
+		t.Fatalf("expected escaped path, got: %s", gotPath)
+	}
+}

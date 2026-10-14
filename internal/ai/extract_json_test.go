@@ -78,8 +78,8 @@ Category should be Bug Report, priority P1 High.
 			expectedVal: "Question",
 		},
 		{
-			name: "前置说明代码块后跟JSON代码块",
-			input: "```bash\ncurl -s https://example.com\n```\n\n```json\n{\"category\":\"Bug Report\",\"summary\":\"网络超时\"}\n```",
+			name:        "前置说明代码块后跟JSON代码块",
+			input:       "```bash\ncurl -s https://example.com\n```\n\n```json\n{\"category\":\"Bug Report\",\"summary\":\"网络超时\"}\n```",
 			expectedKey: "category",
 			expectedVal: "Bug Report",
 		},

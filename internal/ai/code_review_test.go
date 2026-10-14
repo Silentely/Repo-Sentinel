@@ -937,7 +937,6 @@ func TestFlexibleStringListUnmarshal_EdgeCasesAndValidation(t *testing.T) {
 	}
 }
 
-
 func TestPersonalMaintainerOptimizationsAndActionDerivation(t *testing.T) {
 	// 1. IsAuthorMaintainer 识别测试
 	if !IsAuthorMaintainer("Silentely/Repo-Sentinel", "Silentely") {
@@ -995,7 +994,6 @@ func TestPersonalMaintainerOptimizationsAndActionDerivation(t *testing.T) {
 		t.Errorf("FormatPRComment missing quick command: %s", comment)
 	}
 }
-
 
 func TestIsAuthorMaintainerEdgeCases(t *testing.T) {
 	// 1. 严格所有者匹配

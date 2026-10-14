@@ -561,13 +561,17 @@ func (c *AppClient) CreateIssueComment(ctx context.Context, token, owner, repo s
 
 // CreatePullRequestReview 向 GitHub PR 提交核验结论（如 "APPROVE" 或 "COMMENT"）。
 func (c *AppClient) CreatePullRequestReview(ctx context.Context, token, owner, repo string, prNumber int, event, body string) error {
-	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", owner, repo, prNumber)
+	normEvent := strings.ToUpper(strings.TrimSpace(event))
+	if normEvent != "APPROVE" && normEvent != "COMMENT" && normEvent != "REQUEST_CHANGES" {
+		return fmt.Errorf("invalid review event: %s", event)
+	}
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", url.PathEscape(owner), url.PathEscape(repo), prNumber)
 	full := path
 	if strings.HasPrefix(path, "/") {
 		full = c.baseURL() + path
 	}
 	payload := map[string]string{
-		"event": event,
+		"event": normEvent,
 	}
 	if body != "" {
 		payload["body"] = body

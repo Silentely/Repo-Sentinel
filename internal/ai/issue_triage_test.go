@@ -201,7 +201,6 @@ func TestTriageLabelMappingsAndDerivation(t *testing.T) {
 	}
 }
 
-
 func TestPersonalMaintainerTriageOptimizations(t *testing.T) {
 	// 1. deriveSuspectedModule 模块推导
 	if mod := deriveSuspectedModule("Webhook payload timeout", "delivery error"); !strings.Contains(mod, "webhooksvc") {

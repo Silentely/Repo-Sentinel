@@ -316,6 +316,7 @@ func New(dependencies Dependencies) http.Handler {
 	router.Post(githubx.WebhookPath, s.handleGitHubWebhook)
 	router.Post("/chatops/telegram/callback", s.handleTelegramChatOpsCallback)
 	router.Post("/chatops/feishu/callback", s.handleFeishuChatOpsCallback)
+	router.Post("/chatops/slack/callback", s.handleSlackChatOpsCallback)
 
 	// Agent 发现端点（RFC 8288 / 9727 / 9728 / 8414、sitemap、MCP、Auth.md）。
 	router.Group(func(disco chi.Router) {
@@ -433,7 +434,7 @@ func New(dependencies Dependencies) http.Handler {
 	// 客户端按方法探测时被误导）。已知 POST-only 端点补 Allow 提示（RFC 9110 §15.5.6）。
 	router.MethodNotAllowed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/mcp", "/oauth/token", "/webhooks/github", "/chatops/telegram/callback", "/chatops/feishu/callback":
+		case "/mcp", "/oauth/token", "/webhooks/github", "/chatops/telegram/callback", "/chatops/feishu/callback", "/chatops/slack/callback":
 			w.Header().Set("Allow", http.MethodPost)
 		}
 		s.writeAPIError(w, r, http.StatusMethodNotAllowed, errorCodeMethodNotAllowed, nil)

@@ -28,6 +28,8 @@ var AllowedSentinelLabels = map[string]string{
 	"security":        "security",
 	"needs-more-info": "needs-more-info",
 	"need-more-info":  "needs-more-info",
+	"needs more info": "needs-more-info",
+	"need more info":  "needs-more-info",
 	"duplicate":       "duplicate",
 	"invalid":         "invalid",
 }

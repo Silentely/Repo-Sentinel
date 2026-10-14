@@ -230,17 +230,22 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			}
 			if len(triageResult.SimilarIssues) > 0 {
 				topSimilar := triageResult.SimilarIssues[0]
-				btnText := fmt.Sprintf("🔗 关联历史 #%d 并关闭", topSimilar.Number)
-				if len([]rune(btnText)) > 26 {
-					btnText = fmt.Sprintf("🔗 关联 #%d 并关闭", topSimilar.Number)
-				}
-				dupPayload := strconv.Itoa(topSimilar.Number)
-				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_mark_duplicate", *res.Event.RepositoryID, issueNum, dupPayload, "", 24*time.Hour); err == nil {
-					chatOpsActions = append(chatOpsActions, map[string]string{
-						"text":   btnText,
-						"action": "issue_mark_duplicate",
-						"token":  tokenID,
-					})
+				// 仅当最高相似度候选具备高置信度 (>= 0.35) 或为 open 状态时装配快捷关联关闭动作
+				if topSimilar.Score >= 0.35 || topSimilar.Score == 0 || topSimilar.State == "open" {
+					btnText := fmt.Sprintf("🔗 关联历史 #%d 并关闭", topSimilar.Number)
+					if topSimilar.Score > 0 {
+						btnText = fmt.Sprintf("🔗 关联 #%d 并关闭 (%d%%)", topSimilar.Number, int(topSimilar.Score*100))
+					} else if len([]rune(btnText)) > 26 {
+						btnText = fmt.Sprintf("🔗 关联 #%d 并关闭", topSimilar.Number)
+					}
+					dupPayload := strconv.Itoa(topSimilar.Number)
+					if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_mark_duplicate", *res.Event.RepositoryID, issueNum, dupPayload, "", 24*time.Hour); err == nil {
+						chatOpsActions = append(chatOpsActions, map[string]string{
+							"text":   btnText,
+							"action": "issue_mark_duplicate",
+							"token":  tokenID,
+						})
+					}
 				}
 			}
 

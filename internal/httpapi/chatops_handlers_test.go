@@ -3,11 +3,16 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -832,3 +837,146 @@ func TestChatOps_Feishu_ActorIDGuard(t *testing.T) {
 	}
 }
 
+func TestChatOps_FailClosed_CorruptedConfig(t *testing.T) {
+	exec := &recordingChatOpsExecutor{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		chatOpsExecutor: exec,
+	})
+
+	// 1. Telegram secret token 损坏时必须 500 失败关闭，绝不放行
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "s1",
+		Key:       "chatops.telegram.secret_token",
+		ValueJSON: json.RawMessage("12345"),
+	})
+	tgReq := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader([]byte("{}")))
+	tgReq.Header.Set("Content-Type", "application/json")
+	tgW := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(tgW, tgReq)
+	if tgW.Code != http.StatusInternalServerError {
+		t.Fatalf("Telegram 密钥损坏时期望 500 失败关闭, 实际: %d", tgW.Code)
+	}
+
+	// 2. 飞书 verification token 损坏时必须 500 失败关闭，绝不放行
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "s2",
+		Key:       "chatops.feishu.verification_token",
+		ValueJSON: json.RawMessage("12345"),
+	})
+	feishuReq := httptest.NewRequest(http.MethodPost, "/chatops/feishu/callback", bytes.NewReader([]byte("{}")))
+	feishuReq.Header.Set("Content-Type", "application/json")
+	feishuW := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(feishuW, feishuReq)
+	if feishuW.Code != http.StatusInternalServerError {
+		t.Fatalf("飞书凭据损坏时期望 500 失败关闭, 实际: %d", feishuW.Code)
+	}
+
+	// 3. Telegram 白名单损坏时必须拒绝执行并报错
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "s3",
+		Key:       "chatops.telegram.allowed_user_ids",
+		ValueJSON: json.RawMessage("12345"),
+	})
+	tokenID, _ := CreateChatOpsToken(t.Context(), fixture.store, "workflow_rerun", "repo-1", "run-1", "", 10*time.Minute)
+	tgBody := map[string]any{
+		"callback_query": map[string]any{
+			"id":   "cb_123",
+			"data": "act:" + tokenID,
+			"from": map[string]any{
+				"id": 999999,
+			},
+		},
+	}
+	rawTg, _ := json.Marshal(tgBody)
+	// 清理 secret token 免受第 1 步影响
+	_ = fixture.store.Settings().Delete(t.Context(), "chatops.telegram.secret_token")
+	tgReq2 := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawTg))
+	tgReq2.Header.Set("Content-Type", "application/json")
+	tgW2 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(tgW2, tgReq2)
+	var tgRes2 map[string]any
+	_ = json.Unmarshal(tgW2.Body.Bytes(), &tgRes2)
+	if tgRes2["status"] != "error" {
+		t.Fatalf("Telegram 白名单损坏时期望 status=error 失败关闭, 实际: %v", tgRes2)
+	}
+	if exec.calls != 0 {
+		t.Fatalf("配置损坏时不应触发执行器, 实际调用: %d", exec.calls)
+	}
+}
+
+func TestChatOps_Slack_Callback(t *testing.T) {
+	exec := &recordingChatOpsExecutor{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		chatOpsExecutor: exec,
+	})
+
+	signingSecret := "slack_secret_123456"
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "s_slack_sec",
+		Key:       "chatops.slack.signing_secret",
+		ValueJSON: []byte(`"` + signingSecret + `"`),
+	})
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "s_slack_wl",
+		Key:       "chatops.slack.allowed_user_ids",
+		ValueJSON: []byte(`"U_VALID_USER"`),
+	})
+
+	tokenID, _ := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "workflow_rerun", "repo-1", 123, "", "U_VALID_USER", 10*time.Minute)
+
+	payloadObj := map[string]any{
+		"type": "block_actions",
+		"user": map[string]any{
+			"id": "U_VALID_USER",
+		},
+		"actions": []map[string]any{
+			{
+				"action_id": "workflow_rerun",
+				"value":     tokenID,
+			},
+		},
+	}
+	rawPayload, _ := json.Marshal(payloadObj)
+	formBody := "payload=" + url.QueryEscape(string(rawPayload))
+
+	// Case 1: 缺少签名或时间戳超期 -> 401
+	req1 := httptest.NewRequest(http.MethodPost, "/chatops/slack/callback", strings.NewReader(formBody))
+	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req1.Header.Set("X-Slack-Request-Timestamp", "1000") // 古老时间戳
+	w1 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusUnauthorized {
+		t.Fatalf("超期时间戳期望 401, 实际: %d", w1.Code)
+	}
+
+	// Case 2: 签名错误 -> 401
+	nowTs := strconv.FormatInt(time.Now().Unix(), 10)
+	req2 := httptest.NewRequest(http.MethodPost, "/chatops/slack/callback", strings.NewReader(formBody))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req2.Header.Set("X-Slack-Request-Timestamp", nowTs)
+	req2.Header.Set("X-Slack-Signature", "v0=invalid_sig")
+	w2 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusUnauthorized {
+		t.Fatalf("错误签名期望 401, 实际: %d", w2.Code)
+	}
+
+	// 计算合法签名
+	mac := hmac.New(sha256.New, []byte(signingSecret))
+	mac.Write([]byte("v0:" + nowTs + ":" + formBody))
+	validSig := "v0=" + hex.EncodeToString(mac.Sum(nil))
+
+	// Case 3: 合法签名与白名单用户 -> 200 成功执行
+	req3 := httptest.NewRequest(http.MethodPost, "/chatops/slack/callback", strings.NewReader(formBody))
+	req3.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req3.Header.Set("X-Slack-Request-Timestamp", nowTs)
+	req3.Header.Set("X-Slack-Signature", validSig)
+	w3 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w3, req3)
+	if w3.Code != http.StatusOK {
+		t.Fatalf("合法请求期望 200, 实际: %d", w3.Code)
+	}
+	if exec.calls != 1 {
+		t.Fatalf("合法请求应调用执行器 1 次, 实际: %d", exec.calls)
+	}
+}

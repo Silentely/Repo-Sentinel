@@ -486,6 +486,13 @@ func TestValidateSettingValueRules(t *testing.T) {
 		{"report.monthly_day", float64(28), true, 28},
 		{"report.monthly_day", float64(29), false, nil},
 		{"report.monthly_day", float64(0), false, nil},
+		{"chatops.telegram.allowed_user_ids", "12345, 67890, 12345", true, "12345,67890"},
+		{"chatops.telegram.allowed_user_ids", "-123", false, nil},
+		{"chatops.telegram.allowed_user_ids", "abc", false, nil},
+		{"chatops.feishu.allowed_user_ids", "ou_123, ou_456, ou_123", true, "ou_123,ou_456"},
+		{"chatops.feishu.allowed_user_ids", "ou_bad\nuser", false, nil},
+		{"chatops.slack.allowed_user_ids", "U1234, W5678, U1234", true, "U1234,W5678"},
+		{"chatops.slack.allowed_user_ids", "U_bad user", false, nil},
 	}
 	for _, tc := range cases {
 		got, _, ok := validateSettingValue(tc.key, tc.value)

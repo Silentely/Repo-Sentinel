@@ -47,6 +47,7 @@ var settingSpecs = func() []settingSpec {
 		{key: "report.monthly_day", def: 1, validate: intRangeSetting(1, 28, "每月发送日须为 1–28 的整数。")},
 		{key: "chatops.telegram.allowed_user_ids", def: "", validate: validateTelegramUserIDs},
 		{key: "chatops.feishu.allowed_user_ids", def: "", validate: validateFeishuUserIDs},
+		{key: "chatops.slack.allowed_user_ids", def: "", validate: validateSlackUserIDs},
 	}
 }()
 
@@ -223,7 +224,7 @@ func coerceIntInRange(v any, min, max int) (int, bool) {
 	return n, true
 }
 
-// validateTelegramUserIDs 校验并归一化 Telegram 维护者用户 ID 列表（逗号分隔的数字字符串）。
+// validateTelegramUserIDs 校验并归一化 Telegram 维护者用户 ID 列表（逗号分隔的正整数）。
 func validateTelegramUserIDs(v any) (any, string, bool) {
 	s, ok := v.(string)
 	if !ok {
@@ -235,15 +236,21 @@ func validateTelegramUserIDs(v any) (any, string, bool) {
 	}
 	parts := strings.Split(s, ",")
 	var cleaned []string
+	seen := make(map[string]bool)
 	for _, p := range parts {
 		item := strings.TrimSpace(p)
 		if item == "" {
 			continue
 		}
-		if _, err := strconv.ParseInt(item, 10, 64); err != nil {
+		uid, err := strconv.ParseInt(item, 10, 64)
+		if err != nil || uid <= 0 {
 			return nil, "Telegram 用户白名单中包含无效的用户 ID：" + item, false
 		}
-		cleaned = append(cleaned, item)
+		strUID := strconv.FormatInt(uid, 10)
+		if !seen[strUID] {
+			seen[strUID] = true
+			cleaned = append(cleaned, strUID)
+		}
 	}
 	return strings.Join(cleaned, ","), "", true
 }
@@ -260,9 +267,50 @@ func validateFeishuUserIDs(v any) (any, string, bool) {
 	}
 	parts := strings.Split(s, ",")
 	var cleaned []string
+	seen := make(map[string]bool)
 	for _, p := range parts {
 		item := strings.TrimSpace(p)
-		if item != "" {
+		if item == "" {
+			continue
+		}
+		for _, r := range item {
+			if r <= ' ' || r == '"' || r == 0x27 {
+				return nil, "飞书用户白名单包含无效字符：" + item, false
+			}
+		}
+		if !seen[item] {
+			seen[item] = true
+			cleaned = append(cleaned, item)
+		}
+	}
+	return strings.Join(cleaned, ","), "", true
+}
+
+// validateSlackUserIDs 校验并归一化 Slack 维护者用户 ID 列表（逗号分隔的字符串）。
+func validateSlackUserIDs(v any) (any, string, bool) {
+	s, ok := v.(string)
+	if !ok {
+		return nil, "Slack 用户白名单须为逗号分隔的用户 ID 字符串。", false
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", "", true
+	}
+	parts := strings.Split(s, ",")
+	var cleaned []string
+	seen := make(map[string]bool)
+	for _, p := range parts {
+		item := strings.TrimSpace(p)
+		if item == "" {
+			continue
+		}
+		for _, r := range item {
+			if r <= ' ' || r == '"' || r == 0x27 {
+				return nil, "Slack 用户白名单包含无效字符：" + item, false
+			}
+		}
+		if !seen[item] {
+			seen[item] = true
 			cleaned = append(cleaned, item)
 		}
 	}

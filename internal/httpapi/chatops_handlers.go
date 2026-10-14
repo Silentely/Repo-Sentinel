@@ -3,13 +3,18 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	htmlpkg "html"
 	"io"
+	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +25,13 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
+
+func maskToken(token string) string {
+	if len(token) <= 6 {
+		return "***"
+	}
+	return token[:6] + "..."
+}
 
 // ChatOpsActionData represents the payload for an interactive button action.
 type ChatOpsActionData = rules.ChatOpsActionData
@@ -84,10 +96,6 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 		}
 		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
 		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_mark_duplicate", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
-			comment := fmt.Sprintf("已识别该议题疑似与 #%s 相同，因此先行关联并关闭。如有其他疑问欢迎在此继续补充讨论。", dupTarget)
-			if commentErr := e.Client.CreateIssueComment(ctx, token, parts[0], parts[1], action.IssueNumber, comment); commentErr != nil {
-				return "", fmt.Errorf("create duplicate comment: %w", commentErr)
-			}
 			if closeErr := e.Client.CloseIssue(ctx, token, parts[0], parts[1], action.IssueNumber, "not_planned"); closeErr != nil {
 				return "", closeErr
 			}
@@ -95,6 +103,10 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 				if !githubx.IsLabelNotFoundError(labelErr) {
 					return "", fmt.Errorf("add duplicate label: %w", labelErr)
 				}
+			}
+			comment := fmt.Sprintf("已识别该议题疑似与 #%s 相同，因此先行关联并关闭。如有其他疑问欢迎在此继续补充讨论。", dupTarget)
+			if commentErr := e.Client.CreateIssueComment(ctx, token, parts[0], parts[1], action.IssueNumber, comment); commentErr != nil {
+				return "", fmt.Errorf("create duplicate comment: %w", commentErr)
 			}
 			return scopeKey, nil
 		})
@@ -289,9 +301,23 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	// 1. Verify Secret Token if configured
 	if s.dependencies.Store != nil {
 		setting, err := s.dependencies.Store.Settings().Get(r.Context(), "chatops.telegram.secret_token")
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			if s.dependencies.Logger != nil {
+				s.dependencies.Logger.Error("chatops telegram secret token read failed", "error", err)
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "security_config_unavailable"})
+			return
+		}
 		if err == nil && len(setting.ValueJSON) > 0 {
 			var expectedToken string
-			if err := json.Unmarshal(setting.ValueJSON, &expectedToken); err == nil && expectedToken != "" {
+			if err := json.Unmarshal(setting.ValueJSON, &expectedToken); err != nil {
+				if s.dependencies.Logger != nil {
+					s.dependencies.Logger.Error("chatops telegram secret token corrupted", "error", err)
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "security_config_corrupted"})
+				return
+			}
+			if expectedToken != "" {
 				headerToken := r.Header.Get("X-Telegram-Bot-Api-Secret-Token")
 				if subtle.ConstantTimeCompare([]byte(headerToken), []byte(expectedToken)) != 1 {
 					writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
@@ -341,7 +367,9 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	data := update.CallbackQuery.Data
 	if strings.HasPrefix(data, "done:") {
 		if update.CallbackQuery.ID != "" {
-			s.safeGo("telegram_callback_done", func() { answerTelegramCallback(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, data) })
+			s.safeGo("telegram_callback_done", func() {
+				answerTelegramCallback(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, data)
+			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
@@ -356,9 +384,33 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	// 1. 先验证是否属于授权的维护者用户（单兵安全边界，避免未授权用户抢占/消费令牌）
 	if s.dependencies.Store != nil {
 		setting, err := s.dependencies.Store.Settings().Get(r.Context(), "chatops.telegram.allowed_user_ids")
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			if s.dependencies.Logger != nil {
+				s.dependencies.Logger.Error("chatops telegram whitelist read failed", "error", err)
+			}
+			if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
+				s.safeGo("telegram_callback_err", func() {
+					answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 安全服务异常，请稍后重试", true)
+				})
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "error", "error": "whitelist_unavailable"})
+			return
+		}
 		if err == nil && len(setting.ValueJSON) > 0 {
 			var allowedStr string
-			if err := json.Unmarshal(setting.ValueJSON, &allowedStr); err == nil && strings.TrimSpace(allowedStr) != "" {
+			if err := json.Unmarshal(setting.ValueJSON, &allowedStr); err != nil {
+				if s.dependencies.Logger != nil {
+					s.dependencies.Logger.Error("chatops telegram whitelist corrupted", "error", err)
+				}
+				if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
+					s.safeGo("telegram_callback_err", func() {
+						answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 安全配置异常，请联系管理员", true)
+					})
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "error", "error": "whitelist_corrupted"})
+				return
+			}
+			if strings.TrimSpace(allowedStr) != "" {
 				userID := strconv.FormatInt(update.CallbackQuery.From.ID, 10)
 				allowed := false
 				for _, uid := range strings.Split(allowedStr, ",") {
@@ -369,7 +421,9 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 				}
 				if !allowed {
 					if update.CallbackQuery.ID != "" {
-						s.safeGo("telegram_callback_unauth", func() { answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 仅受信任的维护者有权执行此操作", true) })
+						s.safeGo("telegram_callback_unauth", func() {
+							answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 仅受信任的维护者有权执行此操作", true)
+						})
 					}
 					writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "forbidden", "error": "telegram_user_not_allowed"})
 					return
@@ -382,10 +436,12 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	action, err := ConsumeChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 	if err != nil {
 		if s.dependencies.Logger != nil {
-			s.dependencies.Logger.Warn("telegram chatops token consumption failed", "token_id", tokenID, "error", err.Error())
+			s.dependencies.Logger.Warn("telegram chatops token consumption failed", "token_prefix", maskToken(tokenID), "error", err.Error())
 		}
 		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
-			s.safeGo("telegram_callback_invalid", func() { answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 操作已失效或已被执行", true) })
+			s.safeGo("telegram_callback_invalid", func() {
+				answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 操作已失效或已被执行", true)
+			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "ignored", "reason": err.Error()})
 		return
@@ -394,7 +450,9 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	if action.ActorID != "" && strconv.FormatInt(update.CallbackQuery.From.ID, 10) != action.ActorID {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
-			s.safeGo("telegram_callback_forbidden", func() { answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 无权执行此操作", true) })
+			s.safeGo("telegram_callback_forbidden", func() {
+				answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 无权执行此操作", true)
+			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "forbidden", "error": "chatops_actor_forbidden"})
 		return
@@ -402,7 +460,9 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	if s.chatOpsExecutor == nil {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
-			s.safeGo("telegram_callback_unavailable", func() { answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 执行器暂不可用", true) })
+			s.safeGo("telegram_callback_unavailable", func() {
+				answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 执行器暂不可用", true)
+			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "service_unavailable", "error": "chatops_unavailable"})
 		return
@@ -410,7 +470,9 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	if err := s.chatOpsExecutor.Execute(r.Context(), *action); err != nil {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
-			s.safeGo("telegram_callback_failed", func() { answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 操作执行失败，令牌已恢复，可稍后重试", true) })
+			s.safeGo("telegram_callback_failed", func() {
+				answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 操作执行失败，令牌已恢复，可稍后重试", true)
+			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "action_failed", "error": err.Error()})
 		return
@@ -418,10 +480,14 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 
 	if update.CallbackQuery != nil {
 		if update.CallbackQuery.ID != "" {
-			s.safeGo("telegram_callback_action", func() { answerTelegramCallback(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, action.Action) })
+			s.safeGo("telegram_callback_action", func() {
+				answerTelegramCallback(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, action.Action)
+			})
 		}
 		if msg := update.CallbackQuery.Message; msg != nil && msg.ReplyMarkup != nil && len(msg.ReplyMarkup.InlineKeyboard) > 0 {
-			s.safeGo("telegram_edit_markup", func() { editTelegramMessageReplyMarkup(context.Background(), s.dependencies.Store, msg.Chat.ID, msg.MessageID, data, action.Action, msg.ReplyMarkup.InlineKeyboard) })
+			s.safeGo("telegram_edit_markup", func() {
+				editTelegramMessageReplyMarkup(context.Background(), s.dependencies.Store, msg.Chat.ID, msg.MessageID, data, action.Action, msg.ReplyMarkup.InlineKeyboard)
+			})
 		}
 	}
 
@@ -445,9 +511,23 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 	// 1. Verify Verification Token if configured (applies to challenge and interactive events)
 	if s.dependencies.Store != nil {
 		setting, err := s.dependencies.Store.Settings().Get(r.Context(), "chatops.feishu.verification_token")
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			if s.dependencies.Logger != nil {
+				s.dependencies.Logger.Error("chatops feishu verification token read failed", "error", err)
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "security_config_unavailable"})
+			return
+		}
 		if err == nil && len(setting.ValueJSON) > 0 {
 			var expectedToken string
-			if err := json.Unmarshal(setting.ValueJSON, &expectedToken); err == nil && expectedToken != "" {
+			if err := json.Unmarshal(setting.ValueJSON, &expectedToken); err != nil {
+				if s.dependencies.Logger != nil {
+					s.dependencies.Logger.Error("chatops feishu verification token corrupted", "error", err)
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "security_config_corrupted"})
+				return
+			}
+			if expectedToken != "" {
 				token, _ := body["token"].(string)
 				if subtle.ConstantTimeCompare([]byte(token), []byte(expectedToken)) != 1 {
 					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
@@ -492,16 +572,40 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 	// 1.5 验证是否属于授权的维护者用户（单兵安全边界，避免未授权用户抢占/消费令牌）
 	if s.dependencies.Store != nil {
 		setting, err := s.dependencies.Store.Settings().Get(r.Context(), "chatops.feishu.allowed_user_ids")
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			if s.dependencies.Logger != nil {
+				s.dependencies.Logger.Error("chatops feishu whitelist read failed", "error", err)
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"toast": map[string]string{
+					"type":    "danger",
+					"content": "⚠️ 安全服务异常，请稍后重试",
+				},
+			})
+			return
+		}
 		if err == nil && len(setting.ValueJSON) > 0 {
 			var allowedStr string
-			if err := json.Unmarshal(setting.ValueJSON, &allowedStr); err == nil && strings.TrimSpace(allowedStr) != "" {
+			if err := json.Unmarshal(setting.ValueJSON, &allowedStr); err != nil {
+				if s.dependencies.Logger != nil {
+					s.dependencies.Logger.Error("chatops feishu whitelist corrupted", "error", err)
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"toast": map[string]string{
+						"type":    "danger",
+						"content": "⚠️ 安全配置异常，请联系管理员",
+					},
+				})
+				return
+			}
+			if strings.TrimSpace(allowedStr) != "" {
 				userID := ""
 				if raw, ok := body["open_id"].(string); ok {
-					userID = raw
+					userID = strings.TrimSpace(raw)
 				}
 				if operator, ok := body["operator"].(map[string]any); ok {
-					if raw, ok := operator["open_id"].(string); ok && raw != "" {
-						userID = raw
+					if raw, ok := operator["open_id"].(string); ok && strings.TrimSpace(raw) != "" {
+						userID = strings.TrimSpace(raw)
 					}
 				}
 				allowed := false
@@ -527,7 +631,7 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 	action, err := ConsumeChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 	if err != nil {
 		if s.dependencies.Logger != nil {
-			s.dependencies.Logger.Warn("feishu chatops token consumption failed", "token_id", tokenID, "error", err.Error())
+			s.dependencies.Logger.Warn("feishu chatops token consumption failed", "token_prefix", maskToken(tokenID), "error", err.Error())
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"toast": map[string]string{
@@ -809,4 +913,184 @@ func answerTelegramCustom(ctx context.Context, st store.Store, callbackID, text 
 	if err == nil && resp != nil {
 		_ = resp.Body.Close()
 	}
+}
+
+// handleSlackChatOpsCallback 处理 Slack Block Kit 交互动作回调。
+func (s *server) handleSlackChatOpsCallback(w http.ResponseWriter, r *http.Request) {
+	bodyBytes, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "request_too_large"})
+		return
+	}
+
+	// 1. 如果配置了 chatops.slack.signing_secret，进行签名与时戳防重放校验
+	if s.dependencies.Store != nil {
+		setting, err := s.dependencies.Store.Settings().Get(r.Context(), "chatops.slack.signing_secret")
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			if s.dependencies.Logger != nil {
+				s.dependencies.Logger.Error("chatops slack signing secret read failed", "error", err)
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "security_config_unavailable"})
+			return
+		}
+		if err == nil && len(setting.ValueJSON) > 0 {
+			var signingSecret string
+			if err := json.Unmarshal(setting.ValueJSON, &signingSecret); err != nil {
+				if s.dependencies.Logger != nil {
+					s.dependencies.Logger.Error("chatops slack signing secret corrupted", "error", err)
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "security_config_corrupted"})
+				return
+			}
+			signingSecret = strings.TrimSpace(signingSecret)
+			if signingSecret != "" {
+				tsStr := r.Header.Get("X-Slack-Request-Timestamp")
+				sigHeader := r.Header.Get("X-Slack-Signature")
+				ts, tsErr := strconv.ParseInt(tsStr, 10, 64)
+				if tsErr != nil || math.Abs(float64(time.Now().Unix()-ts)) > 300 {
+					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "timestamp_out_of_range"})
+					return
+				}
+				mac := hmac.New(sha256.New, []byte(signingSecret))
+				mac.Write([]byte(fmt.Sprintf("v0:%d:%s", ts, string(bodyBytes))))
+				expectedSig := "v0=" + hex.EncodeToString(mac.Sum(nil))
+				if subtle.ConstantTimeCompare([]byte(sigHeader), []byte(expectedSig)) != 1 {
+					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_signature"})
+					return
+				}
+			}
+		}
+	}
+
+	// 2. 解析 Slack 发送的 application/x-www-form-urlencoded 表单
+	vals, err := url.ParseQuery(string(bodyBytes))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_form"})
+		return
+	}
+	payloadRaw := vals.Get("payload")
+	if payloadRaw == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing_payload"})
+		return
+	}
+
+	var payload struct {
+		Type string `json:"type"`
+		User struct {
+			ID       string `json:"id"`
+			Username string `json:"username"`
+		} `json:"user"`
+		Actions []struct {
+			ActionID string `json:"action_id"`
+			Value    string `json:"value"`
+		} `json:"actions"`
+	}
+	if err := json.Unmarshal([]byte(payloadRaw), &payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_payload_json"})
+		return
+	}
+
+	if len(payload.Actions) == 0 || strings.TrimSpace(payload.Actions[0].Value) == "" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"response_type": "ephemeral",
+			"text":          "未指定操作动作",
+		})
+		return
+	}
+	tokenID := strings.TrimSpace(payload.Actions[0].Value)
+	userID := strings.TrimSpace(payload.User.ID)
+
+	// 3. 校验 Slack 用户白名单（若配置）
+	if s.dependencies.Store != nil {
+		setting, err := s.dependencies.Store.Settings().Get(r.Context(), "chatops.slack.allowed_user_ids")
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			if s.dependencies.Logger != nil {
+				s.dependencies.Logger.Error("chatops slack whitelist read failed", "error", err)
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"response_type": "ephemeral",
+				"text":          "⚠️ 安全服务异常，请稍后重试",
+			})
+			return
+		}
+		if err == nil && len(setting.ValueJSON) > 0 {
+			var allowedStr string
+			if err := json.Unmarshal(setting.ValueJSON, &allowedStr); err != nil {
+				if s.dependencies.Logger != nil {
+					s.dependencies.Logger.Error("chatops slack whitelist corrupted", "error", err)
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"response_type": "ephemeral",
+					"text":          "⚠️ 安全配置异常，请联系管理员",
+				})
+				return
+			}
+			if strings.TrimSpace(allowedStr) != "" {
+				allowed := false
+				for _, uid := range strings.Split(allowedStr, ",") {
+					if strings.TrimSpace(uid) == userID {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					writeJSON(w, http.StatusOK, map[string]any{
+						"response_type": "ephemeral",
+						"text":          "⚠️ 仅受信任的维护者有权执行此操作",
+					})
+					return
+				}
+			}
+		}
+	}
+
+	// 4. 原子消费操作令牌
+	action, err := ConsumeChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
+	if err != nil {
+		if s.dependencies.Logger != nil {
+			s.dependencies.Logger.Warn("slack chatops token consumption failed", "token_prefix", maskToken(tokenID), "error", err.Error())
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"response_type": "ephemeral",
+			"text":          "⚠️ 操作已失效或已被执行",
+		})
+		return
+	}
+
+	// 5. 校验操作者身份（ActorID）
+	if action.ActorID != "" && (userID == "" || userID != action.ActorID) {
+		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"response_type": "ephemeral",
+			"text":          "⚠️ 无权执行此操作",
+		})
+		return
+	}
+
+	if s.chatOpsExecutor == nil {
+		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"response_type": "ephemeral",
+			"text":          "⚠️ 执行器暂不可用",
+		})
+		return
+	}
+
+	// 6. 执行操作动作
+	if err := s.chatOpsExecutor.Execute(r.Context(), *action); err != nil {
+		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
+		if s.dependencies.Logger != nil {
+			s.dependencies.Logger.Error("slack chatops action execution failed", "action", action.Action, "error", err.Error())
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"response_type": "ephemeral",
+			"text":          "⚠️ 执行失败: " + err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"response_type": "ephemeral",
+		"text":          "✅ 操作已执行",
+	})
 }
