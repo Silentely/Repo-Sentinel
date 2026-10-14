@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -330,5 +331,88 @@ func TestSideEffects_StalePendingReclaimed(t *testing.T) {
 	}
 	if rec.State != ReceiptSucceeded || rec.ExternalID != "run-id-new" {
 		t.Fatalf("回收重试后回执应为 succeeded，got state=%s id=%s", rec.State, rec.ExternalID)
+	}
+}
+
+// upsertErrorStore 包装 memSettingsStore，可按需模拟 Upsert 持久化回执失败。
+type upsertErrorStore struct {
+	*memSettingsStore
+	failUpsert bool
+}
+
+func (u *upsertErrorStore) Upsert(ctx context.Context, s store.SystemSetting) (store.SystemSetting, error) {
+	if u.failUpsert {
+		return store.SystemSetting{}, errors.New("simulated disk full error on upsert")
+	}
+	return u.memSettingsStore.Upsert(ctx, s)
+}
+
+// TestSideEffects_ReceiptPersistFailure_BlocksAndExposesError 验证：
+// 当外部副作用已成功、但本地成功回执落库失败时，绝对不能静默忽略返回 nil（避免重试破坏幂等），
+// 必须向调用方显式暴露持久化错误。
+func TestSideEffects_ReceiptPersistFailure_BlocksAndExposesError(t *testing.T) {
+	base := newMemSettingsStore()
+	storeWithErr := &upsertErrorStore{
+		memSettingsStore: base,
+		failUpsert:       true,
+	}
+	ctx := context.Background()
+
+	executed := false
+	err := ExecuteWithReceipt(ctx, storeWithErr, "issue_close", "repo-1", "201", "v1", "action-201", func() (string, error) {
+		executed = true
+		return "issue-201-closed", nil
+	})
+
+	if !executed {
+		t.Fatal("外部副作用函数应当被执行")
+	}
+	if err == nil {
+		t.Fatal("成功回执落库失败时必须显式返回错误，绝不可静默返回 nil")
+	}
+	if !strings.Contains(err.Error(), "receipt persist failed") {
+		t.Fatalf("期望错误包含 receipt persist failed，实际为: %v", err)
+	}
+
+	// 并发重试场景：在回执落库失败后，验证并发重试时绝不会执行二次外部副作用（fn 绝不可被再次调用）
+	var wg sync.WaitGroup
+	var concurrentCalls int64
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = ExecuteWithReceipt(ctx, storeWithErr, "issue_close", "repo-1", "201", "v1", "action-201", func() (string, error) {
+				atomic.AddInt64(&concurrentCalls, 1)
+				return "issue-201-retry", nil
+			})
+		}()
+	}
+	wg.Wait()
+
+	if calls := atomic.LoadInt64(&concurrentCalls); calls != 0 {
+		t.Fatalf("并发重试时外部副作用绝不可再次调用，期望 0 次，实际被调用 %d 次", calls)
+	}
+}
+
+// TestSideEffects_UnknownReceiptPersistFailure 验证：
+// 当网络不确定且 unknown 回执落库失败时，必须返回复合错误明确警示远端状态不确定。
+func TestSideEffects_UnknownReceiptPersistFailure(t *testing.T) {
+	base := newMemSettingsStore()
+	storeWithErr := &upsertErrorStore{
+		memSettingsStore: base,
+		failUpsert:       true,
+	}
+	ctx := context.Background()
+
+	timeoutErr := context.DeadlineExceeded
+	err := ExecuteWithReceipt(ctx, storeWithErr, "rerun", "repo-1", "202", "v1", "action-202", func() (string, error) {
+		return "", timeoutErr
+	})
+
+	if err == nil {
+		t.Fatal("unknown 回执持久化失败时必须返回错误")
+	}
+	if !strings.Contains(err.Error(), "unknown-receipt persist failed") {
+		t.Fatalf("期望错误包含 unknown-receipt persist failed，实际为: %v", err)
 	}
 }

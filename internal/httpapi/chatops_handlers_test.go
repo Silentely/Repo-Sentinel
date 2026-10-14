@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -978,5 +979,245 @@ func TestChatOps_Slack_Callback(t *testing.T) {
 	}
 	if exec.calls != 1 {
 		t.Fatalf("合法请求应调用执行器 1 次, 实际: %d", exec.calls)
+	}
+}
+
+// failingSettingsStore 用于模拟 SettingsStore 发生瞬时数据库故障。
+type failingSettingsStore struct {
+	store.SettingsStore
+	err error
+}
+
+func (f *failingSettingsStore) Get(ctx context.Context, key string) (store.SystemSetting, error) {
+	if f.err != nil {
+		return store.SystemSetting{}, f.err
+	}
+	return f.SettingsStore.Get(ctx, key)
+}
+
+type wrappedStore struct {
+	store.Store
+	customSettings store.SettingsStore
+}
+
+func (w *wrappedStore) Settings() store.SettingsStore {
+	return w.customSettings
+}
+
+// TestChatOps_SecureConfig_Unit 单元测试：验证 readSecureConfig 在各种输入下的行为：
+// 1. key 不存在 -> 返回空字符串与 nil（未配置）
+// 2. 数据库瞬时错误 -> 返回错误
+// 3. 空值 / null / 空白字符串 / 损坏类型 -> 一律返回错误（fail-closed）
+// 4. 合法字符串 -> 返回有效值
+func TestChatOps_SecureConfig_Unit(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	ctx := t.Context()
+
+	// 1. 未配置（ErrNotFound）
+	val, err := readSecureConfig(ctx, fixture.store.Settings(), "non_existent_key")
+	if err != nil || val != "" {
+		t.Fatalf("未配置时期望返回空字符串与 nil, 实际: val=%q err=%v", val, err)
+	}
+
+	// 2. 数据库瞬时故障
+	failing := &failingSettingsStore{
+		SettingsStore: fixture.store.Settings(),
+		err:           errors.New("db connection timed out"),
+	}
+	_, err = readSecureConfig(ctx, failing, "any_key")
+	if err == nil || !strings.Contains(err.Error(), "db connection timed out") {
+		t.Fatalf("数据库瞬时错误时期望暴露错误, 实际: %v", err)
+	}
+
+	// 3. 空值三种场景：null、空字节、空串或纯空白
+	cases := []struct {
+		name      string
+		rawJSON   string
+		expectErr bool
+	}{
+		{name: "JSON null 字面量", rawJSON: "null", expectErr: true},
+		{name: "JSON 空字符串", rawJSON: `""`, expectErr: true},
+		{name: "JSON 纯空格字符串", rawJSON: `"   "`, expectErr: true},
+		{name: "JSON 数字", rawJSON: "12345", expectErr: true},
+		{name: "JSON 对象", rawJSON: `{"token": "abc"}`, expectErr: true},
+		{name: "JSON 数组", rawJSON: `["abc"]`, expectErr: true},
+		{name: "正常字符串配置", rawJSON: `"valid-secret-token"`, expectErr: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			k := "test.key." + tc.name
+			_, _ = fixture.store.Settings().Upsert(ctx, store.SystemSetting{
+				ID:        k,
+				Key:       k,
+				ValueJSON: []byte(tc.rawJSON),
+			})
+			v, err := readSecureConfig(ctx, fixture.store.Settings(), k)
+			if tc.expectErr {
+				if err == nil {
+					t.Fatalf("期望返回配置异常错误, 实际为 nil (val=%q)", v)
+				}
+			} else {
+				if err != nil || v != "valid-secret-token" {
+					t.Fatalf("正常配置期望正确解析, 实际 val=%q err=%v", v, err)
+				}
+			}
+		})
+	}
+}
+
+// TestChatOps_FailClosed_NullAndDBError 针对三种输入（数据库瞬时错误、配置损坏、空值/null）
+// 验证 Telegram/飞书/Slack 链路在回调时的 fail-closed 阻断保证。
+func TestChatOps_FailClosed_NullAndDBError(t *testing.T) {
+	exec := &recordingChatOpsExecutor{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		chatOpsExecutor: exec,
+	})
+
+	// 1. 测试 null 输入：Telegram secret_token 为 null 必须 500
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "null_tg_sec",
+		Key:       "chatops.telegram.secret_token",
+		ValueJSON: []byte("null"),
+	})
+	tgReq := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader([]byte("{}")))
+	tgReq.Header.Set("Content-Type", "application/json")
+	tgW := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(tgW, tgReq)
+	if tgW.Code != http.StatusInternalServerError {
+		t.Fatalf("Telegram 密钥为 null 时期望 500 阻断, 实际: %d", tgW.Code)
+	}
+
+	// 2. 测试 null 输入：飞书 verification_token 为 null 必须 500
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "null_fs_tok",
+		Key:       "chatops.feishu.verification_token",
+		ValueJSON: []byte("null"),
+	})
+	fsReq := httptest.NewRequest(http.MethodPost, "/chatops/feishu/callback", bytes.NewReader([]byte("{}")))
+	fsReq.Header.Set("Content-Type", "application/json")
+	fsW := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(fsW, fsReq)
+	if fsW.Code != http.StatusInternalServerError {
+		t.Fatalf("飞书凭证为 null 时期望 500 阻断, 实际: %d", fsW.Code)
+	}
+
+	// 3. 测试 null 输入：Slack signing_secret 为 null 必须 500
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "null_slack_sec",
+		Key:       "chatops.slack.signing_secret",
+		ValueJSON: []byte("null"),
+	})
+	slackReq := httptest.NewRequest(http.MethodPost, "/chatops/slack/callback", strings.NewReader("payload=%7B%7D"))
+	slackReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	slackW := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(slackW, slackReq)
+	if slackW.Code != http.StatusInternalServerError {
+		t.Fatalf("Slack 签名配置为 null 时期望 500 阻断, 实际: %d", slackW.Code)
+	}
+
+	// 4. 测试 null 输入：白名单为 null 时不可放行
+	_ = fixture.store.Settings().Delete(t.Context(), "chatops.telegram.secret_token")
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		ID:        "null_tg_wl",
+		Key:       "chatops.telegram.allowed_user_ids",
+		ValueJSON: []byte("null"),
+	})
+	tokenID, _ := CreateChatOpsToken(t.Context(), fixture.store, "workflow_rerun", "repo-1", "run-1", "", 10*time.Minute)
+	tgBody := map[string]any{
+		"callback_query": map[string]any{
+			"id":   "cb_null_test",
+			"data": "act:" + tokenID,
+			"from": map[string]any{
+				"id": 888888,
+			},
+		},
+	}
+	rawTg, _ := json.Marshal(tgBody)
+	tgReq2 := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawTg))
+	tgReq2.Header.Set("Content-Type", "application/json")
+	tgW2 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(tgW2, tgReq2)
+	var res2 map[string]any
+	_ = json.Unmarshal(tgW2.Body.Bytes(), &res2)
+	if res2["status"] != "error" {
+		t.Fatalf("Telegram 白名单为 null 时必须报错阻断, 实际响应: %v", res2)
+	}
+	if exec.calls != 0 {
+		t.Fatalf("白名单为 null 时绝不应调用执行器, 实际调用: %d", exec.calls)
+	}
+}
+
+// TestChatOps_ExecutorErrorSanitization 验证 Telegram 和 Slack 回调发生执行器错误时，
+// 绝不将内部执行错误细节透给外部调用端。
+func TestChatOps_ExecutorErrorSanitization(t *testing.T) {
+	sensitiveErrMsg := "internal connection pool exhausted to postgres://admin:pass@10.0.0.8:5432"
+	exec := &recordingChatOpsExecutor{
+		err: errors.New(sensitiveErrMsg),
+	}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		chatOpsExecutor: exec,
+	})
+
+	// 1. Telegram 回调报错脱敏
+	tokenID, _ := CreateChatOpsToken(t.Context(), fixture.store, "workflow_rerun", "repo-1", "run-2", "", 10*time.Minute)
+	tgBody := map[string]any{
+		"callback_query": map[string]any{
+			"id":   "cb_sanitize_test",
+			"data": "act:" + tokenID,
+			"from": map[string]any{
+				"id": 123456,
+			},
+		},
+	}
+	rawTg, _ := json.Marshal(tgBody)
+	tgReq := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawTg))
+	tgReq.Header.Set("Content-Type", "application/json")
+	tgW := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(tgW, tgReq)
+	var tgRes map[string]any
+	_ = json.Unmarshal(tgW.Body.Bytes(), &tgRes)
+
+	if tgRes["status"] != "action_failed" {
+		t.Fatalf("期望 status=action_failed, 实际: %v", tgRes)
+	}
+	// 验证错误信息已脱敏为通用常量，未泄漏敏感信息
+	if tgRes["error"] != "action_execution_failed" {
+		t.Fatalf("期望 error=action_execution_failed, 实际: %v", tgRes["error"])
+	}
+	if strings.Contains(tgW.Body.String(), "postgres") || strings.Contains(tgW.Body.String(), "10.0.0.8") {
+		t.Fatalf("Telegram 回调响应泄漏了内部敏感信息: %s", tgW.Body.String())
+	}
+
+	// 2. Slack 回调报错脱敏
+	slackTokenID, _ := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "workflow_rerun", "repo-1", 123, "", "U_SLACK_USER", 10*time.Minute)
+	payloadObj := map[string]any{
+		"type": "block_actions",
+		"user": map[string]any{
+			"id": "U_SLACK_USER",
+		},
+		"actions": []map[string]any{
+			{
+				"action_id": "workflow_rerun",
+				"value":     slackTokenID,
+			},
+		},
+	}
+	rawPayload, _ := json.Marshal(payloadObj)
+	formBody := "payload=" + url.QueryEscape(string(rawPayload))
+
+	slackReq := httptest.NewRequest(http.MethodPost, "/chatops/slack/callback", strings.NewReader(formBody))
+	slackReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	slackW := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(slackW, slackReq)
+
+	var slackRes map[string]any
+	_ = json.Unmarshal(slackW.Body.Bytes(), &slackRes)
+	text, _ := slackRes["text"].(string)
+	if !strings.Contains(text, "操作执行失败，请稍后重试") {
+		t.Fatalf("期望通用提示语, 实际: %s", text)
+	}
+	if strings.Contains(slackW.Body.String(), "postgres") || strings.Contains(slackW.Body.String(), "10.0.0.8") {
+		t.Fatalf("Slack 回调响应泄漏了内部敏感信息: %s", slackW.Body.String())
 	}
 }

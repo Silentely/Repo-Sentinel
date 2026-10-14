@@ -191,13 +191,17 @@ func executeSideEffect(ctx context.Context, settings store.SettingsStore, key st
 			UpdatedAt:  time.Now().UTC(),
 		}
 		successJSON, _ := json.Marshal(successReceipt)
-		_, _ = settings.Upsert(ctx, store.SystemSetting{
+		if _, err := settings.Upsert(ctx, store.SystemSetting{
 			ID:        ulid.Make().String(),
 			Key:       key,
 			ValueJSON: successJSON,
 			UpdatedAt: time.Now().UTC(),
 			UpdatedBy: "side_effect_executor",
-		})
+		}); err != nil {
+			// 外部副作用已成功但本地持久化回执失败：绝不能静默忽略返回 nil（否则重试时会再次执行外部副作用破坏幂等）。
+			// 必须向调用方暴露持久化错误。
+			return fmt.Errorf("side_effect succeeded externally but receipt persist failed for %s: %w", key, err)
+		}
 		return nil
 	}
 
@@ -218,13 +222,16 @@ func executeSideEffect(ctx context.Context, settings store.SettingsStore, key st
 			UpdatedAt:  time.Now().UTC(),
 		}
 		unknownJSON, _ := json.Marshal(unknownReceipt)
-		_, _ = settings.Upsert(ctx, store.SystemSetting{
+		if _, err := settings.Upsert(ctx, store.SystemSetting{
 			ID:        ulid.Make().String(),
 			Key:       key,
 			ValueJSON: unknownJSON,
 			UpdatedAt: time.Now().UTC(),
 			UpdatedBy: "side_effect_executor",
-		})
+		}); err != nil {
+			// 记录 unknown 回执失败，返回复合错误明确警示远端状态不确定且本地回执未落库，杜绝盲目重试。
+			return fmt.Errorf("side_effect network unknown (%v) and unknown-receipt persist failed for %s: %w", execErr, key, err)
+		}
 		return execErr
 	}
 
