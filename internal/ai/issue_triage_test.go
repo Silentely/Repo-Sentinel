@@ -335,3 +335,43 @@ func TestBuildRequestDetailsReply(t *testing.T) {
 		t.Errorf("expected incomplete default items, got: %s", replyIncomplete)
 	}
 }
+
+func TestFindSimilarIssues(t *testing.T) {
+	candidates := []SimilarCandidate{
+		{Number: 10, Title: "Safari 17 下登录界面白屏", State: "closed"},
+		{Number: 11, Title: "优化 Docker 镜像构建体积", State: "open"},
+		{Number: 12, Title: "登录后 Token 过期未自动重定向", State: "open"},
+		{Number: 13, Title: "Safari 登录白屏异常", State: "open"},
+	}
+
+	// 1. 针对相似缺陷进行召回
+	matches := FindSimilarIssues("Safari 浏览器打开登录页面白屏", candidates, 2)
+	if len(matches) == 0 {
+		t.Fatalf("expected similar issues to be found, got none")
+	}
+	// 期望匹配到 #10 或 #13
+	found10or13 := false
+	for _, m := range matches {
+		if m.Number == 10 || m.Number == 13 {
+			found10or13 = true
+			break
+		}
+	}
+	if !found10or13 {
+		t.Errorf("expected match #10 or #13, got %v", matches)
+	}
+
+	// 2. 无关标题不应召回
+	noMatches := FindSimilarIssues("升级 Go 1.24 运行时支持", candidates, 2)
+	if len(noMatches) > 0 {
+		t.Errorf("expected no matches for unrelated issue, got %v", noMatches)
+	}
+
+	// 3. 空输入或零候选
+	if res := FindSimilarIssues("", candidates, 2); res != nil {
+		t.Errorf("expected nil for empty title, got %v", res)
+	}
+	if res := FindSimilarIssues("test", nil, 2); res != nil {
+		t.Errorf("expected nil for empty candidates, got %v", res)
+	}
+}

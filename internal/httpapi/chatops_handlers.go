@@ -74,6 +74,29 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 	}
 
 	switch action.Action {
+	case "issue_mark_duplicate":
+		if action.IssueNumber <= 0 {
+			return errors.New("invalid issue number")
+		}
+		dupTarget := strings.TrimSpace(action.Payload)
+		if dupTarget == "" {
+			return errors.New("empty duplicate target payload")
+		}
+		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
+		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_mark_duplicate", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
+			comment := fmt.Sprintf("已识别该议题疑似与 #%s 相同，因此先行关联并关闭。如有其他疑问欢迎在此继续补充讨论。", dupTarget)
+			_ = e.Client.CreateIssueComment(ctx, token, parts[0], parts[1], action.IssueNumber, comment)
+			if closeErr := e.Client.CloseIssue(ctx, token, parts[0], parts[1], action.IssueNumber, "not_planned"); closeErr != nil {
+				return "", closeErr
+			}
+			if labelErr := e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"duplicate"}); labelErr != nil {
+				if !githubx.IsLabelNotFoundError(labelErr) {
+					return "", fmt.Errorf("add duplicate label: %w", labelErr)
+				}
+			}
+			return scopeKey, nil
+		})
+
 	case "workflow_rerun":
 		runID, err := strconv.ParseInt(strings.TrimSpace(action.RunID), 10, 64)
 		if err != nil || runID <= 0 {
@@ -548,6 +571,8 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 
 	var toastText string
 	switch action.Action {
+	case "issue_mark_duplicate":
+		toastText = "🔗 已在 GitHub 关联历史议题并关闭"
 	case "issue_reply_draft":
 		toastText = "✅ 已在 GitHub 成功发布建议回复"
 	case "issue_mark_spam_and_close":
@@ -617,6 +642,8 @@ func answerTelegramCallback(ctx context.Context, st store.Store, callbackID, act
 		return
 	}
 	switch actionName {
+	case "issue_mark_duplicate":
+		text = "🔗 已在 GitHub 关联历史议题并关闭"
 	case "issue_reply_draft":
 		text = "✅ 已成功在 GitHub 发布建议回复"
 	case "issue_mark_spam_and_close":
@@ -669,6 +696,8 @@ func editTelegramMessageReplyMarkup(ctx context.Context, st store.Store, chatID 
 
 	var statusLabel string
 	switch actionName {
+	case "issue_mark_duplicate":
+		statusLabel = "🔗 已关联关闭"
 	case "issue_reply_draft":
 		statusLabel = "✅ 已采纳回复"
 	case "issue_mark_spam_and_close":
@@ -688,7 +717,7 @@ func editTelegramMessageReplyMarkup(ctx context.Context, st store.Store, chatID 
 	}
 
 	var newKeyboard [][]map[string]any
-	if actionName == "issue_mark_spam_and_close" {
+	if actionName == "issue_mark_spam_and_close" || actionName == "issue_mark_duplicate" {
 		// 标记垃圾并关闭后，将键盘收敛为单一完成态按钮，避免维护者误触已关闭 Issue 的其他操作
 		newKeyboard = [][]map[string]any{
 			{

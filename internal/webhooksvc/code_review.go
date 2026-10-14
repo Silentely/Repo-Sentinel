@@ -567,13 +567,13 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 
 	// 根据评分与安全隐患自适应预警等级
 	levelEmoji := "⚠️"
-	levelText := "PR 代码审查风险提示"
-	titlePrefix := "代码审查告警"
+	levelText := "PR 代码评估风险提示"
+	titlePrefix := "代码评估告警"
 	scoreBadge := "需关注"
 	if len(res.SecurityRisks) > 0 {
 		levelEmoji = "🚨"
-		levelText = "PR 代码审查安全预警"
-		titlePrefix = "安全代码审查告警"
+		levelText = "PR 代码评估安全预警"
+		titlePrefix = "安全代码评估预警"
 		if res.Score < 40 {
 			scoreBadge = "高危安全风险"
 		} else {
@@ -581,9 +581,39 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		}
 	} else if res.Score < 60 {
 		levelEmoji = "🚨"
-		levelText = "PR 代码审查高危告警"
-		titlePrefix = "高危代码审查告警"
+		levelText = "PR 代码评估高危告警"
+		titlePrefix = "高危代码评估告警"
 		scoreBadge = "高危风险"
+	}
+
+	// 构建一瞥式决策胶囊（Glanceable Capsule）
+	capsuleEmoji := "🟢"
+	capsuleText := "建议合入"
+	switch res.MaintainerVerdict {
+	case "Ready to Merge":
+		capsuleEmoji = "🟢"
+		capsuleText = "建议合入"
+	case "Needs Tests":
+		capsuleEmoji = "🟡"
+		capsuleText = "建议补测"
+	case "Needs Manual Review":
+		capsuleEmoji = "🟠"
+		capsuleText = "需重点核验"
+	case "Block Risk":
+		capsuleEmoji = "🔴"
+		capsuleText = "建议阻断"
+	default:
+		if len(res.SecurityRisks) > 0 || res.Score < 60 {
+			capsuleEmoji = "🔴"
+			capsuleText = "高危阻断"
+		} else {
+			capsuleEmoji = "🟢"
+			capsuleText = "建议合入"
+		}
+	}
+	capsule := fmt.Sprintf("[%s %s · 评分 %d · %s]", capsuleEmoji, capsuleText, res.Score, scoreBadge)
+	if res.EffortEstimate != "" {
+		capsule = fmt.Sprintf("[%s %s · 评分 %d · %s · %s]", capsuleEmoji, capsuleText, res.Score, scoreBadge, res.EffortEstimate)
 	}
 
 	title := levelEmoji + " [" + titlePrefix + "] " + repoFullName + " PR #" + strconv.Itoa(prNum) + " 发现潜在风险 (评分: " + strconv.Itoa(res.Score) + ")"
@@ -592,7 +622,9 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 	sb.WriteString(levelEmoji)
 	sb.WriteString(" <b>")
 	sb.WriteString(levelText)
-	sb.WriteString("</b>\n仓库：<a href=\"")
+	sb.WriteString("</b>\n<code>")
+	sb.WriteString(htmlpkg.EscapeString(capsule))
+	sb.WriteString("</code>\n仓库：<a href=\"")
 	sb.WriteString(repoURL)
 	sb.WriteString("\">")
 	sb.WriteString(htmlpkg.EscapeString(repoFullName))
@@ -637,7 +669,7 @@ func (s *Service) notifyHighRiskReview(ctx context.Context, repoFullName string,
 		}
 	}
 	if res.Summary != "" {
-		sb.WriteString("\n<blockquote expandable><b>📝 审查结论（点击展开）</b>\n" + htmlpkg.EscapeString(res.Summary) + "\n</blockquote>\n")
+		sb.WriteString("\n<blockquote expandable><b>📝 评估结论（点击展开）</b>\n" + htmlpkg.EscapeString(res.Summary) + "\n</blockquote>\n")
 	}
 
 	// 增加处置建议

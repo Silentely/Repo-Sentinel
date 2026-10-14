@@ -228,6 +228,22 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 					})
 				}
 			}
+			if len(triageResult.SimilarIssues) > 0 {
+				topSimilar := triageResult.SimilarIssues[0]
+				btnText := fmt.Sprintf("🔗 关联历史 #%d 并关闭", topSimilar.Number)
+				if len([]rune(btnText)) > 26 {
+					btnText = fmt.Sprintf("🔗 关联 #%d 并关闭", topSimilar.Number)
+				}
+				dupPayload := strconv.Itoa(topSimilar.Number)
+				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_mark_duplicate", *res.Event.RepositoryID, issueNum, dupPayload, "", 24*time.Hour); err == nil {
+					chatOpsActions = append(chatOpsActions, map[string]string{
+						"text":   btnText,
+						"action": "issue_mark_duplicate",
+						"token":  tokenID,
+					})
+				}
+			}
+
 			if len(triageResult.MissingDetails) > 0 || triageResult.Category == "Incomplete" {
 				btnText := "📋 索取复现要素"
 				if triageResult.Category == "Incomplete" && len(triageResult.MissingDetails) == 0 {
@@ -770,6 +786,33 @@ func (e *Engine) issueAnalysis(ctx context.Context, ev *store.Event, repo string
 	if e.Logger != nil {
 		e.Logger.Info("issue triage ai used", "req_id", reqID, "event_id", ev.ID, "kind", ev.Kind, "action", ev.Action, "duration_ms", duration.Milliseconds())
 	}
+	// 联动 Store 检索本仓库历史相似 Issue，辅助去重与关联决策
+	if e.Store != nil && ev.RepositoryID != nil {
+		if items, _, err := e.Store.WorkItems().List(parentCtx, store.ListFilter{
+			RepositoryID: *ev.RepositoryID,
+			Kind:         store.WorkItemKindIssue,
+			PerPage:      50,
+		}); err == nil && len(items) > 0 {
+			var candidates []ai.SimilarCandidate
+			currNum := 0
+			if ev.SubjectNumber != nil {
+				currNum = int(*ev.SubjectNumber)
+			}
+			for _, item := range items {
+				if item.Number != currNum {
+					candidates = append(candidates, ai.SimilarCandidate{
+						Number: item.Number,
+						Title:  item.Title,
+						State:  item.State,
+					})
+				}
+			}
+			if similar := ai.FindSimilarIssues(ev.Title, candidates, 2); len(similar) > 0 {
+				res.SimilarIssues = similar
+			}
+		}
+	}
+
 	// 将分诊结果持久化，供 Web 界面查看与首响应建议复制
 	if e.Store != nil && ev.RepositoryID != nil && ev.SubjectNumber != nil {
 		if wi, err := e.Store.WorkItems().GetByRepoNumber(parentCtx, *ev.RepositoryID, int(*ev.SubjectNumber)); err == nil && wi.ID != "" {

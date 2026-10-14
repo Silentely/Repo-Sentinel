@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -82,8 +83,9 @@ type IssueTriageResult struct {
 	Labels           []string  `json:"labels,omitempty"`            // 推荐标签（类别映射与优先级映射）
 	MaintainerAction string    `json:"maintainer_action,omitempty"` // 给个人维护者咖啡啊的极速行动建议
 	SuspectedModule  string    `json:"suspected_module,omitempty"`  // 疑似关联模块与代码路径
-	IsSelfIssue      bool      `json:"is_self_issue,omitempty"`     // 是否为维护者自建 Issue
-	TriagedAt        time.Time `json:"triaged_at"`                  // 分诊分析时间
+	IsSelfIssue      bool               `json:"is_self_issue,omitempty"`     // 是否为维护者自建 Issue
+	SimilarIssues    []SimilarIssueItem `json:"similar_issues,omitempty"`    // 疑似相似的历史 Issue 候选
+	TriagedAt        time.Time          `json:"triaged_at"`                  // 分诊分析时间
 }
 
 // IsIssueTriageEnabled 判定 Issue 智能分诊能力是否可用。
@@ -320,6 +322,20 @@ func FormatIssueTriage(res *IssueTriageResult) string {
 		sb.WriteString("\n")
 	}
 
+	if len(res.SimilarIssues) > 0 {
+		sb.WriteString("🔗 疑似相似议题：")
+		var simStrs []string
+		for _, sim := range res.SimilarIssues {
+			stateTag := ""
+			if sim.State == "closed" {
+				stateTag = " [已关闭]"
+			}
+			simStrs = append(simStrs, fmt.Sprintf("#%d %s%s", sim.Number, sim.Title, stateTag))
+		}
+		sb.WriteString(strings.Join(simStrs, "、"))
+		sb.WriteString("\n")
+	}
+
 	if len(res.MissingDetails) > 0 {
 		sb.WriteString("⚠️ 缺失要素：")
 		sb.WriteString(strings.Join(res.MissingDetails, "、"))
@@ -425,4 +441,123 @@ func BuildRequestDetailsReply(category string, missingDetails []string, suspecte
 
 	sb.WriteString("\n感谢配合！")
 	return sb.String()
+}
+
+// SimilarIssueItem 描述一个疑似相似的历史 Issue 条目。
+type SimilarIssueItem struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	State  string `json:"state"`
+}
+
+// SimilarCandidate 供相似度匹配的历史候选。
+type SimilarCandidate struct {
+	Number int
+	Title  string
+	State  string
+}
+
+// FindSimilarIssues 从候选集合中快速计算与当前标题特征重合度最高的历史项。
+// 采用字符 2-gram 结合词袋 Jaccard 算法，具备超轻量、纯内存、毫秒级响应特性。
+func FindSimilarIssues(currentTitle string, candidates []SimilarCandidate, limit int) []SimilarIssueItem {
+	if strings.TrimSpace(currentTitle) == "" || len(candidates) == 0 || limit <= 0 {
+		return nil
+	}
+
+	currentTokens := extractSimilarityTokens(currentTitle)
+	if len(currentTokens) == 0 {
+		return nil
+	}
+
+	type scoredItem struct {
+		item  SimilarIssueItem
+		score float64
+	}
+
+	var scored []scoredItem
+	for _, cand := range candidates {
+		if strings.TrimSpace(cand.Title) == "" {
+			continue
+		}
+		candTokens := extractSimilarityTokens(cand.Title)
+		if len(candTokens) == 0 {
+			continue
+		}
+
+		sim := computeJaccard(currentTokens, candTokens)
+		// 阈值设定为 0.28：能有效捕获同类型缺陷与功能复述，避免过度误报
+		if sim >= 0.28 {
+			scored = append(scored, scoredItem{
+				item: SimilarIssueItem{
+					Number: cand.Number,
+					Title:  cand.Title,
+					State:  cand.State,
+					},
+				score: sim,
+			})
+		}
+	}
+
+	if len(scored) == 0 {
+		return nil
+	}
+
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	if len(scored) > limit {
+		scored = scored[:limit]
+	}
+
+	res := make([]SimilarIssueItem, len(scored))
+	for i, s := range scored {
+		res[i] = s.item
+	}
+	return res
+}
+
+func extractSimilarityTokens(s string) map[string]struct{} {
+	lowered := strings.ToLower(s)
+	tokens := make(map[string]struct{})
+
+	// 1. 词切分（适配英文单词）
+	words := strings.FieldsFunc(lowered, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || (r >= 0x4e00 && r <= 0x9fa5))
+	})
+	for _, w := range words {
+		if len([]rune(w)) >= 2 {
+			tokens[w] = struct{}{}
+		}
+	}
+
+	// 2. 双字 N-gram（无缝捕获中文字符串特征）
+	runes := make([]rune, 0, len(lowered))
+	for _, r := range lowered {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || (r >= 0x4e00 && r <= 0x9fa5) {
+			runes = append(runes, r)
+		}
+	}
+	for i := 0; i < len(runes)-1; i++ {
+		tokens[string(runes[i:i+2])] = struct{}{}
+	}
+
+	return tokens
+}
+
+func computeJaccard(s1, s2 map[string]struct{}) float64 {
+	if len(s1) == 0 || len(s2) == 0 {
+		return 0
+	}
+	intersection := 0
+	for k := range s1 {
+		if _, ok := s2[k]; ok {
+			intersection++
+		}
+	}
+	union := len(s1) + len(s2) - intersection
+	if union <= 0 {
+		return 0
+	}
+	return float64(intersection) / float64(union)
 }

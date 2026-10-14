@@ -248,6 +248,12 @@ func TestChatOps_IssueActions_CallbackDispatch(t *testing.T) {
 			issueNumber: 99,
 			payload:     "",
 		},
+		{
+			name:        "关联历史重复项并关闭",
+			action:      "issue_mark_duplicate",
+			issueNumber: 120,
+			payload:     "10",
+		},
 	}
 
 	for _, tc := range tests {

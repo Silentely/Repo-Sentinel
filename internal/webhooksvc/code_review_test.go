@@ -261,7 +261,7 @@ func TestServiceTriggerWorkItemReviewAndHighRiskAlert(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !strings.Contains(outboxItems[0].Title, "代码审查告警") || !strings.Contains(outboxItems[0].BodyText, "代码注入危险") {
+	if !strings.Contains(outboxItems[0].Title, "代码评估") || !strings.Contains(outboxItems[0].BodyText, "代码注入危险") {
 		t.Fatalf("unexpected outbox content: title=%s body=%s", outboxItems[0].Title, outboxItems[0].BodyText)
 	}
 }
@@ -367,7 +367,7 @@ func TestServiceTriggerWorkItemReviewQuietHoursDefersAlert(t *testing.T) {
 	if alert == nil {
 		t.Fatal("expected review alert in outbox")
 	}
-	if !strings.Contains(alert.Title, "代码审查") {
+	if !strings.Contains(alert.Title, "代码评估") {
 		t.Fatalf("unexpected alert title: %s", alert.Title)
 	}
 	if !alert.NextAttemptAt.After(now.Add(30 * time.Minute)) {

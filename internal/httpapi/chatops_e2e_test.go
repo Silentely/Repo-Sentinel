@@ -224,6 +224,9 @@ func TestChatOps_IssueActions_E2E(t *testing.T) {
 		labelsAdded77     []string
 		reviewEvent88     string
 		reviewBody88      string
+		commentBody120    string
+		labelsAdded120    []string
+		closePatch120     map[string]any
 	)
 
 	mockGitHubServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -271,6 +274,27 @@ func TestChatOps_IssueActions_E2E(t *testing.T) {
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			labelsAdded77 = body.Labels
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode([]any{})
+
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/sentinel-repo/issues/120/comments":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			commentBody120 = body["body"]
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1003, "body": commentBody120})
+
+		case r.Method == http.MethodPatch && r.URL.Path == "/repos/acme/sentinel-repo/issues/120":
+			_ = json.NewDecoder(r.Body).Decode(&closePatch120)
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{"state": "closed"})
+
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/sentinel-repo/issues/120/labels":
+			var body struct {
+				Labels []string `json:"labels"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			labelsAdded120 = body.Labels
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode([]any{})
 
@@ -456,7 +480,37 @@ func TestChatOps_IssueActions_E2E(t *testing.T) {
 		t.Fatal("未在 Outbox 中找到延迟提醒条目")
 	}
 
-	// 6. 测试低风险 PR 快捷批准合入
+	// 6. 测试关联历史重复项并关闭
+	dupToken, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_mark_duplicate", repo.ID, 120, "10", "", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("创建关联重复项令牌失败: %v", err)
+	}
+	tgDup := map[string]any{
+		"update_id": 6,
+		"callback_query": map[string]any{
+			"id":   "cb-dup",
+			"data": "act:" + dupToken,
+			"from": map[string]any{"id": 1234, "username": "boss"},
+		},
+	}
+	rawDup, _ := json.Marshal(tgDup)
+	reqDup := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawDup))
+	recDup := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(recDup, reqDup)
+	if recDup.Code != http.StatusOK {
+		t.Fatalf("关联重复项回调失败: %d, %s", recDup.Code, recDup.Body.String())
+	}
+	if !strings.Contains(commentBody120, "#10") {
+		t.Fatalf("关联评论未包含历史编号 #10: %q", commentBody120)
+	}
+	if len(labelsAdded120) != 1 || labelsAdded120[0] != "duplicate" {
+		t.Fatalf("关联打标不符，实际: %v", labelsAdded120)
+	}
+	if closePatch120["state"] != "closed" || closePatch120["state_reason"] != "not_planned" {
+		t.Fatalf("关闭状态不符，实际: %v", closePatch120)
+	}
+
+	// 7. 测试快捷批准 PR
 	prApproveToken, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "pr_quick_approve", repo.ID, 88, "", "", 1*time.Hour)
 	if err != nil {
 		t.Fatalf("创建快捷批准令牌失败: %v", err)
