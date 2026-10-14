@@ -312,7 +312,7 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	data := update.CallbackQuery.Data
 	if strings.HasPrefix(data, "done:") {
 		if update.CallbackQuery.ID != "" {
-			go answerTelegramCallback(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, data)
+			s.safeGo("telegram_callback_done", func() { answerTelegramCallback(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, data) })
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
@@ -340,7 +340,7 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 				}
 				if !allowed {
 					if update.CallbackQuery.ID != "" {
-						go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 仅受信任的维护者有权执行此操作", true)
+						s.safeGo("telegram_callback_unauth", func() { answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 仅受信任的维护者有权执行此操作", true) })
 					}
 					writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "forbidden", "error": "telegram_user_not_allowed"})
 					return
@@ -356,7 +356,7 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 			s.dependencies.Logger.Warn("telegram chatops token consumption failed", "token_id", tokenID, "error", err.Error())
 		}
 		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
-			go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 操作已失效或已被执行", true)
+			s.safeGo("telegram_callback_invalid", func() { answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 操作已失效或已被执行", true) })
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "ignored", "reason": err.Error()})
 		return
@@ -365,7 +365,7 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	if action.ActorID != "" && strconv.FormatInt(update.CallbackQuery.From.ID, 10) != action.ActorID {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
-			go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 无权执行此操作", true)
+			s.safeGo("telegram_callback_forbidden", func() { answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 无权执行此操作", true) })
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "forbidden", "error": "chatops_actor_forbidden"})
 		return
@@ -373,7 +373,7 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	if s.chatOpsExecutor == nil {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
-			go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 执行器暂不可用", true)
+			s.safeGo("telegram_callback_unavailable", func() { answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 执行器暂不可用", true) })
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "service_unavailable", "error": "chatops_unavailable"})
 		return
@@ -381,7 +381,7 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 	if err := s.chatOpsExecutor.Execute(r.Context(), *action); err != nil {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
 		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
-			go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 操作执行失败，令牌已恢复，可稍后重试", true)
+			s.safeGo("telegram_callback_failed", func() { answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 操作执行失败，令牌已恢复，可稍后重试", true) })
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "action_failed", "error": err.Error()})
 		return
@@ -389,10 +389,10 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 
 	if update.CallbackQuery != nil {
 		if update.CallbackQuery.ID != "" {
-			go answerTelegramCallback(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, action.Action)
+			s.safeGo("telegram_callback_action", func() { answerTelegramCallback(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, action.Action) })
 		}
 		if msg := update.CallbackQuery.Message; msg != nil && msg.ReplyMarkup != nil && len(msg.ReplyMarkup.InlineKeyboard) > 0 {
-			go editTelegramMessageReplyMarkup(context.Background(), s.dependencies.Store, msg.Chat.ID, msg.MessageID, data, action.Action, msg.ReplyMarkup.InlineKeyboard)
+			s.safeGo("telegram_edit_markup", func() { editTelegramMessageReplyMarkup(context.Background(), s.dependencies.Store, msg.Chat.ID, msg.MessageID, data, action.Action, msg.ReplyMarkup.InlineKeyboard) })
 		}
 	}
 
@@ -592,6 +592,12 @@ func resolveTelegramBotToken(ctx context.Context, st store.Store) string {
 			return strings.TrimSpace(botToken)
 		}
 	}
+	if chSetting, err := st.Settings().Get(ctx, "notify.telegram.token"); err == nil && len(chSetting.ValueJSON) > 0 {
+		var botToken string
+		if err := json.Unmarshal(chSetting.ValueJSON, &botToken); err == nil && strings.TrimSpace(botToken) != "" {
+			return strings.TrimSpace(botToken)
+		}
+	}
 	return ""
 }
 
@@ -599,6 +605,8 @@ func answerTelegramCallback(ctx context.Context, st store.Store, callbackID, act
 	if callbackID == "" || st == nil {
 		return
 	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	botToken := resolveTelegramBotToken(ctx, st)
 	if botToken == "" {
 		return
@@ -652,6 +660,8 @@ func editTelegramMessageReplyMarkup(ctx context.Context, st store.Store, chatID 
 	if chatID == 0 || messageID == 0 || st == nil || len(keyboard) == 0 {
 		return
 	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	botToken := resolveTelegramBotToken(ctx, st)
 	if botToken == "" {
 		return
@@ -733,6 +743,8 @@ func answerTelegramCustom(ctx context.Context, st store.Store, callbackID, text 
 	if callbackID == "" || st == nil {
 		return
 	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	botToken := resolveTelegramBotToken(ctx, st)
 	if botToken == "" {
 		return
