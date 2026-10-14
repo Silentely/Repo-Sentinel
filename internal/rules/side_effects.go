@@ -21,11 +21,11 @@ var (
 )
 
 type (
-	PreSendError                       = sideeffect.PreSendError
+	PreSendError                      = sideeffect.PreSendError
 	RemoteSucceededReceiptFailedError = sideeffect.RemoteSucceededReceiptFailedError
 	UnknownReceiptPersistError        = sideeffect.UnknownReceiptPersistError
-	ExecutionDetail                    = sideeffect.ExecutionDetail
-	SideEffectReceipt                  = sideeffect.SideEffectReceipt
+	ExecutionDetail                   = sideeffect.ExecutionDetail
+	SideEffectReceipt                 = sideeffect.SideEffectReceipt
 )
 
 var (

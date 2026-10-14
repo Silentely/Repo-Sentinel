@@ -27,13 +27,13 @@ type ChatOpsActionExecutor = chatops.ActionExecutor
 type GitHubChatOpsExecutor = chatops.GitHubChatOpsExecutor
 
 var (
-	CreateChatOpsToken            = chatops.CreateChatOpsToken
-	CreateChatOpsTokenWithPayload = chatops.CreateChatOpsTokenWithPayload
-	ConsumeChatOpsToken           = chatops.ConsumeChatOpsToken
-	ReleaseChatOpsToken           = chatops.ReleaseChatOpsToken
-	readSecureConfig              = chatops.ReadSecureConfig
-	maskToken                     = chatops.MaskToken
-	resolveTelegramBotToken       = chatops.ResolveTelegramBotToken
+	CreateChatOpsToken             = chatops.CreateChatOpsToken
+	CreateChatOpsTokenWithPayload  = chatops.CreateChatOpsTokenWithPayload
+	ConsumeChatOpsToken            = chatops.ConsumeChatOpsToken
+	ReleaseChatOpsToken            = chatops.ReleaseChatOpsToken
+	readSecureConfig               = chatops.ReadSecureConfig
+	maskToken                      = chatops.MaskToken
+	resolveTelegramBotToken        = chatops.ResolveTelegramBotToken
 	editTelegramMessageReplyMarkup = func(ctx context.Context, st store.Store, chatID int64, messageID int, clickedData, actionName string, keyboard [][]map[string]any) {
 		fb := chatops.NewDefaultTelegramFeedback(st, nil)
 		fb.EditMessageReplyMarkup(ctx, chatID, messageID, clickedData, actionName, keyboard)
