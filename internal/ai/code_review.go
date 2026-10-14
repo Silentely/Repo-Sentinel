@@ -216,6 +216,7 @@ const codeReviewSystemPrompt = `你是专门为个人开源维护者『咖啡啊
 
 5. suggestions: 高价值重构与改进建议（对象数组）。
    - 避免空洞套话。针对有改进空间的代码（如白名单替换黑名单、防御纵深、异常处理收敛、更地道的语言惯用法、性能优化等），给出具体重构建议，尽量附带 suggested_code 代码块。如无则为空数组 []。
+   - 针对发现逻辑缺陷、边界缺失或 missing_tests 非空的情况，优先在 suggestions 中提供针对该边界/缺陷的【最小复现测试用例代码草稿】（标题命名如 "[补测用例] xxx"，并在 suggested_code 中输出完整可执行的单测函数示例），协助维护者极速推导补测代码。
    - 每项结构：{"title": "建议简述", "file_path": "路径", "description": "详细解释", "suggested_code": "Markdown格式代码示例"}
 
 6. maintainer_action: 给个人维护者『咖啡啊』的立即可行动策略（如“放心合入”、“要求补测”、“要求重构”、“直接拒合”、“自检通过”）。
@@ -1342,7 +1343,12 @@ func FormatPRComment(res *CodeReviewResult) string {
 	if len(res.Suggestions) > 0 {
 		sb.WriteString("### 🛠️ 建议采纳与重构示范\n")
 		for i, s := range res.Suggestions {
-			sb.WriteString(fmt.Sprintf("**建议 %d: %s**", i+1, s.Title))
+			title := s.Title
+			badge := ""
+			if strings.Contains(title, "[补测用例]") || strings.Contains(title, "[测试用例]") {
+				badge = "🧪 "
+			}
+			sb.WriteString(fmt.Sprintf("**%s建议 %d: %s**", badge, i+1, title))
 			if s.FilePath != "" {
 				sb.WriteString(fmt.Sprintf(" (`%s`)", s.FilePath))
 			}
@@ -1360,6 +1366,6 @@ func FormatPRComment(res *CodeReviewResult) string {
 		}
 	}
 
-	sb.WriteString("---\n*由 [RepoSentinel](https://github.com/Silentely/Repo-Sentinel) 智能代码审查器自动生成*")
+	sb.WriteString("---\n*由 [RepoSentinel](https://github.com/Silentely/Repo-Sentinel) 智能代码评估守护模块自动生成*")
 	return sb.String()
 }

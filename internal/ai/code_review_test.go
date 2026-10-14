@@ -1150,3 +1150,33 @@ func TestReviewPR_ReasoningModelThinkingTags(t *testing.T) {
 		t.Errorf("expected merge risk Low, got %s", res.MergeRisk)
 	}
 }
+
+func TestFormatPRComment_HypotheticalTestBadge(t *testing.T) {
+	res := &CodeReviewResult{
+		Score:   85,
+		Summary: "修复空指针",
+		Suggestions: []ReviewSuggestion{
+			{
+				Title:         "[补测用例] 覆盖 nil 边界测试",
+				FilePath:      "pkg/service_test.go",
+				Description:   "补充入参为 nil 时的断言",
+				SuggestedCode: "func TestNilInput(t *testing.T) { ... }",
+			},
+			{
+				Title:       "常规优化建议",
+				FilePath:    "pkg/service.go",
+				Description: "建议抽离公共函数",
+			},
+		},
+	}
+	comment := FormatPRComment(res)
+	if !strings.Contains(comment, "**🧪 建议 1: [补测用例] 覆盖 nil 边界测试**") {
+		t.Errorf("expected test snippet badge on suggestion 1, got: %s", comment)
+	}
+	if strings.Contains(comment, "**🧪 建议 2:") {
+		t.Errorf("regular suggestion should not have test badge, got: %s", comment)
+	}
+	if !strings.Contains(comment, "智能代码评估守护模块") {
+		t.Errorf("expected updated footer branding, got: %s", comment)
+	}
+}

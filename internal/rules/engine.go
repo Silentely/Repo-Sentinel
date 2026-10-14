@@ -228,27 +228,15 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 					})
 				}
 			}
-			if len(triageResult.MissingDetails) > 0 {
-				var reqSb strings.Builder
-				reqSb.WriteString("你好，感谢提交 Issue！为了能更快速定位与处理该问题，请协助补充以下复现要素：\n")
-				for _, d := range triageResult.MissingDetails {
-					if trimmed := strings.TrimSpace(d); trimmed != "" {
-						reqSb.WriteString("- " + trimmed + "\n")
-					}
+			if len(triageResult.MissingDetails) > 0 || triageResult.Category == "Incomplete" {
+				btnText := "📋 索取复现要素"
+				if triageResult.Category == "Incomplete" && len(triageResult.MissingDetails) == 0 {
+					btnText = "📋 索取补充信息"
 				}
-				reqSb.WriteString("\n感谢配合！")
-				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_request_details", *res.Event.RepositoryID, issueNum, reqSb.String(), "", 24*time.Hour); err == nil {
-					chatOpsActions = append(chatOpsActions, map[string]string{
-						"text":   "📋 索取复现要素",
-						"action": "issue_request_details",
-						"token":  tokenID,
-					})
-				}
-			} else if triageResult.Category == "Incomplete" {
-				reqBody := "你好，感谢提交 Issue！由于当前描述中信息较少，请协助补充更详细的问题背景、复现步骤或预期行为说明，以便进一步分析跟进。感谢配合！"
+				reqBody := ai.BuildRequestDetailsReply(triageResult.Category, triageResult.MissingDetails, triageResult.SuspectedModule)
 				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_request_details", *res.Event.RepositoryID, issueNum, reqBody, "", 24*time.Hour); err == nil {
 					chatOpsActions = append(chatOpsActions, map[string]string{
-						"text":   "📋 索取补充信息",
+						"text":   btnText,
 						"action": "issue_request_details",
 						"token":  tokenID,
 					})

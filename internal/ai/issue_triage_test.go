@@ -300,3 +300,38 @@ func TestTriageIssue_ReasoningModelThinkingTags(t *testing.T) {
 		t.Fatalf("expected 2 missing details, got %d", len(res.MissingDetails))
 	}
 }
+
+func TestBuildRequestDetailsReply(t *testing.T) {
+	// 1. 包含明确缺失要素
+	replyBugWithDetails := BuildRequestDetailsReply("Bug Report", []string{"复现步骤", "控制台日志"}, "web/src")
+	if !strings.Contains(replyBugWithDetails, "### 📌 待补充要素：") {
+		t.Errorf("expected explicit details header, got: %s", replyBugWithDetails)
+	}
+	if !strings.Contains(replyBugWithDetails, "- 复现步骤") || !strings.Contains(replyBugWithDetails, "- 控制台日志") {
+		t.Errorf("expected missing items in reply, got: %s", replyBugWithDetails)
+	}
+	if !strings.Contains(replyBugWithDetails, "web/src") {
+		t.Errorf("expected suspected module mention, got: %s", replyBugWithDetails)
+	}
+
+	// 2. 缺失要素为空时根据类别自适应填充
+	replyBugDefault := BuildRequestDetailsReply("Bug Report", nil, "")
+	if !strings.Contains(replyBugDefault, "运行环境") || !strings.Contains(replyBugDefault, "复现步骤") {
+		t.Errorf("expected bug default items, got: %s", replyBugDefault)
+	}
+
+	replyQuestion := BuildRequestDetailsReply("Question", nil, "")
+	if !strings.Contains(replyQuestion, "配置与环境") || !strings.Contains(replyQuestion, "预期差异") {
+		t.Errorf("expected question default items, got: %s", replyQuestion)
+	}
+
+	replyFeature := BuildRequestDetailsReply("Feature Request", nil, "")
+	if !strings.Contains(replyFeature, "业务场景") || !strings.Contains(replyFeature, "替代方案") {
+		t.Errorf("expected feature default items, got: %s", replyFeature)
+	}
+
+	replyIncomplete := BuildRequestDetailsReply("Incomplete", nil, "")
+	if !strings.Contains(replyIncomplete, "更详细的背景描述") {
+		t.Errorf("expected incomplete default items, got: %s", replyIncomplete)
+	}
+}

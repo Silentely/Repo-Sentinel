@@ -377,3 +377,52 @@ func DeriveTriageLabels(res *IssueTriageResult, customMapping map[string]string)
 	}
 	return labels
 }
+
+// BuildRequestDetailsReply 依据 Issue 分类与缺失要素，自适应构建精准、体面的要素索取回复草稿。
+func BuildRequestDetailsReply(category string, missingDetails []string, suspectedModule string) string {
+	var sb strings.Builder
+	sb.WriteString("你好，感谢提交 Issue！为了能更快速定位与处理该问题，请协助补充以下信息：\n\n")
+
+	cleanDetails := make([]string, 0, len(missingDetails))
+	for _, d := range missingDetails {
+		if ts := strings.TrimSpace(d); ts != "" {
+			cleanDetails = append(cleanDetails, ts)
+		}
+	}
+
+	if len(cleanDetails) > 0 {
+		sb.WriteString("### 📌 待补充要素：\n")
+		for _, d := range cleanDetails {
+			sb.WriteString("- " + d + "\n")
+		}
+	} else {
+		// 根据分类自适应填充默认核心要素清单
+		switch category {
+		case "Bug Report":
+			sb.WriteString("### 📌 推荐补充信息：\n")
+			sb.WriteString("- **运行环境**：操作系统、架构以及相关运行时或客户端版本\n")
+			sb.WriteString("- **复现步骤**：从初始状态触发异常的最小可复现步骤\n")
+			sb.WriteString("- **现象与日志**：期望的行为、实际表现以及完整的控制台报错或日志堆栈（若有）\n")
+		case "Question":
+			sb.WriteString("### 📌 推荐补充信息：\n")
+			sb.WriteString("- **配置与环境**：当前使用的相关配置片段（请注意隐去机密凭据）与运行版本\n")
+			sb.WriteString("- **具体场景**：执行的具体指令或代码片段\n")
+			sb.WriteString("- **预期差异**：期望达成的效果与当前实际行为的差异\n")
+		case "Feature Request":
+			sb.WriteString("### 📌 推荐补充信息：\n")
+			sb.WriteString("- **业务场景**：实际面临的具体痛点或使用场景\n")
+			sb.WriteString("- **替代方案**：目前是否有临时规避或替代做法\n")
+			sb.WriteString("- **设计期望**：期望达成的接口交互、数据流或行为表现\n")
+		default:
+			sb.WriteString("### 📌 推荐补充信息：\n")
+			sb.WriteString("- 更详细的背景描述、复现步骤或期望行为说明\n")
+		}
+	}
+
+	if sm := strings.TrimSpace(suspectedModule); sm != "" {
+		sb.WriteString(fmt.Sprintf("\n> 💡 初步分析可能涉及模块 `%s`，若能附带该模块相关日志或配置将显著加快定位。\n", sm))
+	}
+
+	sb.WriteString("\n感谢配合！")
+	return sb.String()
+}
