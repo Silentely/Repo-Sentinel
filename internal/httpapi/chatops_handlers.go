@@ -85,7 +85,9 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
 		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_mark_duplicate", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
 			comment := fmt.Sprintf("已识别该议题疑似与 #%s 相同，因此先行关联并关闭。如有其他疑问欢迎在此继续补充讨论。", dupTarget)
-			_ = e.Client.CreateIssueComment(ctx, token, parts[0], parts[1], action.IssueNumber, comment)
+			if commentErr := e.Client.CreateIssueComment(ctx, token, parts[0], parts[1], action.IssueNumber, comment); commentErr != nil {
+				return "", fmt.Errorf("create duplicate comment: %w", commentErr)
+			}
 			if closeErr := e.Client.CloseIssue(ctx, token, parts[0], parts[1], action.IssueNumber, "not_planned"); closeErr != nil {
 				return "", closeErr
 			}
@@ -179,7 +181,11 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 		}
 		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
 		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_request_details", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
-			_ = e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"needs-more-info"})
+			if labelErr := e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"needs-more-info"}); labelErr != nil {
+				if !githubx.IsLabelNotFoundError(labelErr) {
+					return "", fmt.Errorf("add needs-more-info label: %w", labelErr)
+				}
+			}
 			err := e.Client.CreateIssueComment(ctx, token, parts[0], parts[1], action.IssueNumber, action.Payload)
 			if err != nil {
 				return "", err
@@ -534,16 +540,21 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 	if action.ActorID != "" {
 		actorID := ""
 		if raw, ok := body["open_id"].(string); ok {
-			actorID = raw
+			actorID = strings.TrimSpace(raw)
 		}
 		if operator, ok := body["operator"].(map[string]any); ok {
-			if raw, ok := operator["open_id"].(string); ok {
-				actorID = raw
+			if raw, ok := operator["open_id"].(string); ok && strings.TrimSpace(raw) != "" {
+				actorID = strings.TrimSpace(raw)
 			}
 		}
-		if actorID != "" && actorID != action.ActorID {
+		if actorID == "" || actorID != action.ActorID {
 			_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "chatops_actor_forbidden"})
+			writeJSON(w, http.StatusOK, map[string]any{
+				"toast": map[string]string{
+					"type":    "danger",
+					"content": "⚠️ 无权执行此操作",
+				},
+			})
 			return
 		}
 	}

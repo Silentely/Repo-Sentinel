@@ -130,12 +130,14 @@ func (s *server) safeGo(name string, fn func()) {
 	go func() {
 		defer func() {
 			if rec := recover(); rec != nil {
-				s.dependencies.Logger.Error(
-					"background task panic",
-					"task", name,
-					"error_code", "background_panic",
-					"panic", fmt.Sprint(rec),
-				)
+				if s.dependencies.Logger != nil {
+					s.dependencies.Logger.Error(
+						"background task panic",
+						"task", name,
+						"error_code", "background_panic",
+						"panic", fmt.Sprint(rec),
+					)
+				}
 			}
 		}()
 		fn()

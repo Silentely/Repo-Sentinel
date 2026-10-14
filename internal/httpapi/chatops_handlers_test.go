@@ -774,3 +774,61 @@ func TestChatOps_Telegram_EditMessageReplyMarkup_SpamCollapse(t *testing.T) {
 		t.Fatalf("期望 callback_data 变为 done:issue_mark_spam_and_close, 实际: %v", btn0["callback_data"])
 	}
 }
+
+func TestChatOps_Feishu_ActorIDGuard(t *testing.T) {
+	exec := &recordingChatOpsExecutor{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		chatOpsExecutor: exec,
+	})
+
+	// 创建绑定了特定 ActorID (ou_bound_user) 的操作令牌
+	tokenID, _ := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_mark_spam_and_close", "repo-1", 123, "", "ou_bound_user", 10*time.Minute)
+
+	// Case 1: 回调请求中未携带任何 open_id -> 必须严格拦截并提示无权，绝不放行
+	emptyBody := map[string]any{
+		"action": map[string]any{
+			"value": map[string]any{
+				"token": tokenID,
+			},
+		},
+	}
+	raw1, _ := json.Marshal(emptyBody)
+	req1 := httptest.NewRequest(http.MethodPost, "/chatops/feishu/callback", bytes.NewReader(raw1))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("期望响应 200 Toast, 实际: %d", w1.Code)
+	}
+	var res1 map[string]any
+	_ = json.Unmarshal(w1.Body.Bytes(), &res1)
+	toast1, _ := res1["toast"].(map[string]any)
+	if toast1 == nil || toast1["type"] != "danger" || !strings.Contains(fmt.Sprint(toast1["content"]), "无权") {
+		t.Fatalf("缺失身份时期望拦截并提示无权, 实际: %v", res1)
+	}
+	if exec.calls != 0 {
+		t.Fatalf("缺失身份时不应触发执行器, 实际调用: %d", exec.calls)
+	}
+
+	// 令牌由于失败应被释放，重新用匹配的身份点击
+	validBody := map[string]any{
+		"open_id": "ou_bound_user",
+		"action": map[string]any{
+			"value": map[string]any{
+				"token": tokenID,
+			},
+		},
+	}
+	raw2, _ := json.Marshal(validBody)
+	req2 := httptest.NewRequest(http.MethodPost, "/chatops/feishu/callback", bytes.NewReader(raw2))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("匹配身份时期望 200, 实际: %d", w2.Code)
+	}
+	if exec.calls != 1 {
+		t.Fatalf("匹配身份时应成功执行, 实际调用: %d", exec.calls)
+	}
+}
+
