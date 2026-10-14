@@ -645,7 +645,7 @@ func (c *Client) doAttempt(ctx context.Context, s *Client, payload []byte, endpo
 	if cleaned == "" {
 		return "", 0, 0, &callError{code: "empty_response", err: errors.New("ai: empty response")}
 	}
-	return truncateOutput(cleaned), out.Usage.PromptTokens, out.Usage.CompletionTokens, nil
+	return truncateOutputForTask(ctx, cleaned), out.Usage.PromptTokens, out.Usage.CompletionTokens, nil
 }
 
 // AI 响应体大小上限：防御异常大响应消耗内存；错误明细单独使用更小的上限。
@@ -717,6 +717,14 @@ func truncateOutput(content string) string {
 		return string(r[:maxOutputRunes])
 	}
 	return content
+}
+
+// truncateOutputForTask 根据任务类型决定是否截断输出：PR 代码把关等结构化任务返回 JSON，不受单条消息 3500 字符限制。
+func truncateOutputForTask(ctx context.Context, content string) string {
+	if TaskTypeFromContext(ctx) == TaskTypePRReview {
+		return content
+	}
+	return truncateOutput(content)
 }
 
 // Ping 发送一次最小对话验证连通性，返回端到端耗时。

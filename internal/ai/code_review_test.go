@@ -1109,3 +1109,44 @@ func TestIsAuthorMaintainerBareRepoAndCaseInsensitive(t *testing.T) {
 		t.Errorf("expected other-repo NOT to match kafei")
 	}
 }
+
+func TestReviewPR_ReasoningModelThinkingTags(t *testing.T) {
+	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		resp := map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]any{
+						"content": "<think>\nThinking about the PR changes...\nChecking injection risks...\nNone found, clean code.\n</think>\nHere is the evaluation result:\n```json\n" +
+							`{"summary":"修复Webhook重试漏洞","score":90,"confidence":5,"category":"Bug Fix","merge_risk":"Low","maintainer_verdict":"Ready to Merge","security_risks":[],"breaking_risks":[],"code_smells":[]}` +
+							"\n```\nHope this helps!",
+					},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer fakeServer.Close()
+
+	client := &Client{
+		BaseURL: fakeServer.URL,
+		Model:   "deepseek-reasoner",
+		APIKey:  "test-key",
+		Enabled: true,
+	}
+
+	res, err := client.ReviewPR(t.Context(), "test/repo", "Fix bug in webhook", "alice", "+ func Fix() {}")
+	if err != nil {
+		t.Fatalf("unexpected error when parsing reasoning model output: %v", err)
+	}
+
+	if res.Summary != "修复Webhook重试漏洞" {
+		t.Errorf("expected summary '修复Webhook重试漏洞', got %s", res.Summary)
+	}
+	if res.Score != 90 {
+		t.Errorf("expected score 90, got %d", res.Score)
+	}
+	if res.MergeRisk != "Low" {
+		t.Errorf("expected merge risk Low, got %s", res.MergeRisk)
+	}
+}

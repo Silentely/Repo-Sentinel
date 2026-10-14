@@ -260,3 +260,43 @@ func TestSanitizeSuspectedModule(t *testing.T) {
 		t.Errorf("long module should end with ellipsis: %q", sanitized)
 	}
 }
+
+func TestTriageIssue_ReasoningModelThinkingTags(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]any{
+						"content": "<thought>\nAnalyzing user bug report on Ubuntu 22.04.\nMissing OS details and steps.\n</thought>\n这是分诊结果：\n```json\n" +
+							`{"category":"Bug Report","priority":"P1 High","summary":"Ubuntu下启动崩溃","missing_details":["复现步骤","系统版本"],"suggested_reply":"你好，能否提供系统内核版本？","confidence":5}` +
+							"\n```",
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		Enabled:       true,
+		APIKey:        "test-key",
+		BaseURL:       ts.URL,
+		TriageEnabled: true,
+	}
+
+	res, err := client.TriageIssue(t.Context(), "org/repo", "启动崩溃", "user1", "打开后崩溃")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Category != "Bug Report" {
+		t.Errorf("expected category Bug Report, got %s", res.Category)
+	}
+	if res.Summary != "Ubuntu下启动崩溃" {
+		t.Errorf("expected summary 'Ubuntu下启动崩溃', got %s", res.Summary)
+	}
+	if len(res.MissingDetails) != 2 {
+		t.Fatalf("expected 2 missing details, got %d", len(res.MissingDetails))
+	}
+}

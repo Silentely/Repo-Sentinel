@@ -128,16 +128,9 @@ func (c *Client) TriageIssue(ctx context.Context, repo, title, author, body stri
 		return nil, err
 	}
 
-	cleaned := strings.TrimSpace(out)
-	if strings.HasPrefix(cleaned, "```") {
-		lines := strings.Split(cleaned, "\n")
-		if len(lines) >= 2 && strings.HasPrefix(lines[0], "```") {
-			lines = lines[1:]
-		}
-		if len(lines) > 0 && strings.HasPrefix(lines[len(lines)-1], "```") {
-			lines = lines[:len(lines)-1]
-		}
-		cleaned = strings.TrimSpace(strings.Join(lines, "\n"))
+	cleaned, err := CleanAndExtractJSON(out)
+	if err != nil {
+		return nil, fmt.Errorf("clean and extract issue triage JSON: %w", err)
 	}
 
 	var res IssueTriageResult
