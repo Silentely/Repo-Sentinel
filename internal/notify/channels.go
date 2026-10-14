@@ -310,6 +310,54 @@ func (w *Worker) sendFeishu(ctx context.Context, ch store.NotificationChannel, s
 			},
 		})
 	}
+	if raw, ok := item.BodyJSON["chatops_actions"]; ok && raw != nil {
+		type actionItem struct {
+			text   string
+			token  string
+			action string
+		}
+		var items []actionItem
+		switch rawItems := raw.(type) {
+		case []map[string]string:
+			for _, m := range rawItems {
+				if m["text"] != "" && m["token"] != "" {
+					items = append(items, actionItem{text: m["text"], token: m["token"], action: m["action"]})
+				}
+			}
+		case []any:
+			for _, rawItem := range rawItems {
+				if m, ok := rawItem.(map[string]any); ok {
+					btnText, _ := m["text"].(string)
+					token, _ := m["token"].(string)
+				act, _ := m["action"].(string)
+					if btnText != "" && token != "" {
+						items = append(items, actionItem{text: btnText, token: token, action: act})
+					}
+				} else if m, ok := rawItem.(map[string]string); ok {
+					if m["text"] != "" && m["token"] != "" {
+						items = append(items, actionItem{text: m["text"], token: m["token"], action: m["action"]})
+					}
+				}
+			}
+		}
+		for _, it := range items {
+			btnType := "default"
+			if it.action == "issue_mark_spam_and_close" {
+				btnType = "danger"
+			} else if it.action == "issue_reply_draft" || it.action == "pr_quick_approve" {
+				btnType = "primary"
+			}
+			actions = append(actions, map[string]any{
+				"tag":  "button",
+				"text": map[string]any{"tag": "plain_text", "content": it.text},
+				"type": btnType,
+				"value": map[string]any{
+					"action": it.action,
+					"token":  it.token,
+				},
+			})
+		}
+	}
 	elements = append(elements, map[string]any{
 		"tag": "note",
 		"elements": []any{
@@ -633,6 +681,55 @@ func (w *Worker) sendSlack(ctx context.Context, ch store.NotificationChannel, se
 			"action_id": "workflow_rerun",
 			"style":     "danger",
 		})
+	}
+	if raw, ok := item.BodyJSON["chatops_actions"]; ok && raw != nil {
+		type actionItem struct {
+			text   string
+			token  string
+			action string
+		}
+		var items []actionItem
+		switch rawItems := raw.(type) {
+		case []map[string]string:
+			for _, m := range rawItems {
+				if m["text"] != "" && m["token"] != "" {
+					items = append(items, actionItem{text: m["text"], token: m["token"], action: m["action"]})
+				}
+			}
+		case []any:
+			for _, rawItem := range rawItems {
+				if m, ok := rawItem.(map[string]any); ok {
+					btnText, _ := m["text"].(string)
+					token, _ := m["token"].(string)
+				act, _ := m["action"].(string)
+					if btnText != "" && token != "" {
+						items = append(items, actionItem{text: btnText, token: token, action: act})
+					}
+				} else if m, ok := rawItem.(map[string]string); ok {
+					if m["text"] != "" && m["token"] != "" {
+						items = append(items, actionItem{text: m["text"], token: m["token"], action: m["action"]})
+					}
+				}
+			}
+		}
+		for _, it := range items {
+			btnObj := map[string]any{
+				"type": "button",
+				"text": map[string]any{
+					"type":  "plain_text",
+					"text":  it.text,
+					"emoji": true,
+				},
+				"value":     it.token,
+				"action_id": it.action,
+			}
+			if it.action == "issue_mark_spam_and_close" {
+				btnObj["style"] = "danger"
+			} else if it.action == "issue_reply_draft" || it.action == "pr_quick_approve" {
+				btnObj["style"] = "primary"
+			}
+			actionElements = append(actionElements, btnObj)
+		}
 	}
 	if len(actionElements) > 0 {
 		blocks = append(blocks, map[string]any{

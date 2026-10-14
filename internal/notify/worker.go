@@ -415,7 +415,7 @@ func extractTelegramChatOpsActionRows(bodyJSON map[string]any) [][]map[string]st
 
 	for _, it := range items {
 		btn := map[string]string{"text": it.text, "callback_data": "act:" + it.token}
-		canPair := (it.action == "issue_request_details" || it.action == "issue_snooze") && len([]rune(it.text)) <= 12
+		canPair := (it.action == "issue_request_details" || it.action == "issue_snooze" || it.action == "pr_snooze" || it.action == "pr_quick_approve") && len([]rune(it.text)) <= 12
 		if canPair {
 			pairableBtns = append(pairableBtns, btn)
 		} else if it.action == "issue_apply_labels" {

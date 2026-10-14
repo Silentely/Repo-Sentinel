@@ -1513,7 +1513,32 @@ func TestEvaluatePRDraft_NoQuickApproveAction(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("期望产生 1 条通知，实际: %d", len(items))
 	}
-	if actions, ok := items[0].BodyJSON["chatops_actions"]; ok && actions != nil {
-		t.Fatalf("Draft PR 不应装配快捷批准按钮，实际: %v", actions)
+	var actions []map[string]string
+	switch raw := items[0].BodyJSON["chatops_actions"].(type) {
+	case []map[string]string:
+		actions = raw
+	case []any:
+		for _, it := range raw {
+			if m, ok := it.(map[string]any); ok {
+				itemAct, _ := m["action"].(string)
+				itemText, _ := m["text"].(string)
+				actions = append(actions, map[string]string{"action": itemAct, "text": itemText})
+			}
+		}
+	}
+	for _, a := range actions {
+		if a["action"] == "pr_quick_approve" {
+			t.Fatalf("Draft PR 不应装配快捷批准按钮，实际: %v", actions)
+		}
+	}
+	foundSnooze := false
+	for _, a := range actions {
+		if a["action"] == "pr_snooze" {
+			foundSnooze = true
+			break
+		}
+	}
+	if !foundSnooze {
+		t.Fatalf("Draft PR 仍应支持待办延迟提醒 (pr_snooze)，实际: %v", actions)
 	}
 }

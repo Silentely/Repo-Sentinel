@@ -90,6 +90,88 @@ func TestSendSlack_BlockKitPayload(t *testing.T) {
 	}
 }
 
+func TestSendSlack_ChatOpsActions(t *testing.T) {
+	var receivedPayload map[string]any
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &receivedPayload)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	w := &Worker{Client: srv.Client()}
+	ch := store.NotificationChannel{
+		Target:       srv.URL,
+		AllowPrivate: true,
+	}
+	item := store.NotificationOutbox{
+		Title:    "PR #42 Needs Review",
+		BodyText: "Pull request details",
+		HTMLURL:  "https://github.com/org/repo/pull/42",
+		BodyJSON: map[string]any{
+			"chatops_actions": []map[string]string{
+				{
+					"text":   "✅ 快捷批准并合入",
+					"token":  "tok-approve",
+					"action": "pr_quick_approve",
+				},
+				{
+					"text":   "🚫 标记垃圾并关闭",
+					"token":  "tok-spam",
+					"action": "issue_mark_spam_and_close",
+				},
+				{
+					"text":   "💤 延迟2小时提醒",
+					"token":  "tok-snooze",
+					"action": "pr_snooze",
+				},
+			},
+		},
+	}
+
+	if err := w.sendSlack(t.Context(), ch, "", item); err != nil {
+		t.Fatalf("sendSlack error: %v", err)
+	}
+
+	blocks, ok := receivedPayload["blocks"].([]any)
+	if !ok || len(blocks) < 3 {
+		t.Fatalf("expected at least 3 blocks, got %v", blocks)
+	}
+
+	var actionBlock map[string]any
+	for _, b := range blocks {
+		if bm, ok := b.(map[string]any); ok && bm["type"] == "actions" {
+			actionBlock = bm
+			break
+		}
+	}
+	if actionBlock == nil {
+		t.Fatal("expected actions block")
+	}
+
+	elements, ok := actionBlock["elements"].([]any)
+	if !ok || len(elements) != 4 {
+		t.Fatalf("expected 4 action elements, got %d", len(elements))
+	}
+
+	btnApprove := elements[1].(map[string]any)
+	if btnApprove["action_id"] != "pr_quick_approve" || btnApprove["style"] != "primary" || btnApprove["value"] != "tok-approve" {
+		t.Errorf("unexpected approve button: %+v", btnApprove)
+	}
+
+	btnSpam := elements[2].(map[string]any)
+	if btnSpam["action_id"] != "issue_mark_spam_and_close" || btnSpam["style"] != "danger" || btnSpam["value"] != "tok-spam" {
+		t.Errorf("unexpected spam button: %+v", btnSpam)
+	}
+
+	btnSnooze := elements[3].(map[string]any)
+	if btnSnooze["action_id"] != "pr_snooze" || btnSnooze["value"] != "tok-snooze" {
+		t.Errorf("unexpected snooze button: %+v", btnSnooze)
+	}
+}
+
 func TestSendSlack_DeliverRouter(t *testing.T) {
 	w, ch, item := newChannelTestHarness(t, store.ChannelSlack, func(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusOK)

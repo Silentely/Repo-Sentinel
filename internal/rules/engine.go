@@ -244,6 +244,15 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 						"token":  tokenID,
 					})
 				}
+			} else if triageResult.Category == "Incomplete" {
+				reqBody := "你好，感谢提交 Issue！由于当前描述中信息较少，请协助补充更详细的问题背景、复现步骤或预期行为说明，以便进一步分析跟进。感谢配合！"
+				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_request_details", *res.Event.RepositoryID, issueNum, reqBody, "", 24*time.Hour); err == nil {
+					chatOpsActions = append(chatOpsActions, map[string]string{
+						"text":   "📋 索取补充信息",
+						"action": "issue_request_details",
+						"token":  tokenID,
+					})
+				}
 			}
 			var rawLabels []string
 			if triageResult.Category != "" {
@@ -281,8 +290,8 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 				isDraft = true
 			}
 		}
+		prNum := int(*res.Event.SubjectNumber)
 		if !isDraft {
-			prNum := int(*res.Event.SubjectNumber)
 			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "pr_quick_approve", *res.Event.RepositoryID, prNum, "", "", 24*time.Hour); err == nil {
 				chatOpsActions = append(chatOpsActions, map[string]string{
 					"text":   "✅ 快捷批准合入",
@@ -290,6 +299,14 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 					"token":  tokenID,
 				})
 			}
+		}
+		snoozePayload := fmt.Sprintf("%s|%d|%s", repoFullName, prNum, htmlURL)
+		if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "pr_snooze", *res.Event.RepositoryID, prNum, snoozePayload, "", 24*time.Hour); err == nil {
+			chatOpsActions = append(chatOpsActions, map[string]string{
+				"text":   "💤 延迟2小时提醒",
+				"action": "pr_snooze",
+				"token":  tokenID,
+			})
 		}
 	}
 

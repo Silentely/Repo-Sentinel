@@ -164,15 +164,15 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 			return scopeKey, nil
 		})
 
-	case "issue_snooze":
+	case "issue_snooze", "pr_snooze":
 		if action.IssueNumber <= 0 {
-			return errors.New("invalid issue number")
+			return errors.New("invalid item number")
 		}
 		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
-		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_snooze", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
+		return rules.ExecuteWithReceipt(ctx, settingsStore, action.Action, action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
 			partsPayload := strings.Split(action.Payload, "|")
 			repoFull := partsPayload[0]
-			issueNum := action.IssueNumber
+			itemNum := action.IssueNumber
 			link := ""
 			if len(partsPayload) >= 3 {
 				link = partsPayload[2]
@@ -182,16 +182,22 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 				return "", err
 			}
 			remindAt := time.Now().UTC().Add(2 * time.Hour)
+			itemKind := store.WorkItemKindIssue
+			kindLabel := "Issue"
+			if action.Action == "pr_snooze" {
+				itemKind = store.WorkItemKindPR
+				kindLabel = "PR"
+			}
 			for _, ch := range channels {
-				if !ch.Enabled || !ch.AcceptsKind(store.WorkItemKindIssue) {
+				if !ch.Enabled || !ch.AcceptsKind(itemKind) {
 					continue
 				}
-				remindTitle := fmt.Sprintf("⏰ [待办提醒] %s #%d", repoFull, issueNum)
-				remindBody := fmt.Sprintf("<b>⏰ 稍后处理待办提醒</b>\n────────\n您在 2 小时前延迟了此 Issue 的处理：\n仓库：<code>%s</code>\nIssue：#%d", htmlpkg.EscapeString(repoFull), issueNum)
+				remindTitle := fmt.Sprintf("⏰ [待办提醒] %s %s #%d", repoFull, kindLabel, itemNum)
+				remindBody := fmt.Sprintf("<b>⏰ 稍后处理待办提醒</b>\n────────\n您在 2 小时前延迟了此 %s 的处理：\n仓库：<code>%s</code>\n%s：#%d", kindLabel, htmlpkg.EscapeString(repoFull), kindLabel, itemNum)
 				if link != "" {
 					remindBody += fmt.Sprintf("\n────────\n<a href=\"%s\">🔗 前往 GitHub</a>", htmlpkg.EscapeString(link))
 				}
-				snoozeIdem := fmt.Sprintf("snooze|%s|%d|%s", ch.ID, issueNum, action.ID)
+				snoozeIdem := fmt.Sprintf("snooze|%s|%s|%d|%s", ch.ID, action.Action, itemNum, action.ID)
 				_, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
 					ID:             ulid.Make().String(),
 					ChannelID:      ch.ID,
@@ -448,10 +454,45 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusOK, map[string]any{
 			"toast": map[string]string{
 				"type":    "info",
-				"content": "No action specified",
+				"content": "未指定操作动作",
 			},
 		})
 		return
+	}
+
+	// 1.5 验证是否属于授权的维护者用户（单兵安全边界，避免未授权用户抢占/消费令牌）
+	if s.dependencies.Store != nil {
+		setting, err := s.dependencies.Store.Settings().Get(r.Context(), "chatops.feishu.allowed_user_ids")
+		if err == nil && len(setting.ValueJSON) > 0 {
+			var allowedStr string
+			if err := json.Unmarshal(setting.ValueJSON, &allowedStr); err == nil && strings.TrimSpace(allowedStr) != "" {
+				userID := ""
+				if raw, ok := body["open_id"].(string); ok {
+					userID = raw
+				}
+				if operator, ok := body["operator"].(map[string]any); ok {
+					if raw, ok := operator["open_id"].(string); ok && raw != "" {
+						userID = raw
+					}
+				}
+				allowed := false
+				for _, uid := range strings.Split(allowedStr, ",") {
+					if strings.TrimSpace(uid) == userID {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					writeJSON(w, http.StatusOK, map[string]any{
+						"toast": map[string]string{
+							"type":    "warning",
+							"content": "⚠️ 仅受信任的维护者有权执行此操作",
+						},
+					})
+					return
+				}
+			}
+		}
 	}
 
 	action, err := ConsumeChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
@@ -486,19 +527,49 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 
 	if s.chatOpsExecutor == nil {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatops_unavailable"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"toast": map[string]string{
+				"type":    "danger",
+				"content": "⚠️ 执行器暂不可用",
+			},
+		})
 		return
 	}
 	if err := s.chatOpsExecutor.Execute(r.Context(), *action); err != nil {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "chatops_action_failed"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"toast": map[string]string{
+				"type":    "danger",
+				"content": "⚠️ 操作执行失败，令牌已恢复，可稍后重试",
+			},
+		})
 		return
+	}
+
+	var toastText string
+	switch action.Action {
+	case "issue_reply_draft":
+		toastText = "✅ 已在 GitHub 成功发布建议回复"
+	case "issue_mark_spam_and_close":
+		toastText = "🚫 已在 GitHub 标记垃圾内容并关闭"
+	case "issue_apply_labels":
+		toastText = "🏷️ 已在 GitHub 成功应用建议标签"
+	case "issue_request_details":
+		toastText = "📋 已在 GitHub 发布要素补充追问并打标"
+	case "issue_snooze", "pr_snooze":
+		toastText = "💤 已设置 2 小时后重新提醒"
+	case "pr_quick_approve":
+		toastText = "✅ 已在 GitHub 成功批准 PR 合入"
+	case "workflow_rerun":
+		toastText = "🔄 已触发重新运行工作流"
+	default:
+		toastText = "✅ 操作已成功完成"
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"toast": map[string]string{
 			"type":    "success",
-			"content": "Action queued successfully",
+			"content": toastText,
 		},
 	})
 }
@@ -546,7 +617,7 @@ func answerTelegramCallback(ctx context.Context, st store.Store, callbackID, act
 		text = "🏷️ 已成功在 GitHub 应用建议标签"
 	case "issue_request_details":
 		text = "📋 已在 GitHub 发布要素补充追问并打标"
-	case "issue_snooze":
+	case "issue_snooze", "pr_snooze":
 		text = "💤 已设置 2 小时后重新提醒"
 	case "pr_quick_approve":
 		text = "✅ 已成功批准 PR 合入"
@@ -596,7 +667,7 @@ func editTelegramMessageReplyMarkup(ctx context.Context, st store.Store, chatID 
 		statusLabel = "🏷️ 已应用标签"
 	case "issue_request_details":
 		statusLabel = "📋 已索取要素"
-	case "issue_snooze":
+	case "issue_snooze", "pr_snooze":
 		statusLabel = "💤 已延迟提醒"
 	case "pr_quick_approve":
 		statusLabel = "✅ 已批准合入"
@@ -607,21 +678,30 @@ func editTelegramMessageReplyMarkup(ctx context.Context, st store.Store, chatID 
 	}
 
 	var newKeyboard [][]map[string]any
-	for _, row := range keyboard {
-		var newRow []map[string]any
-		for _, btn := range row {
-			btnCopy := make(map[string]any)
-			for k, v := range btn {
-				btnCopy[k] = v
-			}
-			if data, ok := btnCopy["callback_data"].(string); ok && data == clickedData {
-				btnCopy["text"] = statusLabel
-				btnCopy["callback_data"] = "done:" + actionName
-			}
-			newRow = append(newRow, btnCopy)
+	if actionName == "issue_mark_spam_and_close" {
+		// 标记垃圾并关闭后，将键盘收敛为单一完成态按钮，避免维护者误触已关闭 Issue 的其他操作
+		newKeyboard = [][]map[string]any{
+			{
+				{"text": statusLabel, "callback_data": "done:" + actionName},
+			},
 		}
-		if len(newRow) > 0 {
-			newKeyboard = append(newKeyboard, newRow)
+	} else {
+		for _, row := range keyboard {
+			var newRow []map[string]any
+			for _, btn := range row {
+				btnCopy := make(map[string]any)
+				for k, v := range btn {
+					btnCopy[k] = v
+				}
+				if data, ok := btnCopy["callback_data"].(string); ok && data == clickedData {
+					btnCopy["text"] = statusLabel
+					btnCopy["callback_data"] = "done:" + actionName
+				}
+				newRow = append(newRow, btnCopy)
+			}
+			if len(newRow) > 0 {
+				newKeyboard = append(newKeyboard, newRow)
+			}
 		}
 	}
 

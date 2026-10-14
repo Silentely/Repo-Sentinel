@@ -590,3 +590,181 @@ func TestGitHubChatOpsExecutor_CompositeActionHandling(t *testing.T) {
 		t.Fatalf("打标遇 422 标签不存在时期望容错完成关闭，实际报错: %v", err)
 	}
 }
+
+func TestChatOps_Feishu_AllowedUserIDsGuard(t *testing.T) {
+	exec := &recordingChatOpsExecutor{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		chatOpsExecutor: exec,
+	})
+
+	// 配置飞书白名单
+	_, _ = fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		Key:       "chatops.feishu.allowed_user_ids",
+		ValueJSON: json.RawMessage(`"ou_maintainer1,ou_maintainer2"`),
+	})
+
+	tokenID, _ := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_mark_spam_and_close", "repo-1", 123, "", "", 10*time.Minute)
+
+	// Case 1: 未授权用户 ou_stranger 点击 -> 返回 200 并携带警告 Toast，拦截执行
+	unauthBody := map[string]any{
+		"open_id": "ou_stranger",
+		"action": map[string]any{
+			"value": map[string]any{
+				"token": tokenID,
+			},
+		},
+	}
+	raw1, _ := json.Marshal(unauthBody)
+	req1 := httptest.NewRequest(http.MethodPost, "/chatops/feishu/callback", bytes.NewReader(raw1))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("未授权请求期望返回 200 Toast, 实际: %d", w1.Code)
+	}
+	var res1 map[string]any
+	if err := json.Unmarshal(w1.Body.Bytes(), &res1); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+	toast1, ok := res1["toast"].(map[string]any)
+	if !ok || toast1["type"] != "warning" || !strings.Contains(fmt.Sprint(toast1["content"]), "受信任") {
+		t.Fatalf("期望返回拦截 Toast, 实际: %v", res1)
+	}
+	if exec.calls != 0 {
+		t.Fatalf("未授权用户不应触发执行器，调用次数: %d", exec.calls)
+	}
+
+	// Case 2: 授权用户 ou_maintainer1 点击 -> 返回 200 且正常执行
+	authBody := map[string]any{
+		"open_id": "ou_maintainer1",
+		"action": map[string]any{
+			"value": map[string]any{
+				"token": tokenID,
+			},
+		},
+	}
+	raw2, _ := json.Marshal(authBody)
+	req2 := httptest.NewRequest(http.MethodPost, "/chatops/feishu/callback", bytes.NewReader(raw2))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("授权请求期望返回 200, 实际: %d", w2.Code)
+	}
+	var res2 map[string]any
+	if err := json.Unmarshal(w2.Body.Bytes(), &res2); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+	toast2, ok := res2["toast"].(map[string]any)
+	if !ok || toast2["type"] != "success" {
+		t.Fatalf("期望返回成功 Toast, 实际: %v", res2)
+	}
+	if exec.calls != 1 {
+		t.Fatalf("授权用户应成功触发执行器，调用次数: %d", exec.calls)
+	}
+}
+
+func TestChatOps_Telegram_EditMessageReplyMarkup_SpamCollapse(t *testing.T) {
+	var receivedEditBody map[string]any
+	editCalled := make(chan struct{}, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/editMessageReplyMarkup" {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &receivedEditBody)
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+			select {
+			case editCalled <- struct{}{}:
+			default:
+			}
+			return
+		}
+		if r.URL.Path == "/answerCallbackQuery" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	exec := &recordingChatOpsExecutor{}
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		chatOpsExecutor: exec,
+	})
+
+	_, err := fixture.store.Settings().Upsert(t.Context(), store.SystemSetting{
+		Key:       "chatops.telegram.bot_token",
+		ValueJSON: json.RawMessage(fmt.Sprintf("%q", srv.URL)),
+	})
+	if err != nil {
+		t.Fatalf("配置 bot_token 失败: %v", err)
+	}
+
+	tokenID, err := CreateChatOpsTokenWithPayload(t.Context(), fixture.store, "issue_mark_spam_and_close", "repo-1", 42, "", "", 10*time.Minute)
+	if err != nil {
+		t.Fatalf("创建令牌失败: %v", err)
+	}
+
+	tgBody := map[string]any{
+		"update_id": 1,
+		"callback_query": map[string]any{
+			"id":   "cb-spam",
+			"data": "act:" + tokenID,
+			"from": map[string]any{"id": 123456, "username": "maintainer"},
+			"message": map[string]any{
+				"message_id": 1001,
+				"chat":       map[string]any{"id": -100456},
+				"reply_markup": map[string]any{
+					"inline_keyboard": [][]map[string]any{
+						{
+							{"text": "🔗 前往 GitHub", "url": "https://github.com/o/r/issues/42"},
+						},
+						{
+							{"text": "🚫 标记垃圾并关闭", "callback_data": "act:" + tokenID},
+						},
+						{
+							{"text": "💬 采纳建议一键回复", "callback_data": "act:other-tok"},
+						},
+					},
+				},
+			},
+		},
+	}
+	raw, _ := json.Marshal(tgBody)
+	req := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("期望 200, 实际: %d", w.Code)
+	}
+
+	select {
+	case <-editCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("超时未收到 editMessageReplyMarkup 调用")
+	}
+
+	rm, ok := receivedEditBody["reply_markup"].(map[string]any)
+	if !ok {
+		t.Fatalf("期望 reply_markup 存在: %v", receivedEditBody)
+	}
+	kb, ok := rm["inline_keyboard"].([]any)
+	if !ok || len(kb) != 1 {
+		t.Fatalf("垃圾标记后键盘应收敛为 1 行单一按钮, 实际行数: %d", len(kb))
+	}
+	row0 := kb[0].([]any)
+	if len(row0) != 1 {
+		t.Fatalf("期望单行只有 1 个按钮, 实际: %d", len(row0))
+	}
+	btn0 := row0[0].(map[string]any)
+	if btn0["text"] != "🚫 已标记关闭" {
+		t.Fatalf("期望按钮文案变为 🚫 已标记关闭, 实际: %v", btn0["text"])
+	}
+	if btn0["callback_data"] != "done:issue_mark_spam_and_close" {
+		t.Fatalf("期望 callback_data 变为 done:issue_mark_spam_and_close, 实际: %v", btn0["callback_data"])
+	}
+}

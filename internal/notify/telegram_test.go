@@ -414,3 +414,22 @@ func TestExtractTelegramChatOpsActionRows_Pairing(t *testing.T) {
 		t.Errorf("第三行应为标签单按钮，实际: %v", rows[2])
 	}
 }
+
+func TestExtractTelegramChatOpsActionRows_PRPairing(t *testing.T) {
+	bodyJSON := map[string]any{
+		"chatops_actions": []any{
+			map[string]any{"action": "pr_quick_approve", "text": "✅ 快捷批准合入", "token": "tok_approve"},
+			map[string]any{"action": "pr_snooze", "text": "💤 延迟2小时提醒", "token": "tok_snooze"},
+		},
+	}
+	rows := extractTelegramChatOpsActionRows(bodyJSON)
+	if len(rows) != 1 {
+		t.Fatalf("期望 PR 快捷批准与待办延迟提醒并排为 1 行 2 列，实际行数: %d", len(rows))
+	}
+	if len(rows[0]) != 2 {
+		t.Fatalf("期望第 1 行为 2 列按钮，实际: %d 列", len(rows[0]))
+	}
+	if rows[0][0]["callback_data"] != "act:tok_approve" || rows[0][1]["callback_data"] != "act:tok_snooze" {
+		t.Errorf("按钮顺序或 callback_data 不符: %v", rows[0])
+	}
+}

@@ -46,6 +46,7 @@ var settingSpecs = func() []settingSpec {
 		{key: "report.monthly_enabled", def: false, validate: boolSetting(boolMsg)},
 		{key: "report.monthly_day", def: 1, validate: intRangeSetting(1, 28, "每月发送日须为 1–28 的整数。")},
 		{key: "chatops.telegram.allowed_user_ids", def: "", validate: validateTelegramUserIDs},
+		{key: "chatops.feishu.allowed_user_ids", def: "", validate: validateFeishuUserIDs},
 	}
 }()
 
@@ -243,6 +244,27 @@ func validateTelegramUserIDs(v any) (any, string, bool) {
 			return nil, "Telegram 用户白名单中包含无效的用户 ID：" + item, false
 		}
 		cleaned = append(cleaned, item)
+	}
+	return strings.Join(cleaned, ","), "", true
+}
+
+// validateFeishuUserIDs 校验并归一化飞书维护者用户 ID / open_id 列表（逗号分隔的字符串）。
+func validateFeishuUserIDs(v any) (any, string, bool) {
+	s, ok := v.(string)
+	if !ok {
+		return nil, "飞书用户白名单须为逗号分隔的 ID / open_id 字符串。", false
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", "", true
+	}
+	parts := strings.Split(s, ",")
+	var cleaned []string
+	for _, p := range parts {
+		item := strings.TrimSpace(p)
+		if item != "" {
+			cleaned = append(cleaned, item)
+		}
 	}
 	return strings.Join(cleaned, ","), "", true
 }
