@@ -14,6 +14,8 @@
 | `cli` | 子命令分派与运维工具 | [cli/CLAUDE.md](cli/CLAUDE.md) |
 | `config` | 配置加载、Secret、校验 | [config/CLAUDE.md](config/CLAUDE.md) |
 | `httpapi` | Chi 路由、REST、中间件、SPA | [httpapi/CLAUDE.md](httpapi/CLAUDE.md) |
+| `chatops` | ChatOps 单兵运维交互、操作令牌与就地反馈 | [chatops/CLAUDE.md](chatops/CLAUDE.md) |
+| `sideeffect` | 外部副作用执行收据与幂等原语 | [sideeffect/CLAUDE.md](sideeffect/CLAUDE.md) |
 | `store` | 领域模型 + Ent 持久化 | [store/CLAUDE.md](store/CLAUDE.md) |
 | `auth` | 管理员、Session、CSRF、限流 | [auth/CLAUDE.md](auth/CLAUDE.md) |
 | `githubx` | GitHub App/REST/验签/运行时配置 | [githubx/CLAUDE.md](githubx/CLAUDE.md) |

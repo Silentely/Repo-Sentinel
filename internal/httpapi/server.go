@@ -16,6 +16,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
+	"github.com/Silentely/Repo-Sentinel/internal/chatops"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
@@ -91,6 +92,7 @@ type Dependencies struct {
 	// SSEHub 可选；用于实时事件推流（若未传则在 New 中自动创建）。
 	SSEHub          *SSEHub
 	ChatOpsExecutor ChatOpsActionExecutor
+	ChatOpsService  chatops.Service
 }
 
 type server struct {
@@ -110,6 +112,7 @@ type server struct {
 	totpTickets     *auth.TOTPTicketManager
 	sseHub          *SSEHub
 	chatOpsExecutor ChatOpsActionExecutor
+	chatOpsService  chatops.Service
 	startedAt       time.Time
 	workerID        string
 }
@@ -296,6 +299,15 @@ func New(dependencies Dependencies) http.Handler {
 	}
 	if s.chatOpsExecutor == nil && dependencies.GitHubRuntime != nil {
 		s.chatOpsExecutor = &GitHubChatOpsExecutor{Store: dependencies.Store, Client: dependencies.GitHubRuntime.Client}
+	}
+	s.chatOpsService = dependencies.ChatOpsService
+	if s.chatOpsService == nil {
+		s.chatOpsService = chatops.NewService(chatops.Dependencies{
+			Store:    dependencies.Store,
+			Executor: s.chatOpsExecutor,
+			Logger:   dependencies.Logger,
+			SafeGo:   s.safeGo,
+		})
 	}
 	// 若运行时 Public Base URL 来自管理台，启动后仍以当前快照为准（见 cookiesSecure）。
 	router := chi.NewRouter()

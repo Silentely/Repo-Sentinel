@@ -64,6 +64,8 @@ CLI (serve | version | config validate | admin reset-password)
 | `internal/normalizer` | Webhook 规范化、指纹、乱序保护 |
 | `internal/rules` | 实时通知规则 |
 | `internal/notify` | Outbox 投递 Worker |
+| `internal/chatops` | ChatOps 交互运维动作、令牌防重放与状态回写 |
+| `internal/sideeffect` | 外部副作用执行收据与幂等原语 |
 | `internal/httpapi` | 路由、中间件、JSON 错误、SPA |
 | `internal/app` | 装配与生命周期 |
 | `internal/buildinfo` | ldflags 版本元数据 |

@@ -297,9 +297,9 @@ func TestSideEffects_CreateErrorSurfaces(t *testing.T) {
 	}
 }
 
-// TestSideEffects_StalePendingReclaimed 验证陈旧 pending 回执（执行者已崩溃）被回收并重试一次，
-// 而非永久阻塞副作用。
-func TestSideEffects_StalePendingReclaimed(t *testing.T) {
+// TestSideEffects_StalePending_BlockedWithoutReplay 验证已存在 pending 回执时，严格视作在途或结果待对账，
+// 绝不能仅凭超时无条件删除重放，杜绝导致重复外部副作用。
+func TestSideEffects_StalePending_BlockedWithoutReplay(t *testing.T) {
 	memStore := newMemSettingsStore()
 	ctx := context.Background()
 
@@ -311,26 +311,18 @@ func TestSideEffects_StalePendingReclaimed(t *testing.T) {
 	}
 
 	executed := false
-	if err := ExecuteWithReceipt(ctx, memStore, "rerun", "repo-1", "105", "v1", "action-1", func() (string, error) {
+	detail, err := ExecuteWithReceiptDetail(ctx, memStore, "rerun", "repo-1", "105", "v1", "action-1", func() (string, error) {
 		executed = true
 		return "run-id-new", nil
-	}); err != nil {
-		t.Fatalf("陈旧 pending 应被回收并成功重试，got err: %v", err)
-	}
-	if !executed {
-		t.Fatal("陈旧 pending 回收后应执行一次外部副作用")
-	}
-
-	setting, err := memStore.Get(ctx, key)
+	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("遇到 pending 记录不应报错，got err: %v", err)
 	}
-	var rec SideEffectReceipt
-	if err := json.Unmarshal(setting.ValueJSON, &rec); err != nil {
-		t.Fatal(err)
+	if executed {
+		t.Fatal("遇到 pending 回执绝不应再次调用外部 API（防止重复评论/重复执行）")
 	}
-	if rec.State != ReceiptSucceeded || rec.ExternalID != "run-id-new" {
-		t.Fatalf("回收重试后回执应为 succeeded，got state=%s id=%s", rec.State, rec.ExternalID)
+	if detail.State != ReceiptPending {
+		t.Fatalf("回执详情状态期望 pending，实际为: %s", detail.State)
 	}
 }
 

@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### 架构深化与重构
+- **ChatOps 子系统收拢与深模块深化（Candidate 1 落地）**：
+  - 新建 `internal/chatops` 深模块，将原散落在 `httpapi`（逾 1,000 行）、`rules`、`notify` 的操作令牌生命周期（防重放、原子锁定、TTL 淘汰）、单兵运维安全白名单与 ActorID 强绑定、9 种 Issue/PR/Workflow 复合动作执行以及全平台就地状态回写反馈彻底收拢。
+  - 提取底层共享无状态原语包 `internal/sideeffect`，承载 `ExecuteWithReceipt` 幂等收据与在途网络不确定性断言，彻底消除 `rules <-> chatops` 潜在循环依赖。
+  - 净化 `internal/httpapi` 传输层：`chatops_handlers.go` 瘦身为纯协议反序列化与状态码转换薄适配器，不再内联出站网络请求与领域变更。
+  - 新增 `GLOSSARY.md` 固化 ChatOps 核心领域概念与契约。
+
 ### 新增
 - AI 研判交互与自适应引导增强：
   - 历史相似 Issue 智能关联去重：新增 FindSimilarIssues 双字 N-gram 与 Jaccard 相似度匹配引擎，分诊时自动比对仓库历史工单；若存在高重合度历史项，自动在回复草稿中引用并在 ChatOps 装配一键关联历史编号、贴 duplicate 标签并关闭的极速工作流
