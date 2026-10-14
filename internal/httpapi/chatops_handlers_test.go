@@ -424,8 +424,15 @@ func TestChatOps_Telegram_AllowedUserIDsGuard(t *testing.T) {
 	req1.Header.Set("Content-Type", "application/json")
 	w1 := httptest.NewRecorder()
 	fixture.handler.ServeHTTP(w1, req1)
-	if w1.Code != http.StatusForbidden {
-		t.Fatalf("未授权用户期望 403, 实际: %d", w1.Code)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("未授权用户回调应响应 200 避免 Telegram 平台重试, 实际: %d", w1.Code)
+	}
+	var res1 map[string]any
+	if err := json.Unmarshal(w1.Body.Bytes(), &res1); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+	if res1["status"] != "forbidden" || res1["error"] != "telegram_user_not_allowed" {
+		t.Fatalf("期望状态 forbidden / telegram_user_not_allowed, 实际: %v", res1)
 	}
 	if exec.calls != 0 {
 		t.Fatalf("未授权用户不应触发执行器，实际调用次数: %d", exec.calls)
@@ -463,6 +470,11 @@ func TestGitHubChatOpsExecutor_CompositeActionHandling(t *testing.T) {
 			labelCalls++
 			if strings.Contains(r.URL.Path, "/issues/500/labels") {
 				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if strings.Contains(r.URL.Path, "/issues/501/labels") {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(`{"message":"Label does not exist"}`))
 				return
 			}
 			w.WriteHeader(http.StatusOK)
@@ -565,5 +577,16 @@ func TestGitHubChatOpsExecutor_CompositeActionHandling(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "add spam label") {
 		t.Fatalf("期望暴露打标失败错误，实际: %v", err)
+	}
+
+	// 4. 测试打标遭遇 422 标签不存在时，容错成功关闭 Issue
+	err = exec.Execute(t.Context(), ChatOpsActionData{
+		ID:          "act-spam-422",
+		Action:      "issue_mark_spam_and_close",
+		RepoID:      repo.ID,
+		IssueNumber: 501,
+	})
+	if err != nil {
+		t.Fatalf("打标遇 422 标签不存在时期望容错完成关闭，实际报错: %v", err)
 	}
 }

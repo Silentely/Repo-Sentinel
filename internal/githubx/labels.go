@@ -26,6 +26,10 @@ var AllowedSentinelLabels = map[string]string{
 	"help-wanted":     "help wanted",
 	"performance":     "performance",
 	"security":        "security",
+	"needs-more-info": "needs-more-info",
+	"need-more-info":  "needs-more-info",
+	"duplicate":       "duplicate",
+	"invalid":         "invalid",
 }
 
 // ErrLabelNotFound indicates GitHub returned 422 Unprocessable Entity (e.g. label does not exist).

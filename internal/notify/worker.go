@@ -409,30 +409,32 @@ func extractTelegramChatOpsActionRows(bodyJSON map[string]any) [][]map[string]st
 		return nil
 	}
 
-	var rows [][]map[string]string
-	var pendingPair []map[string]string
-
-	flushPending := func() {
-		if len(pendingPair) > 0 {
-			rows = append(rows, pendingPair)
-			pendingPair = nil
-		}
-	}
+	var primaryRows [][]map[string]string
+	var pairableBtns []map[string]string
+	var labelRows [][]map[string]string
 
 	for _, it := range items {
 		btn := map[string]string{"text": it.text, "callback_data": "act:" + it.token}
 		canPair := (it.action == "issue_request_details" || it.action == "issue_snooze") && len([]rune(it.text)) <= 12
 		if canPair {
-			pendingPair = append(pendingPair, btn)
-			if len(pendingPair) == 2 {
-				flushPending()
-			}
+			pairableBtns = append(pairableBtns, btn)
+		} else if it.action == "issue_apply_labels" {
+			labelRows = append(labelRows, []map[string]string{btn})
 		} else {
-			flushPending()
-			rows = append(rows, []map[string]string{btn})
+			primaryRows = append(primaryRows, []map[string]string{btn})
 		}
 	}
-	flushPending()
+
+	var rows [][]map[string]string
+	rows = append(rows, primaryRows...)
+	for i := 0; i < len(pairableBtns); i += 2 {
+		if i+1 < len(pairableBtns) {
+			rows = append(rows, []map[string]string{pairableBtns[i], pairableBtns[i+1]})
+		} else {
+			rows = append(rows, []map[string]string{pairableBtns[i]})
+		}
+	}
+	rows = append(rows, labelRows...)
 	return rows
 }
 

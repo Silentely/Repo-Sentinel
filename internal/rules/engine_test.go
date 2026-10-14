@@ -1471,3 +1471,49 @@ func TestEvaluatePRGeneratesQuickApproveAction(t *testing.T) {
 		t.Fatalf("期望 pr_quick_approve 动作，实际: %v", actions)
 	}
 }
+
+func TestEvaluatePRDraft_NoQuickApproveAction(t *testing.T) {
+	data := openEngineStore(t)
+	_, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID:          ulid.Make().String(),
+		ChannelType: store.ChannelTelegram,
+		Name:        "tg",
+		Enabled:     true,
+		Target:      "123",
+		EventKinds:  []string{store.WorkItemKindPR},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	e := &Engine{Store: data}
+	subjectNum := int64(201)
+	repoID := "repo-123"
+	res := normalizer.Result{Event: &store.Event{
+		Kind:          store.WorkItemKindPR,
+		Action:        "opened",
+		Title:         "wip: new feature in progress",
+		Actor:         "alice",
+		SubjectNumber: &subjectNum,
+		RepositoryID:  &repoID,
+		PayloadSummary: map[string]any{
+			"body":  "work in progress",
+			"draft": true,
+		},
+	}}
+
+	if err := e.Evaluate(t.Context(), res, "acme/web"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, _, err := data.Outbox().List(t.Context(), store.ListFilter{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("期望产生 1 条通知，实际: %d", len(items))
+	}
+	if actions, ok := items[0].BodyJSON["chatops_actions"]; ok && actions != nil {
+		t.Fatalf("Draft PR 不应装配快捷批准按钮，实际: %v", actions)
+	}
+}

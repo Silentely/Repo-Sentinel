@@ -45,6 +45,7 @@ var settingSpecs = func() []settingSpec {
 		{key: "report.weekly_day", def: "monday", validate: validateWeekday},
 		{key: "report.monthly_enabled", def: false, validate: boolSetting(boolMsg)},
 		{key: "report.monthly_day", def: 1, validate: intRangeSetting(1, 28, "每月发送日须为 1–28 的整数。")},
+		{key: "chatops.telegram.allowed_user_ids", def: "", validate: validateTelegramUserIDs},
 	}
 }()
 
@@ -219,4 +220,29 @@ func coerceIntInRange(v any, min, max int) (int, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+// validateTelegramUserIDs 校验并归一化 Telegram 维护者用户 ID 列表（逗号分隔的数字字符串）。
+func validateTelegramUserIDs(v any) (any, string, bool) {
+	s, ok := v.(string)
+	if !ok {
+		return nil, "Telegram 用户白名单须为逗号分隔的数字 ID 字符串。", false
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", "", true
+	}
+	parts := strings.Split(s, ",")
+	var cleaned []string
+	for _, p := range parts {
+		item := strings.TrimSpace(p)
+		if item == "" {
+			continue
+		}
+		if _, err := strconv.ParseInt(item, 10, 64); err != nil {
+			return nil, "Telegram 用户白名单中包含无效的用户 ID：" + item, false
+		}
+		cleaned = append(cleaned, item)
+	}
+	return strings.Join(cleaned, ","), "", true
 }

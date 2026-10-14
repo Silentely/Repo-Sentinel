@@ -10,6 +10,7 @@ import (
 	htmlpkg "html"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -108,12 +109,14 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 		}
 		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
 		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_mark_spam_and_close", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
-			if err := e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"invalid"}); err != nil {
-				return "", fmt.Errorf("add spam label: %w", err)
-			}
 			err := e.Client.CloseIssue(ctx, token, parts[0], parts[1], action.IssueNumber, "not_planned")
 			if err != nil {
 				return "", err
+			}
+			if labelErr := e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"invalid"}); labelErr != nil {
+				if !githubx.IsLabelNotFoundError(labelErr) {
+					return "", fmt.Errorf("add spam label: %w", labelErr)
+				}
 			}
 			return scopeKey, nil
 		})
@@ -135,7 +138,7 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 				}
 			}
 			if len(cleanLabels) == 0 {
-				return scopeKey, nil
+				return "", errors.New("no valid labels to apply")
 			}
 			err := e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, cleanLabels)
 			if err != nil {
@@ -153,12 +156,10 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 		}
 		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
 		return rules.ExecuteWithReceipt(ctx, settingsStore, "issue_request_details", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
+			_ = e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"needs-more-info"})
 			err := e.Client.CreateIssueComment(ctx, token, parts[0], parts[1], action.IssueNumber, action.Payload)
 			if err != nil {
 				return "", err
-			}
-			if err := e.Client.AddIssueLabels(ctx, token, parts[0], parts[1], action.IssueNumber, []string{"needs-more-info"}); err != nil {
-				return "", fmt.Errorf("add needs-more-info label: %w", err)
 			}
 			return scopeKey, nil
 		})
@@ -202,7 +203,7 @@ func (e *GitHubChatOpsExecutor) Execute(ctx context.Context, action ChatOpsActio
 					HTMLURL:        link,
 					ParseMode:      "HTML",
 				})
-				if err != nil {
+				if err != nil && !errors.Is(err, store.ErrConflict) {
 					return "", fmt.Errorf("create snooze outbox: %w", err)
 				}
 			}
@@ -335,7 +336,7 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 					if update.CallbackQuery.ID != "" {
 						go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 仅受信任的维护者有权执行此操作", true)
 					}
-					writeJSON(w, http.StatusForbidden, map[string]string{"error": "telegram_user_not_allowed"})
+					writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "forbidden", "error": "telegram_user_not_allowed"})
 					return
 				}
 			}
@@ -348,23 +349,35 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 		if s.dependencies.Logger != nil {
 			s.dependencies.Logger.Warn("telegram chatops token consumption failed", "token_id", tokenID, "error", err.Error())
 		}
+		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
+			go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 操作已失效或已被执行", true)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "ignored", "reason": err.Error()})
 		return
 	}
 
 	if action.ActorID != "" && strconv.FormatInt(update.CallbackQuery.From.ID, 10) != action.ActorID {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "chatops_actor_forbidden"})
+		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
+			go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 无权执行此操作", true)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "forbidden", "error": "chatops_actor_forbidden"})
 		return
 	}
 	if s.chatOpsExecutor == nil {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "chatops_unavailable"})
+		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
+			go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 执行器暂不可用", true)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "service_unavailable", "error": "chatops_unavailable"})
 		return
 	}
 	if err := s.chatOpsExecutor.Execute(r.Context(), *action); err != nil {
 		_ = ReleaseChatOpsToken(r.Context(), s.dependencies.Store, tokenID)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "chatops_action_failed"})
+		if update.CallbackQuery != nil && update.CallbackQuery.ID != "" {
+			go answerTelegramCustom(context.Background(), s.dependencies.Store, update.CallbackQuery.ID, "⚠️ 操作执行失败，令牌已恢复，可稍后重试", true)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "action_failed", "error": err.Error()})
 		return
 	}
 
@@ -490,16 +503,33 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// resolveTelegramBotToken 解析 Telegram Bot Token：优先从环境变量或系统设置获取。
+func resolveTelegramBotToken(ctx context.Context, st store.Store) string {
+	if envToken := strings.TrimSpace(os.Getenv("CHATOPS_TELEGRAM_BOT_TOKEN")); envToken != "" {
+		return envToken
+	}
+	if envToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")); envToken != "" {
+		return envToken
+	}
+	if st == nil {
+		return ""
+	}
+	setting, err := st.Settings().Get(ctx, "chatops.telegram.bot_token")
+	if err == nil && len(setting.ValueJSON) > 0 {
+		var botToken string
+		if err := json.Unmarshal(setting.ValueJSON, &botToken); err == nil && strings.TrimSpace(botToken) != "" {
+			return strings.TrimSpace(botToken)
+		}
+	}
+	return ""
+}
+
 func answerTelegramCallback(ctx context.Context, st store.Store, callbackID, actionName string) {
 	if callbackID == "" || st == nil {
 		return
 	}
-	setting, err := st.Settings().Get(ctx, "chatops.telegram.bot_token")
-	if err != nil || len(setting.ValueJSON) == 0 {
-		return
-	}
-	var botToken string
-	if err := json.Unmarshal(setting.ValueJSON, &botToken); err != nil || botToken == "" {
+	botToken := resolveTelegramBotToken(ctx, st)
+	if botToken == "" {
 		return
 	}
 	var text string
@@ -551,12 +581,8 @@ func editTelegramMessageReplyMarkup(ctx context.Context, st store.Store, chatID 
 	if chatID == 0 || messageID == 0 || st == nil || len(keyboard) == 0 {
 		return
 	}
-	setting, err := st.Settings().Get(ctx, "chatops.telegram.bot_token")
-	if err != nil || len(setting.ValueJSON) == 0 {
-		return
-	}
-	var botToken string
-	if err := json.Unmarshal(setting.ValueJSON, &botToken); err != nil || botToken == "" {
+	botToken := resolveTelegramBotToken(ctx, st)
+	if botToken == "" {
 		return
 	}
 
@@ -627,12 +653,8 @@ func answerTelegramCustom(ctx context.Context, st store.Store, callbackID, text 
 	if callbackID == "" || st == nil {
 		return
 	}
-	setting, err := st.Settings().Get(ctx, "chatops.telegram.bot_token")
-	if err != nil || len(setting.ValueJSON) == 0 {
-		return
-	}
-	var botToken string
-	if err := json.Unmarshal(setting.ValueJSON, &botToken); err != nil || botToken == "" {
+	botToken := resolveTelegramBotToken(ctx, st)
+	if botToken == "" {
 		return
 	}
 	payload := map[string]any{

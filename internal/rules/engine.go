@@ -275,13 +275,21 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			}
 		}
 	} else if res.Event.Kind == store.WorkItemKindPR && (res.Event.Action == "opened" || res.Event.Action == "ready_for_review" || res.Event.Action == "reopened") && res.Event.SubjectNumber != nil && res.Event.RepositoryID != nil {
-		prNum := int(*res.Event.SubjectNumber)
-		if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "pr_quick_approve", *res.Event.RepositoryID, prNum, "", "", 24*time.Hour); err == nil {
-			chatOpsActions = append(chatOpsActions, map[string]string{
-				"text":   "✅ 快捷批准合入",
-				"action": "pr_quick_approve",
-				"token":  tokenID,
-			})
+		isDraft := false
+		if res.Event.PayloadSummary != nil {
+			if d, ok := res.Event.PayloadSummary["draft"].(bool); ok && d {
+				isDraft = true
+			}
+		}
+		if !isDraft {
+			prNum := int(*res.Event.SubjectNumber)
+			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "pr_quick_approve", *res.Event.RepositoryID, prNum, "", "", 24*time.Hour); err == nil {
+				chatOpsActions = append(chatOpsActions, map[string]string{
+					"text":   "✅ 快捷批准合入",
+					"action": "pr_quick_approve",
+					"token":  tokenID,
+				})
+			}
 		}
 	}
 
