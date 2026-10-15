@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-15
+
 ### 架构深化与重构
 - **ChatOps 子系统收拢与深模块深化（Candidate 1 落地）**：
   - 新建 `internal/chatops` 深模块，将原散落在 `httpapi`（逾 1,000 行）、`rules`、`notify` 的操作令牌生命周期（防重放、原子锁定、TTL 淘汰）、单兵运维安全白名单与 ActorID 强绑定、9 种 Issue/PR/Workflow 复合动作执行以及全平台就地状态回写反馈彻底收拢。
