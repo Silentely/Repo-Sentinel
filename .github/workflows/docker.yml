@@ -94,7 +94,7 @@ jobs:
       # encoding/json/jsontext.Value，而本作业按 go.mod 使用 Go 1.26（jsontext 处于
       # jsonv2 实验门后）无法编译。重跑 codegen 并断言零 diff，让漂移在 CI 当场暴露。
       - name: Ent codegen freshness check
-        run: |\
+        run: |
           go generate ./internal/store/ent/...
           if [ -n "$(git status --porcelain -- internal/store/ent)" ]; then
             git status --porcelain -- internal/store/ent
@@ -127,7 +127,7 @@ jobs:
 
       - name: Frontend lint, typecheck & unit tests
         working-directory: web
-        run: |\
+        run: |
           pnpm install --frozen-lockfile
           pnpm typecheck
           pnpm lint
@@ -155,65 +155,197 @@ jobs:
     permissions:
       contents: read
       packages: write
-    needs: test
-    # 仅在非 PR（即分支 push 或打标签或手动触发）时执行镜像构建与推送
-    if: github.event_name != 'pull_request'
+    needs: [test]
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 正式 tag 为双架构 + QEMU，通常 15–30 分钟；main/dev 仅 amd64，约 3–8 分钟
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - name: Set up QEMU
-        # 仅 v* 标签需要构建 arm64 镜像，主/开发分支仅构建 amd64 节省 CI 时间
+        # 仅正式 tag 启用 QEMU（跨架构仿真，耗时主要来源）
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Compute image tags and build args
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          image="ghcr.io/${owner}/repo-sentinel"
+          short_sha="${GITHUB_SHA::12}"
+          version="$(tr -d '[:space:]' < VERSION)"
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "platforms=linux/amd64,linux/arm64" >> "${GITHUB_OUTPUT}"
+          else
+            echo "platforms=linux/amd64" >> "${GITHUB_OUTPUT}"
+          fi
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            {
+              echo "tags<<EOF"
+              echo "${image}:${GITHUB_REF_NAME}"
+              echo "${image}:latest"
+              echo "EOF"
+            } >> "${GITHUB_OUTPUT}"
+            echo "build_channel=release" >> "${GITHUB_OUTPUT}"
+            echo "app_version=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
+          elif [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            {
+              echo "tags<<EOF"
+              echo "${image}:main"
+              echo "${image}:main-${short_sha}"
+              echo "EOF"
+            } >> "${GITHUB_OUTPUT}"
+            echo "build_channel=main" >> "${GITHUB_OUTPUT}"
+            echo "app_version=${version}" >> "${GITHUB_OUTPUT}"
+          elif [[ "${GITHUB_REF_NAME}" == "dev" ]]; then
+            {
+              echo "tags<<EOF"
+              echo "${image}:dev"
+              echo "${image}:dev-${short_sha}"
+              echo "EOF"
+            } >> "${GITHUB_OUTPUT}"
+            echo "build_channel=dev" >> "${GITHUB_OUTPUT}"
+            echo "app_version=${version}" >> "${GITHUB_OUTPUT}"
+          else
+            safe_ref="$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's#[^a-z0-9._-]#-#g')"
+            {
+              echo "tags<<EOF"
+              echo "${image}:test-${safe_ref}"
+              echo "${image}:test-${short_sha}"
+              echo "EOF"
+            } >> "${GITHUB_OUTPUT}"
+            echo "build_channel=test" >> "${GITHUB_OUTPUT}"
+            echo "app_version=${version}" >> "${GITHUB_OUTPUT}"
+          fi
+
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+          echo "git_branch=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Calculate metadata & tags
-        id: meta
-        run: |
-          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE="ghcr.io/${REPO_LOWER}"
-          TAGS=""
-          PLATFORMS="linux/amd64"
-
-          # 获取 12 位短 SHA
-          SHORT_SHA=$(git rev-parse --short=12 HEAD)
-
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-            TAGS="${IMAGE}:${VERSION},${IMAGE}:latest"
-            PLATFORMS="linux/amd64,linux/arm64"
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            TAGS="${IMAGE}:main,${IMAGE}:main-${SHORT_SHA}"
-          elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
-            TAGS="${IMAGE}:dev,${IMAGE}:dev-${SHORT_SHA}"
-          else
-            TAGS="${IMAGE}:temp-${SHORT_SHA}"
-          fi
-
-          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
-          echo "platforms=${PLATFORMS}" >> "$GITHUB_OUTPUT"
-
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile
-          platforms: ${{ steps.meta.outputs.platforms }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ steps.vars.outputs.platforms }}
+          tags: ${{ steps.vars.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.vars.outputs.app_version }}
+            GIT_SHA=${{ github.sha }}
+            GIT_BRANCH=${{ steps.vars.outputs.git_branch }}
+            BUILD_TIME=${{ steps.vars.outputs.build_time }}
+            BUILD_CHANNEL=${{ steps.vars.outputs.build_channel }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.app_version }}
+            org.opencontainers.image.title=RepoSentinel
+            org.opencontainers.image.description=Self-hosted GitHub repository monitoring
+
+  # 每次本工作流运行结束后清理历史：至少保留最近 3 次已完成记录，并删除 3 天前的其余记录。
+  # 无 schedule；不依赖构建是否成功/跳过。
+  cleanup-old-runs:
+    name: Cleanup old workflow runs
+    needs: [test, build-and-push]
+    if: always() && github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      actions: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete old Docker Image runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          WORKFLOW_FILE: docker.yml
+          KEEP_MINIMUM: "3"
+          RETAIN_DAYS: "3"
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Listing completed runs for workflow ${WORKFLOW_FILE} (keep>=${KEEP_MINIMUM}, retain_days=${RETAIN_DAYS})"
+
+          # 按时间倒序，最多取 100 条已完成运行
+          runs_json="$(
+            gh run list \
+              --repo "${GH_REPO}" \
+              --workflow "${WORKFLOW_FILE}" \
+              --status completed \
+              --limit 100 \
+              --json databaseId,createdAt,displayTitle,conclusion
+          )"
+
+          count="$(echo "${runs_json}" | jq 'length')"
+          echo "Found ${count} completed run(s)"
+          if [[ "${count}" -eq 0 ]]; then
+            echo "Nothing to clean"
+            exit 0
+          fi
+
+          now_epoch="$(date -u +%s)"
+          cutoff_epoch="$((now_epoch - RETAIN_DAYS * 86400))"
+          deleted=0
+          kept=0
+          skipped_young=0
+
+          # 索引 0 为最新：前 KEEP_MINIMUM 条始终保留；其余仅当 createdAt 早于 cutoff 时删除
+          while IFS=$'\t' read -r run_id created_at; do
+            [[ -n "${run_id}" ]] || continue
+            # 绝不删除当前这次运行
+            if [[ "${run_id}" == "${CURRENT_RUN_ID}" ]]; then
+              echo "Skip current run ${run_id}"
+              continue
+            fi
+
+            kept=$((kept + 1))
+            if [[ "${kept}" -le "${KEEP_MINIMUM}" ]]; then
+              echo "Keep recent #${kept}: ${run_id} (${created_at})"
+              continue
+            fi
+
+            created_epoch="$(date -u -d "${created_at}" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "${created_at}" +%s 2>/dev/null || echo 0)"
+            if [[ "${created_epoch}" -eq 0 ]]; then
+              echo "Skip unparsable date for run ${run_id}: ${created_at}"
+              continue
+            fi
+
+            if [[ "${created_epoch}" -ge "${cutoff_epoch}" ]]; then
+              echo "Keep (within ${RETAIN_DAYS}d): ${run_id} (${created_at})"
+              skipped_young=$((skipped_young + 1))
+              continue
+            fi
+
+            echo "Delete old run ${run_id} (${created_at})"
+            if gh api --method DELETE "repos/${GH_REPO}/actions/runs/${run_id}" >/dev/null; then
+              deleted=$((deleted + 1))
+            else
+              echo "Warning: failed to delete run ${run_id}" >&2
+            fi
+          done < <(echo "${runs_json}" | jq -r '.[] | "\(.databaseId)\t\(.createdAt)"')
+
+          echo "Cleanup done: deleted=${deleted}, recent_kept_slots=${KEEP_MINIMUM}, young_extra_kept=${skipped_young}"
