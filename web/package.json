@@ -17,13 +17,13 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.104.4",
-    "@tanstack/react-router": "1.170.44",
+    "@tanstack/react-router": "1.170.45",
     "lucide-react": "1.57.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-hook-form": "7.90.0",
     "recharts": "^3.10.1",
-    "zod": "4.6.1",
+    "zod": "4.6.7",
     "@testing-library/user-event": "14.6.8"
   },
   "devDependencies": {
