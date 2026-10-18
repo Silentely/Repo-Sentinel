@@ -23,19 +23,8 @@ on:
       - "VERSION"
       - "Makefile"
       - ".github/workflows/docker.yml"
-  # PR 阶段跑 test job（build-and-push 仍只在 push/手动触发）：
-  # 此前 PR 无任何检查，问题只能合入 main 后暴露。
-  pull_request:
-    paths:
-      - "cmd/**"
-      - "internal/**"
-      - "migrations/**"
-      - "web/**"
-      - "go.mod"
-      - "go.sum"
-      - "VERSION"
-      - "Makefile"
-      - ".github/workflows/docker.yml"
+  # 仅 main/dev push 与 v* 标签触发本工作流；PR 及其他分支一律不触发（含 test job）。
+  # 镜像构建只面向 main/dev/v* 三态，避免任意 PR 分支触发构建或消耗 Runner。
   workflow_dispatch:
 
 permissions:
