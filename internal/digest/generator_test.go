@@ -1103,7 +1103,6 @@ func TestBuildReportBody_TopActiveRepos(t *testing.T) {
 	}
 }
 
-
 func TestEnrichEventStates(t *testing.T) {
 	data := openDigestStore(t)
 	repoID := "repo-test-1"

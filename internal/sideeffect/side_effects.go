@@ -298,14 +298,14 @@ func executeSideEffectDetail(
 		}); err != nil {
 			// 外部副作用已成功但本地持久化回执失败：构造类型化错误，禁止重试
 			return &ExecutionDetail{
-					State:      ReceiptSucceeded,
-					IsNew:      true,
-					ExternalID: externalID,
-				}, &RemoteSucceededReceiptFailedError{
-					Key:        key,
-					ExternalID: externalID,
-					Err:        err,
-				}
+				State:      ReceiptSucceeded,
+				IsNew:      true,
+				ExternalID: externalID,
+			}, &RemoteSucceededReceiptFailedError{
+				Key:        key,
+				ExternalID: externalID,
+				Err:        err,
+			}
 		}
 		return &ExecutionDetail{
 			State:      ReceiptSucceeded,
@@ -339,14 +339,14 @@ func executeSideEffectDetail(
 			UpdatedBy: "side_effect_executor",
 		}); err != nil {
 			return &ExecutionDetail{
-					State:      ReceiptUnknown,
-					IsNew:      true,
-					ExternalID: externalID,
-				}, &UnknownReceiptPersistError{
-					NetworkErr: execErr,
-					PersistErr: err,
-					Key:        key,
-				}
+				State:      ReceiptUnknown,
+				IsNew:      true,
+				ExternalID: externalID,
+			}, &UnknownReceiptPersistError{
+				NetworkErr: execErr,
+				PersistErr: err,
+				Key:        key,
+			}
 		}
 		return &ExecutionDetail{
 			State:      ReceiptUnknown,
