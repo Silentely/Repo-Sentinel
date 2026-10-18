@@ -4,9 +4,9 @@
 
 ## [Unreleased]
 
-### Dependencies
+### 依赖
 
-- Updated modernc.org/sqlite from 1.59.0 to 1.60.1
+- 数据库依赖：将 modernc.org/sqlite 从 1.59.0 升级至 1.60.1
 
 ## [0.7.0] - 2026-10-15
 
