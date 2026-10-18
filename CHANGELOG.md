@@ -4,9 +4,20 @@
 
 ## [Unreleased]
 
-### 依赖
+## [0.8.0] - 2026-10-18
 
-- 数据库依赖：将 modernc.org/sqlite 从 1.59.0 升级至 1.60.1
+### 新增
+- 每日汇总：指标速览卡区分剩余未解决与已修复/已关闭数量，告警全部修复时徽章转为健康平稳状态；事件列表送入 AI 摘要时补充状态标签，强化进展归纳与已解决标识；Telegram 富文本对已修复条目使用 ✅ 前缀并高亮状态；定期报告生成器增加批次收敛与实体对账状态富集，准确识别最新修复终态
+
+### 修复
+- 代码格式化：修复多返回值字面量在部分 Go 版本下 gofmt 缩进分歧，统一代码格式化与检查结果
+- 构建流程：修复 docker.yml 语法错误并同步 pnpm 至 10.34.7，恢复 CI 构建
+- 变更记录：修正依赖变更日志格式
+
+### 依赖
+- 前端：升级 @tanstack/react-router 至 1.170.45、zod 至 4.6.7，并合并升级 @tanstack/react-query、react-hook-form、lucide-react、vitest、@playwright/test 等 12 个依赖
+- 后端：升级 golang.org/x/sync 至 v0.24.0、golang.org/x/crypto 至 v0.58.0、go-chi/chi 至 v5.5.0
+- 数据库：将 modernc.org/sqlite 从 1.59.0 升级至 1.60.1
 
 ## [0.7.0] - 2026-10-15
 
