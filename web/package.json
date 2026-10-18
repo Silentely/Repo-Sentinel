@@ -23,7 +23,7 @@
     "react-dom": "19.3.0",
     "react-hook-form": "7.88.0",
     "recharts": "^3.10.1",
-    "zod": "4.6.1",
+    "zod": "4.6.7",
     "@testing-library/user-event": "14.6.8"
   },
   "devDependencies": {
