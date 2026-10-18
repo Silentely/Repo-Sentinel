@@ -9,7 +9,7 @@ RUN corepack enable && corepack prepare pnpm@10.34.5 --activate \
 COPY web/ ./
 RUN pnpm build
 
-FROM golang:1.26-bookworm AS backend
+FROM golang:1.27-bookworm AS backend
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
