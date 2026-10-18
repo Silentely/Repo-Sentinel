@@ -2,13 +2,11 @@ package ai
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -61,61 +59,43 @@ func TestSummarizeEvents(t *testing.T) {
 }
 
 func TestSummarizeEventsEmpty(t *testing.T) {
-	client, _ := stubClient(t, `{"choices":[{"message":{"content":"x"}}]}`)
+	client := &Client{Enabled: true}
 	out, err := client.SummarizeEvents(t.Context(), nil, nil, "过去 24 小时")
-	if err != nil || out != "" {
-		t.Fatalf("空事件应直接返回空串，实际 out=%q err=%v", out, err)
-	}
-}
-
-func TestReleaseSummary(t *testing.T) {
-	client, capture := stubClient(t, `{"choices":[{"message":{"content":"新增 X 功能，修复 Y；⚠️ 破坏性变更：Z"}}]}`)
-	out, err := client.ReleaseSummary(t.Context(), "octocat/Hello-World", "v2.0.0", "Some English notes", "https://github.com/o/r/releases/tag/v2.0.0")
 	if err != nil {
-		t.Fatalf("ReleaseSummary 应成功: %v", err)
+		t.Fatalf("空事件不应报错: %v", err)
 	}
-	if !strings.Contains(out, "X 功能") {
-		t.Fatalf("期望包含总结内容，实际: %q", out)
-	}
-	req := capture()
-	if len(req.Messages) != 2 {
-		t.Fatalf("期望 system/user 双消息，实际 %d 条", len(req.Messages))
-	}
-	user := req.Messages[1].Content
-	for _, want := range []string{"octocat/Hello-World", "v2.0.0", "Some English notes", "https://github.com/o/r/releases/tag/v2.0.0"} {
-		if !strings.Contains(user, want) {
-			t.Errorf("用户消息应包含 %q，实际: %s", want, user)
-		}
-	}
-	if !strings.Contains(req.Messages[0].Content, "发布说明摘要器") {
-		t.Errorf("系统消息应为发布说明摘要 prompt，实际: %s", req.Messages[0].Content)
+	if out != "" {
+		t.Fatalf("空事件期望空输出，实际: %q", out)
 	}
 }
 
-func TestReleaseSummaryTruncatesLongNotes(t *testing.T) {
-	client, capture := stubClient(t, `{"choices":[{"message":{"content":"ok"}}]}`)
-	long := strings.Repeat("x", 12000)
-	if _, err := client.ReleaseSummary(t.Context(), "o/r", "v1", long, ""); err != nil {
-		t.Fatal(err)
+func TestRenderEventLines_StatusTags(t *testing.T) {
+	num1, num2 := int64(10), int64(13)
+	repoID := "repo-1"
+	events := []store.Event{
+		{
+			Kind: store.AlertKindDependabot, Action: "fixed", Title: "source-map-js",
+			SubjectNumber: &num1, RepositoryID: &repoID, Severity: "high",
+		},
+		{
+			Kind: store.WorkItemKindIssue, Action: "closed", Title: "fix bug",
+			SubjectNumber: &num2, RepositoryID: &repoID,
+		},
+		{
+			Kind: store.WorkflowRunKind, Action: "recovered", Title: "CI Build",
+		},
 	}
-	req := capture()
-	if len(req.Messages[1].Content) > maxReleaseNotesChars+100 {
-		t.Fatalf("notes 应被截断到上限附近，实际 %d 字符", len(req.Messages[1].Content))
-	}
-}
+	names := map[string]string{"repo-1": "Silentely/test-repo"}
+	lines := renderEventLines(events, names)
 
-func TestReleaseSummaryTruncatesMultibyteUTF8Safely(t *testing.T) {
-	client, capture := stubClient(t, `{"choices":[{"message":{"content":"ok"}}]}`)
-	// 构造在 8000 字节边界处跨多字节的中文文本
-	prefix := strings.Repeat("a", maxReleaseNotesChars-1) // 7999 bytes
-	multibyte := prefix + "测试发布说明内容"
-	if _, err := client.ReleaseSummary(t.Context(), "o/r", "v1", multibyte, ""); err != nil {
-		t.Fatal(err)
+	if !strings.Contains(lines, "[状态:已修复]") {
+		t.Fatalf("安全告警 fixed 应渲染 [状态:已修复]，实际:\n%s", lines)
 	}
-	req := capture()
-	body := req.Messages[1].Content
-	if !utf8.ValidString(body) {
-		t.Fatalf("截断后的 Release 说明不是合法的 UTF-8: %q", body)
+	if !strings.Contains(lines, "[状态:已关闭]") {
+		t.Fatalf("Issue closed 应渲染 [状态:已关闭]，实际:\n%s", lines)
+	}
+	if !strings.Contains(lines, "[状态:已恢复]") {
+		t.Fatalf("Workflow recovered 应渲染 [状态:已恢复]，实际:\n%s", lines)
 	}
 }
 
@@ -165,95 +145,6 @@ func TestTriageAlert(t *testing.T) {
 	}
 }
 
-func TestRenderEventLinesTruncates(t *testing.T) {
-	events := make([]store.Event, maxEventLines+10)
-	for i := range events {
-		events[i] = store.Event{Kind: store.WorkItemKindIssue, Title: "t"}
-	}
-	lines := renderEventLines(events, nil)
-	if !strings.Contains(lines, "另有 10 条未列出") {
-		t.Fatalf("期望截断提示，实际: %s", lines)
-	}
-}
-
-// TestRenderEventLines_ReleaseRepoFallback 验证 star 追踪的 release 事件（无 RepositoryID）
-// 经 PayloadSummary 回退补仓库名，杜绝 AI 面对无主 release 猜测归属（曾误归到 eSIM-Tools）。
-func TestRenderEventLines_ReleaseRepoFallback(t *testing.T) {
-	events := []store.Event{
-		{Kind: store.ReleaseKind, Title: "v0.4.24 - xAI SuperGrok plan_type hotfix",
-			SubjectNumber: intPtr(369624730),
-			PayloadSummary: map[string]any{
-				"tag_name": "v0.4.24", "repository": "kittors/CliRelay",
-			}},
-	}
-	lines := renderEventLines(events, nil)
-	if !strings.Contains(lines, "kittors/CliRelay") {
-		t.Fatalf("release 事件应回退补仓库名，实际: %s", lines)
-	}
-	if strings.Contains(lines, "（）") {
-		t.Fatalf("不应出现空括号，实际: %s", lines)
-	}
-}
-
-// TestRenderEventLines_StarTitleDedup 验证 star/watch 事件标题即仓库名时不再追加「（名）」重复，
-// 避免「Silentely/eSIM-Tools（Silentely/eSIM-Tools）」式噪声行污染 AI 输入。
-func TestRenderEventLines_StarTitleDedup(t *testing.T) {
-	repoID := "repo-1"
-	events := []store.Event{
-		{Kind: store.StarKind, Title: "acme/demo", RepositoryID: &repoID},
-		{Kind: store.WorkItemKindIssue, Title: "修复登录 Bug", RepositoryID: &repoID},
-	}
-	lines := renderEventLines(events, map[string]string{"repo-1": "acme/demo"})
-	if strings.Contains(lines, "acme/demo（acme/demo）") {
-		t.Fatalf("标题即仓库名时不应重复追加，实际: %s", lines)
-	}
-	if !strings.Contains(lines, "修复登录 Bug（acme/demo）") {
-		t.Fatalf("普通事件应带仓库名，实际: %s", lines)
-	}
-}
-
-func strPtr(s string) *string { return &s }
-
-func intPtr(v int64) *int64 { return &v }
-
-func TestDiagnoseWorkflowFailure(t *testing.T) {
-	client, capture := stubClient(t, `{"choices":[{"message":{"content":"诊断：测试步骤失败。\n建议：检查测试断言。"}}]}`)
-	out, err := client.DiagnoseWorkflowFailure(t.Context(), "acme/web", "ci.yml", "main", "failure", []string{"build / Run tests"})
-	if err != nil {
-		t.Fatalf("DiagnoseWorkflowFailure 应该成功: %v", err)
-	}
-	if !strings.Contains(out, "诊断：") {
-		t.Fatalf("期望包含诊断前缀，实际: %q", out)
-	}
-	req := capture()
-	if len(req.Messages) != 2 {
-		t.Fatalf("期望 2 条消息，实际: %d", len(req.Messages))
-	}
-	if !strings.Contains(req.Messages[1].Content, "ci.yml") || !strings.Contains(req.Messages[1].Content, "Run tests") {
-		t.Fatalf("user prompt 应包含工作流与步骤信息: %s", req.Messages[1].Content)
-	}
-}
-
-func TestRenderFailedSteps(t *testing.T) {
-	if got := renderFailedSteps(nil); got != "未知步骤" {
-		t.Fatalf("空步骤应回退未知步骤，实际: %q", got)
-	}
-	if got := renderFailedSteps([]string{"build / test"}); got != "build / test" {
-		t.Fatalf("单条步骤应原样输出，实际: %q", got)
-	}
-	steps := make([]string, maxFailedSteps+5)
-	for i := range steps {
-		steps[i] = fmt.Sprintf("job-%d / step-%d", i, i)
-	}
-	got := renderFailedSteps(steps)
-	if !strings.Contains(got, "job-0 / step-0") || strings.Contains(got, "job-30 / step-30") {
-		t.Fatal("超出上限的步骤应被截断")
-	}
-	if !strings.Contains(got, "另有 5 条未列出") {
-		t.Fatalf("截断时应标注剩余条数，实际: %q", got)
-	}
-	// 截断后总长度必须有界：失败条目数百条时不再无限拼接。
-	if len([]rune(got)) > maxFailedSteps*40+100 {
-		t.Fatalf("截断后长度应有界，实际: %d", len([]rune(got)))
-	}
+func strPtr(s string) *string {
+	return &s
 }

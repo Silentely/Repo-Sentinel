@@ -1102,3 +1102,58 @@ func TestBuildReportBody_TopActiveRepos(t *testing.T) {
 		t.Fatalf("多仓摘要应渲染活跃仓库排行，实际:\n%s", body)
 	}
 }
+
+
+func TestEnrichEventStates(t *testing.T) {
+	data := openDigestStore(t)
+	repoID := "repo-test-1"
+	_, err := data.Repositories().Upsert(t.Context(), store.Repository{
+		ID: repoID, Owner: "Silentely", Name: "demo", FullName: "Silentely/demo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. 在 SecurityAlerts 表中写入一个已修复的告警 #10
+	_, _, err = data.SecurityAlerts().UpsertIfNewer(t.Context(), store.SecurityAlert{
+		RepositoryID: repoID, AlertKind: store.AlertKindDependabot, AlertNumber: 10,
+		State: "fixed", Severity: "high",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. 在 WorkItems 表中写入一个已关闭的 Issue #5
+	_, _, err = data.WorkItems().UpsertIfNewer(t.Context(), store.WorkItem{
+		RepositoryID: repoID, Kind: store.WorkItemKindIssue, Number: 5,
+		State: "closed", Title: "bug 5",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	g := &Generator{Store: data}
+
+	n10, n5, n20 := int64(10), int64(5), int64(20)
+	events := []store.Event{
+		// 事件 1：数据库中该告警已修复，但事件中是 created
+		{Kind: store.AlertKindDependabot, RepositoryID: &repoID, SubjectNumber: &n10, Action: "created", Severity: "high"},
+		// 事件 2：数据库中该 issue 已关闭，但事件中是 opened
+		{Kind: store.WorkItemKindIssue, RepositoryID: &repoID, SubjectNumber: &n5, Action: "opened", Title: "bug 5"},
+		// 事件 3 & 4：同批次内先 created 后 fixed
+		{Kind: store.AlertKindDependabot, RepositoryID: &repoID, SubjectNumber: &n20, Action: "created", Severity: "high"},
+		{Kind: store.AlertKindDependabot, RepositoryID: &repoID, SubjectNumber: &n20, Action: "fixed", Severity: "high"},
+	}
+
+	enriched := g.enrichEventStates(t.Context(), events)
+
+	if enriched[0].Action != "fixed" {
+		t.Fatalf("事件 1 应根据数据库最新状态富集为 fixed，实际: %s", enriched[0].Action)
+	}
+	if enriched[1].Action != "closed" {
+		t.Fatalf("事件 2 应根据数据库最新状态富集为 closed，实际: %s", enriched[1].Action)
+	}
+	if enriched[2].Action != "fixed" {
+		t.Fatalf("事件 3 应根据同批次内的修复事件收敛为 fixed，实际: %s", enriched[2].Action)
+	}
+}

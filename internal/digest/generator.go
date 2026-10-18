@@ -206,8 +206,9 @@ func (g *Generator) filteredEvents(ctx context.Context, since time.Time, limit i
 // 返回正文与是否使用了 AI。
 // 日志留痕 AI 参与度：skipped（未启用/无事件）、used（AI 总结成功）、
 // fallback（AI 调用失败/输出为空/质量不达标，回退模板），配合 ai 层 ai request ok/failed 日志
-// （携带同一 req_id），可完整还原「有没有发请求、AI 有没有参与、失败是网络还是上游问题」。
+// （携带同一 req_id），可完整还原「有没有发起请求、AI 有没有参与、失败是网络还是上游问题」。
 func (g *Generator) reportBody(ctx context.Context, title string, events []store.Event, period string, now time.Time) (string, bool) {
+	events = g.enrichEventStates(ctx, events)
 	// 仓库名映射一次批量拉取，模板预览与 AI 总结共用，避免两处各自查询造成 N+1。
 	names := g.repoNames(ctx, events)
 	template := buildReportBody(title, events, period, names, now)
@@ -309,7 +310,7 @@ func (g *Generator) repoNames(ctx context.Context, events []store.Event) map[str
 }
 
 // enqueue 向启用定期汇总的渠道写入 outbox，并记录 last-sent 记账键。
-// 正文按渠道的机器人免打扰配置生成：开启 IgnoreBots 的渠道使用剔除机器人 Issue/PR 后的事件集，
+// 正文按渠道的机器人免打扰配置生成：开启 IgnoreBots 的渠道使用剔除机器人工作项后的事件集，
 // 其余渠道使用完整事件集；两种变体各自只生成一次（含 AI 总结与仓库名映射），避免重复调用模型。
 // 渠道过滤后无有效事件（报告内容全是机器人动态）时跳过该渠道：免打扰的渠道不应收到空报告。
 func (g *Generator) enqueue(
@@ -586,4 +587,102 @@ func parseWeekday(s string) (time.Weekday, bool) {
 // 语义差异（报告预览不需要 emoji）由该函数收敛。
 func digestStatusLabel(ev store.Event) string {
 	return rules.EventStatusLabel(&ev)
+}
+
+// enrichEventStates 检查事件关联实体在 store 中的最新状态，若数据库中已为已修复/已关闭/已恢复终态，则补充至事件元数据中。
+func (g *Generator) enrichEventStates(ctx context.Context, events []store.Event) []store.Event {
+	if len(events) == 0 || g.Store == nil {
+		return events
+	}
+	out := make([]store.Event, len(events))
+	copy(out, events)
+
+	type entityKey struct {
+		repoID string
+		kind   string
+		number int64
+	}
+
+	// 1. 本地批次内部状态收敛：若同一实体在时间段内存在已关闭/已修复事件，所有更早记录也标记为已修复
+	resolvedInBatch := make(map[entityKey]string)
+	for _, ev := range out {
+		if ev.RepositoryID == nil || ev.SubjectNumber == nil {
+			continue
+		}
+		key := entityKey{repoID: *ev.RepositoryID, kind: ev.Kind, number: *ev.SubjectNumber}
+		if isEventClosedOrFixed(ev) {
+			if _, exists := resolvedInBatch[key]; !exists {
+				act := ev.Action
+				if act == "" {
+					act = "fixed"
+				}
+				resolvedInBatch[key] = act
+			}
+		}
+	}
+
+	// 2. 针对仍未在 batch 内发现 closed 的告警与工作项，查询数据库最新状态
+	alertCache := make(map[entityKey]string)
+	issueCache := make(map[entityKey]string)
+
+	for i := range out {
+		ev := &out[i]
+		if ev.RepositoryID == nil || ev.SubjectNumber == nil {
+			continue
+		}
+		key := entityKey{repoID: *ev.RepositoryID, kind: ev.Kind, number: *ev.SubjectNumber}
+
+		if act, ok := resolvedInBatch[key]; ok && !isEventClosedOrFixed(*ev) {
+			ev.Action = act
+			if ev.PayloadSummary == nil {
+				ev.PayloadSummary = make(map[string]any)
+			}
+			ev.PayloadSummary["state"] = act
+			continue
+		}
+
+		if isEventClosedOrFixed(*ev) {
+			continue
+		}
+
+		switch ev.Kind {
+		case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
+			st, ok := alertCache[key]
+			if !ok {
+				if sa, err := g.Store.SecurityAlerts().GetByIdentity(ctx, key.repoID, key.kind, int(key.number)); err == nil {
+					st = sa.State
+				}
+				alertCache[key] = st
+			}
+			switch strings.ToLower(st) {
+			case "fixed", "resolved", "dismissed", "auto_dismissed", "withdrawn":
+				ev.Action = st
+				if ev.PayloadSummary == nil {
+					ev.PayloadSummary = make(map[string]any)
+				}
+				ev.PayloadSummary["state"] = st
+			}
+
+		case store.WorkItemKindIssue, store.WorkItemKindPR:
+			st, ok := issueCache[key]
+			if !ok {
+				if wi, err := g.Store.WorkItems().GetByRepoNumber(ctx, key.repoID, int(key.number)); err == nil {
+					if wi.Merged {
+						st = "merged"
+					} else {
+						st = wi.State
+					}
+				}
+				issueCache[key] = st
+			}
+			if strings.ToLower(st) == "closed" || strings.ToLower(st) == "merged" {
+				ev.Action = st
+				if ev.PayloadSummary == nil {
+					ev.PayloadSummary = make(map[string]any)
+				}
+				ev.PayloadSummary["state"] = st
+			}
+		}
+	}
+	return out
 }

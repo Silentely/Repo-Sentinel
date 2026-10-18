@@ -68,6 +68,28 @@ func TestFormatDigestSummaryHTML_UserScenario(t *testing.T) {
 	}
 }
 
+func TestFormatDigestSummaryHTML_ResolvedItems(t *testing.T) {
+	input := `过去 24 小时共 43 条事件，4 条安全告警已全部完成修复。
+
+- Silentely/telegram-private-chat-gateway #10：source-map-js 高危安全告警（严重度 HIGH） [已修复]
+- Silentely/eSIM-Tools #161：source-map-js 高危安全告警（严重度 HIGH） [已修复]
+- Silentely/TG-SignPulse #13 [Bug] 问题跟踪 [已关闭]`
+
+	output := formatDigestSummaryHTML(input)
+
+	// 已修复的告警前缀应为 ✅ 而非 🚨
+	if strings.Contains(output, "🚨") {
+		t.Fatalf("已修复的告警不应使用 🚨 警报图标，实际:\n%s", output)
+	}
+	if !strings.Contains(output, "• ✅") {
+		t.Fatalf("已修复的条目应使用 • ✅ 图标，实际:\n%s", output)
+	}
+	// 状态标签应加粗
+	if !strings.Contains(output, "<b>[已修复]</b>") || !strings.Contains(output, "<b>[已关闭]</b>") {
+		t.Fatalf("状态标签应被加粗高亮，实际:\n%s", output)
+	}
+}
+
 func TestBuildDigestMetricsCard(t *testing.T) {
 	events := []store.Event{
 		{Kind: store.AlertKindDependabot, Severity: "high", Title: "dependabot alert"},
@@ -96,5 +118,53 @@ func TestBuildDigestMetricsCard(t *testing.T) {
 	}
 	if !strings.Contains(card, "🚀 发布: 1") {
 		t.Fatalf("应包含发布数，实际:\n%s", card)
+	}
+}
+
+func TestBuildDigestMetricsCard_AllFixed(t *testing.T) {
+	repoID := "repo-1"
+	n1, n2, n3, n4 := int64(1), int64(2), int64(3), int64(4)
+	events := []store.Event{
+		{Kind: store.AlertKindDependabot, RepositoryID: &repoID, SubjectNumber: &n1, Severity: "high", Action: "fixed", Title: "alert 1"},
+		{Kind: store.AlertKindDependabot, RepositoryID: &repoID, SubjectNumber: &n2, Severity: "high", Action: "resolved", Title: "alert 2"},
+		{Kind: store.AlertKindDependabot, RepositoryID: &repoID, SubjectNumber: &n3, Severity: "high", Action: "created", Title: "alert 3"},
+		{Kind: store.AlertKindDependabot, RepositoryID: &repoID, SubjectNumber: &n3, Severity: "high", Action: "fixed", Title: "alert 3 fixed"},
+		{Kind: store.AlertKindDependabot, RepositoryID: &repoID, SubjectNumber: &n4, Severity: "medium", Action: "fixed", Title: "alert 4"},
+		{Kind: store.WorkItemKindIssue, RepositoryID: &repoID, SubjectNumber: &n1, Action: "closed", Title: "issue 1"},
+		{Kind: store.ReleaseKind, Title: "v1.0.0"},
+	}
+
+	card := buildDigestMetricsCard(events, "过去 24 小时")
+
+	// 全部高危已修复，不得误报紧急介入
+	if strings.Contains(card, "🚨 <b>[需紧急介入]</b>") {
+		t.Fatalf("高危告警已全部修复，不应提示需紧急介入，实际:\n%s", card)
+	}
+	if !strings.Contains(card, "🟢 <b>[健康平稳]</b>") {
+		t.Fatalf("全部修复应为健康平稳态势，实际:\n%s", card)
+	}
+	if !strings.Contains(card, "🛡️ 高危告警: 剩余 0 (已修复 3)") {
+		t.Fatalf("应体现剩余 0 (已修复 3)，实际:\n%s", card)
+	}
+	if !strings.Contains(card, "🐛 缺陷: 剩余 0 (已关闭 1)") {
+		t.Fatalf("应体现缺陷剩余 0 (已关闭 1)，实际:\n%s", card)
+	}
+}
+
+func TestBuildDigestMetricsCard_PartiallyFixed(t *testing.T) {
+	repoID := "repo-1"
+	n1, n2 := int64(1), int64(2)
+	events := []store.Event{
+		{Kind: store.AlertKindDependabot, RepositoryID: &repoID, SubjectNumber: &n1, Severity: "high", Action: "fixed", Title: "alert 1"},
+		{Kind: store.AlertKindDependabot, RepositoryID: &repoID, SubjectNumber: &n2, Severity: "high", Action: "created", Title: "alert 2"},
+	}
+
+	card := buildDigestMetricsCard(events, "过去 24 小时")
+
+	if !strings.Contains(card, "🚨 <b>[需紧急介入]</b>") {
+		t.Fatalf("仍有未修复的高危告警时应提示需紧急介入，实际:\n%s", card)
+	}
+	if !strings.Contains(card, "🚨 高危告警: 剩余 1 (已修复 1)") {
+		t.Fatalf("应体现高危告警剩余 1 (已修复 1)，实际:\n%s", card)
 	}
 }

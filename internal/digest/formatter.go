@@ -1,6 +1,7 @@
 package digest
 
 import (
+	"fmt"
 	htmlpkg "html"
 	"regexp"
 	"strconv"
@@ -16,38 +17,101 @@ var (
 	reVersion           = regexp.MustCompile(`\b(v\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9.]+)?)\b`)
 	reSeverity          = regexp.MustCompile(`(?i)\b(critical|high|medium|low)\b`)
 	reUrgentKeywords    = regexp.MustCompile(`(需尽快确认|尽快确认|需人工介入|紧急处理)`)
+	reResolvedStatus    = regexp.MustCompile(`\[(已修复|已关闭|已解决|已恢复|已合并)\]`)
 )
 
-// buildDigestMetricsCard 基于实际事件集生成紧凑的指标统计速览卡。
+// buildDigestMetricsCard 基于实际事件集生成紧凑的指标统计速览卡，区分已修复/已关闭与未解决项目。
 func buildDigestMetricsCard(events []store.Event, period string) string {
 	if len(events) == 0 {
 		return ""
 	}
+
+	type entityKey struct {
+		repoID string
+		kind   string
+		number int64
+	}
+
+	type alertState struct {
+		isHigh   bool
+		isClosed bool
+	}
+
+	alertsMap := make(map[entityKey]alertState)
+	issuesMap := make(map[entityKey]bool) // true = closed
+
 	var (
-		alerts     int
-		highAlerts int
-		ciFails    int
-		releases   int
-		issues     int
-		depUpdates int
+		ciFailsOpen      int
+		ciFailsRecovered int
+		releases         int
+		depUpdates       int
 	)
 
 	for _, ev := range events {
+		isClosed := isEventClosedOrFixed(ev)
+
 		switch ev.Kind {
 		case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
-			alerts++
+			var repoID string
+			if ev.RepositoryID != nil {
+				repoID = *ev.RepositoryID
+			}
+			var num int64
+			if ev.SubjectNumber != nil {
+				num = *ev.SubjectNumber
+			} else {
+				// 若无编号则退化按单条事件 ID 识别
+				repoID = ev.ID
+			}
+			key := entityKey{repoID: repoID, kind: ev.Kind, number: num}
+
 			sev := strings.ToLower(ev.Severity)
-			if sev == "high" || sev == "critical" {
-				highAlerts++
+			isHigh := sev == "high" || sev == "critical"
+
+			existing, exists := alertsMap[key]
+			if !exists {
+				alertsMap[key] = alertState{isHigh: isHigh, isClosed: isClosed}
+			} else {
+				if isHigh {
+					existing.isHigh = true
+				}
+				if isClosed {
+					existing.isClosed = true
+				}
+				alertsMap[key] = existing
 			}
+
+		case store.WorkItemKindIssue:
+			var repoID string
+			if ev.RepositoryID != nil {
+				repoID = *ev.RepositoryID
+			}
+			var num int64
+			if ev.SubjectNumber != nil {
+				num = *ev.SubjectNumber
+			} else {
+				repoID = ev.ID
+			}
+			key := entityKey{repoID: repoID, kind: ev.Kind, number: num}
+
+			if existingClosed, exists := issuesMap[key]; !exists {
+				issuesMap[key] = isClosed
+			} else if isClosed {
+				issuesMap[key] = true
+			} else {
+				issuesMap[key] = existingClosed
+			}
+
 		case store.WorkflowRunKind:
-			if ev.Action == "failure" || ev.Action == "cancelled" || ev.Action == "timed_out" {
-				ciFails++
+			if ev.Action == "recovered" || ev.WorkflowConclusion == "success" {
+				ciFailsRecovered++
+			} else if ev.Action == "failure" || ev.Action == "cancelled" || ev.Action == "timed_out" ||
+				ev.WorkflowConclusion == "failure" || ev.WorkflowConclusion == "timed_out" {
+				ciFailsOpen++
 			}
+
 		case store.ReleaseKind:
 			releases++
-		case store.WorkItemKindIssue:
-			issues++
 		}
 
 		titleLower := strings.ToLower(ev.Title)
@@ -60,10 +124,43 @@ func buildDigestMetricsCard(events []store.Event, period string) string {
 		}
 	}
 
+	var (
+		highAlertsOpen  int
+		highAlertsFixed int
+		alertsOpen      int
+		alertsFixed     int
+		issuesOpen      int
+		issuesClosed    int
+	)
+
+	for _, state := range alertsMap {
+		if state.isHigh {
+			if state.isClosed {
+				highAlertsFixed++
+			} else {
+				highAlertsOpen++
+			}
+		} else {
+			if state.isClosed {
+				alertsFixed++
+			} else {
+				alertsOpen++
+			}
+		}
+	}
+
+	for _, closed := range issuesMap {
+		if closed {
+			issuesClosed++
+		} else {
+			issuesOpen++
+		}
+	}
+
 	var pulseBadge string
-	if highAlerts > 0 || ciFails >= 3 {
+	if highAlertsOpen > 0 || ciFailsOpen >= 3 {
 		pulseBadge = " · 🚨 <b>[需紧急介入]</b>"
-	} else if alerts > 0 || ciFails > 0 || issues >= 5 {
+	} else if alertsOpen > 0 || ciFailsOpen > 0 || issuesOpen >= 5 {
 		pulseBadge = " · ⚠️ <b>[需重点关注]</b>"
 	} else {
 		pulseBadge = " · 🟢 <b>[健康平稳]</b>"
@@ -79,17 +176,46 @@ func buildDigestMetricsCard(events []store.Event, period string) string {
 	sb.WriteString("\n")
 
 	var parts []string
-	if highAlerts > 0 {
-		parts = append(parts, "🚨 高危告警: "+strconv.Itoa(highAlerts))
-	} else if alerts > 0 {
-		parts = append(parts, "🛡️ 安全告警: "+strconv.Itoa(alerts))
+	if highAlertsFixed > 0 {
+		if highAlertsOpen > 0 {
+			parts = append(parts, fmt.Sprintf("🚨 高危告警: 剩余 %d (已修复 %d)", highAlertsOpen, highAlertsFixed))
+		} else {
+			parts = append(parts, fmt.Sprintf("🛡️ 高危告警: 剩余 0 (已修复 %d)", highAlertsFixed))
+		}
+	} else if highAlertsOpen > 0 {
+		parts = append(parts, "🚨 高危告警: "+strconv.Itoa(highAlertsOpen))
 	}
-	if ciFails > 0 {
-		parts = append(parts, "❌ CI失败: "+strconv.Itoa(ciFails))
+
+	if alertsFixed > 0 {
+		if alertsOpen > 0 {
+			parts = append(parts, fmt.Sprintf("🛡️ 安全告警: 剩余 %d (已修复 %d)", alertsOpen, alertsFixed))
+		} else if highAlertsFixed == 0 && highAlertsOpen == 0 {
+			parts = append(parts, fmt.Sprintf("🛡️ 安全告警: 剩余 0 (已修复 %d)", alertsFixed))
+		}
+	} else if alertsOpen > 0 {
+		parts = append(parts, "🛡️ 安全告警: "+strconv.Itoa(alertsOpen))
 	}
-	if issues > 0 {
-		parts = append(parts, "🐛 缺陷: "+strconv.Itoa(issues))
+
+	if ciFailsRecovered > 0 {
+		if ciFailsOpen > 0 {
+			parts = append(parts, fmt.Sprintf("❌ CI失败: 剩余 %d (已恢复 %d)", ciFailsOpen, ciFailsRecovered))
+		} else {
+			parts = append(parts, fmt.Sprintf("✅ CI已恢复: %d", ciFailsRecovered))
+		}
+	} else if ciFailsOpen > 0 {
+		parts = append(parts, "❌ CI失败: "+strconv.Itoa(ciFailsOpen))
 	}
+
+	if issuesClosed > 0 {
+		if issuesOpen > 0 {
+			parts = append(parts, fmt.Sprintf("🐛 缺陷: 剩余 %d (已关闭 %d)", issuesOpen, issuesClosed))
+		} else {
+			parts = append(parts, fmt.Sprintf("🐛 缺陷: 剩余 0 (已关闭 %d)", issuesClosed))
+		}
+	} else if issuesOpen > 0 {
+		parts = append(parts, "🐛 缺陷: "+strconv.Itoa(issuesOpen))
+	}
+
 	if releases > 0 {
 		parts = append(parts, "🚀 发布: "+strconv.Itoa(releases))
 	}
@@ -103,6 +229,46 @@ func buildDigestMetricsCard(events []store.Event, period string) string {
 	}
 	sb.WriteString("────────────────\n")
 	return sb.String()
+}
+
+// isEventClosedOrFixed 判断事件是否对应已修复、已关闭或已恢复状态。
+func isEventClosedOrFixed(ev store.Event) bool {
+	switch ev.Kind {
+	case store.AlertKindDependabot, store.AlertKindCodeScanning, store.AlertKindSecretScanning:
+		switch strings.ToLower(ev.Action) {
+		case "fixed", "resolved", "dismissed", "auto_dismissed", "withdrawn", "closed":
+			return true
+		}
+		if state, ok := ev.PayloadSummary["state"].(string); ok {
+			switch strings.ToLower(state) {
+			case "fixed", "resolved", "dismissed", "auto_dismissed", "withdrawn", "closed":
+				return true
+			}
+		}
+	case store.WorkItemKindIssue:
+		if strings.ToLower(ev.Action) == "closed" {
+			return true
+		}
+		if state, ok := ev.PayloadSummary["state"].(string); ok && strings.ToLower(state) == "closed" {
+			return true
+		}
+	case store.WorkItemKindPR:
+		action := strings.ToLower(ev.Action)
+		if action == "closed" || action == "merged" {
+			return true
+		}
+		if state, ok := ev.PayloadSummary["state"].(string); ok {
+			s := strings.ToLower(state)
+			if s == "closed" || s == "merged" {
+				return true
+			}
+		}
+	case store.WorkflowRunKind:
+		if strings.ToLower(ev.Action) == "recovered" || strings.ToLower(ev.WorkflowConclusion) == "success" {
+			return true
+		}
+	}
+	return false
 }
 
 // formatDigestSummaryHTML 将 AI 生成的自然语言摘要转换为具备视觉层次与原生折叠块的 Telegram HTML。
@@ -253,12 +419,22 @@ func highlightEntities(text string) string {
 	// 紧急行动项关键词高亮
 	escaped = reUrgentKeywords.ReplaceAllString(escaped, `<b><u>$1</u></b>`)
 
+	// 已修复 / 已关闭 / 已解决 状态标签高亮
+	escaped = reResolvedStatus.ReplaceAllString(escaped, `<b>[$1]</b>`)
+
 	return escaped
 }
 
 func formatPriorityItem(text string) string {
 	prefix := "• "
-	if strings.Contains(text, "安全告警") {
+	isResolved := strings.Contains(text, "已修复") ||
+		strings.Contains(text, "已关闭") ||
+		strings.Contains(text, "已解决") ||
+		strings.Contains(text, "已恢复")
+
+	if isResolved {
+		prefix = "• ✅ "
+	} else if strings.Contains(text, "安全告警") || strings.Contains(text, "漏洞") {
 		prefix = "• 🚨 "
 	} else if strings.Contains(text, "CI") || strings.Contains(text, "失败") {
 		prefix = "• ❌ "
