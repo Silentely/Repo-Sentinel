@@ -5,12 +5,12 @@ go 1.26.4
 require (
 	ariga.io/atlas v1.3.0
 	entgo.io/ent v0.14.6
-	github.com/go-chi/chi/v5 v5.3.2
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/oklog/ulid/v2 v2.1.2
-	golang.org/x/crypto v0.57.0
-	golang.org/x/sync v0.23.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/sync v0.24.0
 	golang.org/x/time v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.60.1
@@ -41,9 +41,9 @@ require (
 	github.com/zclconf/go-cty v1.19.0 // indirect
 	github.com/zclconf/go-cty-yaml v1.2.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
-	golang.org/x/tools v0.50.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
