@@ -2,5 +2,23 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "Ignore VitePress documentation overrides at root",
+      "matchFileNames": ["package.json"],
+      "matchPackageNames": ["vite", "esbuild"],
+      "enabled": false
+    },
+    {
+      "description": "Restrict pnpm to 10.x to stay compatible with local environment and Dockerfile corepack",
+      "matchPackageNames": ["pnpm"],
+      "allowedVersions": "<11.0.0"
+    },
+    {
+      "description": "Keep postgres CI service tag aligned with deployments/test/postgres.compose.yml (17.x)",
+      "matchPackageNames": ["postgres"],
+      "allowedVersions": "<18.0.0"
+    }
   ]
 }
