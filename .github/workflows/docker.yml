@@ -103,7 +103,7 @@ jobs:
         # 定位 store 目录，不能依赖 runner 镜像预装（镜像滚动更新可能移除）。
         uses: pnpm/action-setup@v6
         with:
-          version: 10.34.7
+          version: 12.14.0
           run_install: false
 
       - name: Set up Node
