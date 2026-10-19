@@ -44,7 +44,7 @@ jobs:
     # 供 internal/store/contract 的 PostgreSQL 契约测试真实跑迁移（防 int4/bigint 类回归）。
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_DB: reposentinel_test
           POSTGRES_USER: reposentinel
