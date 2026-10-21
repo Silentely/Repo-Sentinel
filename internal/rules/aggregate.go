@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -30,6 +32,12 @@ type Aggregator struct {
 	Logger *slog.Logger
 	// GitHub 可选；透传给 Engine 供拉取 CI 失败 Job/步骤。
 	GitHub *githubx.AppClient
+	// JevClient 可选；判别式决策引擎客户端。
+	JevClient jev.Client
+	// JevConfig 判别式决策引擎配置。
+	JevConfig config.JevConfig
+	// JevRuntime 可选；动态运行时配置与客户端提供者。
+	JevRuntime *jev.RuntimeConfig
 
 	mu sync.Mutex
 	// key: repoID|category
@@ -45,12 +53,43 @@ type Aggregator struct {
 	flushedVariants map[string]int64
 }
 
+func (a *Aggregator) resolveJev() (jev.Client, config.JevConfig) {
+	if a != nil && a.JevRuntime != nil {
+		return a.JevRuntime.Client("notification"), a.JevRuntime.Snapshot()
+	}
+	if a != nil {
+		return a.JevClient, a.JevConfig
+	}
+	return nil, config.JevConfig{}
+}
+
 type aggBucket struct {
 	category string
 	repoID   string
 	repoName string
 	events   []*store.Event
+	prepared []preparedEvent
 	timer    *time.Timer
+}
+
+func (b *aggBucket) preparedItems() []preparedEvent {
+	if b == nil {
+		return nil
+	}
+	if len(b.prepared) > 0 {
+		return b.prepared
+	}
+	var res []preparedEvent
+	for _, ev := range b.events {
+		if ev != nil {
+			res = append(res, preparedEvent{
+				Result:        normalizer.Result{Event: ev},
+				InferredEvent: ev,
+				Channels:      nil,
+			})
+		}
+	}
+	return res
 }
 
 // NewAggregator 创建聚合器。
@@ -203,17 +242,36 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	if !shouldNotifyRealtime(res.Event) {
 		return nil
 	}
-	repoID := ""
-	if res.Event.RepositoryID != nil {
-		repoID = *res.Event.RepositoryID
+
+	// 锁外统一准备通知：静态预检、Jev 裁决、active 抑制落库与路由
+	jevClient, jevCfg := a.resolveJev()
+	prep, err := PrepareNotification(ctx, res, repoFullName, jevClient, jevCfg, a.Store)
+	if err != nil {
+		return err
 	}
-	cat := categoryOf(res.Event)
+	// Suppress 则不计 burst、不入桶
+	if prep.Suppressed {
+		if a.Logger != nil {
+			a.Logger.Debug("notification suppressed by jev in aggregator",
+				"event_id", res.Event.ID, "kind", res.Event.Kind, "repo", repoFullName)
+		}
+		return nil
+	}
+
+	ev := prep.InferredEvent
+	if ev == nil {
+		ev = res.Event
+	}
+
+	repoID := ""
+	if ev.RepositoryID != nil {
+		repoID = *ev.RepositoryID
+	}
+	cat := categoryOf(ev)
 	key := repoID + "|" + cat
 
 	a.mu.Lock()
 	now := time.Now()
-	// 超频检测按「仓库+类别」维度：与聚合粒度一致，避免单类别未超频时因其它类别的
-	// 事件量被误判超频（如 5 分钟内 8 个 issue + 8 个 PR 各低于阈值，却触发频率摘要）。
 	times := a.bursts[key]
 	filtered := times[:0]
 	for _, t := range times {
@@ -223,7 +281,6 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	}
 	filtered = append(filtered, now)
 	a.bursts[key] = filtered
-	// 防御性内存自清洁：当跟踪的超频键达到规模时剔除已过期的滑动窗口键
 	if len(a.bursts) > 100 {
 		for k, ts := range a.bursts {
 			if len(ts) == 0 || now.Sub(ts[len(ts)-1]) > a.BurstWindow {
@@ -233,31 +290,25 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 		}
 	}
 	if len(filtered) > a.BurstThreshold {
-		// 一次告警风暴只发一条摘要：桶内已有摘要时仅更新窗口计数，不再重复写库与留痕。
-		// Outbox 幂等键只能兜底收敛，重复写库与重复 Warn 会让日志虚报入队次数。
 		bucket := timeBucket(now.UTC(), a.BurstWindow)
-		if a.burstNotified[key] == bucket {
+	if a.burstNotified[key] == bucket {
 			a.mu.Unlock()
 			return nil
 		}
 		a.burstNotified[key] = bucket
-		sample := res.Event
-		// 标题带上仓库名：Telegram 推送预览只看标题，无仓库名时无法区分是哪个仓超频。
-		// repoFullName 为空（如聚合器单事件回放）时回退通用标题；写入前统一转义。
+		sample := ev
+		targetChannels := prep.Channels
 		title := "⚠️ 通知频率超限"
 		if repoFullName != "" {
 			title = "⚠️ 通知频率超限：" + repoFullName
 		}
 		eventsInWindow := len(filtered)
 		a.mu.Unlock()
-		// 降级：只写一条速率限制摘要（必须在锁外访问 Store）
-		enqueued, skipReason, err := a.enqueueBurstSummary(ctx, repoID, repoFullName, cat, title, sample)
+		enqueued, skipReason, err := a.enqueueBurstSummary(ctx, repoID, repoFullName, cat, title, sample, targetChannels...)
 		if err != nil {
 			return err
 		}
 		if a.Logger != nil {
-			// 超频是异常流量信号：Warn 留痕便于审计与告警，摘要本身也会通知用户。
-			// 只有真正写入摘要才记 enqueued，其余情况带原因留痕，避免日志虚报入队。
 			if enqueued {
 				a.Logger.Warn("burst summary enqueued",
 					"repo", repoFullName, "category", cat, "events_in_window", eventsInWindow)
@@ -272,9 +323,14 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 
 	b, ok := a.buckets[key]
 	if !ok {
-		b = &aggBucket{category: cat, repoID: repoID, repoName: repoFullName, events: []*store.Event{res.Event}}
+		b = &aggBucket{
+			category: cat,
+			repoID:   repoID,
+			repoName: repoFullName,
+			events:   []*store.Event{ev},
+			prepared: []preparedEvent{prep},
+		}
 		a.buckets[key] = b
-		// 计时器绑定当前桶实例：桶被提前冲刷并重建后，陈旧回调不得冲刷新桶。
 		bucketRef := b
 		b.timer = time.AfterFunc(a.Window, func() {
 			a.flush(key, bucketRef)
@@ -282,10 +338,10 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 		a.mu.Unlock()
 		return nil
 	}
-	b.events = append(b.events, res.Event)
-	// 聚合桶饱和主动冲刷：积攒事件达到上限（如 15 条）时无需等待窗口计时结束，立即提前触发合并推送。
+	b.events = append(b.events, ev)
+	b.prepared = append(b.prepared, prep)
 	const maxBucketBatch = 15
-	shouldEarlyFlush := len(b.events) >= maxBucketBatch
+	shouldEarlyFlush := len(b.prepared) >= maxBucketBatch
 	if shouldEarlyFlush && b.timer != nil {
 		b.timer.Stop()
 	}
@@ -316,33 +372,38 @@ func (a *Aggregator) flush(key string, expect *aggBucket) {
 	a.mu.Lock()
 	b, ok := a.buckets[key]
 	if !ok || (expect != nil && b != expect) {
-		// 桶已被提前冲刷并重建（或已取消）：陈旧计时器回调不得冲刷新桶，
-		// 否则同一批次会被提前切分投递。
 		a.mu.Unlock()
 		return
 	}
 	delete(a.buckets, key)
 	a.mu.Unlock()
 
+	items := b.preparedItems()
 	ctx, cancel := context.WithTimeout(context.Background(), a.flushBudget())
 	defer cancel()
-	if len(b.events) == 1 {
-		// 单事件回放：走实时通知评估。失败留痕，避免聚合窗口内的通知静默丢失。
-		if err := (&Engine{Store: a.Store, AI: a.AI, Logger: a.Logger, GitHub: a.GitHub}).Evaluate(ctx, normalizer.Result{Event: b.events[0]}, b.repoName); err != nil && a.Logger != nil {
+	if len(items) == 1 {
+		eng := &Engine{
+			Store:      a.Store,
+			AI:         a.AI,
+			Logger:     a.Logger,
+			GitHub:     a.GitHub,
+			JevClient:  a.JevClient,
+			JevConfig:  a.JevConfig,
+			JevRuntime: a.JevRuntime,
+		}
+		if err := eng.evaluatePrepared(ctx, items[0], b.repoName); err != nil && a.Logger != nil {
 			a.Logger.Warn("aggregate flush evaluate failed",
-				"repo", b.repoName, "category", b.category, "events", len(b.events), "error_code", "aggregate_flush_failed", "error", err.Error())
+				"repo", b.repoName, "category", b.category, "events", len(items), "error_code", "aggregate_flush_failed", "error", err.Error())
 		}
 		return
 	}
 	if a.Logger != nil {
-		// 合并投递留痕：多事件合并为一条，便于按合并量评估聚合窗口配置是否合理。
 		a.Logger.Debug("aggregate flushed",
-			"repo", b.repoName, "category", b.category, "events", len(b.events))
+			"repo", b.repoName, "category", b.category, "events", len(items))
 	}
 	if err := a.enqueueMerged(ctx, b); err != nil && a.Logger != nil {
-		// 合并通知写库失败：与单事件回放同样留痕，DB 抖动时不再静默丢聚合通知。
 		a.Logger.Warn("aggregate flush enqueue failed",
-			"repo", b.repoName, "category", b.category, "events", len(b.events), "error_code", "aggregate_flush_failed", "error", err.Error())
+			"repo", b.repoName, "category", b.category, "events", len(items), "error_code", "aggregate_flush_failed", "error", err.Error())
 	}
 }
 
@@ -352,35 +413,61 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 	if err != nil {
 		return err
 	}
-	// 窗口结束时再按最新全局功能开关过滤：聚合窗口期间被关闭的类型不得漏发。
 	features := store.LoadFeatureFlags(ctx, a.Store.Settings())
-	// 多实例：幂等键按「渠道 + 仓 + 类别 + 时间桶」稳定，避免各副本各写一条合并通知。
-	// 进程内合并仍是 best-effort；跨实例重复事件靠 Outbox 唯一约束收敛。
 	bucket := timeBucket(time.Now().UTC(), a.Window)
-	// repoID 为空（事件未绑定仓库）时回退仓库名进幂等键与聚合键：
-	// 否则不同仓库同类同桶会生成相同幂等键，第二条被 Outbox 唯一约束静默丢弃。
 	idScope := b.repoID
 	if idScope == "" {
 		idScope = b.repoName
 	}
-	// 同一窗口内可能出现两次冲刷（饱和提前冲刷 + 窗口收尾）：本进程第二次入队必须带批次指纹，
-	// 否则会撞 Outbox 唯一约束被静默丢弃，导致一批事件永久不发。
-	// 判定按「一次 flush」而非按渠道进行，同一批次的所有渠道共用同一变体，跨副本才会算出同一批键；
-	// 其他副本先入队时保持原键，跨实例仍收敛为一条，不引入重复通知。
+	items := b.preparedItems()
+	sampleEvents := make([]*store.Event, 0, len(items))
+	for _, p := range items {
+		ev := p.InferredEvent
+		if ev == nil {
+			ev = p.Result.Event
+		}
+		if ev != nil {
+			sampleEvents = append(sampleEvents, ev)
+		}
+	}
 	scopeVariant := "agg|" + idScope + "|" + b.category + "|" + strconv.FormatInt(bucket, 10)
 	variant := scopeVariant
 	if a.markVariantFlushed(scopeVariant, bucket) {
-		variant = scopeVariant + "|" + shortEventTag(b.events)
+		variant = scopeVariant + "|" + shortEventTag(sampleEvents)
 	}
 	for _, ch := range channels {
 		if !ch.Enabled {
 			continue
 		}
-		sub := make([]*store.Event, 0, len(b.events))
-		for _, ev := range b.events {
-			if ch.AcceptsKind(ev.Kind) && features.AllowsKind(ev.Kind) && !ShouldSuppressBotEvent(ch, ev) {
-				sub = append(sub, ev)
+		sub := make([]*store.Event, 0, len(items))
+		for _, p := range items {
+			ev := p.InferredEvent
+			if ev == nil {
+			ev = p.Result.Event
 			}
+			if ev == nil {
+				continue
+			}
+			if !features.AllowsKind(ev.Kind) || ShouldSuppressBotEvent(ch, ev) {
+				continue
+			}
+			if p.Channels != nil {
+				matched := false
+				for _, pch := range p.Channels {
+					if pch.ID == ch.ID {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+			} else {
+				if !ch.AcceptsKind(ev.Kind) {
+					continue
+				}
+			}
+			sub = append(sub, ev)
 		}
 		if len(sub) == 0 {
 			continue
@@ -421,8 +508,6 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 		})
 		if err != nil {
 			if errors.Is(err, store.ErrConflict) {
-				// 幂等键冲突说明该批次已入库（多为其他副本先写）：留痕便于分辨
-				// 「正常收敛」与「同窗口批次被吞」，不再静默忽略。
 				if a.Logger != nil {
 					a.Logger.Warn("aggregate enqueue conflict",
 						"repo", b.repoName, "category", b.category, "channel_id", ch.ID,
@@ -530,11 +615,37 @@ func renderMergedMessage(repoName, category string, events []*store.Event, windo
 // enqueueBurstSummary 写入超频摘要；返回是否真正落库，以及未落库的原因
 // （`no_channel` 无接收渠道，`duplicate` 同渠道同时间桶已被幂等收敛）。
 // 调用方据此区分「已入队」与「未入队」，避免日志虚报入队次数。
-func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, cat, title string, sample *store.Event) (bool, string, error) {
+func (a *Aggregator) enqueueBurstSummary(
+	ctx context.Context,
+	repoID, repoName, cat, title string,
+	sample *store.Event,
+	targetChannels ...store.NotificationChannel,
+) (bool, string, error) {
 	channels, err := a.Store.Channels().List(ctx)
 	if err != nil {
 		return false, "", err
 	}
+	activeMap := make(map[string]store.NotificationChannel, len(channels))
+	for _, ch := range channels {
+		if ch.Enabled {
+			activeMap[ch.ID] = ch
+		}
+	}
+	var eligibleChannels []store.NotificationChannel
+	if len(targetChannels) > 0 {
+		for _, tch := range targetChannels {
+			if ch, ok := activeMap[tch.ID]; ok {
+				eligibleChannels = append(eligibleChannels, ch)
+			}
+		}
+	} else {
+		for _, ch := range channels {
+			if ch.Enabled && ch.AcceptsKind(sample.Kind) && !ShouldSuppressBotEvent(ch, sample) {
+				eligibleChannels = append(eligibleChannels, ch)
+			}
+		}
+	}
+
 	bucket := timeBucket(time.Now().UTC(), a.BurstWindow)
 	categoryCN := categoryDisplayName(cat)
 	now := time.Now().UTC()
@@ -556,12 +667,7 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 	}
 	enqueued := false
 	duplicate := false
-	for _, ch := range channels {
-		// 以 sample 事件的类型判定渠道是否接收超频摘要。
-		if !ch.Enabled || !ch.AcceptsKind(sample.Kind) || ShouldSuppressBotEvent(ch, sample) {
-			continue
-		}
-		// repoID 为空时回退仓库名进幂等键，避免不同仓库摘要互相碰撞。
+	for _, ch := range eligibleChannels {
 		idScope := repoID
 		if idScope == "" {
 			idScope = repoName
@@ -579,12 +685,10 @@ func (a *Aggregator) enqueueBurstSummary(ctx context.Context, repoID, repoName, 
 			AggregateKey: idScope + "|burst", IdempotencyKey: idem,
 			Status: store.OutboxPending, NextAttemptAt: nextAttempt,
 			Title: title, BodyText: body, ParseMode: "HTML",
-			// 有事件链接时附带跳转按钮，用户可从摘要直达原始事件。
 			HTMLURL: burstURL,
 		})
 		if err != nil {
 			if errors.Is(err, store.ErrConflict) {
-				// 同渠道同时间桶已有摘要（多实例或本进程重复触发）：幂等收敛，不视为失败。
 				duplicate = true
 				continue
 			}

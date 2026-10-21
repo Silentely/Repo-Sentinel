@@ -25,6 +25,8 @@ const (
 	FieldAllowPrivate = "allow_private"
 	// FieldEventKinds holds the string denoting the event_kinds field in the database.
 	FieldEventKinds = "event_kinds"
+	// FieldIncidentTags holds the string denoting the incident_tags field in the database.
+	FieldIncidentTags = "incident_tags"
 	// FieldDigestEnabled holds the string denoting the digest_enabled field in the database.
 	FieldDigestEnabled = "digest_enabled"
 	// FieldReceiveDailyDigest holds the string denoting the receive_daily_digest field in the database.
@@ -67,6 +69,7 @@ var Columns = []string{
 	FieldSecretEnvelope,
 	FieldAllowPrivate,
 	FieldEventKinds,
+	FieldIncidentTags,
 	FieldDigestEnabled,
 	FieldReceiveDailyDigest,
 	FieldReceiveWeeklyReport,

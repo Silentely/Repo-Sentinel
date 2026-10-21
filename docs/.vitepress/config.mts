@@ -132,6 +132,7 @@ export default defineConfig({
           { text: "管理员与 Session", link: "/guide/administrator" },
           { text: "健康检查与版本", link: "/guide/health-and-version" },
           { text: "列表 API 查询参数", link: "/guide/list-api" },
+          { text: "Jev 决策引擎运维", link: "/guide/jev-operations" },
         ],
       },
       {
@@ -184,33 +185,32 @@ export default defineConfig({
       },
     },
 
-    editLink: {
-      pattern: `https://github.com/${repository}/edit/${editBranch}/docs/:path`,
-      text: "在 GitHub 上编辑此页面",
-    },
-
-    lastUpdated: {
-      text: "最后更新于",
-      formatOptions: {
-        dateStyle: "medium",
-        timeStyle: "short",
-      },
-    },
-
     outline: {
       level: [2, 3],
       label: "页面导航",
     },
 
-    footer: {
-      message:
-        '基于 <a href="https://vitepress.dev/">VitePress</a> 构建 · 默认 SQLite，可选 PostgreSQL',
-      copyright: "Copyright © 2026 RepoSentinel",
+    lastUpdated: {
+      text: "最后更新于",
+      formatOptions: {
+        dateStyle: "short",
+        timeStyle: "medium",
+      },
     },
 
     docFooter: {
       prev: "上一页",
       next: "下一页",
+    },
+
+    footer: {
+      message: "基于 Apache-2.0 许可发布",
+      copyright: "Copyright © 2026 RepoSentinel",
+    },
+
+    editLink: {
+      pattern: `https://github.com/${repository}/edit/${editBranch}/docs/:path`,
+      text: "在 GitHub 上编辑此页面",
     },
   },
 });

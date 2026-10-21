@@ -23,6 +23,7 @@ func (NotificationChannel) Fields() []ent.Field {
 		field.String("secret_envelope").Default(""), // 加密 token/签名密钥
 		field.Bool("allow_private").Default(false),
 		field.JSON("event_kinds", []string{}).Optional(),   // 订阅的实时通知类型；NULL=全部
+		field.JSON("incident_tags", []string{}).Optional(),
 		field.Bool("digest_enabled").Default(true),         // 是否接收每日汇总（兼容旧版字段）
 		field.Bool("receive_daily_digest").Default(true),   // 是否接收每日简报
 		field.Bool("receive_weekly_report").Default(true),  // 是否接收每周报告

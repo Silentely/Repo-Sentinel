@@ -11,6 +11,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -39,6 +40,8 @@ type Service struct {
 	GitHub *githubx.AppClient
 	// AI 可选；默认 rules.Engine 的安全告警分诊客户端。
 	AI *ai.Client
+	// JevRuntime 可选；用于 PR 级联门控等判别式决策。
+	JevRuntime *jev.RuntimeConfig
 	// Background 后台任务生命周期；关闭时由 App 取消。
 	Background context.Context
 	// OnFailed 可选指标回调：规范化或规则评估失败时触发（与 notify 的 OnSent 同模式，
@@ -184,7 +187,7 @@ func (s *Service) Process(rowID, eventType, deliveryID, claimToken string, body 
 		if s.Evaluator != nil {
 			err = s.Evaluator.Evaluate(processCtx, res, repoName)
 		} else {
-			err = (&rules.Engine{Store: s.Store, AI: s.AI, Logger: s.Logger, GitHub: s.GitHub}).Evaluate(processCtx, res, repoName)
+			err = (&rules.Engine{Store: s.Store, AI: s.AI, Logger: s.Logger, GitHub: s.GitHub, JevRuntime: s.JevRuntime}).Evaluate(processCtx, res, repoName)
 		}
 		if err != nil {
 			// 通知已丢：状态必须可查，标记为失败而不是 processed。

@@ -181,6 +181,10 @@ type CodeReviewResult struct {
 	CommentedOnPR     bool               `json:"commented_on_pr"`
 	DiffTruncated     bool               `json:"diff_truncated"`
 	HeadSHA           string             `json:"head_sha,omitempty"`
+	ReviewStatus      string             `json:"review_status,omitempty"`
+	SkipReason        string             `json:"skip_reason,omitempty"`
+	DecisionModel     string             `json:"decision_model,omitempty"`
+	DecisionPolicy    string             `json:"decision_policy,omitempty"`
 }
 
 var ErrInvalidCodeReview = errors.New("ai: invalid code review response")
@@ -1159,6 +1163,13 @@ func (c *Client) ReviewPR(ctx context.Context, repo, title, author, diff string)
 	res.DiffTruncated = diffTruncated
 	applyScoreAndRiskGuards(&res, heuristics)
 	res.ReviewedAt = time.Now().UTC()
+	res.ReviewStatus = "reviewed"
+	if res.DecisionModel == "" {
+		res.DecisionModel = c.Model
+	}
+	if res.DecisionPolicy == "" {
+		res.DecisionPolicy = "direct_review"
+	}
 	return &res, nil
 }
 

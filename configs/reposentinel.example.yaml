@@ -125,3 +125,43 @@ oauth:
   client_id: "reposentinel-agent"
   # 客户端密钥通过 REPOSENTINEL_OAUTH_CLIENT_SECRET 注入，不写入本文件。
   # 访问令牌由主密钥（REPOSENTINEL_ENCRYPTION_KEY）派生密钥签名，主密钥轮换后旧令牌自动作废。
+
+
+jev:
+  # TypeSafe AI System One 判别式决策引擎，默认关闭。
+  enabled: false
+  # API 根端点，默认 https://api.typesafe.ai（禁止包含 /v1 路径、query 或 userinfo）。
+  base_url: "https://api.typesafe.ai"
+  # API 密钥建议通过 REPOSENTINEL_JEV_API_KEY 环境变量注入，不建议写入明文。
+  # api_key: "your-jev-api-key"
+  # 固定模型版本，默认 jev-1.14.0。
+  model: "jev-1.14.0"
+  # 运行模式：shadow（默认只旁路记录与审计）或 active（必须通过评测门禁）。
+  mode: "shadow"
+  # 瞬时失败重试次数，仅允许 0 或 1，默认 1。
+  retries: 1
+  # 是否启用通知智能降噪（高把握抑制 bot 无效抖动）。
+  noise_filter_enabled: false
+  # 是否启用事件动态路由与 Incident 标签增强。
+  routing_enabled: false
+  # 是否启用 PR 文档快速放行级联门控（纯文档变更跳过深度审查）。
+  cascade_gate_enabled: false
+  # 是否启用 ChatOps 高危动作判别式护栏。
+  chatops_guardrail_enabled: false
+  # 是否允许外发私有仓库的脱敏事件特征（默认 false 仅允许公有仓库外发）。
+  allow_private_state: false
+
+  # 通知决策面独立并发与超时预算
+  notification:
+    timeout: "500ms"
+    max_concurrency: 8
+
+  # PR 审查决策面独立并发与超时预算
+  review:
+    timeout: "300ms"
+    max_concurrency: 8
+
+  # ChatOps 决策面独立并发与超时预算
+  chatops:
+    timeout: "500ms"
+    max_concurrency: 8

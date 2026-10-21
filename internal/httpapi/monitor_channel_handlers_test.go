@@ -154,3 +154,99 @@ func TestAppendAuditRedactsSecrets(t *testing.T) {
 		t.Fatalf("审计日志应包含脱敏标记: %s", rawMeta)
 	}
 }
+
+func TestChannelIncidentTags(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{
+		CSRFHeaderName: csrf.Value,
+	}
+
+	// 1. 非法标签被拒绝
+	invalidBody := `{"name":"invalid-tag","enabled":true,"target":"123","incident_tags":["unknown_tag"]}`
+	badRes := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram", invalidBody, "127.0.0.1:45120", cookies, headers)
+	assertAPIError(t, badRes, http.StatusBadRequest, errorCodeValidationFailed)
+
+	// 2. 有效标签：支持去重与自动排序
+	validBody := `{"name":"ops","enabled":true,"target":"123","incident_tags":["security","ci","security","dependency"]}`
+	putRes := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram", validBody, "127.0.0.1:45121", cookies, headers)
+	if putRes.Code != http.StatusOK {
+		t.Fatalf("upsert channel with incident tags failed: %d, body: %s", putRes.Code, putRes.Body.String())
+	}
+	var putView struct {
+		IncidentTags []string `json:"incident_tags"`
+	}
+	if err := json.Unmarshal(putRes.Body.Bytes(), &putView); err != nil {
+		t.Fatal(err)
+	}
+	expected := []string{"ci", "dependency", "security"}
+	if len(putView.IncidentTags) != len(expected) {
+		t.Fatalf("expected tags %v, got %v", expected, putView.IncidentTags)
+	}
+	for i, tag := range expected {
+		if putView.IncidentTags[i] != tag {
+			t.Fatalf("tag at index %d expected %s, got %s", i, tag, putView.IncidentTags[i])
+		}
+	}
+
+	// 3. 渠道列表与备份导出均包含 incident_tags
+	listRes := fixture.request(t, http.MethodGet, "/api/v1/notifications/channels", "", "127.0.0.1:45122", cookies, headers)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("list channels failed: %d", listRes.Code)
+	}
+	var listResp struct {
+		Items []struct {
+			IncidentTags []string `json:"incident_tags"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &listResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(listResp.Items) != 1 || len(listResp.Items[0].IncidentTags) != 3 {
+		t.Fatalf("unexpected list items: %+v", listResp.Items)
+	}
+
+	backupRes := fixture.request(t, http.MethodGet, "/api/v1/notifications/backup", "", "127.0.0.1:45123", cookies, headers)
+	if backupRes.Code != http.StatusOK {
+		t.Fatalf("export backup failed: %d", backupRes.Code)
+	}
+	var backupResp struct {
+		Channels []struct {
+			IncidentTags []string `json:"incident_tags"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(backupRes.Body.Bytes(), &backupResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(backupResp.Channels) != 1 || len(backupResp.Channels[0].IncidentTags) != 3 {
+		t.Fatalf("unexpected backup channels: %+v", backupResp.Channels)
+	}
+
+	// 4. 更新渠道时省略 incident_tags 保留原有标签
+	omitBody := `{"enabled":true,"target":"123","ignore_bots":true}`
+	putOmit := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram", omitBody, "127.0.0.1:45124", cookies, headers)
+	if putOmit.Code != http.StatusOK {
+		t.Fatalf("put omit failed: %d", putOmit.Code)
+	}
+	if err := json.Unmarshal(putOmit.Body.Bytes(), &putView); err != nil {
+		t.Fatal(err)
+	}
+	if len(putView.IncidentTags) != 3 {
+		t.Fatalf("omitted incident_tags should be preserved, got %v", putView.IncidentTags)
+	}
+
+	// 5. 显式传入 [] 或 null 清空为全接收 (nil)
+	clearBody := `{"enabled":true,"target":"123","incident_tags":[]}`
+	putClear := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram", clearBody, "127.0.0.1:45125", cookies, headers)
+	if putClear.Code != http.StatusOK {
+		t.Fatalf("put clear failed: %d", putClear.Code)
+	}
+	if err := json.Unmarshal(putClear.Body.Bytes(), &putView); err != nil {
+		t.Fatal(err)
+	}
+	if putView.IncidentTags != nil {
+		t.Fatalf("cleared incident_tags should be nil (all accept), got %v", putView.IncidentTags)
+	}
+}

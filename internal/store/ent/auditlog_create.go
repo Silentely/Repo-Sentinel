@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -52,7 +52,7 @@ func (_c *AuditLogCreate) SetTargetID(v string) *AuditLogCreate {
 }
 
 // SetMetadataJSON sets the "metadata_json" field.
-func (_c *AuditLogCreate) SetMetadataJSON(v json.RawMessage) *AuditLogCreate {
+func (_c *AuditLogCreate) SetMetadataJSON(v jsontext.Value) *AuditLogCreate {
 	_c.mutation.SetMetadataJSON(v)
 	return _c
 }

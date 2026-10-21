@@ -328,3 +328,113 @@ func TestTrustedProxiesValidation(t *testing.T) {
 		requireValidationError(t, cfg.Validate())
 	})
 }
+
+
+func TestJevValidation(t *testing.T) {
+	cfg := defaultConfig()
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("APIKey 必填", func(t *testing.T) {
+		c := defaultConfig()
+		c.Jev.Enabled = true
+		c.Jev.APIKey = NewSecret("")
+		var validation *ValidationError
+		if err := c.Validate(); !errors.As(err, &validation) || validation.Field != "jev.api_key" {
+			t.Fatalf("错误字段不符: %v", err)
+		}
+	})
+
+	t.Run("BaseURL 校验", func(t *testing.T) {
+		invalidURLs := []string{
+			"http://api.typesafe.ai",
+			"https://",
+			"https://user:pass@api.typesafe.ai",
+			"https://api.typesafe.ai/v1",
+			"https://api.typesafe.ai/custom/path",
+			"https://api.typesafe.ai?query=1",
+			"https://api.typesafe.ai#frag",
+		}
+		for _, u := range invalidURLs {
+			c := defaultConfig()
+			c.Jev.BaseURL = u
+			var validation *ValidationError
+			if err := c.Validate(); !errors.As(err, &validation) || validation.Field != "jev.base_url" {
+				t.Fatalf("url %q 必须被拒绝: %v", u, err)
+			}
+		}
+
+		validURLs := []string{
+			"https://api.typesafe.ai",
+			"https://api.typesafe.ai/",
+			"https://custom-proxy.internal:8443",
+		}
+		for _, u := range validURLs {
+			c := defaultConfig()
+			c.Jev.BaseURL = u
+			if err := c.Validate(); err != nil {
+				t.Fatalf("url %q 应通过: %v", u, err)
+			}
+		}
+	})
+
+	t.Run("Mode 校验", func(t *testing.T) {
+		c := defaultConfig()
+		c.Jev.Mode = "invalid_mode"
+		var validation *ValidationError
+		if err := c.Validate(); !errors.As(err, &validation) || validation.Field != "jev.mode" {
+			t.Fatalf("非法 mode 必须拒绝: %v", err)
+		}
+	})
+
+	t.Run("Retries 边界", func(t *testing.T) {
+		for _, r := range []int{-1, 2, 5} {
+			c := defaultConfig()
+			c.Jev.Retries = r
+			var validation *ValidationError
+			if err := c.Validate(); !errors.As(err, &validation) || validation.Field != "jev.retries" {
+				t.Fatalf("retries %d 应被拒绝: %v", r, err)
+			}
+		}
+		for _, r := range []int{0, 1} {
+			c := defaultConfig()
+			c.Jev.Retries = r
+			if err := c.Validate(); err != nil {
+				t.Fatalf("retries %d 应通过: %v", r, err)
+			}
+		}
+	})
+
+	t.Run("Plane Timeout 与 Concurrency 边界", func(t *testing.T) {
+		planes := []struct {
+			name string
+			set  func(c *Config, timeout time.Duration, concurrency int)
+		}{
+			{"notification", func(c *Config, t time.Duration, n int) { c.Jev.Notification.Timeout = t; c.Jev.Notification.MaxConcurrency = n }},
+			{"review", func(c *Config, t time.Duration, n int) { c.Jev.Review.Timeout = t; c.Jev.Review.MaxConcurrency = n }},
+			{"chatops", func(c *Config, t time.Duration, n int) { c.Jev.ChatOps.Timeout = t; c.Jev.ChatOps.MaxConcurrency = n }},
+		}
+
+		for _, p := range planes {
+			// Timeout < 1ms 或 > 1000ms
+			for _, d := range []time.Duration{0, 1001 * time.Millisecond} {
+				c := defaultConfig()
+				p.set(&c, d, 8)
+				var validation *ValidationError
+				if err := c.Validate(); !errors.As(err, &validation) || validation.Field != "jev."+p.name+".timeout" {
+					t.Fatalf("plane %s timeout %v 应被拒绝: %v", p.name, d, err)
+				}
+			}
+			// Concurrency < 1 或 > 32
+			for _, n := range []int{0, 33} {
+				c := defaultConfig()
+				p.set(&c, 500*time.Millisecond, n)
+				var validation *ValidationError
+				if err := c.Validate(); !errors.As(err, &validation) || validation.Field != "jev."+p.name+".max_concurrency" {
+					t.Fatalf("plane %s concurrency %d 应被拒绝: %v", p.name, n, err)
+				}
+			}
+		}
+	})
+}

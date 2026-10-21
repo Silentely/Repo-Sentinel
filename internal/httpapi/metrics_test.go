@@ -197,3 +197,31 @@ func TestShouldLogMetricsAccess(t *testing.T) {
 		t.Fatal("表重置后旧 IP 应重新开始计时")
 	}
 }
+
+
+func TestJevMetricsExport(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{metricsEnabled: true})
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+
+	for _, expected := range []string{
+		"reposentinel_jev_requests_total{plane=\"notification\"}",
+		"reposentinel_jev_requests_failed_total{plane=\"notification\"}",
+		"reposentinel_jev_cache_hits_total{plane=\"notification\"}",
+		"reposentinel_jev_fallbacks_total{plane=\"notification\"}",
+		"reposentinel_jev_suppressed_total",
+		"reposentinel_jev_skipped_total",
+		"reposentinel_jev_would_skip_total",
+		"reposentinel_jev_would_suppress_total",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("metrics 输出缺少 expected 指标: %s", expected)
+		}
+	}
+}

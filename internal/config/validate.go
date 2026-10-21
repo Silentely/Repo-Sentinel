@@ -145,6 +145,47 @@ func (cfg Config) Validate() error {
 			}
 		}
 	}
+
+	if cfg.Jev.Enabled {
+		if strings.TrimSpace(cfg.Jev.APIKey.Reveal()) == "" {
+			return newValidationError("jev.api_key", "is required when jev.enabled is true")
+		}
+	}
+	if cfg.Jev.BaseURL != "" {
+		parsed, err := url.Parse(strings.TrimSpace(cfg.Jev.BaseURL))
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || strings.HasPrefix(parsed.Path, "/v1") || (parsed.Path != "" && parsed.Path != "/") {
+			return newValidationError("jev.base_url", "must be an https URL with host and without path, query or userinfo")
+		}
+	}
+	if cfg.Jev.Mode != "" && cfg.Jev.Mode != "shadow" && cfg.Jev.Mode != "active" {
+		return newValidationError("jev.mode", "must be shadow or active")
+	}
+	if cfg.Jev.Retries < 0 || cfg.Jev.Retries > 1 {
+		return newValidationError("jev.retries", "must be 0 or 1")
+	}
+	if err := validatePlaneConfig("notification", cfg.Jev.Notification, cfg.Jev.Enabled); err != nil {
+		return err
+	}
+	if err := validatePlaneConfig("review", cfg.Jev.Review, cfg.Jev.Enabled); err != nil {
+		return err
+	}
+	if err := validatePlaneConfig("chatops", cfg.Jev.ChatOps, cfg.Jev.Enabled); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validatePlaneConfig(name string, p PlaneConfig, enabled bool) error {
+	if !enabled && p.Timeout == 0 && p.MaxConcurrency == 0 {
+		return nil
+	}
+	if p.Timeout < time.Millisecond || p.Timeout > 1000*time.Millisecond {
+		return newValidationError("jev."+name+".timeout", "must be between 1ms and 1000ms")
+	}
+	if p.MaxConcurrency < 1 || p.MaxConcurrency > 32 {
+		return newValidationError("jev."+name+".max_concurrency", "must be between 1 and 32")
+	}
 	return nil
 }
 

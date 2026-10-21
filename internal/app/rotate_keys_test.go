@@ -14,6 +14,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -130,6 +131,18 @@ func TestRotateKeys_FullCycleAndDryRun(t *testing.T) {
 		t.Fatalf("save ai config: %v", err)
 	}
 
+	// 写入 Jev 配置
+	envJevKey, err := ringOld.Encrypt(ctx, []byte("sk-jev-legacy-token"), []byte(jev.SecretAAD))
+	if err != nil {
+		t.Fatalf("encrypt jev key: %v", err)
+	}
+	if err := jev.SaveStoredConfig(ctx, st, jev.StoredConfig{
+		Model:          "jev-1.14.0",
+		APIKeyEnvelope: envJevKey,
+	}); err != nil {
+		t.Fatalf("save jev config: %v", err)
+	}
+
 	// 写入 TOTP 配置
 	if err := auth.SaveTOTPConfig(ctx, st, &ringOld, true, "JBSWY3DPEHPK3PXP"); err != nil {
 		t.Fatalf("save totp: %v", err)
@@ -149,8 +162,8 @@ func TestRotateKeys_FullCycleAndDryRun(t *testing.T) {
 	if dryStats.ChannelsRotated != 1 {
 		t.Fatalf("expected 1 channel to rotate, got %d", dryStats.ChannelsRotated)
 	}
-	if dryStats.SettingsRotated != 4 { // github, ai, totp, probe
-		t.Fatalf("expected 4 settings to rotate, got %d", dryStats.SettingsRotated)
+	if dryStats.SettingsRotated != 5 { // github, ai, jev, totp, probe
+		t.Fatalf("expected 5 settings to rotate, got %d", dryStats.SettingsRotated)
 	}
 	if dryStats.AlreadyCurrent != 0 {
 		t.Fatalf("expected 0 already current, got %d", dryStats.AlreadyCurrent)
@@ -181,8 +194,8 @@ func TestRotateKeys_FullCycleAndDryRun(t *testing.T) {
 	if runStats.ChannelsRotated != 1 {
 		t.Fatalf("expected 1 channel rotated, got %d", runStats.ChannelsRotated)
 	}
-	if runStats.SettingsRotated != 4 {
-		t.Fatalf("expected 4 settings rotated, got %d", runStats.SettingsRotated)
+	if runStats.SettingsRotated != 5 {
+		t.Fatalf("expected 5 settings rotated, got %d", runStats.SettingsRotated)
 	}
 
 	// 5. 再次运行轮换：应该报告全部为 AlreadyCurrent
@@ -193,8 +206,8 @@ func TestRotateKeys_FullCycleAndDryRun(t *testing.T) {
 	if runAgainStats.ChannelsRotated != 0 || runAgainStats.SettingsRotated != 0 {
 		t.Fatalf("expected 0 rotated on second run, got %d channels and %d settings", runAgainStats.ChannelsRotated, runAgainStats.SettingsRotated)
 	}
-	if runAgainStats.AlreadyCurrent != 5 { // 1 channel + 4 settings
-		t.Fatalf("expected 5 already current, got %d", runAgainStats.AlreadyCurrent)
+	if runAgainStats.AlreadyCurrent != 6 { // 1 channel + 5 settings
+		t.Fatalf("expected 6 already current, got %d", runAgainStats.AlreadyCurrent)
 	}
 
 	// 6. 验证新密钥独占（以新连接打开数据库，移除旧密钥配置后，系统单密钥仍完全可用）
@@ -252,6 +265,16 @@ func TestRotateKeys_FullCycleAndDryRun(t *testing.T) {
 		t.Fatalf("decrypt ai api key with new key failed: %v", err)
 	}
 
+	// 校验 Jev API Key 能用新密钥解密
+	jevStored, err := jev.LoadStoredConfig(ctx, stNew)
+	if err != nil {
+		t.Fatalf("load stored jev config: %v", err)
+	}
+	decJev, err := ringNewOnly.Decrypt(ctx, jevStored.APIKeyEnvelope, []byte(jev.SecretAAD))
+	if err != nil || string(decJev.Plaintext) != "sk-jev-legacy-token" {
+		t.Fatalf("decrypt jev api key with new key failed: %v", err)
+	}
+
 	// 校验 TOTP 2FA 能用新密钥解密
 	totpEnabled, totpSecret, err := auth.LoadTOTPConfig(ctx, stNew, &ringNewOnly)
 	if err != nil || !totpEnabled || totpSecret != "JBSWY3DPEHPK3PXP" {
@@ -273,26 +296,42 @@ func TestRotateKeys_CorruptedSecretRollsBackTransaction(t *testing.T) {
 		t.Fatalf("new old keyring: %v", err)
 	}
 
+	// 写入探针
 	if err := writeEncryptionProbe(ctx, st, ringOld, store.SystemSetting{}); err != nil {
 		t.Fatalf("write probe: %v", err)
 	}
 
-	// 写入一个损坏的信封
+	// 写入一个损坏的信封（密文不是合法 base64 或未按 AEAD 格式）
 	_, err = st.Channels().Upsert(ctx, store.NotificationChannel{
 		ID:             "ch-corrupted",
-		ChannelType:    "telegram",
+		ChannelType:    "slack",
 		Name:           "Corrupted Channel",
-		SecretEnvelope: "v1.invalidbase64...corrupted",
+		SecretEnvelope: "v1:not-a-valid-envelope-payload",
 		Enabled:        true,
 	})
 	if err != nil {
-		t.Fatalf("upsert channel: %v", err)
+		t.Fatalf("upsert corrupted channel: %v", err)
 	}
 
 	cfgDual := testRotateConfig(dbCfg, keyNewHex, keyOldHex)
 
-	// 轮换应失败，且探针保持不变
-	if _, err = RotateKeys(ctx, cfgDual, RotateKeysOptions{DryRun: false}); err == nil {
+	// 校验执行轮换时遇到解密失败直接报错并回滚
+	_, err = RotateKeys(ctx, cfgDual, RotateKeysOptions{DryRun: false})
+	if err == nil {
 		t.Fatalf("expected error on corrupted secret, got nil")
+	}
+
+	// 验证探针仍为旧密钥未被改写
+	probeSetting, err := st.Settings().Get(ctx, encryptionProbeSettingKey)
+	if err != nil {
+		t.Fatalf("get probe setting: %v", err)
+	}
+	var probeData encryptionProbe
+	if err := json.Unmarshal(probeSetting.ValueJSON, &probeData); err != nil {
+		t.Fatalf("unmarshal probe: %v", err)
+	}
+	dec, err := ringOld.Decrypt(ctx, probeData.Envelope, []byte(encryptionProbeAAD))
+	if err != nil || dec.UsedPreviousKey {
+		t.Fatalf("probe should still be decryptable by old key without previous fallback")
 	}
 }

@@ -699,3 +699,92 @@ func TestAIYAML解析(t *testing.T) {
 		t.Fatal("API Key 应从环境变量注入")
 	}
 }
+
+
+func TestJevYAMLandEnvLoading(t *testing.T) {
+	yamlData := `
+jev:
+  enabled: true
+  base_url: "https://api.typesafe.ai"
+  model: "jev-1.14.0"
+  mode: "shadow"
+  retries: 1
+  noise_filter_enabled: true
+  routing_enabled: true
+  cascade_gate_enabled: true
+  chatops_guardrail_enabled: true
+  allow_private_state: true
+  notification:
+    timeout: "600ms"
+    max_concurrency: 10
+  review:
+    timeout: "400ms"
+    max_concurrency: 12
+  chatops:
+    timeout: "800ms"
+    max_concurrency: 16
+`
+	envOverrides := map[string]string{
+		"REPOSENTINEL_JEV_API_KEY":                       "test-secret-key-12345",
+		"REPOSENTINEL_JEV_MODEL":                         "jev-custom-override",
+		"REPOSENTINEL_JEV_MODE":                          "active",
+		"REPOSENTINEL_JEV_RETRIES":                       "0",
+		"REPOSENTINEL_JEV_ALLOW_PRIVATE_STATE":           "false",
+		"REPOSENTINEL_JEV_NOTIFICATION_TIMEOUT":          "450ms",
+		"REPOSENTINEL_JEV_NOTIFICATION_MAX_CONCURRENCY":  "6",
+	}
+
+	cfg, err := Load(context.Background(), LoadOptions{
+		FileSystem: fstest.MapFS{
+			"config.yaml": {Data: []byte(yamlData)},
+		},
+		ConfigPath: "config.yaml",
+		LookupEnv: func(name string) (string, bool) {
+			val, ok := envOverrides[name]
+			return val, ok
+		},
+	})
+	if err != nil {
+		t.Fatalf("加载 Jev 配置失败: %v", err)
+	}
+
+	if !cfg.Jev.Enabled {
+		t.Fatal("YAML enabled 应生效")
+	}
+	if cfg.Jev.Model != "jev-custom-override" {
+		t.Fatalf("环境变量未覆盖 model: got %s", cfg.Jev.Model)
+	}
+	if cfg.Jev.Mode != "active" {
+		t.Fatalf("环境变量未覆盖 mode: got %s", cfg.Jev.Mode)
+	}
+	if cfg.Jev.Retries != 0 {
+		t.Fatalf("环境变量显式 0 未生效: got %d", cfg.Jev.Retries)
+	}
+	if cfg.Jev.AllowPrivateState {
+		t.Fatal("环境变量显式 false 未生效")
+	}
+	if cfg.Jev.Notification.Timeout != 450*time.Millisecond {
+		t.Fatalf("环境变量超时覆盖未生效: got %v", cfg.Jev.Notification.Timeout)
+	}
+	if cfg.Jev.Notification.MaxConcurrency != 6 {
+		t.Fatalf("环境变量并发覆盖未生效: got %d", cfg.Jev.Notification.MaxConcurrency)
+	}
+	if cfg.Jev.Review.Timeout != 400*time.Millisecond {
+		t.Fatalf("YAML Review timeout 未生效: got %v", cfg.Jev.Review.Timeout)
+	}
+
+	// 验证 Secret 脱敏：fmt 与 json 绝不泄漏明文
+	if cfg.Jev.APIKey.Reveal() != "test-secret-key-12345" {
+		t.Fatal("Secret Reveal 应获取真实 key")
+	}
+	if strings.Contains(cfg.Jev.APIKey.String(), "test-secret-key-12345") {
+		t.Fatal("String() 泄露了密钥明文")
+	}
+	jsonBytes, err := json.Marshal(cfg.Jev.APIKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(jsonBytes), "test-secret-key-12345") {
+		t.Fatal("json.Marshal 泄露了密钥明文")
+	}
+}

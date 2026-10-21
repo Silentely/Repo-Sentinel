@@ -15,6 +15,7 @@ import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import {
   channelsQueryOptions,
   settingsQueryOptions,
+  jevConfigQueryOptions,
   upsertChannel,
   testChannel,
   deleteChannel,
@@ -25,6 +26,7 @@ import {
   type TestScenario,
 } from "./api";
 import { SUBSCRIBABLE_KINDS, subscriptionSummary, uiCheckedKinds } from "./notify-subscription";
+import { IncidentTagSelect } from "./incident-tag-select";
 
 function kindGloballyEnabled(settings: SystemSettings | undefined, featureKey: (typeof SUBSCRIBABLE_KINDS)[number]["featureKey"]) {
   return settings?.[featureKey] !== false;
@@ -45,6 +47,7 @@ interface ChannelFormProps {
   channel?: NotificationChannelRow;
   // 全局设置，用于功能模块关闭时灰显订阅勾选。
   settings?: SystemSettings;
+  routingEnabled?: boolean;
   // 目标字段文案与占位符。
   targetLabel: string;
   targetPlaceholder: string;
@@ -74,6 +77,7 @@ function ChannelForm({
   hint,
   channel,
   settings,
+  routingEnabled = true,
   targetLabel,
   targetPlaceholder,
   showSecret = true,
@@ -97,6 +101,7 @@ function ChannelForm({
   const [weeklyReport, setWeeklyReport] = useState(true);
   const [monthlyReport, setMonthlyReport] = useState(true);
   const [ignoreBots, setIgnoreBots] = useState(false);
+  const [incidentTags, setIncidentTags] = useState<string[]>(() => channel?.incident_tags ?? []);
 
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
   const [quietHoursStart, setQuietHoursStart] = useState("23:00");
@@ -120,6 +125,7 @@ function ChannelForm({
     setWeeklyReport(channel.receive_weekly_report ?? true);
     setMonthlyReport(channel.receive_monthly_report ?? true);
     setIgnoreBots(channel.ignore_bots ?? false);
+    setIncidentTags(channel.incident_tags ?? []);
     setQuietHoursEnabled(channel.quiet_hours_enabled ?? false);
     if (channel.quiet_hours_start) setQuietHoursStart(channel.quiet_hours_start);
     if (channel.quiet_hours_end) setQuietHoursEnd(channel.quiet_hours_end);
@@ -153,6 +159,7 @@ function ChannelForm({
         repo_pattern: channel?.repo_pattern,
         branch_filter: channel?.branch_filter,
         min_severity: channel?.min_severity,
+        incident_tags: incidentTags,
       });
     },
     onSuccess: async () => {
@@ -375,6 +382,11 @@ function ChannelForm({
           </div>
         )}
       </div>
+      <IncidentTagSelect
+        value={incidentTags}
+        onChange={setIncidentTags}
+        routingEnabled={routingEnabled}
+      />
       <div className="channel-form__buttons">
         <button
           className="primary-button primary-button--inline"
@@ -417,6 +429,8 @@ export function NotifyPage() {
   const queryClient = useQueryClient();
   const channels = useQuery(channelsQueryOptions);
   const settings = useQuery(settingsQueryOptions);
+  const jevConfig = useQuery(jevConfigQueryOptions);
+  const routingEnabled = jevConfig.data ? (jevConfig.data.enabled && jevConfig.data.routing_enabled) : true;
 
   const [message, setMessage] = useAutoDismiss();
   const [error, setError] = useState("");
@@ -601,6 +615,7 @@ export function NotifyPage() {
         }
         channel={telegramCh}
         settings={settings.data}
+        routingEnabled={routingEnabled}
         targetLabel="Chat ID"
         targetPlaceholder="-100..."
         secretLabel="Bot Token（留空则保留原密钥）"
@@ -633,6 +648,7 @@ export function NotifyPage() {
         }
         channel={httpCh}
         settings={settings.data}
+        routingEnabled={routingEnabled}
         targetLabel="HTTPS URL"
         targetPlaceholder="https://hooks.example.com/notify"
         secretLabel="签名 Secret（可选）"
@@ -659,6 +675,7 @@ export function NotifyPage() {
         }
         channel={feishuCh}
         settings={settings.data}
+        routingEnabled={routingEnabled}
         targetLabel="Webhook 地址"
         targetPlaceholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."
         secretLabel="加签密钥（可选，留空保留原密钥）"
@@ -684,6 +701,7 @@ export function NotifyPage() {
         }
         channel={wecomCh}
         settings={settings.data}
+        routingEnabled={routingEnabled}
         targetLabel="Webhook 地址"
         targetPlaceholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
         showSecret={false}
@@ -710,6 +728,7 @@ export function NotifyPage() {
         }
         channel={dingtalkCh}
         settings={settings.data}
+        routingEnabled={routingEnabled}
         targetLabel="Webhook 地址"
         targetPlaceholder="https://oapi.dingtalk.com/robot/send?access_token=..."
         secretLabel="加签密钥（可选，留空保留原密钥）"
@@ -735,6 +754,7 @@ export function NotifyPage() {
         }
         channel={discordCh}
         settings={settings.data}
+        routingEnabled={routingEnabled}
         targetLabel="Webhook 地址"
         targetPlaceholder="https://discord.com/api/webhooks/..."
         showSecret={false}
@@ -761,6 +781,7 @@ export function NotifyPage() {
         }
         channel={barkCh}
         settings={settings.data}
+        routingEnabled={routingEnabled}
         targetLabel="设备 Key 或服务器 URL"
         targetPlaceholder="https://api.day.app/your_key 或直接输入 key"
         secretLabel="备用密钥 / 设备 Key（可选）"
@@ -786,6 +807,7 @@ export function NotifyPage() {
         }
         channel={slackCh}
         settings={settings.data}
+        routingEnabled={routingEnabled}
         targetLabel="Webhook URL"
         targetPlaceholder="https://hooks.slack.com/services/..."
         showSecret={false}

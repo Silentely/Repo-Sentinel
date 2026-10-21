@@ -236,7 +236,30 @@ export function isBotAuthor(author?: string, authorIsBot?: boolean): boolean {
   return isBotUser(author);
 }
 
+export function getReviewSkipMessage(review: CodeReviewResult): string {
+  if (review.review_status !== "skipped") return "";
+  return review.skip_reason === "jev_documentation_only"
+    ? "已跳过深度审查：文档变更（Jev 门控）"
+    : "已跳过深度审查：本地规则确认的文档变更";
+}
+
 function formatReviewMarkdown(review: CodeReviewResult, item?: WorkItem): string {
+  if (review.review_status === "skipped") {
+    const skipMsg = getReviewSkipMessage(review);
+    const parts: string[] = ["## 🤖 RepoSentinel AI Code Review\n"];
+    parts.push(`> ⏭️ **${skipMsg}**\n`);
+    if (item?.author) {
+      const botTag = isBotAuthor(item.author, item.author_is_bot) ? " [Bot]" : "";
+      parts.push(`**PR 作者**: @${item.author}${botTag}\n`);
+    }
+    if (review.summary) {
+      parts.push(`> **审查说明**: ${review.summary}\n`);
+    }
+    if (review.head_sha) {
+      parts.push(`\n*Commit: ${review.head_sha}*`);
+    }
+    return parts.filter(Boolean).join("\n");
+  }
   const parts: string[] = ["## 🤖 RepoSentinel AI Code Review\n"];
   if (review.security_risks && review.security_risks.length > 0) {
     parts.push("> 🚨 **安全风险警示**：检测到潜在安全风险或不可信外部引用，合并前请务必人工核验！\n");
@@ -357,6 +380,9 @@ function ReviewRiskList({ label, tone, items }: { label: string; tone: "danger" 
  * 渲染与复制报告共用本函数，避免阈值在多处复制后漂移。
  */
 export function deriveMaintainerVerdict(review: CodeReviewResult): string {
+  if (review.review_status === "skipped") {
+    return "";
+  }
   if ((review.security_risks?.length ?? 0) > 0 || review.score < 60 || review.merge_risk === "Critical") {
     return "Block Risk";
   }
@@ -492,15 +518,16 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
     setOpen((prev) => !prev);
   };
 
-  const handleTrigger = async () => {
+  const handleTrigger = async (forceDeep: boolean | unknown = false) => {
     setTriggering(true);
     setError(null);
     try {
+      const isForce = forceDeep === true;
       // 触发前快照既有报告：审查管线异步入队（同步执行会超过服务端写超时），
       // 轮询以「head_sha 一致且 reviewed_at 晚于快照」判定本次审查完成，
       // 时间戳均来自服务端，不受客户端时钟偏差影响。
       const prev = review !== undefined ? review : await fetchWorkItemAIReview(workItemId);
-      const receipt = await triggerWorkItemAIReview(workItemId);
+      const receipt = await triggerWorkItemAIReview(workItemId, isForce);
       const prevReviewedAt = prev?.reviewed_at ? Date.parse(prev.reviewed_at) : 0;
       const pollIntervalMs = 2000;
       const pollDeadlineMs = 90_000;
@@ -551,7 +578,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
         >
           🤖 AI 代码审查报告 {loading ? "…" : open ? "▲" : "▼"}
         </button>
-        {review && (
+        {review && review.review_status !== "skipped" && (
           <span
             style={{
               fontSize: "0.75rem",
@@ -598,7 +625,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
               <button
                 type="button"
                 className="quiet-button quiet-button--compact"
-                onClick={handleTrigger}
+                onClick={() => handleTrigger(false)}
                 disabled={triggering}
                 style={{ alignSelf: "flex-start" }}
               >
@@ -615,12 +642,58 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
               <button
                 type="button"
                 className="quiet-button quiet-button--compact"
-                onClick={handleTrigger}
+                onClick={() => handleTrigger(false)}
                 disabled={triggering}
                 style={{ alignSelf: "flex-start", background: "rgba(59, 130, 246, 0.1)", color: "#3b82f6" }}
               >
                 {triggering ? "正在审查…" : "🚀 立即发起 AI 审查"}
               </button>
+            </div>
+          ) : review.review_status === "skipped" ? (
+            <div className="ai-review-content">
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: "0.5rem",
+                  marginBottom: "0.5rem",
+                  borderBottom: "1px dashed var(--border-subtle)",
+                  paddingBottom: "0.5rem",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+                  <span
+                    className="label"
+                    style={{ fontSize: "0.75rem", background: "var(--bg-muted)", color: "var(--text-secondary)" }}
+                  >
+                    ⏭️ {getReviewSkipMessage(review)}
+                  </span>
+                  {review.head_sha && (
+                    <span className="muted" style={{ fontSize: "0.75rem", fontFamily: "monospace" }}>
+                      Commit: {review.head_sha}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <button
+                    type="button"
+                    className="quiet-button quiet-button--compact"
+                    onClick={() => handleTrigger(true)}
+                    disabled={triggering}
+                    style={{ fontSize: "0.75rem" }}
+                  >
+                    {triggering ? "正在发起深度审查…" : "⚡ 强制深度审查"}
+                  </button>
+                </div>
+              </div>
+              <p style={{ margin: "0.25rem 0 0.5rem" }}>{getReviewSkipMessage(review)}</p>
+              {review.summary && (
+                <p style={{ margin: "0.25rem 0 0.5rem", color: "var(--text-secondary)" }}>
+                  {review.summary}
+                </p>
+              )}
             </div>
           ) : (
             <div className="ai-review-content">
@@ -765,7 +838,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                   <button
                     type="button"
                     className="quiet-button quiet-button--compact"
-                    onClick={handleTrigger}
+                    onClick={() => handleTrigger(false)}
                     disabled={triggering}
                     style={{ fontSize: "0.75rem" }}
                   >

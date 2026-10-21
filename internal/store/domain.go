@@ -425,6 +425,8 @@ type NotificationChannel struct {
 	AllowPrivate   bool   `json:"allow_private"`
 	// EventKinds 订阅的实时通知类型；nil 表示全部，空数组表示不订阅实时通知。
 	EventKinds []string `json:"event_kinds"`
+	// IncidentTags Jev 事故路由标签；nil/空数组表示接收全部事故标签。
+	IncidentTags []string `json:"incident_tags"`
 	// DigestEnabled 是否接收每日汇总。
 	DigestEnabled        bool      `json:"digest_enabled"`
 	ReceiveDailyDigest   bool      `json:"receive_daily_digest"`
@@ -458,6 +460,28 @@ var subscribableKinds = map[string]struct{}{
 // IsSubscribableKind 判定 kind 是否在订阅白名单内。
 func IsSubscribableKind(kind string) bool {
 	_, ok := subscribableKinds[kind]
+	return ok
+}
+
+const (
+	IncidentTagSecurity    = "security"
+	IncidentTagCI          = "ci"
+	IncidentTagDependency  = "dependency"
+	IncidentTagMaintenance = "maintenance"
+	IncidentTagGeneral     = "general"
+)
+
+var validIncidentTags = map[string]struct{}{
+	IncidentTagSecurity:    {},
+	IncidentTagCI:          {},
+	IncidentTagDependency:  {},
+	IncidentTagMaintenance: {},
+	IncidentTagGeneral:     {},
+}
+
+// IsValidIncidentTag 判定 tag 是否在五值白名单内。
+func IsValidIncidentTag(tag string) bool {
+	_, ok := validIncidentTags[tag]
 	return ok
 }
 

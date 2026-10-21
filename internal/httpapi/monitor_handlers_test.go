@@ -1138,6 +1138,75 @@ func TestTriggerWorkItemAIReviewQueued(t *testing.T) {
 	}
 }
 
+func TestTriggerWorkItemAIReviewForceOption(t *testing.T) {
+	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/99") && strings.HasPrefix(r.Header.Get("Accept"), "application/vnd.github.v3.diff"):
+			w.Header().Set("Content-Type", "application/vnd.github.v3.diff")
+			_, _ = w.Write([]byte("diff --git a/docs/a.md b/docs/a.md\n+new doc\n"))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/99"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"number":99,"head":{"sha":"sha-http-force"}}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/chat/completions"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"summary\":\"ok\",\"score\":95,\"security_risks\":[],\"breaking_risks\":[],\"code_smells\":[]}"}}]}`))
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer fakeServer.Close()
+
+	ghClient := githubx.NewAppClient(1234, "")
+	ghClient.BaseURL = fakeServer.URL
+	aiClient := &ai.Client{
+		Enabled:           true,
+		BaseURL:           fakeServer.URL,
+		Model:             "mock",
+		APIKey:            "k",
+		CodeReviewEnabled: true,
+	}
+
+	fixture := newHTTPTestFixture(t, httpTestOptions{aiClient: aiClient, githubClient: ghClient})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	ctx := t.Context()
+
+	repo, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-review-force", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "acme", Name: "demo", FullName: "acme/demo",
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+	pr, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-pr-force", RepositoryID: repo.ID, Number: 99, Kind: store.WorkItemKindPR,
+		State: "open", Title: "feat: force review", Author: "alice", SourceUpdatedAt: time.Now().UTC(), StateHash: "hforce",
+	}, nil)
+	if err != nil {
+		t.Fatalf("upsert pr: %v", err)
+	}
+
+	// 1. POST 带 force_deep_review = true 正常排队返回 202
+	respForce := fixture.request(t, http.MethodPost, "/api/v1/work-items/"+pr.ID+"/ai-review", `{"force_deep_review":true}`, "127.0.0.1:45008",
+		cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if respForce.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 with force_deep_review, got %d: %s", respForce.Code, respForce.Body.String())
+	}
+
+	// 2. 空 body 请求兼容旧客户端，正常排队返回 202
+	// 先解除在途 key 锁定模拟不同 head SHA 或完成后的再次请求
+	pr2, _, _ := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-pr-emptybody", RepositoryID: repo.ID, Number: 99, Kind: store.WorkItemKindPR,
+		State: "open", Title: "feat: empty body", Author: "alice", SourceUpdatedAt: time.Now().UTC(), StateHash: "hempty",
+	}, nil)
+	respEmpty := fixture.request(t, http.MethodPost, "/api/v1/work-items/"+pr2.ID+"/ai-review", "", "127.0.0.1:45009",
+		cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if respEmpty.Code != http.StatusAccepted && respEmpty.Code != http.StatusConflict {
+		t.Fatalf("expected 202 or 409, got %d: %s", respEmpty.Code, respEmpty.Body.String())
+	}
+}
+
 func TestGetWorkItemAITriage(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
 	fixture.bootstrapAdmin(t)

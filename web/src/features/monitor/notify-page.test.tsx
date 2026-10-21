@@ -35,6 +35,7 @@ const fixtures = vi.hoisted(() => ({
   apiRequest: vi.fn(async (path: string, _options?: RequestInit): Promise<unknown> => {
     if (path.includes("/notifications/channels")) return fixtures.channels;
     if (path.includes("/system/settings")) return fixtures.settings;
+    if (path.includes("/system/jev") || path.includes("/jev/config")) return { enabled: true, routing_enabled: true };
     return undefined;
   }),
 }));
@@ -65,6 +66,7 @@ describe("NotifyPage", () => {
     fixtures.apiRequest.mockImplementation(async (path: string) => {
       if (path.includes("/notifications/channels")) return fixtures.channels;
       if (path.includes("/system/settings")) return fixtures.settings;
+      if (path.includes("/system/jev") || path.includes("/jev/config")) return { enabled: true, routing_enabled: true };
       return undefined;
     });
   });
@@ -78,6 +80,7 @@ describe("NotifyPage", () => {
       if (path.includes("/notifications/channels/telegram/test")) return testPending;
       if (path.includes("/notifications/channels")) return fixtures.channels;
       if (path.includes("/system/settings")) return fixtures.settings;
+      if (path.includes("/system/jev") || path.includes("/jev/config")) return { enabled: true, routing_enabled: true };
       return undefined;
     });
 
@@ -190,6 +193,7 @@ describe("NotifyPage", () => {
         };
       }
       if (path.includes("/system/settings")) return fixtures.settings;
+      if (path.includes("/system/jev") || path.includes("/jev/config")) return { enabled: true, routing_enabled: true };
       return undefined;
     });
 
@@ -253,6 +257,31 @@ describe("NotifyPage", () => {
       expect(body.quiet_hours_tz).toBe("Asia/Shanghai");
       expect(body).not.toHaveProperty("quiet_hours_timezone");
       expect(body).not.toHaveProperty("quiet_hours_critical_bypass");
+    });
+  });
+
+  it("保存渠道时携带选中的 incident_tags", async () => {
+    renderPage();
+
+    await screen.findByDisplayValue("123456");
+    const telegramSection = screen.getByRole("heading", { name: "Telegram" }).closest("section") as HTMLElement;
+    const corePipelineCheckbox = within(telegramSection).getByRole("checkbox", { name: /\(ci\)/ });
+    fireEvent.click(corePipelineCheckbox);
+
+    const saveBtn = within(telegramSection).getByRole("button", { name: "保存 Telegram" });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    await waitFor(() => {
+      const call = fixtures.apiRequest.mock.calls.find(
+        (args) =>
+          (args[0] as string).includes("/notifications/channels/telegram") &&
+          (args[1] as RequestInit | undefined)?.method === "PUT",
+      );
+      expect(call).toBeDefined();
+      const body = JSON.parse((call![1] as RequestInit).body as string) as Record<string, unknown>;
+      expect(body.incident_tags).toEqual(["ci"]);
     });
   });
 });

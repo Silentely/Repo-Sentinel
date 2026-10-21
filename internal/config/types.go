@@ -20,6 +20,7 @@ type Config struct {
 	Aggregation AggregationConfig    `yaml:"aggregation"`
 	AI          AIConfig             `yaml:"ai"`
 	OAuth       OAuthConfig          `yaml:"oauth"`
+	Jev         JevConfig            `yaml:"jev"`
 }
 
 // OAuthConfig 描述面向 Agent 的 OAuth 2.0 client-credentials 客户端凭据。
@@ -165,4 +166,29 @@ type HTTPWebhookConfig struct {
 type LoggingConfig struct {
 	Level  string `yaml:"level"`
 	Format string `yaml:"format"`
+}
+
+
+// PlaneConfig 描述 Jev 单个决策面的运行预算与并发控制。
+type PlaneConfig struct {
+	Timeout        time.Duration `yaml:"timeout"`
+	MaxConcurrency int           `yaml:"max_concurrency"`
+}
+
+// JevConfig 描述 TypeSafe AI System One 判别式决策引擎的接入配置。
+type JevConfig struct {
+	Enabled                 bool        `yaml:"enabled"`
+	BaseURL                 string      `yaml:"base_url"`
+	APIKey                  Secret      `yaml:"api_key"`
+	Model                   string      `yaml:"model"`
+	Mode                    string      `yaml:"mode"` // shadow 或 active
+	Retries                 int         `yaml:"retries"`
+	NoiseFilterEnabled      bool        `yaml:"noise_filter_enabled"`
+	RoutingEnabled          bool        `yaml:"routing_enabled"`
+	CascadeGateEnabled      bool        `yaml:"cascade_gate_enabled"`
+	ChatOpsGuardrailEnabled bool        `yaml:"chatops_guardrail_enabled"`
+	AllowPrivateState       bool        `yaml:"allow_private_state"`
+	Notification            PlaneConfig `yaml:"notification"`
+	Review                  PlaneConfig `yaml:"review"`
+	ChatOps                 PlaneConfig `yaml:"chatops"`
 }

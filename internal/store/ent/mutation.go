@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"sync"
@@ -1620,8 +1620,8 @@ type AuditLogMutation struct {
 	actor_id            *string
 	target_type         *string
 	target_id           *string
-	metadata_json       *json.RawMessage
-	appendmetadata_json json.RawMessage
+	metadata_json       *jsontext.Value
+	appendmetadata_json jsontext.Value
 	ip_address          *string
 	created_at          *time.Time
 	clearedFields       map[string]struct{}
@@ -1915,13 +1915,13 @@ func (m *AuditLogMutation) ResetTargetID() {
 }
 
 // SetMetadataJSON sets the "metadata_json" field.
-func (m *AuditLogMutation) SetMetadataJSON(jm json.RawMessage) {
-	m.metadata_json = &jm
+func (m *AuditLogMutation) SetMetadataJSON(j jsontext.Value) {
+	m.metadata_json = &j
 	m.appendmetadata_json = nil
 }
 
 // MetadataJSON returns the value of the "metadata_json" field in the mutation.
-func (m *AuditLogMutation) MetadataJSON() (r json.RawMessage, exists bool) {
+func (m *AuditLogMutation) MetadataJSON() (r jsontext.Value, exists bool) {
 	v := m.metadata_json
 	if v == nil {
 		return
@@ -1932,7 +1932,7 @@ func (m *AuditLogMutation) MetadataJSON() (r json.RawMessage, exists bool) {
 // OldMetadataJSON returns the old "metadata_json" field's value of the AuditLog entity.
 // If the AuditLog object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v json.RawMessage, err error) {
+func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldMetadataJSON is only allowed on UpdateOne operations")
 	}
@@ -1946,13 +1946,13 @@ func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v json.RawMessa
 	return oldValue.MetadataJSON, nil
 }
 
-// AppendMetadataJSON adds jm to the "metadata_json" field.
-func (m *AuditLogMutation) AppendMetadataJSON(jm json.RawMessage) {
-	m.appendmetadata_json = append(m.appendmetadata_json, jm...)
+// AppendMetadataJSON adds j to the "metadata_json" field.
+func (m *AuditLogMutation) AppendMetadataJSON(j jsontext.Value) {
+	m.appendmetadata_json = append(m.appendmetadata_json, j...)
 }
 
 // AppendedMetadataJSON returns the list of values that were appended to the "metadata_json" field in this mutation.
-func (m *AuditLogMutation) AppendedMetadataJSON() (json.RawMessage, bool) {
+func (m *AuditLogMutation) AppendedMetadataJSON() (jsontext.Value, bool) {
 	if len(m.appendmetadata_json) == 0 {
 		return nil, false
 	}
@@ -2190,7 +2190,7 @@ func (m *AuditLogMutation) SetField(name string, value ent.Value) error {
 		m.SetTargetID(v)
 		return nil
 	case auditlog.FieldMetadataJSON:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -4590,6 +4590,8 @@ type NotificationChannelMutation struct {
 	allow_private          *bool
 	event_kinds            *[]string
 	appendevent_kinds      []string
+	incident_tags          *[]string
+	appendincident_tags    []string
 	digest_enabled         *bool
 	receive_daily_digest   *bool
 	receive_weekly_report  *bool
@@ -4993,6 +4995,71 @@ func (m *NotificationChannelMutation) ResetEventKinds() {
 	m.event_kinds = nil
 	m.appendevent_kinds = nil
 	delete(m.clearedFields, notificationchannel.FieldEventKinds)
+}
+
+// SetIncidentTags sets the "incident_tags" field.
+func (m *NotificationChannelMutation) SetIncidentTags(s []string) {
+	m.incident_tags = &s
+	m.appendincident_tags = nil
+}
+
+// IncidentTags returns the value of the "incident_tags" field in the mutation.
+func (m *NotificationChannelMutation) IncidentTags() (r []string, exists bool) {
+	v := m.incident_tags
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIncidentTags returns the old "incident_tags" field's value of the NotificationChannel entity.
+// If the NotificationChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationChannelMutation) OldIncidentTags(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIncidentTags is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIncidentTags requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIncidentTags: %w", err)
+	}
+	return oldValue.IncidentTags, nil
+}
+
+// AppendIncidentTags adds s to the "incident_tags" field.
+func (m *NotificationChannelMutation) AppendIncidentTags(s []string) {
+	m.appendincident_tags = append(m.appendincident_tags, s...)
+}
+
+// AppendedIncidentTags returns the list of values that were appended to the "incident_tags" field in this mutation.
+func (m *NotificationChannelMutation) AppendedIncidentTags() ([]string, bool) {
+	if len(m.appendincident_tags) == 0 {
+		return nil, false
+	}
+	return m.appendincident_tags, true
+}
+
+// ClearIncidentTags clears the value of the "incident_tags" field.
+func (m *NotificationChannelMutation) ClearIncidentTags() {
+	m.incident_tags = nil
+	m.appendincident_tags = nil
+	m.clearedFields[notificationchannel.FieldIncidentTags] = struct{}{}
+}
+
+// IncidentTagsCleared returns if the "incident_tags" field was cleared in this mutation.
+func (m *NotificationChannelMutation) IncidentTagsCleared() bool {
+	_, ok := m.clearedFields[notificationchannel.FieldIncidentTags]
+	return ok
+}
+
+// ResetIncidentTags resets all changes to the "incident_tags" field.
+func (m *NotificationChannelMutation) ResetIncidentTags() {
+	m.incident_tags = nil
+	m.appendincident_tags = nil
+	delete(m.clearedFields, notificationchannel.FieldIncidentTags)
 }
 
 // SetDigestEnabled sets the "digest_enabled" field.
@@ -5533,7 +5600,7 @@ func (m *NotificationChannelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationChannelMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 22)
 	if m.channel_type != nil {
 		fields = append(fields, notificationchannel.FieldChannelType)
 	}
@@ -5554,6 +5621,9 @@ func (m *NotificationChannelMutation) Fields() []string {
 	}
 	if m.event_kinds != nil {
 		fields = append(fields, notificationchannel.FieldEventKinds)
+	}
+	if m.incident_tags != nil {
+		fields = append(fields, notificationchannel.FieldIncidentTags)
 	}
 	if m.digest_enabled != nil {
 		fields = append(fields, notificationchannel.FieldDigestEnabled)
@@ -5619,6 +5689,8 @@ func (m *NotificationChannelMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowPrivate()
 	case notificationchannel.FieldEventKinds:
 		return m.EventKinds()
+	case notificationchannel.FieldIncidentTags:
+		return m.IncidentTags()
 	case notificationchannel.FieldDigestEnabled:
 		return m.DigestEnabled()
 	case notificationchannel.FieldReceiveDailyDigest:
@@ -5670,6 +5742,8 @@ func (m *NotificationChannelMutation) OldField(ctx context.Context, name string)
 		return m.OldAllowPrivate(ctx)
 	case notificationchannel.FieldEventKinds:
 		return m.OldEventKinds(ctx)
+	case notificationchannel.FieldIncidentTags:
+		return m.OldIncidentTags(ctx)
 	case notificationchannel.FieldDigestEnabled:
 		return m.OldDigestEnabled(ctx)
 	case notificationchannel.FieldReceiveDailyDigest:
@@ -5755,6 +5829,13 @@ func (m *NotificationChannelMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEventKinds(v)
+		return nil
+	case notificationchannel.FieldIncidentTags:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIncidentTags(v)
 		return nil
 	case notificationchannel.FieldDigestEnabled:
 		v, ok := value.(bool)
@@ -5887,6 +5968,9 @@ func (m *NotificationChannelMutation) ClearedFields() []string {
 	if m.FieldCleared(notificationchannel.FieldEventKinds) {
 		fields = append(fields, notificationchannel.FieldEventKinds)
 	}
+	if m.FieldCleared(notificationchannel.FieldIncidentTags) {
+		fields = append(fields, notificationchannel.FieldIncidentTags)
+	}
 	return fields
 }
 
@@ -5903,6 +5987,9 @@ func (m *NotificationChannelMutation) ClearField(name string) error {
 	switch name {
 	case notificationchannel.FieldEventKinds:
 		m.ClearEventKinds()
+		return nil
+	case notificationchannel.FieldIncidentTags:
+		m.ClearIncidentTags()
 		return nil
 	}
 	return fmt.Errorf("unknown NotificationChannel nullable field %s", name)
@@ -5932,6 +6019,9 @@ func (m *NotificationChannelMutation) ResetField(name string) error {
 		return nil
 	case notificationchannel.FieldEventKinds:
 		m.ResetEventKinds()
+		return nil
+	case notificationchannel.FieldIncidentTags:
+		m.ResetIncidentTags()
 		return nil
 	case notificationchannel.FieldDigestEnabled:
 		m.ResetDigestEnabled()
@@ -13103,8 +13193,8 @@ type SystemSettingMutation struct {
 	typ              string
 	id               *string
 	key              *string
-	value_json       *json.RawMessage
-	appendvalue_json json.RawMessage
+	value_json       *jsontext.Value
+	appendvalue_json jsontext.Value
 	updated_at       *time.Time
 	updated_by       *string
 	clearedFields    map[string]struct{}
@@ -13254,13 +13344,13 @@ func (m *SystemSettingMutation) ResetKey() {
 }
 
 // SetValueJSON sets the "value_json" field.
-func (m *SystemSettingMutation) SetValueJSON(jm json.RawMessage) {
-	m.value_json = &jm
+func (m *SystemSettingMutation) SetValueJSON(j jsontext.Value) {
+	m.value_json = &j
 	m.appendvalue_json = nil
 }
 
 // ValueJSON returns the value of the "value_json" field in the mutation.
-func (m *SystemSettingMutation) ValueJSON() (r json.RawMessage, exists bool) {
+func (m *SystemSettingMutation) ValueJSON() (r jsontext.Value, exists bool) {
 	v := m.value_json
 	if v == nil {
 		return
@@ -13271,7 +13361,7 @@ func (m *SystemSettingMutation) ValueJSON() (r json.RawMessage, exists bool) {
 // OldValueJSON returns the old "value_json" field's value of the SystemSetting entity.
 // If the SystemSetting object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v json.RawMessage, err error) {
+func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v jsontext.Value, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldValueJSON is only allowed on UpdateOne operations")
 	}
@@ -13285,13 +13375,13 @@ func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v json.RawMes
 	return oldValue.ValueJSON, nil
 }
 
-// AppendValueJSON adds jm to the "value_json" field.
-func (m *SystemSettingMutation) AppendValueJSON(jm json.RawMessage) {
-	m.appendvalue_json = append(m.appendvalue_json, jm...)
+// AppendValueJSON adds j to the "value_json" field.
+func (m *SystemSettingMutation) AppendValueJSON(j jsontext.Value) {
+	m.appendvalue_json = append(m.appendvalue_json, j...)
 }
 
 // AppendedValueJSON returns the list of values that were appended to the "value_json" field in this mutation.
-func (m *SystemSettingMutation) AppendedValueJSON() (json.RawMessage, bool) {
+func (m *SystemSettingMutation) AppendedValueJSON() (jsontext.Value, bool) {
 	if len(m.appendvalue_json) == 0 {
 		return nil, false
 	}
@@ -13473,7 +13563,7 @@ func (m *SystemSettingMutation) SetField(name string, value ent.Value) error {
 		m.SetKey(v)
 		return nil
 	case systemsetting.FieldValueJSON:
-		v, ok := value.(json.RawMessage)
+		v, ok := value.(jsontext.Value)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}

@@ -286,9 +286,10 @@ func (s *server) handleRulesDryRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rulesEngine := &rules.Engine{
-		Store:  dryStore,
-		AI:     s.dependencies.AI,
-		Logger: s.dependencies.Logger,
+		Store:      dryStore,
+		AI:         s.dependencies.AI,
+		Logger:     s.dependencies.Logger,
+		JevRuntime: s.dependencies.JevRuntime,
 		GitHub: func() *githubx.AppClient {
 			if s.dependencies.GitHubRuntime != nil {
 				return s.dependencies.GitHubRuntime.Client

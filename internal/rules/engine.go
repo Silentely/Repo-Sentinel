@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -32,6 +34,22 @@ type Engine struct {
 	Logger *slog.Logger
 	// GitHub 可选；用于拉取 CI Job 失败详情等上下文。
 	GitHub *githubx.AppClient
+	// JevClient 可选；判别式决策引擎客户端。
+	JevClient jev.Client
+	// JevConfig 判别式决策引擎配置。
+	JevConfig config.JevConfig
+	// JevRuntime 可选；动态运行时配置与客户端提供者。
+	JevRuntime *jev.RuntimeConfig
+}
+
+func (e *Engine) resolveJev() (jev.Client, config.JevConfig) {
+	if e != nil && e.JevRuntime != nil {
+		return e.JevRuntime.Client("notification"), e.JevRuntime.Snapshot()
+	}
+	if e != nil {
+		return e.JevClient, e.JevConfig
+	}
+	return nil, config.JevConfig{}
 }
 
 // aiBudgetKeyAndLimit 返回当日预算设置键与预算上限（美分）。
@@ -160,19 +178,71 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	if e.Store == nil {
 		return errors.New("rules: engine store is required")
 	}
-	channels, err := e.Store.Channels().List(ctx)
+
+	jevClient, jevCfg := e.resolveJev()
+	prep, err := PrepareNotification(ctx, res, repoFullName, jevClient, jevCfg, e.Store)
 	if err != nil {
 		return err
 	}
-	if !hasSubscribedChannel(channels, res.Event.Kind) {
-		e.logNotifySkipped(res, repoFullName, "no_subscriber")
+	if prep.Suppressed {
+		e.logNotifySkipped(res, repoFullName, "jev_suppressed")
 		return nil
 	}
-	title, body, htmlURL := renderMessage(res.Event, repoFullName)
-	branch := ExtractEventBranch(res.Event)
+
+	return e.evaluatePrepared(ctx, prep, repoFullName)
+}
+
+// evaluatePrepared 在统一准备完成后（无论是实时直接准备，还是聚合单事件回放）执行最终通知渲染、AI 分析与 Outbox 入队。
+func (e *Engine) evaluatePrepared(ctx context.Context, prep preparedEvent, repoFullName string) error {
+	if e == nil {
+		return errors.New("rules: engine is nil")
+	}
+	if e.Store == nil {
+		return errors.New("rules: engine store is required")
+	}
+	if prep.Suppressed {
+		return nil
+	}
+	res := prep.Result
+	ev := prep.InferredEvent
+	if ev == nil {
+		ev = res.Event
+	}
+	if ev == nil {
+		return nil
+	}
+	// 尊重聚合窗口等情况下的设置变更
+	if !allowsEventKind(ctx, e.Store, res.Repository, ev.Kind) {
+		e.logNotifySkipped(res, repoFullName, "capability_off")
+		return nil
+	}
+
+	// 重新获取最新渠道列表，过滤掉已被禁用或删除的渠道
+	latestChannels, err := e.Store.Channels().List(ctx)
+	if err != nil {
+		return err
+	}
+	latestMap := make(map[string]store.NotificationChannel, len(latestChannels))
+	for _, ch := range latestChannels {
+		if ch.Enabled {
+			latestMap[ch.ID] = ch
+		}
+	}
+
+	var activeChannels []store.NotificationChannel
+	prepMap := make(map[string]store.NotificationChannel, len(prep.Channels))
+	for _, ch := range prep.Channels {
+		if latest, ok := latestMap[ch.ID]; ok {
+			activeChannels = append(activeChannels, latest)
+			prepMap[ch.ID] = latest
+		}
+	}
+
+	title, body, htmlURL := renderMessage(ev, repoFullName)
+	branch := ExtractEventBranch(ev)
 	repoID := ""
-	if res.Event.RepositoryID != nil {
-		repoID = *res.Event.RepositoryID
+	if ev.RepositoryID != nil {
+		repoID = *ev.RepositoryID
 	} else if res.Repository != nil {
 		repoID = res.Repository.ID
 	}
@@ -181,37 +251,37 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	var triageResult *ai.IssueTriageResult
 
 	// 全部订阅渠道都会被过滤拦截或免打扰时不作 AI 分析：省下无效费用与等待。
-	if !isMuted && hasReceivingChannel(channels, res.Event, repoFullName, branch) {
+	if !isMuted && hasReceivingChannel(activeChannels, ev, repoFullName, branch) {
 		// 安全告警分诊：新告警附带影响分析与处理建议；失败保持原文，不阻塞入库。
 		// 是否有接收渠道的检查并入 triageAnalysis，与参与度日志归并一处。
-		if analysis := e.triageAnalysis(ctx, res.Event, repoFullName, channels); analysis != "" {
+		if analysis := e.triageAnalysis(ctx, ev, repoFullName, activeChannels); analysis != "" {
 			body = body + "\n────────────────\n🤖 告警分析\n" + htmlpkg.EscapeString(analysis)
 		}
 		// release 更新速览：新 release 附带智能翻译要点；失败降级原文链接，不阻塞入库。
-		if summary := e.releaseAnalysis(ctx, res.Event, repoFullName, channels); summary != "" {
+		if summary := e.releaseAnalysis(ctx, ev, repoFullName, activeChannels); summary != "" {
 			body = body + "\n────────────────\n🤖 更新速览\n" + htmlpkg.EscapeString(summary)
 		}
 		// Actions 失败归因诊断：构建失败时附带 AI 智能归因与排查建议；失败保持原文，不阻塞入库。
-		if diagnosis := e.workflowFailureAnalysis(ctx, res.Event, repoFullName, channels); diagnosis != "" {
+		if diagnosis := e.workflowFailureAnalysis(ctx, ev, repoFullName, activeChannels); diagnosis != "" {
 			body = body + "\n────────────────\n🤖 故障诊断\n" + htmlpkg.EscapeString(diagnosis)
 		}
 		// Issue 智能分析与首响建议：新 Issue 附带分类、要素完整度与维护者回复建议
-		if issueTriage, tr := e.issueAnalysis(ctx, res.Event, repoFullName, channels); issueTriage != "" {
+		if issueTriage, tr := e.issueAnalysis(ctx, ev, repoFullName, activeChannels); issueTriage != "" {
 			body = body + "\n────────────────\n🤖 Issue 智能分析与回复建议\n" + htmlpkg.EscapeString(issueTriage)
 			triageResult = tr
 		}
 	}
 	var chatOpsToken string
 	var chatOpsActions []map[string]string
-	if res.Event.Kind == store.WorkflowRunKind && store.IsFailureConclusion(res.Event.WorkflowConclusion) && res.Event.WorkflowRunID != nil && res.Event.RepositoryID != nil {
-		runIDStr := strconv.FormatInt(*res.Event.WorkflowRunID, 10)
-		if tokenID, err := CreateChatOpsToken(ctx, e.Store, "workflow_rerun", *res.Event.RepositoryID, runIDStr, "", 2*time.Hour); err == nil {
+	if ev.Kind == store.WorkflowRunKind && store.IsFailureConclusion(ev.WorkflowConclusion) && ev.WorkflowRunID != nil && ev.RepositoryID != nil {
+		runIDStr := strconv.FormatInt(*ev.WorkflowRunID, 10)
+		if tokenID, err := CreateChatOpsToken(ctx, e.Store, "workflow_rerun", *ev.RepositoryID, runIDStr, "", 2*time.Hour); err == nil {
 			chatOpsToken = tokenID
 		}
-	} else if res.Event.Kind == store.WorkItemKindIssue && res.Event.Action == "opened" && res.Event.SubjectNumber != nil && res.Event.RepositoryID != nil && triageResult != nil {
-		issueNum := int(*res.Event.SubjectNumber)
+	} else if ev.Kind == store.WorkItemKindIssue && ev.Action == "opened" && ev.SubjectNumber != nil && ev.RepositoryID != nil && triageResult != nil {
+		issueNum := int(*ev.SubjectNumber)
 		if triageResult.Category == "Invalid" {
-			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_mark_spam_and_close", *res.Event.RepositoryID, issueNum, "", "", 24*time.Hour); err == nil {
+			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_mark_spam_and_close", *ev.RepositoryID, issueNum, "", "", 24*time.Hour); err == nil {
 				chatOpsActions = append(chatOpsActions, map[string]string{
 					"text":   "🚫 标记垃圾并关闭",
 					"action": "issue_mark_spam_and_close",
@@ -220,7 +290,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			}
 		} else {
 			if strings.TrimSpace(triageResult.SuggestedReply) != "" && !triageResult.IsSelfIssue {
-				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_reply_draft", *res.Event.RepositoryID, issueNum, triageResult.SuggestedReply, "", 24*time.Hour); err == nil {
+				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_reply_draft", *ev.RepositoryID, issueNum, triageResult.SuggestedReply, "", 24*time.Hour); err == nil {
 					chatOpsActions = append(chatOpsActions, map[string]string{
 						"text":   "💬 采纳建议一键回复",
 						"action": "issue_reply_draft",
@@ -239,7 +309,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 						btnText = fmt.Sprintf("🔗 关联 #%d 并关闭", topSimilar.Number)
 					}
 					dupPayload := strconv.Itoa(topSimilar.Number)
-					if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_mark_duplicate", *res.Event.RepositoryID, issueNum, dupPayload, "", 24*time.Hour); err == nil {
+					if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_mark_duplicate", *ev.RepositoryID, issueNum, dupPayload, "", 24*time.Hour); err == nil {
 						chatOpsActions = append(chatOpsActions, map[string]string{
 							"text":   btnText,
 							"action": "issue_mark_duplicate",
@@ -255,7 +325,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 					btnText = "📋 索取补充信息"
 				}
 				reqBody := ai.BuildRequestDetailsReply(triageResult.Category, triageResult.MissingDetails, triageResult.SuspectedModule)
-				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_request_details", *res.Event.RepositoryID, issueNum, reqBody, "", 24*time.Hour); err == nil {
+				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_request_details", *ev.RepositoryID, issueNum, reqBody, "", 24*time.Hour); err == nil {
 					chatOpsActions = append(chatOpsActions, map[string]string{
 						"text":   btnText,
 						"action": "issue_request_details",
@@ -275,7 +345,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 				if len([]rune(btnLabel)) > 26 {
 					btnLabel = "🏷️ 一键应用建议标签"
 				}
-				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_apply_labels", *res.Event.RepositoryID, issueNum, labelsStr, "", 24*time.Hour); err == nil {
+				if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_apply_labels", *ev.RepositoryID, issueNum, labelsStr, "", 24*time.Hour); err == nil {
 					chatOpsActions = append(chatOpsActions, map[string]string{
 						"text":   btnLabel,
 						"action": "issue_apply_labels",
@@ -284,7 +354,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 				}
 			}
 			snoozePayload := fmt.Sprintf("%s|%d|%s", repoFullName, issueNum, htmlURL)
-			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_snooze", *res.Event.RepositoryID, issueNum, snoozePayload, "", 24*time.Hour); err == nil {
+			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "issue_snooze", *ev.RepositoryID, issueNum, snoozePayload, "", 24*time.Hour); err == nil {
 				chatOpsActions = append(chatOpsActions, map[string]string{
 					"text":   "💤 延迟2小时提醒",
 					"action": "issue_snooze",
@@ -292,16 +362,16 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 				})
 			}
 		}
-	} else if res.Event.Kind == store.WorkItemKindPR && (res.Event.Action == "opened" || res.Event.Action == "ready_for_review" || res.Event.Action == "reopened") && res.Event.SubjectNumber != nil && res.Event.RepositoryID != nil {
+	} else if ev.Kind == store.WorkItemKindPR && (ev.Action == "opened" || ev.Action == "ready_for_review" || ev.Action == "reopened") && ev.SubjectNumber != nil && ev.RepositoryID != nil {
 		isDraft := false
-		if res.Event.PayloadSummary != nil {
-			if d, ok := res.Event.PayloadSummary["draft"].(bool); ok && d {
+		if ev.PayloadSummary != nil {
+			if d, ok := ev.PayloadSummary["draft"].(bool); ok && d {
 				isDraft = true
 			}
 		}
-		prNum := int(*res.Event.SubjectNumber)
+		prNum := int(*ev.SubjectNumber)
 		if !isDraft {
-			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "pr_quick_approve", *res.Event.RepositoryID, prNum, "", "", 24*time.Hour); err == nil {
+			if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "pr_quick_approve", *ev.RepositoryID, prNum, "", "", 24*time.Hour); err == nil {
 				chatOpsActions = append(chatOpsActions, map[string]string{
 					"text":   "✅ 快捷批准合入",
 					"action": "pr_quick_approve",
@@ -310,7 +380,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			}
 		}
 		snoozePayload := fmt.Sprintf("%s|%d|%s", repoFullName, prNum, htmlURL)
-		if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "pr_snooze", *res.Event.RepositoryID, prNum, snoozePayload, "", 24*time.Hour); err == nil {
+		if tokenID, err := CreateChatOpsTokenWithPayload(ctx, e.Store, "pr_snooze", *ev.RepositoryID, prNum, snoozePayload, "", 24*time.Hour); err == nil {
 			chatOpsActions = append(chatOpsActions, map[string]string{
 				"text":   "💤 延迟2小时提醒",
 				"action": "pr_snooze",
@@ -319,30 +389,31 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 		}
 	}
 
-	for _, ch := range channels {
-		// 渠道未订阅该事件类型时跳过。
-		if !ch.Enabled || !ch.AcceptsKind(res.Event.Kind) {
+	for _, ch := range latestChannels {
+		if !ch.Enabled || !ch.AcceptsKind(ev.Kind) {
 			continue
 		}
-		// 免打扰：若渠道开启了忽略机器人且当前事件触发者为机器人，
-		// 仅过滤常规 Issue 与 PR 事件；安全告警与 Actions 工作流严格豁免。
-		if ShouldSuppressBotEvent(ch, res.Event) {
-			e.logNotifySkipped(res, repoFullName, "bot_suppressed")
+		if ShouldSuppressBotEvent(ch, ev) {
+			e.logNotifySkipped(prep.Result, repoFullName, "bot_suppressed")
 			continue
 		}
-		// 渠道精细化路由（仓库通配符、分支通配符、严重度门槛）
-		if !MatchChannelFilter(ch, res.Event, repoFullName, branch) {
-			e.logNotifySkipped(res, repoFullName, "channel_filter_mismatch")
+		if !MatchChannelFilter(ch, ev, repoFullName, branch) {
+			e.logNotifySkipped(prep.Result, repoFullName, "channel_filter_mismatch")
 			continue
 		}
+		if _, ok := prepMap[ch.ID]; !ok {
+			e.logNotifySkipped(prep.Result, repoFullName, "channel_filter_mismatch")
+			continue
+		}
+
 		bodyJSON := map[string]any{
-			"event_id": res.Event.ID, "kind": res.Event.Kind, "action": res.Event.Action,
+			"event_id": ev.ID, "kind": ev.Kind, "action": ev.Action,
 			"repository": repoFullName,
 		}
 		// 紧急静音激活时，持久化审计记录进 outbox（独立键命名空间，状态为 suppressed）
 		if isMuted {
-			e.logNotifySkipped(res, repoFullName, "emergency_mute")
-			suppressedIdem := fmt.Sprintf("suppressed|%s|%s", res.Event.ID, ch.ID)
+			e.logNotifySkipped(prep.Result, repoFullName, "emergency_mute")
+			suppressedIdem := fmt.Sprintf("suppressed|%s|%s", ev.ID, ch.ID)
 			now := time.Now().UTC()
 			// SuppressedReason 保持稳定机器码（下游按码聚合统计），人类可读的静音原因与
 			// 解冻时刻随正文载荷入库，回溯时不必再查当时的 settings 快照。
@@ -353,7 +424,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			if _, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
 				ID:               ulid.Make().String(),
 				ChannelID:        ch.ID,
-				EventID:          &res.Event.ID,
+				EventID:          &ev.ID,
 				IdempotencyKey:   suppressedIdem,
 				Status:           store.OutboxSuppressed,
 				SuppressedReason: "emergency_mute",
@@ -369,9 +440,9 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			continue
 		}
 
-		idem := idempotencyKey(ch.ID, res.Event.ID, "realtime")
+		idem := idempotencyKey(ch.ID, ev.ID, "realtime")
 		nextAttempt := time.Now().UTC()
-		action, resumeAt := DecideQuietHours(ch, res.Event, nextAttempt)
+		action, resumeAt := DecideQuietHours(ch, ev, nextAttempt)
 		channelBody := body
 		if action == ActionDeferQuietHours {
 			nextAttempt = resumeAt
@@ -386,7 +457,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 			bodyJSON["chatops_actions"] = chatOpsActions
 		}
 		if _, err := e.Store.Outbox().Create(ctx, store.NotificationOutbox{
-			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &res.Event.ID,
+			ID: ulid.Make().String(), ChannelID: ch.ID, EventID: &ev.ID,
 			IdempotencyKey: idem, Status: store.OutboxPending, NextAttemptAt: nextAttempt,
 			Title: title, BodyText: channelBody, HTMLURL: htmlURL, BodyJSON: bodyJSON,
 			ParseMode: "HTML",

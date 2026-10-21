@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/chatops"
@@ -85,6 +86,7 @@ type Dependencies struct {
 	AI *ai.Client
 	// AIRuntime 可选；管理台可编辑的 AI 配置（env 优先，DB 补缺）。
 	AIRuntime *ai.RuntimeConfig
+	JevRuntime *jev.RuntimeConfig
 	// StarredPoller 可选；star 仓库 release 追踪轮询（配置保存/立即同步触发）。
 	StarredPoller *syncx.StarredReleasePoller
 	// WebhookService 可选；由 App 持有时可在关闭前等待异步 PR 审查任务排空。
@@ -303,10 +305,11 @@ func New(dependencies Dependencies) http.Handler {
 	s.chatOpsService = dependencies.ChatOpsService
 	if s.chatOpsService == nil {
 		s.chatOpsService = chatops.NewService(chatops.Dependencies{
-			Store:    dependencies.Store,
-			Executor: s.chatOpsExecutor,
-			Logger:   dependencies.Logger,
-			SafeGo:   s.safeGo,
+			Store:      dependencies.Store,
+			Executor:   s.chatOpsExecutor,
+			Logger:     dependencies.Logger,
+			SafeGo:     s.safeGo,
+			JevRuntime: dependencies.JevRuntime,
 		})
 	}
 	// 若运行时 Public Base URL 来自管理台，启动后仍以当前快照为准（见 cookiesSecure）。
@@ -386,6 +389,8 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/github/installations", s.handleListInstallations)
 			protected.Get("/github/config", s.handleGetGitHubConfig)
 			protected.Get("/ai/config", s.handleGetAIConfig)
+			protected.Get("/jev/config", s.handleGetJevConfig)
+			protected.Get("/system/jev", s.handleGetJevConfig)
 			protected.Get("/starred-releases/config", s.handleGetStarredReleasesConfig)
 			protected.Get("/starred-releases/trackers", s.handleListStarredTrackers)
 			protected.Get("/system/settings", s.handleGetSettings)
@@ -427,6 +432,10 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Put("/system/settings", s.handlePutSettings)
 				mutating.Put("/github/config", s.handlePutGitHubConfig)
 				mutating.Put("/ai/config", s.handlePutAIConfig)
+				mutating.Put("/jev/config", s.handlePutJevConfig)
+				mutating.Put("/system/jev", s.handlePutJevConfig)
+				mutating.Post("/jev/test", s.handlePostJevTest)
+				mutating.Post("/system/jev/test", s.handlePostJevTest)
 				mutating.Post("/ai/test", s.handleTestAIConfig)
 				mutating.Put("/starred-releases/config", s.handlePutStarredReleasesConfig)
 				mutating.Post("/starred-releases/sync", s.handleSyncStarredReleases)

@@ -1,0 +1,37 @@
+{
+  "model": "jev-1.14.0",
+  "state": {
+    "kind": "workflow_run",
+    "conclusion": "failure",
+    "sender_is_bot": false
+  },
+  "questions": {
+    "is_actionable": {
+      "type": "noul",
+      "instructions": "Does this event require human intervention?",
+      "criteria": {
+        "true": "Action required",
+        "false": "Harmless noise"
+      }
+    },
+    "severity_tier": {
+      "type": "choice",
+      "instructions": "Select event severity.",
+      "criteria": {
+        "critical": "Critical incident",
+        "high": "Major impact",
+        "medium": "Moderate impact",
+        "low": "Routine"
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "Rate urgency from routine to immediate.",
+      "criteria": [
+        "Routine",
+        "Soon",
+        "Immediate"
+      ]
+    }
+  }
+}

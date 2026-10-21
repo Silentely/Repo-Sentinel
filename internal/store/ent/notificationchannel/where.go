@@ -454,6 +454,16 @@ func EventKindsNotNil() predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldNotNull(FieldEventKinds))
 }
 
+// IncidentTagsIsNil applies the IsNil predicate on the "incident_tags" field.
+func IncidentTagsIsNil() predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldIsNull(FieldIncidentTags))
+}
+
+// IncidentTagsNotNil applies the NotNil predicate on the "incident_tags" field.
+func IncidentTagsNotNil() predicate.NotificationChannel {
+	return predicate.NotificationChannel(sql.FieldNotNull(FieldIncidentTags))
+}
+
 // DigestEnabledEQ applies the EQ predicate on the "digest_enabled" field.
 func DigestEnabledEQ(v bool) predicate.NotificationChannel {
 	return predicate.NotificationChannel(sql.FieldEQ(FieldDigestEnabled, v))

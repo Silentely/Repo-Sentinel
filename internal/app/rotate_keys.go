@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
@@ -210,6 +211,23 @@ func inspectRotateKeysReadOnly(ctx context.Context, data store.Store, ring crypt
 		}
 	}
 
+	// 检查 Jev Runtime
+	if setting, err := data.Settings().Get(ctx, jev.RuntimeSettingKey); err == nil {
+		stats.SettingsScanned++
+		var jevStored jev.StoredConfig
+		if err := json.Unmarshal(setting.ValueJSON, &jevStored); err == nil && jevStored.APIKeyEnvelope != "" {
+			dec, err := ring.Decrypt(ctx, jevStored.APIKeyEnvelope, []byte(jev.SecretAAD))
+			if err != nil {
+				return stats, fmt.Errorf("decrypt jev api key: %w", err)
+			}
+			if dec.UsedPreviousKey {
+				stats.SettingsRotated++
+			} else {
+				stats.AlreadyCurrent++
+			}
+		}
+	}
+
 	// 检查 TOTP
 	if setting, err := data.Settings().Get(ctx, auth.TOTPSettingKey); err == nil {
 		stats.SettingsScanned++
@@ -354,6 +372,37 @@ func executeRotateKeysInTx(ctx context.Context, tx store.Store, ring cryptox.Key
 				setting.UpdatedAt = time.Now().UTC()
 				if _, err := tx.Settings().Upsert(ctx, setting); err != nil {
 					return stats, fmt.Errorf("save rotated ai config: %w", err)
+				}
+				stats.SettingsRotated++
+			} else {
+				stats.AlreadyCurrent++
+			}
+		}
+	}
+
+	// 轮换 Jev Runtime
+	if setting, err := tx.Settings().Get(ctx, jev.RuntimeSettingKey); err == nil {
+		stats.SettingsScanned++
+		var jevStored jev.StoredConfig
+		if err := json.Unmarshal(setting.ValueJSON, &jevStored); err == nil && jevStored.APIKeyEnvelope != "" {
+			dec, err := ring.Decrypt(ctx, jevStored.APIKeyEnvelope, []byte(jev.SecretAAD))
+			if err != nil {
+				return stats, fmt.Errorf("decrypt jev api key: %w", err)
+			}
+			if dec.UsedPreviousKey {
+				newEnv, err := ring.Encrypt(ctx, dec.Plaintext, []byte(jev.SecretAAD))
+				if err != nil {
+					return stats, fmt.Errorf("re-encrypt jev api key: %w", err)
+				}
+				jevStored.APIKeyEnvelope = newEnv
+				raw, err := json.Marshal(jevStored)
+				if err != nil {
+					return stats, err
+				}
+				setting.ValueJSON = raw
+				setting.UpdatedAt = time.Now().UTC()
+				if _, err := tx.Settings().Upsert(ctx, setting); err != nil {
+					return stats, fmt.Errorf("save rotated jev config: %w", err)
 				}
 				stats.SettingsRotated++
 			} else {

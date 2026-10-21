@@ -3,6 +3,7 @@ package chatops
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,17 +12,22 @@ import (
 )
 
 type recordingExecutor struct {
+	mu              sync.Mutex
 	executedActions []ActionData
 	returnErr       error
 	returnOutcome   *Outcome
 }
 
 func (r *recordingExecutor) Execute(ctx context.Context, action ActionData) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.executedActions = append(r.executedActions, action)
 	return r.returnErr
 }
 
 func (r *recordingExecutor) ExecuteWithOutcome(ctx context.Context, action ActionData) (*Outcome, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.executedActions = append(r.executedActions, action)
 	if r.returnOutcome != nil {
 		return r.returnOutcome, r.returnErr
@@ -33,19 +39,26 @@ func (r *recordingExecutor) ExecuteWithOutcome(ctx context.Context, action Actio
 }
 
 type recordingFeedback struct {
+	mu                sync.Mutex
 	answeredCallbacks []string
 	editedKeyboards   int
 }
 
 func (f *recordingFeedback) AnswerCallback(ctx context.Context, callbackID, text string, showAlert bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.answeredCallbacks = append(f.answeredCallbacks, callbackID+":"+text)
 }
 
 func (f *recordingFeedback) AnswerActionCallback(ctx context.Context, callbackID, actionName string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.answeredCallbacks = append(f.answeredCallbacks, callbackID+":action:"+actionName)
 }
 
 func (f *recordingFeedback) EditMessageReplyMarkup(ctx context.Context, chatID int64, messageID int, clickedData, actionName string, keyboard [][]map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.editedKeyboards++
 }
 
@@ -102,11 +115,19 @@ func TestService_HandleTelegram_Lifecycle(t *testing.T) {
 	if err != nil || outcome.Status != StatusExecuted {
 		t.Fatalf("expected executed outcome, got: %+v, %v", outcome, err)
 	}
-	if len(exec.executedActions) != 1 {
-		t.Fatalf("expected 1 execution, got %d", len(exec.executedActions))
+	exec.mu.Lock()
+	execCount := len(exec.executedActions)
+	var firstAction string
+	if execCount > 0 {
+		firstAction = exec.executedActions[0].Action
 	}
-	if exec.executedActions[0].Action != "workflow_rerun" {
-		t.Fatalf("unexpected executed action: %s", exec.executedActions[0].Action)
+	exec.mu.Unlock()
+
+	if execCount != 1 {
+		t.Fatalf("expected 1 execution, got %d", execCount)
+	}
+	if firstAction != "workflow_rerun" {
+		t.Fatalf("unexpected executed action: %s", firstAction)
 	}
 }
 

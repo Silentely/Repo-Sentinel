@@ -4,6 +4,7 @@
 
 | 日期 | 版本 / 范围 | 说明 |
 |------|------------|------|
+| 2026-10-21 | Unreleased (Jev 判别式决策) | 集成 TypeSafe AI (SystemOne) 判别式决策引擎；支持通知降噪、PR 级联审查门控与 ChatOps 指令安全护栏；支持三面独立预算与断路器隔离、AES-GCM 加密密钥与轮换、15 分钟应急旁路降级、严格离线标注集/真实 API/负载上线门禁；更新前端配置与渠道标签 |
 | 2026-10-18 | v0.8.0 | 新增每日汇总区分已修复/已关闭状态、健康平稳徽章、摘要状态标签与报告终态富集；修复 gofmt 缩进分歧、docker.yml 语法与 pnpm 版本同步；升级前端 react-router/zod 及 Go 依赖、合并 12 个依赖升级 |
 | 2026-10-15 | v0.7.0 | 新增 ChatOps 收件箱分诊流、Issue 智能分诊与 AI 审查增强、统一多分支合并闭环；新增 Slack 与飞书渠道 Block Kit / 交互式卡片及跨渠道一致性；支持 PWA 离线、报告渠道级订阅与摘要趋势分析；加固密钥轮换、2FA 凭证加密与通知脱敏；修复 ChatOps 白名单越权、静默时段与超频窗口告警风暴等问题 |
 | 2026-10-11 | Unreleased (加固与收敛) | 通知脱敏覆盖私钥正文与 URL/请求头凭据、事件体掩码补充 camelCase 与值内嵌凭据；渠道备份导出脱敏 target；修复聚合同窗口第二批通知被唯一约束静默丢弃、Telegram 裸 `&` 与连写 `<<` 转义、Bark 打扰档位非法取值、静音审计丢原因、摘要历史只扫单页；能力矩阵改为真实构建信息并删除未接线实现 |
@@ -35,23 +36,23 @@ RepoSentinel — 自托管 GitHub 仓库值守平台。Go 后端 + React 前端�
 
 ```text
                     GitHub
-       ┌──────────────┴──────────────┐
+       ┌──────────────────────────────┐
        │                             │
  GitHub App Webhook             GitHub REST API
  自有仓库实时事件          对账 / 外部仓扩展
        │                             ▲
        ▼                             │
-┌────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────┐
 │              HTTPS 反向代理（可选）                  │
-└──────────────────────┬─────────────────────────────┘
+└──────────────────────┬──────────────────────────────────┘
                        ▼
-┌────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────┐
 │                RepoSentinel（单进程）                │
 │ CLI → app 装配 → httpapi (chi)                      │
 │ Webhook → webhooksvc → normalizer → rules/agg       │
 │ notify Worker（Outbox）+ syncx Scheduler            │
 │ REST API + 嵌入式 React 管理后台                    │
-└──────────────────────┬─────────────────────────────┘
+└──────────────────────┬──────────────────────────────────┘
                        ▼
               SQLite 或 PostgreSQL
 ```
@@ -96,9 +97,10 @@ graph TD
   INT --> WH["webhooksvc Webhook 管线"]
   INT --> NORM["normalizer 规范化"]
   INT --> RULES["rules 通知规则"]
-  INT --> NTF["notify Outbox 投递"]
+  INT --> NTF["notify Outbox 传递"]
   INT --> SYNC["syncx 对账与调度"]
   INT --> AI["ai LLM 集成"]
+  INT --> JEV["jev 判别式决策引擎"]
   INT --> CRYPTO["cryptox 信封加密"]
   INT --> DIGEST["digest 日报周报"]
   INT --> UPD["updatecheck 版本检查"]
@@ -138,6 +140,7 @@ graph TD
   click NTF "./internal/notify/CLAUDE.md"
   click SYNC "./internal/syncx/CLAUDE.md"
   click AI "./internal/ai/CLAUDE.md"
+  click JEV "./internal/jev/CLAUDE.md"
 ```
 
 ## 模块索引
@@ -154,11 +157,12 @@ graph TD
 | `internal/auth` | 管理员、密码、Session、CSRF、登录限流 | [internal/auth/CLAUDE.md](internal/auth/CLAUDE.md) |
 | `internal/githubx` | App JWT、Webhook 验签、REST、运行时配置 | [internal/githubx/CLAUDE.md](internal/githubx/CLAUDE.md) |
 | `internal/webhooksvc` | Webhook 业务管线编排 | [internal/webhooksvc/CLAUDE.md](internal/webhooksvc/CLAUDE.md) |
-| `internal/normalizer` | 载荷规范化、指纹、乱序保护 | [internal/normalizer/CLAUDE.md](internal/normalizer/CLAUDE.md) |
+| `internal/normalizer` | 负载规范化、指纹、乱序保护 | [internal/normalizer/CLAUDE.md](internal/normalizer/CLAUDE.md) |
 | `internal/rules` | 实时通知规则与短时聚合 | [internal/rules/CLAUDE.md](internal/rules/CLAUDE.md) |
-| `internal/notify` | Outbox 领取、Telegram/HTTP 投递 | [internal/notify/CLAUDE.md](internal/notify/CLAUDE.md) |
+| `internal/notify` | Outbox 领取、Telegram/HTTP 传递 | [internal/notify/CLAUDE.md](internal/notify/CLAUDE.md) |
 | `internal/syncx` | 安装仓对账、外部仓轮询、调度 | [internal/syncx/CLAUDE.md](internal/syncx/CLAUDE.md) |
 | `internal/ai` | OpenAI 兼容客户端、简报与分诊 | [internal/ai/CLAUDE.md](internal/ai/CLAUDE.md) |
+| `internal/jev` | TypeSafe AI 判别式决策客户端、断路器、缓存与运行时 | [internal/jev/CLAUDE.md](internal/jev/CLAUDE.md) |
 | `web` | React 管理台 + Go embed | [web/CLAUDE.md](web/CLAUDE.md) |
 | `migrations` | Atlas 双轨 SQL 迁移嵌入 | [migrations/CLAUDE.md](migrations/CLAUDE.md) |
 | `docs` | VitePress 用户/运维/架构文档 | [docs/CLAUDE.md](docs/CLAUDE.md) |
@@ -325,3 +329,4 @@ CI 自动执行：test → build-and-push（v* Tag 触发双架构 amd64+arm64�
 | Ent schema | `internal/store/ent/schema/` |
 | 示例配置 | `configs/reposentinel.example.yaml` |
 | 架构说明 | `docs/reference/architecture.md` |
+| Jev 决策引擎 | `internal/jev/` |

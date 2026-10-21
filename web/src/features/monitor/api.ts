@@ -141,6 +141,7 @@ export interface NotificationChannelRow {
   repo_pattern?: string;
   branch_filter?: string;
   min_severity?: string;
+  incident_tags?: string[] | null;
   updated_at?: string;
 }
 
@@ -281,6 +282,7 @@ export async function upsertChannel(
     repo_pattern?: string;
     branch_filter?: string;
     min_severity?: string;
+    incident_tags?: string[];
   },
 ): Promise<void> {
   await apiRequest(`/api/v1/notifications/channels/${type}`, {
@@ -842,6 +844,10 @@ export interface CodeReviewResult {
   commented_on_pr: boolean;
   diff_truncated: boolean;
   head_sha?: string;
+  review_status?: string;
+  skip_reason?: string;
+  decision_model?: string;
+  decision_policy?: string;
 }
 
 export async function fetchWorkItemAIReview(workItemId: string): Promise<CodeReviewResult | null> {
@@ -863,10 +869,10 @@ export interface TriggerAIReviewReceipt {
   head_sha: string;
 }
 
-export async function triggerWorkItemAIReview(workItemId: string): Promise<TriggerAIReviewReceipt> {
+export async function triggerWorkItemAIReview(workItemId: string, forceDeepReview = false): Promise<TriggerAIReviewReceipt> {
   return await apiRequest<TriggerAIReviewReceipt>(`/api/v1/work-items/${encodeURIComponent(workItemId)}/ai-review`, {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify(forceDeepReview ? { force_deep_review: true } : {}),
   });
 }
 
@@ -983,4 +989,84 @@ export const systemHealthQueryOptions = queryOptions({
   queryFn: () => apiRequest<SystemHealthDiagnostics>("/api/v1/system/health"),
   staleTime: 10_000,
   refetchInterval: 30_000,
+});
+
+export interface JevPlaneConfig {
+  p50_budget_ms: number;
+  p95_budget_ms: number;
+  max_concurrency: number;
+  cache_ttl_sec: number;
+  circuit_fail_count: number;
+  circuit_reset_sec: number;
+}
+
+export interface JevConfigDTO {
+  enabled: boolean;
+  base_url: string;
+  has_api_key: boolean;
+  api_key_source: "env" | "db" | "none" | string;
+  model: string;
+  mode: "shadow" | "active" | string;
+  retries: number;
+  noise_filter_enabled: boolean;
+  routing_enabled: boolean;
+  cascade_gate_enabled: boolean;
+  chatops_guardrail_enabled: boolean;
+  allow_private_state: boolean;
+  notification: JevPlaneConfig;
+  review: JevPlaneConfig;
+  chatops: JevPlaneConfig;
+  emergency_advisory_until?: string | null;
+  emergency_advisory_reason?: string;
+}
+
+export interface UpdateJevConfigPayload {
+  enabled?: boolean;
+  base_url?: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+  model?: string;
+  mode?: string;
+  retries?: number;
+  noise_filter_enabled?: boolean;
+  routing_enabled?: boolean;
+  cascade_gate_enabled?: boolean;
+  chatops_guardrail_enabled?: boolean;
+  allow_private_state?: boolean;
+  notification?: Partial<JevPlaneConfig>;
+  review?: Partial<JevPlaneConfig>;
+  chatops?: Partial<JevPlaneConfig>;
+  emergency_advisory_until?: string | null;
+  emergency_advisory_reason?: string;
+}
+
+export async function fetchJevConfig(): Promise<JevConfigDTO> {
+  return await apiRequest<JevConfigDTO>("/api/v1/jev/config");
+}
+
+export async function updateJevConfig(payload: UpdateJevConfigPayload): Promise<void> {
+  await apiRequest("/api/v1/jev/config", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface JevTestResult {
+  status: string;
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+}
+
+export async function testJevConfig(): Promise<JevTestResult> {
+  return await apiRequest<JevTestResult>("/api/v1/jev/test", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export const jevConfigQueryOptions = queryOptions({
+  queryKey: ["system", "jev"] as const,
+  queryFn: () => fetchJevConfig(),
+  staleTime: 15_000,
 });

@@ -1,7 +1,13 @@
 package chatops
 
 import (
+	"errors"
 	"time"
+)
+
+var (
+	ErrGuardrailDenied      = errors.New("chatops: guardrail denied action")
+	ErrGuardrailUnavailable = errors.New("chatops: guardrail unavailable")
 )
 
 // ActionData 承载交互式操作按钮绑定的载荷数据。
@@ -47,6 +53,10 @@ const (
 	StatusInvalidToken Status = "invalid_token"
 	// StatusCorruptedConfig 表示底层安全配置异常（fail-closed 触发）。
 	StatusCorruptedConfig Status = "corrupted_config"
+	// StatusGuardrailDenied 表示操作被 Jev 安全护栏明确拒绝。
+	StatusGuardrailDenied Status = "guardrail_denied"
+	// StatusGuardrailUnavailable 表示 Jev 护栏不可用、超时、低置信度或未知状态。
+	StatusGuardrailUnavailable Status = "guardrail_unavailable"
 )
 
 // Outcome 结构体表示分发处理完成后的强类型领域结果，不包含任何 HTTP 协议语义。
@@ -59,5 +69,5 @@ type Outcome struct {
 }
 
 func (o Outcome) CanReleaseToken() bool {
-	return o.Status == StatusRetryableFailure
+	return o.Status == StatusRetryableFailure || o.Status == StatusGuardrailUnavailable
 }

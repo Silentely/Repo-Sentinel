@@ -1,4 +1,4 @@
-h1:GrflJOHBwR6CaZ7W9bq9kz4C8pIXLPu9U37xOJkWJo0=
+h1:e34QbDyJ4m96ttc47tZnOVQe1iBEmpUWq18eBDL9Z4c=
 20260727000100_initial.sql h1:IZH3NW1MvYSmhBbiJfrMsVfIafVUkDEcDjJ1nVWiU8k=
 20260728000100_domain_core.sql h1:lmdbx1mJCthTGw+1leGYhe2yoMZ7MRLqoCfOGYBdbcQ=
 20260729000100_repo_capability_toggles.sql h1:r6Qv4zeU5Sn70i93B+7E3HP+TOQQpu5Tt72s5w8Hq7c=
@@ -18,3 +18,4 @@ h1:GrflJOHBwR6CaZ7W9bq9kz4C8pIXLPu9U37xOJkWJo0=
 20261005000100_system_leases.sql h1:QGjiBSmKeUJZEPmL2vQ6PA/Nz8Q04Q30138RzgsA024=
 20261005000200_outbox_claim_tokens.sql h1:Wa/O2SYWHT8DSwF3OCekwqf0nydx8GmM689zDmre+f0=
 20261005000300_channel_routing_and_mute.sql h1:IFpTKeM7R/Q0R3XSexzKk194EmzcKvBGSUEuHKCdgxY=
+20261020000100_jev_incident_tags.sql h1:UfpiSQ2+8p7nZdi7qw0UEpQSdVQgwpIlhX2kR4v3GAk=

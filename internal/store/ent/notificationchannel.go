@@ -32,6 +32,8 @@ type NotificationChannel struct {
 	AllowPrivate bool `json:"allow_private,omitempty"`
 	// EventKinds holds the value of the "event_kinds" field.
 	EventKinds []string `json:"event_kinds,omitempty"`
+	// IncidentTags holds the value of the "incident_tags" field.
+	IncidentTags []string `json:"incident_tags,omitempty"`
 	// DigestEnabled holds the value of the "digest_enabled" field.
 	DigestEnabled bool `json:"digest_enabled,omitempty"`
 	// ReceiveDailyDigest holds the value of the "receive_daily_digest" field.
@@ -68,7 +70,7 @@ func (*NotificationChannel) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case notificationchannel.FieldEventKinds:
+		case notificationchannel.FieldEventKinds, notificationchannel.FieldIncidentTags:
 			values[i] = new([]byte)
 		case notificationchannel.FieldEnabled, notificationchannel.FieldAllowPrivate, notificationchannel.FieldDigestEnabled, notificationchannel.FieldReceiveDailyDigest, notificationchannel.FieldReceiveWeeklyReport, notificationchannel.FieldReceiveMonthlyReport, notificationchannel.FieldQuietHoursEnabled, notificationchannel.FieldIgnoreBots:
 			values[i] = new(sql.NullBool)
@@ -139,6 +141,14 @@ func (_m *NotificationChannel) assignValues(columns []string, values []any) erro
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.EventKinds); err != nil {
 					return fmt.Errorf("unmarshal field event_kinds: %w", err)
+				}
+			}
+		case notificationchannel.FieldIncidentTags:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field incident_tags", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.IncidentTags); err != nil {
+					return fmt.Errorf("unmarshal field incident_tags: %w", err)
 				}
 			}
 		case notificationchannel.FieldDigestEnabled:
@@ -281,6 +291,9 @@ func (_m *NotificationChannel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("event_kinds=")
 	builder.WriteString(fmt.Sprintf("%v", _m.EventKinds))
+	builder.WriteString(", ")
+	builder.WriteString("incident_tags=")
+	builder.WriteString(fmt.Sprintf("%v", _m.IncidentTags))
 	builder.WriteString(", ")
 	builder.WriteString("digest_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DigestEnabled))

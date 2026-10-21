@@ -34,6 +34,11 @@ var (
 	errPRDiffUnavailable = errors.New("pr diff is empty or unavailable")
 )
 
+// ReviewOptions 定义手动触发 PR 审查时的可选参数。
+type ReviewOptions struct {
+	ForceDeepReview bool `json:"force_deep_review"`
+}
+
 // ghPRPayload 用于提取 pull_request 事件的核心元数据与 diff。
 type ghPRPayload struct {
 	Action      string `json:"action"`
@@ -145,10 +150,14 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 	if payload.Installation != nil {
 		installationID = payload.Installation.ID
 	}
-	if installationID <= 0 && s.Store != nil {
+	var isPrivate bool
+	if s.Store != nil {
 		lookupCtx, cancelLookup := context.WithTimeout(s.baseContext(), 5*time.Second)
 		if repoRec, err := s.Store.Repositories().GetByFullName(lookupCtx, fullName); err == nil {
-			installationID = s.resolveRepoInstallationID(lookupCtx, repoRec)
+			isPrivate = repoRec.IsPrivate
+			if installationID <= 0 {
+				installationID = s.resolveRepoInstallationID(lookupCtx, repoRec)
+			}
 		}
 		cancelLookup()
 	}
@@ -164,6 +173,7 @@ func (s *Service) maybeTriggerAICodeReview(res normalizer.Result, body []byte) {
 		installationID: installationID,
 		updatedBy:      "ai_code_review",
 		skipStored:     true,
+		isPrivate:      isPrivate,
 	}
 
 	delay := s.ReviewDebounceDelay
@@ -220,6 +230,76 @@ type prReviewRequest struct {
 	// skipStored 为 true 时，同一 head SHA 已有审查结果则跳过本次审查（自动路径幂等语义）；
 	// 手动触发为强制刷新，恒为 false。
 	skipStored bool
+	forceDeepReview bool
+	isPrivate       bool
+}
+
+func (s *Service) evaluatePRGate(ctx context.Context, req prReviewRequest, diff string) (bool, string) {
+	if req.forceDeepReview {
+		return false, ""
+	}
+	if s.JevRuntime == nil {
+		return false, ""
+	}
+	snap := s.JevRuntime.Snapshot()
+	if !snap.Enabled || !snap.CascadeGateEnabled {
+		return false, ""
+	}
+
+	files, err := ai.AnalyzeReviewFiles(diff)
+	if err != nil {
+		if s.Logger != nil {
+			s.Logger.Debug("pr review cascade gate: analyze files failed, fallback to deep review", "repo", req.fullName, "pr", req.prNum, "error", err)
+		}
+		return false, ""
+	}
+
+	localGate := ai.LocalReviewGate(files)
+	var skipReason string
+
+	switch localGate {
+	case "skip":
+		skipReason = "local_documentation_only"
+	case "consult":
+		if req.isPrivate && !snap.AllowPrivateState {
+			if s.Logger != nil {
+			s.Logger.Debug("pr review cascade gate: private repo state not allowed for jev, fallback to deep review", "repo", req.fullName, "pr", req.prNum)
+			}
+			return false, ""
+		}
+		cli := s.JevRuntime.Client("review")
+		if cli == nil {
+			return false, ""
+		}
+		skip, err := shouldSkipByJev(ctx, cli, files)
+		if err != nil {
+			if s.Logger != nil {
+			s.Logger.Warn("pr review cascade gate: jev evaluation failed, fallback to deep review", "repo", req.fullName, "pr", req.prNum, "error", err)
+			}
+			return false, ""
+		}
+		if skip {
+			skipReason = "jev_documentation_only"
+		}
+	default:
+		return false, ""
+	}
+
+	if skipReason == "" {
+		return false, ""
+	}
+
+	if snap.Mode == "shadow" {
+		if s.Logger != nil {
+			s.Logger.Info("[shadow] pr review cascade gate would skip", "repo", req.fullName, "pr", req.prNum, "reason", skipReason)
+		}
+		return false, ""
+	}
+
+	if s.Logger != nil {
+		s.Logger.Info("pr review cascade gate skipped deep review", "repo", req.fullName, "pr", req.prNum, "reason", skipReason)
+	}
+	return true, skipReason
 }
 
 // runPRReview 执行「拉取 Diff → AI 审查 → 持久化 → 可选评论回写 → 高危预警」的公共管线，
@@ -243,11 +323,42 @@ func (s *Service) runPRReview(ctx context.Context, req prReviewRequest) (*ai.Cod
 		return nil, errPRDiffUnavailable
 	}
 
+	// === Task 7: 级联门控与 Jev 咨询 ===
+	if shouldSkip, reason := s.evaluatePRGate(ctx, req, diff); shouldSkip {
+		skipRes := &ai.CodeReviewResult{
+			Summary:           "PR 仅包含文档变更，已通过级联门控跳过深度审查。",
+			Score:             100,
+			Confidence:        5,
+			Category:          "Documentation",
+			MergeRisk:         "Minimal",
+			MaintainerVerdict: "Ready to Merge",
+			MaintainerAction:  "放心合入",
+			MaintainerTip:     "文档变更已跳过深度代码审查",
+			EffortEstimate:    "极速审阅 (1-2min)",
+			ReviewStatus:      "skipped",
+			SkipReason:        reason,
+			DecisionModel:     "jev",
+			DecisionPolicy:    "cascade_gate",
+			HeadSHA:           req.headSHA,
+			ReviewedAt:        time.Now().UTC(),
+		}
+		if err := s.persistPRReview(ctx, req, skipRes); err != nil {
+			return nil, err
+		}
+		return skipRes, nil
+	}
+
 	reviewRes, err := s.AI.ReviewPR(ctx, req.fullName, req.title, req.author, diff)
 	if err != nil {
 		return nil, fmt.Errorf("ai review pr: %w", err)
 	}
 	reviewRes.HeadSHA = req.headSHA
+	if reviewRes.ReviewStatus == "" {
+		reviewRes.ReviewStatus = "reviewed"
+	}
+	if reviewRes.DecisionPolicy == "" {
+		reviewRes.DecisionPolicy = "direct_review"
+	}
 	if reviewRes.QuickCommand == "" && req.prNum > 0 {
 		if reviewRes.MaintainerVerdict == "Ready to Merge" {
 			reviewRes.QuickCommand = fmt.Sprintf("gh pr merge %d --squash --repo %s", req.prNum, req.fullName)
@@ -399,13 +510,13 @@ func (s *Service) reviewCommentedForHead(ctx context.Context, itemID, headSHA st
 	return previous.HeadSHA == headSHA && previous.CommentedOnPR
 }
 
-// TriggerWorkItemReview 手动触发指定 PR 工作项的 AI 代码审查，异步入队并返回 head SHA。
-// 完整审查管线（Diff 拉取 + LLM 审计 + 持久化 + 评论回写 + 高危预警）在后台执行：
-// 同步执行预算（最长 2 分钟）必然超过 HTTP Server 的 WriteTimeout（45s），慢审查会在
-// 服务端写响应时被掐断连接，前端误判失败而审查实际已入库。返回的 head SHA 供调用方
-// 轮询 GET /work-items/{id}/ai-review（head_sha 与 reviewed_at 均更新即本次审查完成）。
-// 校验失败以哨兵错误返回，HTTP 层按类别映射状态码。
+// TriggerWorkItemReview 手动触发指定 PR 工作项的 AI 代码审查（保持旧接口兼容）。
 func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) (string, error) {
+	return s.TriggerWorkItemReviewWithOptions(ctx, workItemID, ReviewOptions{ForceDeepReview: false})
+}
+
+// TriggerWorkItemReviewWithOptions 手动触发指定 PR 工作项的 AI 代码审查，支持传入选项（如 ForceDeepReview）。
+func (s *Service) TriggerWorkItemReviewWithOptions(ctx context.Context, workItemID string, opts ReviewOptions) (string, error) {
 	// 校验顺序：资源存在性（404）→ 目标可审查性（400）→ 能力开关（503）→ 依赖装配（503），
 	// 让调用方优先拿到最精确的资源/入参错误。
 	if s.Store == nil {
@@ -475,16 +586,18 @@ func (s *Service) TriggerWorkItemReview(ctx context.Context, workItemID string) 
 		return "", ErrReviewInProgress
 	}
 	s.launchReview(key, prReviewRequest{
-		fullName:       fullName,
-		owner:          owner,
-		repo:           repo,
-		prNum:          item.Number,
-		itemID:         item.ID,
-		title:          item.Title,
-		author:         item.Author,
-		headSHA:        headSHA,
-		installationID: installationID,
-		updatedBy:      "manual_trigger",
+		fullName:        fullName,
+		owner:           owner,
+		repo:            repo,
+		prNum:           item.Number,
+		itemID:          item.ID,
+		title:           item.Title,
+		author:          item.Author,
+		headSHA:         headSHA,
+		installationID:  installationID,
+		updatedBy:       "manual_trigger",
+		forceDeepReview: opts.ForceDeepReview,
+		isPrivate:       repoRec.IsPrivate,
 	})
 	return headSHA, nil
 }

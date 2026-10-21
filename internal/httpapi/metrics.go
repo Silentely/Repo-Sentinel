@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
@@ -182,6 +183,19 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			writeMetric("reposentinel_outbox_sending_gauge", "Outbox notifications currently in flight", "gauge", uint64(sending))
 		}
 	}
+
+	// Jev 判别式决策指标导出
+	jevSnap := jev.GlobalMetrics().Snapshot()
+	for _, plane := range []string{"notification", "review", "chatops"} {
+		writeMetric("reposentinel_jev_requests_total{plane=\""+plane+"\"}", "Jev decision requests issued", "counter", jevSnap.Calls[plane])
+		writeMetric("reposentinel_jev_requests_failed_total{plane=\""+plane+"\"}", "Jev decision requests failed", "counter", jevSnap.Failures[plane])
+		writeMetric("reposentinel_jev_cache_hits_total{plane=\""+plane+"\"}", "Jev decision cache hits", "counter", jevSnap.CacheHits[plane])
+		writeMetric("reposentinel_jev_fallbacks_total{plane=\""+plane+"\"}", "Jev circuit/rate-limit fallbacks", "counter", jevSnap.Fallbacks[plane])
+	}
+	writeMetric("reposentinel_jev_suppressed_total", "Notifications suppressed by Jev noise filter", "counter", jevSnap.Suppressed)
+	writeMetric("reposentinel_jev_skipped_total", "PR reviews skipped by Jev cascade gate", "counter", jevSnap.Skipped)
+	writeMetric("reposentinel_jev_would_skip_total", "PR reviews that would be skipped in shadow mode", "counter", jevSnap.WouldSkip)
+	writeMetric("reposentinel_jev_would_suppress_total", "Notifications that would be suppressed in shadow mode", "counter", jevSnap.WouldSuppress)
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

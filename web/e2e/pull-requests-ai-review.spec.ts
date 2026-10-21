@@ -41,8 +41,19 @@ test.describe("Pull Requests 审查与维护者裁决", () => {
                 source_updated_at: new Date().toISOString(),
                 review_state: "pending",
               },
+              {
+                id: "wi-pr-skip",
+                kind: "pull_request",
+                number: 103,
+                title: "docs: update README and contribution guidelines",
+                state: "open",
+                html_url: "https://github.com/Silentely/Repo-Sentinel/pull/103",
+                author: "contributor-charlie",
+                source_updated_at: new Date().toISOString(),
+                review_state: "pending",
+              },
             ],
-            total: 2,
+            total: 3,
             page: 1,
             per_page: 50,
           }),
@@ -68,7 +79,7 @@ test.describe("Pull Requests 审查与维护者裁决", () => {
             "⚙️ .github/workflows/deploy.yml (CI/CD 敏感流水线)",
             "🔑 configs/production.yaml (生产凭据配置)",
           ],
-          security_risks: ["检测到潜在明文密钥泄漏", "缺少跨站请求伪造 (CSRF) 防护"],
+          security_risks: ["检测到潜在明文密钥泄露", "缺少跨站请求伪造 (CSRF) 防护"],
           breaking_risks: ["移除遗留公开认证接口 authenticateV1"],
           code_smells: ["函数超过 200 行未拆分"],
           missing_tests: ["缺少密钥轮换失败场景回归测试"],
@@ -96,6 +107,27 @@ test.describe("Pull Requests 审查与维护者裁决", () => {
         body: JSON.stringify({
           error_code: "ai_service_error",
           message: "AI 审查分析服务暂时不可用，请稍后重试。",
+        }),
+      });
+    });
+
+    // Mock PR #103 审查被 Jev 级联门控跳过（文档变更）
+    await page.route("**/api/v1/work-items/wi-pr-skip/ai-review", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          summary: "纯文档更新，无代码与配置改动。",
+          score: 0,
+          review_status: "skipped",
+          skip_reason: "jev_documentation_only",
+          security_risks: [],
+          breaking_risks: [],
+          code_smells: [],
+          reviewed_at: new Date().toISOString(),
+          commented_on_pr: false,
+          diff_truncated: false,
+          head_sha: "commit-sha-103",
         }),
       });
     });
@@ -128,7 +160,7 @@ test.describe("Pull Requests 审查与维护者裁决", () => {
 
     // 关键断言：安全风险清单与缺失测试
     await expect(prCard.getByText(/🛡️ 安全风险:/)).toBeVisible();
-    await expect(prCard.getByText("检测到潜在明文密钥泄漏")).toBeVisible();
+    await expect(prCard.getByText("检测到潜在明文密钥泄露")).toBeVisible();
     await expect(prCard.getByText(/缺失测试用例与回归风险:/)).toBeVisible();
     await expect(prCard.getByText("缺少密钥轮换失败场景回归测试")).toBeVisible();
 
@@ -146,5 +178,13 @@ test.describe("Pull Requests 审查与维护者裁决", () => {
     // 错误信息与重试入口可见
     await expect(prErrCard.getByText(/审查结果加载失败，请稍后重试。/)).toBeVisible();
     await expect(prErrCard.getByRole("button", { name: /🔄 重新审查/ })).toBeVisible();
+
+    // 3. 验证 Jev 级联门控跳过状态展示与强制深度审查按钮
+    const prSkipCard = page.getByRole("listitem").filter({ hasText: "#103" });
+    const toggleSkipButton = prSkipCard.getByRole("button", { name: /AI 代码审查报告/ });
+    await toggleSkipButton.click();
+    await expect(prSkipCard.getByText("已跳过深度审查：文档变更（Jev 门控）", { exact: true })).toBeVisible();
+    await expect(prSkipCard.getByRole("button", { name: /⚡ 强制深度审查/ })).toBeVisible();
+    await expect(prSkipCard.getByText(/Ready to Merge/)).not.toBeVisible();
   });
 });

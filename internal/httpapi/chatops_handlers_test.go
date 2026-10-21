@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
@@ -1219,5 +1221,182 @@ func TestChatOps_ExecutorErrorSanitization(t *testing.T) {
 	}
 	if strings.Contains(slackW.Body.String(), "postgres") || strings.Contains(slackW.Body.String(), "10.0.0.8") {
 		t.Fatalf("Slack 回调响应泄漏了内部敏感信息: %s", slackW.Body.String())
+	}
+}
+
+type mockHTTPChatOpsJevClient struct {
+	judgeFunc func(ctx context.Context, state json.RawMessage, questions map[string]jev.Question) (jev.Result, error)
+}
+
+func (m *mockHTTPChatOpsJevClient) Judge(ctx context.Context, state json.RawMessage, questions map[string]jev.Question) (jev.Result, error) {
+	if m.judgeFunc != nil {
+		return m.judgeFunc(ctx, state, questions)
+	}
+	return jev.Result{}, nil
+}
+
+func httpPtrFloat(f float64) *float64 { return &f }
+func httpPtrString(s string) *string  { return &s }
+
+func TestChatOps_HTTP_GuardrailFeedback(t *testing.T) {
+	ctx := t.Context()
+
+	cases := []struct {
+		name        string
+		judgeFunc   func(ctx context.Context, state json.RawMessage, questions map[string]jev.Question) (jev.Result, error)
+		wantStatus  string
+		wantToast   string
+		wantMessage string
+	}{
+		{
+			name: "denied",
+			judgeFunc: func(ctx context.Context, state json.RawMessage, questions map[string]jev.Question) (jev.Result, error) {
+				return jev.Result{
+					Model: "jev-1.14.0",
+					Answers: map[string]jev.Answer{
+						"safety_decision": {Type: "choice", Choice: httpPtrString("deny"), Confidence: httpPtrFloat(0.95)},
+					},
+				}, nil
+			},
+			wantStatus:  "guardrail_denied",
+			wantToast:   "danger",
+			wantMessage: "高风险操作已被安全护栏拒绝",
+		},
+		{
+			name: "unavailable",
+			judgeFunc: func(ctx context.Context, state json.RawMessage, questions map[string]jev.Question) (jev.Result, error) {
+				return jev.Result{}, errors.New("timeout")
+			},
+			wantStatus:  "guardrail_unavailable",
+			wantToast:   "warning",
+			wantMessage: "安全护栏分析未通过或超时",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			jevCfg := config.JevConfig{
+				Enabled:                 true,
+				ChatOpsGuardrailEnabled: true,
+				Mode:                    "active",
+			}
+			rt := jev.RuntimeFromEnv(jevCfg)
+			rt.SetClientForTest("chatops", &mockHTTPChatOpsJevClient{judgeFunc: tc.judgeFunc})
+
+			exec := &recordingChatOpsExecutor{}
+			fixture := newHTTPTestFixture(t, httpTestOptions{
+				chatOpsExecutor: exec,
+				jevRuntime:      rt,
+			})
+
+			// 1. Telegram
+			_, _ = fixture.store.Settings().Upsert(ctx, store.SystemSetting{
+				ID:        ulid.Make().String(),
+				Key:       "chatops.telegram.allowed_user_ids",
+				ValueJSON: []byte(`"12345"`),
+			})
+			tgToken, _ := CreateChatOpsToken(ctx, fixture.store, "issue_reply_draft", "repo-1", "issue-1", "12345", 10*time.Minute)
+
+			tgBody := map[string]any{
+				"callback_query": map[string]any{
+					"id":   "cb-guardrail-test",
+					"data": "act:" + tgToken,
+					"from": map[string]any{
+						"id": 12345,
+					},
+				},
+			}
+			rawTg, _ := json.Marshal(tgBody)
+			tgReq := httptest.NewRequest(http.MethodPost, "/chatops/telegram/callback", bytes.NewReader(rawTg))
+			tgReq.Header.Set("Content-Type", "application/json")
+			tgW := httptest.NewRecorder()
+			fixture.handler.ServeHTTP(tgW, tgReq)
+
+			if tgW.Code != http.StatusOK {
+				t.Fatalf("Telegram HTTP status expected 200, got %d", tgW.Code)
+			}
+			var tgRes map[string]any
+			_ = json.Unmarshal(tgW.Body.Bytes(), &tgRes)
+			if tgRes["status"] != tc.wantStatus {
+				t.Fatalf("Telegram expected status %s, got %v", tc.wantStatus, tgRes)
+			}
+
+			// 2. Feishu
+			_, _ = fixture.store.Settings().Upsert(ctx, store.SystemSetting{
+				ID:        ulid.Make().String(),
+				Key:       "chatops.feishu.allowed_user_ids",
+				ValueJSON: []byte(`"ou_user_1"`),
+			})
+			fsToken, _ := CreateChatOpsToken(ctx, fixture.store, "issue_reply_draft", "repo-1", "issue-1", "ou_user_1", 10*time.Minute)
+			fsBody := map[string]any{
+				"open_id": "ou_user_1",
+				"action": map[string]any{
+					"value": map[string]any{
+						"token": fsToken,
+					},
+				},
+			}
+			rawFs, _ := json.Marshal(fsBody)
+			fsReq := httptest.NewRequest(http.MethodPost, "/chatops/feishu/callback", bytes.NewReader(rawFs))
+			fsReq.Header.Set("Content-Type", "application/json")
+			fsW := httptest.NewRecorder()
+			fixture.handler.ServeHTTP(fsW, fsReq)
+
+			if fsW.Code != http.StatusOK {
+				t.Fatalf("Feishu HTTP status expected 200, got %d", fsW.Code)
+			}
+			var fsRes struct {
+				Toast struct {
+					Type    string `json:"type"`
+					Content string `json:"content"`
+				} `json:"toast"`
+			}
+			_ = json.Unmarshal(fsW.Body.Bytes(), &fsRes)
+			if fsRes.Toast.Type != tc.wantToast {
+				t.Fatalf("Feishu expected toast type %s, got %s (content: %s)", tc.wantToast, fsRes.Toast.Type, fsRes.Toast.Content)
+			}
+
+			// 3. Slack
+			_, _ = fixture.store.Settings().Upsert(ctx, store.SystemSetting{
+				ID:        ulid.Make().String(),
+				Key:       "chatops.slack.allowed_user_ids",
+				ValueJSON: []byte(`"U12345"`),
+			})
+			slToken, _ := CreateChatOpsToken(ctx, fixture.store, "issue_reply_draft", "repo-1", "issue-1", "U12345", 10*time.Minute)
+			slPayload := map[string]any{
+				"user": map[string]any{
+					"id": "U12345",
+				},
+				"actions": []map[string]any{
+					{"value": slToken},
+				},
+			}
+			rawPayload, _ := json.Marshal(slPayload)
+			formBody := "payload=" + url.QueryEscape(string(rawPayload))
+			slReq := httptest.NewRequest(http.MethodPost, "/chatops/slack/callback", strings.NewReader(formBody))
+			slReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			slW := httptest.NewRecorder()
+			fixture.handler.ServeHTTP(slW, slReq)
+
+			if slW.Code != http.StatusOK {
+				t.Fatalf("Slack HTTP status expected 200, got %d", slW.Code)
+			}
+			var slRes struct {
+				ResponseType string `json:"response_type"`
+				Text         string `json:"text"`
+			}
+			_ = json.Unmarshal(slW.Body.Bytes(), &slRes)
+			if slRes.ResponseType != "ephemeral" {
+				t.Fatalf("Slack expected response_type ephemeral, got %s", slRes.ResponseType)
+			}
+			if !strings.Contains(slRes.Text, tc.wantMessage) {
+				t.Fatalf("Slack expected text to contain %q, got %q", tc.wantMessage, slRes.Text)
+			}
+
+			// Executor 绝不可调用
+			if exec.calls != 0 {
+				t.Fatalf("Executor should not be called when guardrail blocks, got %d calls", exec.calls)
+			}
+		})
 	}
 }

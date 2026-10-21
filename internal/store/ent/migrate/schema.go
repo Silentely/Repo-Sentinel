@@ -192,6 +192,7 @@ var (
 		{Name: "secret_envelope", Type: field.TypeString, Default: ""},
 		{Name: "allow_private", Type: field.TypeBool, Default: false},
 		{Name: "event_kinds", Type: field.TypeJSON, Nullable: true},
+		{Name: "incident_tags", Type: field.TypeJSON, Nullable: true},
 		{Name: "digest_enabled", Type: field.TypeBool, Default: true},
 		{Name: "receive_daily_digest", Type: field.TypeBool, Default: true},
 		{Name: "receive_weekly_report", Type: field.TypeBool, Default: true},

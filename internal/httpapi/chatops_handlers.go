@@ -138,13 +138,17 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "service_unavailable", "error": "chatops_unavailable"})
 			return
 		}
-		switch outcome.Status {
+	switch outcome.Status {
 		case chatops.StatusCorruptedConfig:
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "error", "error": "whitelist_corrupted"})
 		case chatops.StatusForbidden:
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "forbidden", "error": "telegram_user_not_allowed"})
 		case chatops.StatusInvalidToken:
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "ignored", "reason": err.Error()})
+		case chatops.StatusGuardrailDenied:
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "guardrail_denied", "error": "guardrail_denied", "message": outcome.Message})
+		case chatops.StatusGuardrailUnavailable:
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "guardrail_unavailable", "error": "guardrail_unavailable", "message": outcome.Message})
 		default:
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "action_failed", "error": "action_execution_failed"})
 		}
@@ -280,6 +284,20 @@ func (s *server) handleFeishuChatOpsCallback(w http.ResponseWriter, r *http.Requ
 				"toast": map[string]string{
 					"type":    "warning",
 					"content": "Action expired or already performed",
+				},
+			})
+		case chatops.StatusGuardrailDenied:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"toast": map[string]string{
+					"type":    "danger",
+					"content": "⚠️ " + outcome.Message,
+				},
+			})
+		case chatops.StatusGuardrailUnavailable:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"toast": map[string]string{
+					"type":    "warning",
+					"content": "⚠️ " + outcome.Message,
 				},
 			})
 		case chatops.StatusIndeterminate:
@@ -454,6 +472,16 @@ func (s *server) handleSlackChatOpsCallback(w http.ResponseWriter, r *http.Reque
 			writeJSON(w, http.StatusOK, map[string]any{
 				"response_type": "ephemeral",
 				"text":          "⚠️ 操作已失效或已被执行",
+			})
+		case chatops.StatusGuardrailDenied:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"response_type": "ephemeral",
+				"text":          "⚠️ " + outcome.Message,
+			})
+		case chatops.StatusGuardrailUnavailable:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"response_type": "ephemeral",
+				"text":          "⚠️ " + outcome.Message,
 			})
 		case chatops.StatusIndeterminate:
 			writeJSON(w, http.StatusOK, map[string]any{

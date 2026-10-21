@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -714,7 +715,15 @@ func (s *server) handleTriggerWorkItemAIReview(w http.ResponseWriter, r *http.Re
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeInternal, map[string]any{"message": "webhook service unavailable"})
 		return
 	}
-	headSHA, err := s.webhookSvc.TriggerWorkItemReview(r.Context(), id)
+	var opts webhooksvc.ReviewOptions
+	if r.Body != nil {
+		var payload struct {
+			ForceDeepReview bool `json:"force_deep_review"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&payload)
+		opts.ForceDeepReview = payload.ForceDeepReview
+	}
+	headSHA, err := s.webhookSvc.TriggerWorkItemReviewWithOptions(r.Context(), id, opts)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrNotFound):

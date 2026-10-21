@@ -437,6 +437,114 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 	if value, ok := lookup("REPOSENTINEL_OAUTH_CLIENT_SECRET"); ok {
 		cfg.OAuth.ClientSecret = NewSecret(value)
 	}
+
+	if value, ok := lookup("REPOSENTINEL_JEV_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_JEV_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.Jev.Enabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_BASE_URL"); ok {
+		cfg.Jev.BaseURL = value
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_API_KEY"); ok {
+		cfg.Jev.APIKey = NewSecret(value)
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_MODEL"); ok {
+		cfg.Jev.Model = value
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_MODE"); ok {
+		cfg.Jev.Mode = value
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_RETRIES"); ok {
+		n, err := parseIntEnvironment("REPOSENTINEL_JEV_RETRIES", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.Jev.Retries = n
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_NOISE_FILTER_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_JEV_NOISE_FILTER_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.Jev.NoiseFilterEnabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_ROUTING_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_JEV_ROUTING_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.Jev.RoutingEnabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_CASCADE_GATE_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_JEV_CASCADE_GATE_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.Jev.CascadeGateEnabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_CHATOPS_GUARDRAIL_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_JEV_CHATOPS_GUARDRAIL_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.Jev.ChatOpsGuardrailEnabled = parsed
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_ALLOW_PRIVATE_STATE"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_JEV_ALLOW_PRIVATE_STATE", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.Jev.AllowPrivateState = parsed
+	}
+
+	if value, ok := lookup("REPOSENTINEL_JEV_NOTIFICATION_TIMEOUT"); ok {
+		d, err := time.ParseDuration(value)
+		if err != nil {
+			return poolExplicitFlags{}, newValidationError("REPOSENTINEL_JEV_NOTIFICATION_TIMEOUT", "must be a duration")
+		}
+		cfg.Jev.Notification.Timeout = d
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_NOTIFICATION_MAX_CONCURRENCY"); ok {
+		n, err := parseIntEnvironment("REPOSENTINEL_JEV_NOTIFICATION_MAX_CONCURRENCY", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.Jev.Notification.MaxConcurrency = n
+	}
+
+	if value, ok := lookup("REPOSENTINEL_JEV_REVIEW_TIMEOUT"); ok {
+		d, err := time.ParseDuration(value)
+		if err != nil {
+			return poolExplicitFlags{}, newValidationError("REPOSENTINEL_JEV_REVIEW_TIMEOUT", "must be a duration")
+		}
+		cfg.Jev.Review.Timeout = d
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_REVIEW_MAX_CONCURRENCY"); ok {
+		n, err := parseIntEnvironment("REPOSENTINEL_JEV_REVIEW_MAX_CONCURRENCY", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.Jev.Review.MaxConcurrency = n
+	}
+
+	if value, ok := lookup("REPOSENTINEL_JEV_CHATOPS_TIMEOUT"); ok {
+		d, err := time.ParseDuration(value)
+		if err != nil {
+			return poolExplicitFlags{}, newValidationError("REPOSENTINEL_JEV_CHATOPS_TIMEOUT", "must be a duration")
+		}
+		cfg.Jev.ChatOps.Timeout = d
+	}
+	if value, ok := lookup("REPOSENTINEL_JEV_CHATOPS_MAX_CONCURRENCY"); ok {
+		n, err := parseIntEnvironment("REPOSENTINEL_JEV_CHATOPS_MAX_CONCURRENCY", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.Jev.ChatOps.MaxConcurrency = n
+	}
+
 	return explicit, nil
 }
 

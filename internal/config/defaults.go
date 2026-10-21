@@ -63,5 +63,29 @@ func defaultConfig() Config {
 		OAuth: OAuthConfig{
 			ClientID: "reposentinel-agent",
 		},
+		Jev: JevConfig{
+			Enabled:                 false,
+			BaseURL:                 "https://api.typesafe.ai",
+			Model:                   "jev-1.14.0",
+			Mode:                    "shadow",
+			Retries:                 1,
+			NoiseFilterEnabled:      false,
+			RoutingEnabled:          false,
+			CascadeGateEnabled:      false,
+			ChatOpsGuardrailEnabled: false,
+			AllowPrivateState:       false,
+			Notification: PlaneConfig{
+				Timeout:        500 * time.Millisecond,
+				MaxConcurrency: 8,
+			},
+			Review: PlaneConfig{
+				Timeout:        300 * time.Millisecond,
+				MaxConcurrency: 8,
+			},
+			ChatOps: PlaneConfig{
+				Timeout:        500 * time.Millisecond,
+				MaxConcurrency: 8,
+			},
+		},
 	}
 }

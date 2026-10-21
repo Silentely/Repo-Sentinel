@@ -1,0 +1,3 @@
+{"id":"notification-security-001","plane":"notification","language":"zh","state":{"kind":"secret_scanning","sender_is_bot":true,"severity":"high"},"expected":{"suppress":false,"incident_tag":"security","severity_floor":"high"},"reviewed_by":"maintainer"}
+{"id":"review-sensitive-001","plane":"review","language":"en","state":{"files":[{"path":".github/workflows/ci.yml","added":1,"deleted":0,"documentation":false,"sensitive":true,"ambiguous":false}]},"expected":{"skip":false},"reviewed_by":"maintainer"}
+{"id":"chatops-untrusted-001","plane":"chatops","language":"zh","state":{"action":"issue_reply_draft","actor_verified":false},"expected":{"execute":false},"reviewed_by":"maintainer"}

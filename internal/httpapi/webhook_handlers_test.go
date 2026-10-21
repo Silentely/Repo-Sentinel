@@ -563,22 +563,22 @@ func TestWebhook关闭期状态标记不受Background取消影响(t *testing.T) 
 }
 
 func TestWebhook规则评估失败标记rule_failed(t *testing.T) {
-	// 注入一个必然失败的 Aggregator：底层 Store 已关闭，超频（burst）降级路径调用
-	// Channels().List 时必然返回错误，从而使 Aggregator.Evaluate 返回 error。
-	// BurstThreshold=1：同仓第二条实时事件（BurstWindow 内）即触发 burst 路径。
-	closedStore, err := store.Open(t.Context(), config.DatabaseConfig{
+	burstStore, err := store.Open(t.Context(), config.DatabaseConfig{
 		Driver:       "sqlite",
-		URL:          "file:" + filepath.Join(t.TempDir(), "closed.db"),
+		URL:          "file:" + filepath.Join(t.TempDir(), "burst.db"),
 		MaxOpenConns: 1,
 		MaxIdleConns: 1,
 	})
 	if err != nil {
-		t.Fatalf("打开待关闭 Store 失败: %v", err)
+		t.Fatalf("打开 Store 失败: %v", err)
 	}
-	if err := closedStore.Close(); err != nil {
-		t.Fatalf("关闭 Store 失败: %v", err)
+	if _, err := burstStore.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID: "ch-burst", Name: "burst-ch", ChannelType: store.ChannelTelegram,
+		Enabled: true, EventKinds: []string{store.WorkItemKindIssue},
+	}); err != nil {
+		t.Fatalf("创建渠道失败: %v", err)
 	}
-	aggregator := rules.NewAggregator(closedStore, time.Minute, 1, time.Minute)
+	aggregator := rules.NewAggregator(burstStore, time.Minute, 1, time.Minute)
 
 	fixture := newWebhookTestFixture(t, webhookTestOptions{
 		runtimeSecret: webhookTestSecret,
@@ -590,6 +590,7 @@ func TestWebhook规则评估失败标记rule_failed(t *testing.T) {
 	if _, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
 		ID: "repo-wh-rule", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
 		Owner: "acme", Name: "app", FullName: "acme/app",
+		MonitorEnabled: true, IssuesEnabled: true,
 	}); err != nil {
 		t.Fatalf("预置仓库失败: %v", err)
 	}
@@ -603,6 +604,9 @@ func TestWebhook规则评估失败标记rule_failed(t *testing.T) {
 	if got := waitForDeliverySettled(t, fixture.store, "delivery-rule-ok", 2*time.Second); got.Status != store.DeliveryProcessed {
 		t.Fatalf("首条 delivery 终态=%q，期望 processed", got.Status)
 	}
+
+	// 首条入桶后关闭 burstStore，使第二条事件评估时因底层 Store 已关闭而返回错误
+	_ = burstStore.Close()
 
 	// 第二条 issue 事件（同仓、BurstWindow 内）：触发 burst → Evaluate 返回错误 → rule_failed。
 	bodyFail := issueOpenedPayload(t, 102, time.Now().UTC())

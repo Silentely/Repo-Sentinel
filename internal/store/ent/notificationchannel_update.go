@@ -131,6 +131,24 @@ func (_u *NotificationChannelUpdate) ClearEventKinds() *NotificationChannelUpdat
 	return _u
 }
 
+// SetIncidentTags sets the "incident_tags" field.
+func (_u *NotificationChannelUpdate) SetIncidentTags(v []string) *NotificationChannelUpdate {
+	_u.mutation.SetIncidentTags(v)
+	return _u
+}
+
+// AppendIncidentTags appends value to the "incident_tags" field.
+func (_u *NotificationChannelUpdate) AppendIncidentTags(v []string) *NotificationChannelUpdate {
+	_u.mutation.AppendIncidentTags(v)
+	return _u
+}
+
+// ClearIncidentTags clears the value of the "incident_tags" field.
+func (_u *NotificationChannelUpdate) ClearIncidentTags() *NotificationChannelUpdate {
+	_u.mutation.ClearIncidentTags()
+	return _u
+}
+
 // SetDigestEnabled sets the "digest_enabled" field.
 func (_u *NotificationChannelUpdate) SetDigestEnabled(v bool) *NotificationChannelUpdate {
 	_u.mutation.SetDigestEnabled(v)
@@ -383,6 +401,17 @@ func (_u *NotificationChannelUpdate) sqlSave(ctx context.Context) (_node int, er
 	if _u.mutation.EventKindsCleared() {
 		_spec.ClearField(notificationchannel.FieldEventKinds, field.TypeJSON)
 	}
+	if value, ok := _u.mutation.IncidentTags(); ok {
+		_spec.SetField(notificationchannel.FieldIncidentTags, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedIncidentTags(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, notificationchannel.FieldIncidentTags, value)
+		})
+	}
+	if _u.mutation.IncidentTagsCleared() {
+		_spec.ClearField(notificationchannel.FieldIncidentTags, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.DigestEnabled(); ok {
 		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)
 	}
@@ -541,6 +570,24 @@ func (_u *NotificationChannelUpdateOne) AppendEventKinds(v []string) *Notificati
 // ClearEventKinds clears the value of the "event_kinds" field.
 func (_u *NotificationChannelUpdateOne) ClearEventKinds() *NotificationChannelUpdateOne {
 	_u.mutation.ClearEventKinds()
+	return _u
+}
+
+// SetIncidentTags sets the "incident_tags" field.
+func (_u *NotificationChannelUpdateOne) SetIncidentTags(v []string) *NotificationChannelUpdateOne {
+	_u.mutation.SetIncidentTags(v)
+	return _u
+}
+
+// AppendIncidentTags appends value to the "incident_tags" field.
+func (_u *NotificationChannelUpdateOne) AppendIncidentTags(v []string) *NotificationChannelUpdateOne {
+	_u.mutation.AppendIncidentTags(v)
+	return _u
+}
+
+// ClearIncidentTags clears the value of the "incident_tags" field.
+func (_u *NotificationChannelUpdateOne) ClearIncidentTags() *NotificationChannelUpdateOne {
+	_u.mutation.ClearIncidentTags()
 	return _u
 }
 
@@ -825,6 +872,17 @@ func (_u *NotificationChannelUpdateOne) sqlSave(ctx context.Context) (_node *Not
 	}
 	if _u.mutation.EventKindsCleared() {
 		_spec.ClearField(notificationchannel.FieldEventKinds, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.IncidentTags(); ok {
+		_spec.SetField(notificationchannel.FieldIncidentTags, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedIncidentTags(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, notificationchannel.FieldIncidentTags, value)
+		})
+	}
+	if _u.mutation.IncidentTagsCleared() {
+		_spec.ClearField(notificationchannel.FieldIncidentTags, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.DigestEnabled(); ok {
 		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)

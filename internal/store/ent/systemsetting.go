@@ -4,6 +4,7 @@ package ent
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"strings"
 	"time"
@@ -21,7 +22,7 @@ type SystemSetting struct {
 	// Key holds the value of the "key" field.
 	Key string `json:"key,omitempty"`
 	// ValueJSON holds the value of the "value_json" field.
-	ValueJSON json.RawMessage `json:"value_json,omitempty"`
+	ValueJSON jsontext.Value `json:"value_json,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// UpdatedBy holds the value of the "updated_by" field.

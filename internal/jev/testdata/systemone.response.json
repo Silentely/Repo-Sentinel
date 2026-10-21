@@ -1,0 +1,39 @@
+{
+  "model": "jev-1.14.0",
+  "answers": {
+    "is_actionable": {
+      "type": "noul",
+      "noul": 0.97
+    },
+    "severity_tier": {
+      "type": "choice",
+      "choice": "high",
+      "probabilities": {
+        "critical": 0.01,
+        "high": 0.96,
+        "medium": 0.02,
+        "low": 0.01
+      },
+      "confidence": 0.92
+    },
+    "urgency": {
+      "type": "score",
+      "score": 1.6,
+      "legend": {
+        "0": "Routine",
+        "1": "Soon",
+        "2": "Immediate"
+      },
+      "probabilities": {
+        "0": 0.05,
+        "1": 0.3,
+        "2": 0.65
+      },
+      "confidence": 0.78
+    }
+  },
+  "usage": {
+    "input_tokens": 312,
+    "output_tokens": 48
+  }
+}

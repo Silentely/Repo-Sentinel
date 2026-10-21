@@ -2066,6 +2066,7 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 				SetSecretEnvelope(in.SecretEnvelope).
 				SetAllowPrivate(in.AllowPrivate).
 				SetEventKinds(in.EventKinds).
+				SetIncidentTags(in.IncidentTags).
 				SetDigestEnabled(in.DigestEnabled).
 				SetReceiveDailyDigest(in.ReceiveDailyDigest).
 				SetReceiveWeeklyReport(in.ReceiveWeeklyReport).
@@ -2099,6 +2100,7 @@ func (s *channelStore) Upsert(ctx context.Context, in NotificationChannel) (Noti
 		SetSecretEnvelope(in.SecretEnvelope).
 		SetAllowPrivate(in.AllowPrivate).
 		SetEventKinds(in.EventKinds).
+		SetIncidentTags(in.IncidentTags).
 		SetDigestEnabled(in.DigestEnabled).
 		SetReceiveDailyDigest(in.ReceiveDailyDigest).
 		SetReceiveWeeklyReport(in.ReceiveWeeklyReport).
@@ -2150,9 +2152,26 @@ func (s *channelStore) GetByType(ctx context.Context, channelType string) (Notif
 	return channelFromEntity(entity), nil
 }
 
+func cloneChannels(in []NotificationChannel) []NotificationChannel {
+	if in == nil {
+		return nil
+	}
+	out := make([]NotificationChannel, len(in))
+	for i, ch := range in {
+		out[i] = ch
+		if ch.EventKinds != nil {
+			out[i].EventKinds = append([]string(nil), ch.EventKinds...)
+		}
+		if ch.IncidentTags != nil {
+			out[i].IncidentTags = append([]string(nil), ch.IncidentTags...)
+		}
+	}
+	return out
+}
+
 func (s *channelStore) List(ctx context.Context) ([]NotificationChannel, error) {
 	if cached, ok := s.listCache.Get(); ok {
-		return cached, nil
+		return cloneChannels(cached), nil
 	}
 	rows, err := s.client.NotificationChannel.Query().All(ctx)
 	if err != nil {
@@ -2162,7 +2181,7 @@ func (s *channelStore) List(ctx context.Context) ([]NotificationChannel, error) 
 	for _, row := range rows {
 		out = append(out, channelFromEntity(row))
 	}
-	s.listCache.Set(out)
+	s.listCache.Set(cloneChannels(out))
 	return out, nil
 }
 
@@ -2205,7 +2224,7 @@ func channelFromEntity(e *entclient.NotificationChannel) NotificationChannel {
 	return NotificationChannel{
 		ID: e.ID, ChannelType: e.ChannelType, Name: e.Name, Enabled: e.Enabled,
 		Target: e.Target, SecretEnvelope: e.SecretEnvelope, AllowPrivate: e.AllowPrivate,
-		EventKinds: e.EventKinds, DigestEnabled: e.DigestEnabled,
+		EventKinds: e.EventKinds, IncidentTags: e.IncidentTags, DigestEnabled: e.DigestEnabled,
 		ReceiveDailyDigest: e.ReceiveDailyDigest, ReceiveWeeklyReport: e.ReceiveWeeklyReport, ReceiveMonthlyReport: e.ReceiveMonthlyReport,
 		QuietHoursEnabled: e.QuietHoursEnabled, QuietHoursStart: e.QuietHoursStart, QuietHoursEnd: e.QuietHoursEnd, QuietHoursTZ: e.QuietHoursTz,
 		IgnoreBots:  e.IgnoreBots,

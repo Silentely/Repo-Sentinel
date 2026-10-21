@@ -102,6 +102,12 @@ func (_c *NotificationChannelCreate) SetEventKinds(v []string) *NotificationChan
 	return _c
 }
 
+// SetIncidentTags sets the "incident_tags" field.
+func (_c *NotificationChannelCreate) SetIncidentTags(v []string) *NotificationChannelCreate {
+	_c.mutation.SetIncidentTags(v)
+	return _c
+}
+
 // SetDigestEnabled sets the "digest_enabled" field.
 func (_c *NotificationChannelCreate) SetDigestEnabled(v bool) *NotificationChannelCreate {
 	_c.mutation.SetDigestEnabled(v)
@@ -517,6 +523,10 @@ func (_c *NotificationChannelCreate) createSpec() (*NotificationChannel, *sqlgra
 	if value, ok := _c.mutation.EventKinds(); ok {
 		_spec.SetField(notificationchannel.FieldEventKinds, field.TypeJSON, value)
 		_node.EventKinds = value
+	}
+	if value, ok := _c.mutation.IncidentTags(); ok {
+		_spec.SetField(notificationchannel.FieldIncidentTags, field.TypeJSON, value)
+		_node.IncidentTags = value
 	}
 	if value, ok := _c.mutation.DigestEnabled(); ok {
 		_spec.SetField(notificationchannel.FieldDigestEnabled, field.TypeBool, value)

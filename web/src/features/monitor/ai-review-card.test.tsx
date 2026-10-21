@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AIReviewCard, deriveMaintainerVerdict, verdictBadge } from "./list-pages";
+import { AIReviewCard, deriveMaintainerVerdict, getReviewSkipMessage, verdictBadge } from "./list-pages";
 import type { CodeReviewResult, TriggerAIReviewReceipt } from "./api";
 
 const review: CodeReviewResult = {
@@ -247,6 +247,43 @@ describe("AIReviewCard", () => {
     expect(screen.getByRole("button", { name: /已复制 CLI/ })).toBeInTheDocument();
 
     view.unmount();
+  });
+
+  it("跳过状态展示跳过原因、不展示分数徽章和合并建议，并提供强制深度审查按钮", async () => {
+    fetchMock.mockResolvedValue({
+      ...review,
+      review_status: "skipped",
+      skip_reason: "jev_documentation_only",
+      score: 0,
+      reviewed_at: "2026-09-08T00:00:00Z",
+    });
+    const view = renderCard();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /AI 代码审查报告/ }));
+    });
+
+    expect(screen.getByText("已跳过深度审查：文档变更（Jev 门控）")).toBeInTheDocument();
+    expect(screen.queryByText(/0 分/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/合并风险/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ready to Merge/)).not.toBeInTheDocument();
+
+    const forceBtn = screen.getByRole("button", { name: /⚡ 强制深度审查/ });
+    expect(forceBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(forceBtn);
+    });
+    expect(triggerMock).toHaveBeenCalledWith("wi-1", true);
+
+    view.unmount();
+  });
+});
+
+describe("getReviewSkipMessage", () => {
+  it("跳过状态不伪装成低分审查", () => {
+    const review = { review_status: "skipped", skip_reason: "jev_documentation_only" } as CodeReviewResult;
+    expect(getReviewSkipMessage(review)).toBe("已跳过深度审查：文档变更（Jev 门控）");
+    expect(getReviewSkipMessage({} as CodeReviewResult)).toBe("");
   });
 });
 

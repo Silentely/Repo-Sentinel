@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ func (s *server) handleListChannels(w http.ResponseWriter, r *http.Request) {
 			"secret_configured": ch.SecretEnvelope != "",
 			"diagnostic":        notify.DiagnoseChannel(ch),
 			// 订阅配置：event_kinds 为 nil 表示订阅全部实时类型。
-			"event_kinds": ch.EventKinds, "digest_enabled": ch.DigestEnabled,
+			"event_kinds": ch.EventKinds, "incident_tags": ch.IncidentTags, "digest_enabled": ch.DigestEnabled,
 			"receive_daily_digest":   ch.ReceiveDailyDigest,
 			"receive_weekly_report":  ch.ReceiveWeeklyReport,
 			"receive_monthly_report": ch.ReceiveMonthlyReport,
@@ -65,6 +66,7 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		Secret               string    `json:"secret"`
 		AllowPrivate         bool      `json:"allow_private"`
 		EventKinds           *[]string `json:"event_kinds"`
+		IncidentTags         *[]string `json:"incident_tags"`
 		DigestEnabled        *bool     `json:"digest_enabled"`
 		ReceiveDailyDigest   *bool     `json:"receive_daily_digest"`
 		ReceiveWeeklyReport  *bool     `json:"receive_weekly_report"`
@@ -89,6 +91,26 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	// 显式提供的列表必须落成非 nil 切片：空数组表示「不订阅实时通知」，
 	// 不能塌缩成 nil——AcceptsKind 视 nil 为订阅全部，那会让「全部取消勾选」
 	// 变成订阅所有类型，事件被推到管理员明确限定为不接收的目标。
+	var cleanedTags []string
+	if body.IncidentTags != nil {
+		seenTags := make(map[string]bool)
+		for _, t := range *body.IncidentTags {
+			trimmed := strings.TrimSpace(t)
+			if trimmed == "" {
+				continue
+			}
+			if !store.IsValidIncidentTag(trimmed) {
+				s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "incident_tags"})
+				return
+			}
+			if !seenTags[trimmed] {
+				seenTags[trimmed] = true
+				cleanedTags = append(cleanedTags, trimmed)
+			}
+		}
+		sort.Strings(cleanedTags)
+	}
+
 	var cleanedKinds []string
 	if body.EventKinds != nil {
 		cleanedKinds = make([]string, 0, len(*body.EventKinds))
@@ -130,6 +152,7 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 		}
 		// 请求未携带订阅配置时保留现值。
 		ch.EventKinds = existing.EventKinds
+		ch.IncidentTags = existing.IncidentTags
 		ch.DigestEnabled = existing.DigestEnabled
 		ch.ReceiveDailyDigest = existing.ReceiveDailyDigest
 		ch.ReceiveWeeklyReport = existing.ReceiveWeeklyReport
@@ -152,6 +175,13 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.EventKinds != nil {
 		ch.EventKinds = cleanedKinds
+	}
+	if body.IncidentTags != nil {
+		if len(cleanedTags) == 0 {
+			ch.IncidentTags = nil
+		} else {
+			ch.IncidentTags = cleanedTags
+		}
 	}
 	if body.DigestEnabled != nil {
 		ch.DigestEnabled = *body.DigestEnabled
@@ -259,6 +289,7 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": saved.ID, "channel_type": saved.ChannelType, "enabled": saved.Enabled,
 		"target": saved.Target, "secret_configured": saved.SecretEnvelope != "",
+		"incident_tags": saved.IncidentTags,
 	})
 }
 
@@ -662,6 +693,7 @@ func (s *server) handleExportNotificationBackup(w http.ResponseWriter, r *http.R
 			"enabled":                ch.Enabled,
 			"allow_private":          ch.AllowPrivate,
 			"event_kinds":            ch.EventKinds,
+			"incident_tags":          ch.IncidentTags,
 			"receive_daily_digest":   ch.ReceiveDailyDigest,
 			"receive_weekly_report":  ch.ReceiveWeeklyReport,
 			"receive_monthly_report": ch.ReceiveMonthlyReport,

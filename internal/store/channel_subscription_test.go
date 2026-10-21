@@ -274,3 +274,39 @@ func TestNotificationChannelStorePersistsGivenFlagsOnCreate(t *testing.T) {
 		t.Fatalf("新建显式全关被改写: %+v", off)
 	}
 }
+
+func TestJevIncidentTagsRoundTrip(t *testing.T) {
+	data := openTestStore(t)
+	saved, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID:           ulid.Make().String(),
+		ChannelType:  store.ChannelTelegram,
+		Target:       "1",
+		IncidentTags: []string{"security", "ci"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := data.Channels().Get(t.Context(), saved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.IncidentTags) != 2 || got.IncidentTags[0] != "security" || got.IncidentTags[1] != "ci" {
+		t.Fatalf("标签丢失: %v", got.IncidentTags)
+	}
+
+	all, err := data.Channels().Upsert(t.Context(), store.NotificationChannel{
+		ID:          ulid.Make().String(),
+		ChannelType: store.ChannelTelegram,
+		Target:      "2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotAll, err := data.Channels().Get(t.Context(), all.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotAll.IncidentTags != nil {
+		t.Fatalf("未设置 IncidentTags 应保持 nil: %v", gotAll.IncidentTags)
+	}
+}

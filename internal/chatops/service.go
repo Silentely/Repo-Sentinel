@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/sideeffect"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -58,15 +59,17 @@ type Dependencies struct {
 	TelegramFeedback TelegramFeedback
 	Logger           *slog.Logger
 	SafeGo           func(name string, fn func())
+	JevRuntime       *jev.RuntimeConfig
 }
 
 type service struct {
-	store    store.Store
-	tokens   TokenStore
-	executor ActionExecutor
-	feedback TelegramFeedback
-	logger   *slog.Logger
-	safeGo   func(name string, fn func())
+	store      store.Store
+	tokens     TokenStore
+	executor   ActionExecutor
+	feedback   TelegramFeedback
+	logger     *slog.Logger
+	safeGo     func(name string, fn func())
+	jevRuntime *jev.RuntimeConfig
 }
 
 // NewService 实例化 ChatOps 领域服务。
@@ -86,12 +89,13 @@ func NewService(deps Dependencies) Service {
 		}
 	}
 	return &service{
-		store:    deps.Store,
-		tokens:   tokens,
-		executor: deps.Executor,
-		feedback: fb,
-		logger:   deps.Logger,
-		safeGo:   sg,
+		store:      deps.Store,
+		tokens:     tokens,
+		executor:   deps.Executor,
+		feedback:   fb,
+		logger:     deps.Logger,
+		safeGo:     sg,
+		jevRuntime: deps.JevRuntime,
 	}
 }
 
@@ -267,7 +271,18 @@ func (s *service) HandleTelegram(ctx context.Context, in TelegramCallbackRequest
 		}, ErrActorMismatch
 	}
 
-	// 5. 驱动执行器
+	// 5. 安全护栏检查
+	guardOutcome, guardErr := s.checkGuardrail(ctx, *action, tokenID)
+	if guardErr != nil {
+		if in.CallbackQueryID != "" && s.feedback != nil {
+			s.safeGo("telegram_callback_guardrail", func() {
+				s.feedback.AnswerCallback(context.Background(), in.CallbackQueryID, "⚠️ "+guardOutcome.Message, true)
+			})
+		}
+		return guardOutcome, guardErr
+	}
+
+	// 6. 驱动执行器
 	outcome, execErr := s.dispatchExecutor(ctx, *action)
 	if execErr != nil {
 		if s.logger != nil {
@@ -386,7 +401,13 @@ func (s *service) HandleFeishu(ctx context.Context, in FeishuCallbackRequest) (*
 		}, ErrActorMismatch
 	}
 
-	// 4. 驱动执行器
+	// 4. 安全护栏检查
+	guardOutcome, guardErr := s.checkGuardrail(ctx, *action, tokenID)
+	if guardErr != nil {
+		return guardOutcome, guardErr
+	}
+
+	// 5. 驱动执行器
 	outcome, execErr := s.dispatchExecutor(ctx, *action)
 	if execErr != nil {
 		if s.logger != nil {
@@ -464,7 +485,13 @@ func (s *service) HandleSlack(ctx context.Context, in SlackCallbackRequest) (*Ou
 		}, ErrActorMismatch
 	}
 
-	// 4. 驱动执行器
+	// 4. 安全护栏检查
+	guardOutcome, guardErr := s.checkGuardrail(ctx, *action, tokenID)
+	if guardErr != nil {
+		return guardOutcome, guardErr
+	}
+
+	// 5. 驱动执行器
 	outcome, execErr := s.dispatchExecutor(ctx, *action)
 	if execErr != nil {
 		if s.logger != nil {

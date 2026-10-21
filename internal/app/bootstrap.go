@@ -18,6 +18,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/digest"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/httpapi"
 	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
@@ -155,6 +156,19 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	aggregator.AI = aiClient
 	aggregator.Logger = logger
 	aggregator.GitHub = ghClient
+
+	// Jev 运行时：env 基线 + 数据库补缺（管理台可编辑）。
+	jevRuntime := jev.RuntimeFromEnv(cfg.Jev)
+	if err := jev.MergeFromStore(ctx, data, keyRing, jevRuntime); err != nil {
+		if logger != nil {
+			logger.Warn("bootstrap: merge jev config from store failed, disabling jev", "error", err)
+		}
+		disabledCfg := jevRuntime.Snapshot()
+		disabledCfg.Enabled = false
+		jevRuntime.Replace(jev.RuntimeFromEnv(disabledCfg))
+	}
+	aggregator.JevRuntime = jevRuntime
+
 	digestGen := &digest.Generator{Store: data, AI: aiClient, Logger: logger}
 
 	starred := &syncx.StarredReleasePoller{
@@ -163,7 +177,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		// star 枚举复用 external_pat：配置了 PAT 时按 5000 次/小时配额拉取，匿名仅 60 次/小时易限流。
 		Public: &githubx.PublicClient{PAT: cfg.GitHub.ExternalPAT.Reveal()},
 		// Engine 直连实时通知决策（不聚合：release 低频单条，立即投递）。
-		Engine: &rules.Engine{Store: data, AI: aiClient, Logger: logger, GitHub: ghClient},
+		Engine: &rules.Engine{Store: data, AI: aiClient, Logger: logger, GitHub: ghClient, JevRuntime: jevRuntime},
 		Logger: logger,
 	}
 	// 用户名初始值：settings 优先，配置（env/yaml）兜底并写入 settings 供设置页回显。
@@ -191,7 +205,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	sseHub := httpapi.NewSSEHub(logger)
 	webhookService := &webhooksvc.Service{
 		Store: data, Logger: logger, Evaluator: aggregator, GitHub: ghClient,
-		AI: aiClient, Background: workerCtx, OnFailed: httpapi.MetricsIncWebhookFailed,
+		AI: aiClient, JevRuntime: jevRuntime, Background: workerCtx, OnFailed: httpapi.MetricsIncWebhookFailed,
 		OnBroadcast: func(topic, resource, resourceID string) {
 			sseHub.Broadcast(httpapi.SSEEvent{
 				ID:         ulid.Make().String(),
@@ -241,6 +255,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		StarredPoller:  starred,
 		WebhookService: webhookService,
 		SSEHub:         sseHub,
+		JevRuntime:     jevRuntime,
 	})
 	if err := bootstrapNotifyChannels(ctx, logger, data, keyRing, cfg); err != nil {
 		return nil, err
