@@ -138,12 +138,9 @@ export function JevSettingsCard() {
 
   if (jevQuery.isLoading) {
     return (
-      <section className="card card--accent">
-        <header className="card__header">
-          <p className="card__eyebrow">判别式决策引擎</p>
-          <h2>Jev 决策引擎配置</h2>
-        </header>
-        <p>正在加载 Jev 配置...</p>
+      <section className="onboarding-card card channel-form" aria-labelledby="settings-jev-title">
+        <h2 id="settings-jev-title">Jev 决策引擎配置</h2>
+        <p className="field-hint">正在加载 Jev 配置...</p>
       </section>
     );
   }
@@ -155,21 +152,18 @@ export function JevSettingsCard() {
   );
 
   return (
-    <section className="card card--accent">
-      <header className="card__header">
-        <p className="card__eyebrow">判别式决策引擎 (TypeSafe AI)</p>
-        <h2>Jev 决策引擎配置</h2>
-        <p className="card__description">
-          为通知降噪、PR 级联审查门控与 ChatOps 提供轻量判别式决策（YES/NO/CHOICE/SCORE），不生成自由文本。
-        </p>
-      </header>
+    <section className="onboarding-card card channel-form" aria-labelledby="settings-jev-title">
+      <h2 id="settings-jev-title">判别式决策引擎 (TypeSafe AI)</h2>
+      <p className="field-hint">
+        为通知降噪、PR 级联审查门控与 ChatOps 提供轻量判别式决策（YES/NO/CHOICE/SCORE），不生成自由文本。
+      </p>
 
       {jevQuery.isError && (
         <div className="mb-4">
           <ApiErrorAlert error={jevQuery.error} title="无法加载 Jev 配置" />
         </div>
       )}
-      {message && <div className="callout callout--success mb-4">{message}</div>}
+      {message && <p className="success-banner" role="status">{message}</p>}
       {updateMutation.isError && (
         <div className="mb-4">
           <ApiErrorAlert error={updateMutation.error} title="保存配置失败" />
@@ -182,14 +176,14 @@ export function JevSettingsCard() {
       )}
 
       {testResult && (
-        <div className="callout callout--success mb-4">
+        <p className="success-banner" role="status">
           连通性测试通过（模型: {testResult.model}，输入: {testResult.input_tokens} tokens，输出:{" "}
           {testResult.output_tokens} tokens）
-        </div>
+        </p>
       )}
 
       {isEmergencyActive && (
-        <div className="callout callout--warning mb-4">
+        <div className="callout callout--warn mb-4">
           <strong>⚠️ 应急临时降级生效中：</strong>
           当前系统正处于应急旁路状态（至{" "}
           {new Date(currentConfig!.emergency_advisory_until!).toLocaleTimeString()}），原因：
@@ -353,13 +347,13 @@ export function JevSettingsCard() {
         </label>
 
         {/* 提交动作 */}
-        <div className="grid__span-2 flex gap-4 pt-4">
-          <button type="submit" className="button button--primary" disabled={updateMutation.isPending}>
+        <div className="channel-form__buttons grid__span-2">
+          <button type="submit" className="primary-button primary-button--inline" disabled={updateMutation.isPending}>
             {updateMutation.isPending ? "正在保存..." : "保存 Jev 设置"}
           </button>
           <button
             type="button"
-            className="button button--outline"
+            className="secondary-button"
             onClick={handleTest}
             disabled={testMutation.isPending || (!apiKey && !currentConfig?.has_api_key)}
           >

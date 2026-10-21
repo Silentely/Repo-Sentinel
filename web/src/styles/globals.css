@@ -864,6 +864,7 @@ a.primary-button {
   color: var(--text-secondary);
 }
 
+.card,
 .status-card,
 .onboarding-card {
   padding: 22px;
@@ -2306,18 +2307,23 @@ a.status-item--link:focus-visible {
 .callout {
   margin: 12px 0 0;
   padding: 12px 14px;
-  border-radius: var(--radius-control);
+  border: 2px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  box-shadow: 3px 3px 0 var(--shadow-neo);
   font-size: 0.84rem;
   line-height: 1.5;
 }
 
-.callout--warn {
+.callout--warn,
+.callout--warning {
   border: 2px solid var(--border-subtle);
   background: var(--warning-bg);
   color: var(--warning-fg);
 }
 
-.callout--ok {
+.callout--ok,
+.callout--success {
   border: 2px solid var(--border-subtle);
   background: var(--success-bg);
   color: var(--success-fg);
