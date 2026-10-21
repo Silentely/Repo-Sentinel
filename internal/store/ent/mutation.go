@@ -1915,8 +1915,8 @@ func (m *AuditLogMutation) ResetTargetID() {
 }
 
 // SetMetadataJSON sets the "metadata_json" field.
-func (m *AuditLogMutation) SetMetadataJSON(j json.RawMessage) {
-	m.metadata_json = &j
+func (m *AuditLogMutation) SetMetadataJSON(jm json.RawMessage) {
+	m.metadata_json = &jm
 	m.appendmetadata_json = nil
 }
 
@@ -1946,9 +1946,9 @@ func (m *AuditLogMutation) OldMetadataJSON(ctx context.Context) (v json.RawMessa
 	return oldValue.MetadataJSON, nil
 }
 
-// AppendMetadataJSON adds j to the "metadata_json" field.
-func (m *AuditLogMutation) AppendMetadataJSON(j json.RawMessage) {
-	m.appendmetadata_json = append(m.appendmetadata_json, j...)
+// AppendMetadataJSON adds jm to the "metadata_json" field.
+func (m *AuditLogMutation) AppendMetadataJSON(jm json.RawMessage) {
+	m.appendmetadata_json = append(m.appendmetadata_json, jm...)
 }
 
 // AppendedMetadataJSON returns the list of values that were appended to the "metadata_json" field in this mutation.
@@ -13344,8 +13344,8 @@ func (m *SystemSettingMutation) ResetKey() {
 }
 
 // SetValueJSON sets the "value_json" field.
-func (m *SystemSettingMutation) SetValueJSON(j json.RawMessage) {
-	m.value_json = &j
+func (m *SystemSettingMutation) SetValueJSON(jm json.RawMessage) {
+	m.value_json = &jm
 	m.appendvalue_json = nil
 }
 
@@ -13375,9 +13375,9 @@ func (m *SystemSettingMutation) OldValueJSON(ctx context.Context) (v json.RawMes
 	return oldValue.ValueJSON, nil
 }
 
-// AppendValueJSON adds j to the "value_json" field.
-func (m *SystemSettingMutation) AppendValueJSON(j json.RawMessage) {
-	m.appendvalue_json = append(m.appendvalue_json, j...)
+// AppendValueJSON adds jm to the "value_json" field.
+func (m *SystemSettingMutation) AppendValueJSON(jm json.RawMessage) {
+	m.appendvalue_json = append(m.appendvalue_json, jm...)
 }
 
 // AppendedValueJSON returns the list of values that were appended to the "value_json" field in this mutation.
