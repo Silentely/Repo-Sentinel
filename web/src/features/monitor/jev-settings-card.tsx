@@ -32,37 +32,31 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
   const shadowPercent = Math.min(100, Math.round((status.shadow_days / 7) * 100));
 
   return (
-    <div
-      className="callout callout--info mb-4"
-      style={{
-        border: "2px solid var(--border-color, #2b2b2b)",
-        background: "var(--card-bg, #fff)",
-        borderRadius: "4px",
-        padding: "1rem",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <strong style={{ fontSize: "1rem" }}>引擎实时运行状态</strong>
+    <div className="status-card mb-6" style={{ padding: "18px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span className="eyebrow" style={{ margin: 0 }}>引擎实时运行状态</span>
           {isDisabled && <span className="system-badge system-badge--neutral">未启用</span>}
           {isShadow && <span className="system-badge system-badge--warning">影子观察中 (Shadow)</span>}
           {isActive && <span className="system-badge system-badge--success">生产接管中 (Active)</span>}
         </div>
         {isShadow && (
-          <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>
-            观察进度：已运行 {status.shadow_days} 天 / 目标 7 天
+          <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-secondary)" }}>
+            已持续观察：<strong style={{ color: "var(--text-primary)" }}>{status.shadow_days}</strong> 天 / 目标 7 天
           </span>
         )}
       </div>
 
       {isShadow && (
-        <div style={{ marginBottom: "1rem" }}>
+        <div style={{ marginBottom: "16px" }}>
           <div
             style={{
               width: "100%",
-              height: "8px",
-              background: "var(--bg-muted, #e5e5e5)",
-              borderRadius: "4px",
+              height: "10px",
+              background: "var(--bg-muted)",
+              border: "1.5px solid var(--border-subtle)",
+              borderRadius: "9999px",
+              boxShadow: "1.5px 1.5px 0 var(--shadow-neo)",
               overflow: "hidden",
             }}
           >
@@ -70,7 +64,7 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
               style={{
                 width: `${shadowPercent}%`,
                 height: "100%",
-                background: status.shadow_days >= 7 ? "var(--color-success, #16a34a)" : "var(--color-primary, #C45C26)",
+                background: status.shadow_days >= 7 ? "var(--success)" : "var(--accent)",
                 transition: "width 0.3s ease",
               }}
             />
@@ -78,66 +72,52 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
         </div>
       )}
 
-      {/* 运行指标卡片组 */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-          gap: "0.5rem",
-          marginBottom: "0.75rem",
-        }}
-      >
-        <div style={{ padding: "0.5rem", background: "var(--bg-muted, #f8f8f8)", border: "1px solid var(--border-color, #e0e0e0)", borderRadius: "4px", textAlign: "center" }}>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted, #666)" }}>累计决策研判</div>
-          <div style={{ fontSize: "1.2rem", fontWeight: "bold" }}>{status.total_requests.toLocaleString()}</div>
-          <div style={{ fontSize: "0.7rem", color: status.success_rate >= 99 ? "var(--color-success, #16a34a)" : "var(--color-warning, #d97706)" }}>
+      {/* 复古新野兽派 4 宫格指标看板 */}
+      <div className="status-grid" style={{ marginBottom: "12px", gap: "10px" }}>
+        <div className="status-item" style={{ padding: "12px" }}>
+          <span className="status-item__label">累计决策研判</span>
+          <strong>{status.total_requests.toLocaleString()}</strong>
+          <span style={{ display: "block", fontSize: "0.72rem", color: status.success_rate >= 99 ? "var(--success)" : "var(--warning)", marginTop: "4px", fontWeight: 600 }}>
             成功率 {status.success_rate.toFixed(1)}%
-          </div>
+          </span>
         </div>
 
-        <div style={{ padding: "0.5rem", background: "var(--bg-muted, #f8f8f8)", border: "1px solid var(--border-color, #e0e0e0)", borderRadius: "4px", textAlign: "center" }}>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted, #666)" }}>
+        <div className="status-item" style={{ padding: "12px" }}>
+          <span className="status-item__label">
             {isShadow ? "建议静音通知" : "实际降噪静音"}
-          </div>
-          <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "var(--color-primary, #C45C26)" }}>
+          </span>
+          <strong style={{ color: "var(--accent)" }}>
             {(isShadow ? status.would_suppress_count : status.suppressed_count).toLocaleString()}
-          </div>
-          <div style={{ fontSize: "0.7rem", color: "var(--text-muted, #666)" }}>
+          </strong>
+          <span style={{ display: "block", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px" }}>
             {isShadow ? "降噪潜力" : "已拦截骚扰"}
-          </div>
+          </span>
         </div>
 
-        <div style={{ padding: "0.5rem", background: "var(--bg-muted, #f8f8f8)", border: "1px solid var(--border-color, #e0e0e0)", borderRadius: "4px", textAlign: "center" }}>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted, #666)" }}>
+        <div className="status-item" style={{ padding: "12px" }}>
+          <span className="status-item__label">
             {isShadow ? "建议放行 PR" : "实际放行 PR"}
-          </div>
-          <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "var(--color-success, #16a34a)" }}>
+          </span>
+          <strong style={{ color: "var(--success)" }}>
             {(isShadow ? status.would_skip_count : status.skipped_count).toLocaleString()}
-          </div>
-          <div style={{ fontSize: "0.7rem", color: "var(--text-muted, #666)" }}>
+          </strong>
+          <span style={{ display: "block", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px" }}>
             {isShadow ? "快速放行潜力" : "加速跳过审查"}
-          </div>
+          </span>
         </div>
 
-        <div style={{ padding: "0.5rem", background: "var(--bg-muted, #f8f8f8)", border: "1px solid var(--border-color, #e0e0e0)", borderRadius: "4px", textAlign: "center" }}>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted, #666)" }}>决策缓存命中</div>
-          <div style={{ fontSize: "1.2rem", fontWeight: "bold" }}>{status.cache_hits.toLocaleString()}</div>
-          <div style={{ fontSize: "0.7rem", color: "var(--text-muted, #666)" }}>节省网络开销</div>
+        <div className="status-item" style={{ padding: "12px" }}>
+          <span className="status-item__label">决策缓存命中</span>
+          <strong>{status.cache_hits.toLocaleString()}</strong>
+          <span style={{ display: "block", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px" }}>
+            节省外部开销
+          </span>
         </div>
       </div>
 
       {/* 门禁就绪提示 */}
-      <div
-        style={{
-          fontSize: "0.8125rem",
-          padding: "0.4rem 0.6rem",
-          borderRadius: "4px",
-          background: status.active_ready ? "rgba(22, 163, 74, 0.1)" : "rgba(217, 119, 6, 0.1)",
-          color: status.active_ready ? "#166534" : "#92400e",
-          border: `1px solid ${status.active_ready ? "rgba(22, 163, 74, 0.3)" : "rgba(217, 119, 6, 0.3)"}`,
-        }}
-      >
-        <strong>{status.active_ready ? "● 门禁状态：已就绪" : "● 门禁状态：观察准备中"}</strong> - {status.active_gate_detail}
+      <div className={`callout ${status.active_ready ? "callout--ok" : "callout--warn"}`} style={{ margin: 0, padding: "10px 14px", fontSize: "0.82rem" }}>
+        <strong>{status.active_ready ? "● 门禁状态：已就绪" : "● 门禁状态：观察准备中"}</strong> — {status.active_gate_detail}
       </div>
     </div>
   );
