@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/config"
-	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )

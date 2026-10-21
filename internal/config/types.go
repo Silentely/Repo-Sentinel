@@ -168,7 +168,6 @@ type LoggingConfig struct {
 	Format string `yaml:"format"`
 }
 
-
 // PlaneConfig 描述 Jev 单个决策面的运行预算与并发控制。
 type PlaneConfig struct {
 	Timeout        time.Duration `yaml:"timeout"`

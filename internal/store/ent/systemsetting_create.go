@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json/jsontext"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -28,7 +28,7 @@ func (_c *SystemSettingCreate) SetKey(v string) *SystemSettingCreate {
 }
 
 // SetValueJSON sets the "value_json" field.
-func (_c *SystemSettingCreate) SetValueJSON(v jsontext.Value) *SystemSettingCreate {
+func (_c *SystemSettingCreate) SetValueJSON(v json.RawMessage) *SystemSettingCreate {
 	_c.mutation.SetValueJSON(v)
 	return _c
 }

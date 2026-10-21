@@ -6,26 +6,26 @@ import (
 )
 
 type MetricsSnapshot struct {
-	Calls       map[string]uint64
-	Failures    map[string]uint64
-	CacheHits   map[string]uint64
-	Fallbacks   map[string]uint64
-	Suppressed  uint64
-	Skipped     uint64
-	WouldSkip   uint64
+	Calls         map[string]uint64
+	Failures      map[string]uint64
+	CacheHits     map[string]uint64
+	Fallbacks     map[string]uint64
+	Suppressed    uint64
+	Skipped       uint64
+	WouldSkip     uint64
 	WouldSuppress uint64
 }
 
 type MetricsCollector struct {
-	mu          sync.RWMutex
-	calls       map[string]*atomic.Uint64
-	failures    map[string]*atomic.Uint64
-	cacheHits   map[string]*atomic.Uint64
-	fallbacks   map[string]*atomic.Uint64
-	suppressed  atomic.Uint64
-	skipped     atomic.Uint64
-	wouldSkip   atomic.Uint64
-	wouldSupp   atomic.Uint64
+	mu         sync.RWMutex
+	calls      map[string]*atomic.Uint64
+	failures   map[string]*atomic.Uint64
+	cacheHits  map[string]*atomic.Uint64
+	fallbacks  map[string]*atomic.Uint64
+	suppressed atomic.Uint64
+	skipped    atomic.Uint64
+	wouldSkip  atomic.Uint64
+	wouldSupp  atomic.Uint64
 }
 
 var globalMetrics = newMetricsCollector()

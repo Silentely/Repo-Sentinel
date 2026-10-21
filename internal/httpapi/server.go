@@ -14,13 +14,13 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
-	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/chatops"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
@@ -85,7 +85,7 @@ type Dependencies struct {
 	// AI 可选；默认 rules.Engine 的安全告警分诊客户端（webhooksvc 透传）。
 	AI *ai.Client
 	// AIRuntime 可选；管理台可编辑的 AI 配置（env 优先，DB 补缺）。
-	AIRuntime *ai.RuntimeConfig
+	AIRuntime  *ai.RuntimeConfig
 	JevRuntime *jev.RuntimeConfig
 	// StarredPoller 可选；star 仓库 release 追踪轮询（配置保存/立即同步触发）。
 	StarredPoller *syncx.StarredReleasePoller

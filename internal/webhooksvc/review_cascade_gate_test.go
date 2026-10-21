@@ -2,14 +2,14 @@ package webhooksvc_test
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"net/http"
-	"net/http/httptest"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -147,15 +147,15 @@ func setupReviewTestEnv(t *testing.T, prDiff string) (
 
 	// 预置 WorkItem PR #10
 	wi, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
-		ID:           "wi-pr-10",
-		RepositoryID: repoRec.ID,
-		Number:       10,
-		Kind:         store.WorkItemKindPR,
-		State:        "open",
-		Title:        "test pr",
-		Author:       "alice",
+		ID:              "wi-pr-10",
+		RepositoryID:    repoRec.ID,
+		Number:          10,
+		Kind:            store.WorkItemKindPR,
+		State:           "open",
+		Title:           "test pr",
+		Author:          "alice",
 		SourceUpdatedAt: time.Now().UTC(),
-		StateHash: "h10",
+		StateHash:       "h10",
 	}, nil)
 	if err != nil {
 		t.Fatalf("upsert work item: %v", err)

@@ -700,7 +700,6 @@ func TestAIYAML解析(t *testing.T) {
 	}
 }
 
-
 func TestJevYAMLandEnvLoading(t *testing.T) {
 	yamlData := `
 jev:
@@ -725,13 +724,13 @@ jev:
     max_concurrency: 16
 `
 	envOverrides := map[string]string{
-		"REPOSENTINEL_JEV_API_KEY":                       "test-secret-key-12345",
-		"REPOSENTINEL_JEV_MODEL":                         "jev-custom-override",
-		"REPOSENTINEL_JEV_MODE":                          "active",
-		"REPOSENTINEL_JEV_RETRIES":                       "0",
-		"REPOSENTINEL_JEV_ALLOW_PRIVATE_STATE":           "false",
-		"REPOSENTINEL_JEV_NOTIFICATION_TIMEOUT":          "450ms",
-		"REPOSENTINEL_JEV_NOTIFICATION_MAX_CONCURRENCY":  "6",
+		"REPOSENTINEL_JEV_API_KEY":                      "test-secret-key-12345",
+		"REPOSENTINEL_JEV_MODEL":                        "jev-custom-override",
+		"REPOSENTINEL_JEV_MODE":                         "active",
+		"REPOSENTINEL_JEV_RETRIES":                      "0",
+		"REPOSENTINEL_JEV_ALLOW_PRIVATE_STATE":          "false",
+		"REPOSENTINEL_JEV_NOTIFICATION_TIMEOUT":         "450ms",
+		"REPOSENTINEL_JEV_NOTIFICATION_MAX_CONCURRENCY": "6",
 	}
 
 	cfg, err := Load(context.Background(), LoadOptions{

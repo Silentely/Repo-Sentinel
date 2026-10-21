@@ -13,8 +13,8 @@ import (
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
-	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
@@ -291,7 +291,7 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 	}
 	if len(filtered) > a.BurstThreshold {
 		bucket := timeBucket(now.UTC(), a.BurstWindow)
-	if a.burstNotified[key] == bucket {
+		if a.burstNotified[key] == bucket {
 			a.mu.Unlock()
 			return nil
 		}
@@ -443,7 +443,7 @@ func (a *Aggregator) enqueueMerged(ctx context.Context, b *aggBucket) error {
 		for _, p := range items {
 			ev := p.InferredEvent
 			if ev == nil {
-			ev = p.Result.Event
+				ev = p.Result.Event
 			}
 			if ev == nil {
 				continue

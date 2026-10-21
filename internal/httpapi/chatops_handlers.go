@@ -138,7 +138,7 @@ func (s *server) handleTelegramChatOpsCallback(w http.ResponseWriter, r *http.Re
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "service_unavailable", "error": "chatops_unavailable"})
 			return
 		}
-	switch outcome.Status {
+		switch outcome.Status {
 		case chatops.StatusCorruptedConfig:
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "error", "error": "whitelist_corrupted"})
 		case chatops.StatusForbidden:

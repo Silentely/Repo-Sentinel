@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
-
 )
 
 func TestCacheCanonical(t *testing.T) {

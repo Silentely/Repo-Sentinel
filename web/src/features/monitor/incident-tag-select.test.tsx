@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { INCIDENT_TAG_OPTIONS, IncidentTagSelect } from "./incident-tag-select";
+import { IncidentTagSelect } from "./incident-tag-select";
 
 describe("IncidentTagSelect", () => {
   it("处理 undefined 与 null 不报错，并提示接收全部标签", () => {

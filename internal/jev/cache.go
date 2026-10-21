@@ -102,12 +102,12 @@ type cacheEntry struct {
 }
 
 type decisionCache struct {
-	mu       sync.Mutex
-	capacity int
-	ttl      time.Duration
-	now      func() time.Time
-	jitter   func() float64
-	items    map[string]*list.Element
+	mu        sync.Mutex
+	capacity  int
+	ttl       time.Duration
+	now       func() time.Time
+	jitter    func() float64
+	items     map[string]*list.Element
 	evictList *list.List
 }
 

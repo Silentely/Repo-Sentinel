@@ -16,13 +16,13 @@ const (
 )
 
 type circuitBreaker struct {
-	mu           sync.Mutex
-	state        breakerState
-	failures     int
-	cooldown     time.Duration
-	openedAt     time.Time
-	probing      bool
-	now          func() time.Time
+	mu       sync.Mutex
+	state    breakerState
+	failures int
+	cooldown time.Duration
+	openedAt time.Time
+	probing  bool
+	now      func() time.Time
 }
 
 func newBreaker(now func() time.Time, cooldown time.Duration) *circuitBreaker {

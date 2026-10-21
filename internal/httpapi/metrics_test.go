@@ -198,7 +198,6 @@ func TestShouldLogMetricsAccess(t *testing.T) {
 	}
 }
 
-
 func TestJevMetricsExport(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{metricsEnabled: true})
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)

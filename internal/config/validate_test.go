@@ -329,7 +329,6 @@ func TestTrustedProxiesValidation(t *testing.T) {
 	})
 }
 
-
 func TestJevValidation(t *testing.T) {
 	cfg := defaultConfig()
 	if err := cfg.Validate(); err != nil {
@@ -411,7 +410,10 @@ func TestJevValidation(t *testing.T) {
 			name string
 			set  func(c *Config, timeout time.Duration, concurrency int)
 		}{
-			{"notification", func(c *Config, t time.Duration, n int) { c.Jev.Notification.Timeout = t; c.Jev.Notification.MaxConcurrency = n }},
+			{"notification", func(c *Config, t time.Duration, n int) {
+				c.Jev.Notification.Timeout = t
+				c.Jev.Notification.MaxConcurrency = n
+			}},
 			{"review", func(c *Config, t time.Duration, n int) { c.Jev.Review.Timeout = t; c.Jev.Review.MaxConcurrency = n }},
 			{"chatops", func(c *Config, t time.Duration, n int) { c.Jev.ChatOps.Timeout = t; c.Jev.ChatOps.MaxConcurrency = n }},
 		}

@@ -3,11 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { useAutoDismiss } from "../../lib/use-auto-dismiss";
 import {
-  fetchJevConfig,
   jevConfigQueryOptions,
   testJevConfig,
   updateJevConfig,
-  type JevConfigDTO,
   type JevPlaneConfig,
   type JevTestResult,
   type UpdateJevConfigPayload,
@@ -51,6 +49,7 @@ export function JevSettingsCard() {
 
   const [emergencyReason, setEmergencyReason] = useState("");
   const [emergencyMinutes, setEmergencyMinutes] = useState(0);
+  const [renderNow] = useState(() => Date.now());
 
   // 服务端数据加载完成后回填
   useEffect(() => {
@@ -150,9 +149,10 @@ export function JevSettingsCard() {
   }
 
   const currentConfig = jevQuery.data;
-  const isEmergencyActive =
+  const isEmergencyActive = Boolean(
     currentConfig?.emergency_advisory_until &&
-    new Date(currentConfig.emergency_advisory_until).getTime() > Date.now();
+      new Date(currentConfig.emergency_advisory_until).getTime() > renderNow,
+  );
 
   return (
     <section className="card card--accent">

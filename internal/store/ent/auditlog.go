@@ -4,7 +4,6 @@ package ent
 
 import (
 	"encoding/json"
-	"encoding/json/jsontext"
 	"fmt"
 	"strings"
 	"time"
@@ -30,7 +29,7 @@ type AuditLog struct {
 	// TargetID holds the value of the "target_id" field.
 	TargetID string `json:"target_id,omitempty"`
 	// MetadataJSON holds the value of the "metadata_json" field.
-	MetadataJSON jsontext.Value `json:"metadata_json,omitempty"`
+	MetadataJSON json.RawMessage `json:"metadata_json,omitempty"`
 	// IPAddress holds the value of the "ip_address" field.
 	IPAddress string `json:"ip_address,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
