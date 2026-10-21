@@ -32,8 +32,25 @@ type jevConfigResponse struct {
 	Review                  config.PlaneConfig `json:"review"`
 	ChatOps                 config.PlaneConfig `json:"chatops"`
 
-	EmergencyAdvisoryUntil  *string `json:"emergency_advisory_until,omitempty"`
-	EmergencyAdvisoryReason string  `json:"emergency_advisory_reason,omitempty"`
+	EmergencyAdvisoryUntil  *string           `json:"emergency_advisory_until,omitempty"`
+	EmergencyAdvisoryReason string            `json:"emergency_advisory_reason,omitempty"`
+	Status                  jevStatusResponse `json:"status"`
+}
+
+type jevStatusResponse struct {
+	Mode               string  `json:"mode"`
+	ShadowDays         int     `json:"shadow_days"`
+	ShadowStartedAt    *string `json:"shadow_started_at,omitempty"`
+	TotalRequests      uint64  `json:"total_requests"`
+	TotalFailed        uint64  `json:"total_failed"`
+	SuccessRate        float64 `json:"success_rate"`
+	CacheHits          uint64  `json:"cache_hits"`
+	WouldSuppressCount uint64  `json:"would_suppress_count"`
+	WouldSkipCount     uint64  `json:"would_skip_count"`
+	SuppressedCount    uint64  `json:"suppressed_count"`
+	SkippedCount       uint64  `json:"skipped_count"`
+	ActiveReady        bool    `json:"active_ready"`
+	ActiveGateDetail   string  `json:"active_gate_detail"`
 }
 
 type updateJevConfigRequest struct {
@@ -81,6 +98,107 @@ func (s *server) handleGetJevConfig(w http.ResponseWriter, r *http.Request) {
 		untilStr = &formatted
 	}
 
+	// 计算运行状态、天数与指标
+	var existingStored jev.StoredConfig
+	var storedUpdatedAt time.Time
+	if existingSetting, err := s.dependencies.Store.Settings().Get(r.Context(), jev.RuntimeSettingKey); err == nil {
+		_ = json.Unmarshal([]byte(existingSetting.ValueJSON), &existingStored)
+		storedUpdatedAt = existingSetting.UpdatedAt
+	}
+
+	var shadowStartedAt *time.Time
+	if existingStored.ShadowStartedAt != nil {
+		shadowStartedAt = existingStored.ShadowStartedAt
+	} else if snap.Enabled && snap.Mode == "shadow" && !storedUpdatedAt.IsZero() {
+		shadowStartedAt = &storedUpdatedAt
+	}
+
+	shadowDays := 0
+	var shadowStartedStr *string
+	if shadowStartedAt != nil {
+		str := shadowStartedAt.Format(time.RFC3339)
+		shadowStartedStr = &str
+		days := int(time.Since(*shadowStartedAt).Hours() / 24)
+		if days < 1 {
+			days = 1
+		}
+		shadowDays = days
+	}
+
+	mSnap := jev.GlobalMetrics().Snapshot()
+	var totalCalls, totalFailures, totalHits uint64
+	for _, c := range mSnap.Calls {
+		totalCalls += c
+	}
+	for _, f := range mSnap.Failures {
+		totalFailures += f
+	}
+	for _, h := range mSnap.CacheHits {
+		totalHits += h
+	}
+	successRate := 100.0
+	if totalCalls > 0 {
+		if totalFailures >= totalCalls {
+			successRate = 0
+		} else {
+			successRate = float64(totalCalls-totalFailures) / float64(totalCalls) * 100
+		}
+	}
+
+	statusMode := "disabled"
+	if snap.Enabled {
+		statusMode = snap.Mode
+	}
+
+	activeReady := false
+	activeGateDetail := ""
+	if !snap.Enabled {
+		activeGateDetail = "Jev 决策引擎处于禁用状态"
+	} else if snap.Mode == "active" {
+		activeReady = true
+		activeGateDetail = "生产接管模式运行中，具备全量决策权限"
+	} else {
+		if evalSetting, err := s.dependencies.Store.Settings().Get(r.Context(), jev.EvaluationSettingKey); err == nil {
+			var summary jev.EvaluationSummary
+			if err := json.Unmarshal([]byte(evalSetting.ValueJSON), &summary); err == nil {
+				if summary.Model == snap.Model {
+					if err := jev.ValidateActivation(summary); err == nil {
+						activeReady = true
+						activeGateDetail = "已满足全部离线与影子评测门禁，可安全切换至 Active 模式"
+					} else {
+						activeGateDetail = "评测门禁未完全达成: " + err.Error()
+					}
+				} else {
+					activeGateDetail = fmt.Sprintf("已评测模型 (%s) 与当前配置模型 (%s) 不一致", summary.Model, snap.Model)
+				}
+			} else {
+				activeGateDetail = "评测记录损坏，需重新执行评测验证"
+			}
+		} else {
+			if shadowDays < 7 {
+				activeGateDetail = fmt.Sprintf("影子观察期未满 7 天 (当前已运行 %d 天)，且尚无离线评测证据", shadowDays)
+			} else {
+				activeGateDetail = "影子期已满，但尚未写入离线与真实评测证据"
+			}
+		}
+	}
+
+	statusResp := jevStatusResponse{
+		Mode:               statusMode,
+		ShadowDays:         shadowDays,
+		ShadowStartedAt:    shadowStartedStr,
+		TotalRequests:      totalCalls,
+		TotalFailed:        totalFailures,
+		SuccessRate:        successRate,
+		CacheHits:          totalHits,
+		WouldSuppressCount: mSnap.WouldSuppress,
+		WouldSkipCount:     mSnap.WouldSkip,
+		SuppressedCount:    mSnap.Suppressed,
+		SkippedCount:       mSnap.Skipped,
+		ActiveReady:        activeReady,
+		ActiveGateDetail:   activeGateDetail,
+	}
+
 	resp := jevConfigResponse{
 		Enabled:                 snap.Enabled,
 		BaseURL:                 snap.BaseURL,
@@ -99,6 +217,7 @@ func (s *server) handleGetJevConfig(w http.ResponseWriter, r *http.Request) {
 		ChatOps:                 snap.ChatOps,
 		EmergencyAdvisoryUntil:  untilStr,
 		EmergencyAdvisoryReason: reason,
+		Status:                  statusResp,
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -246,6 +365,17 @@ func (s *server) handlePutJevConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 准备持久化 StoredConfig
+	var shadowStartedAt *time.Time
+	if candidate.Enabled && candidate.Mode == "shadow" {
+		if existingStored.ShadowStartedAt != nil {
+			shadowStartedAt = existingStored.ShadowStartedAt
+		} else {
+			shadowStartedAt = &now
+		}
+	} else if existingStored.ShadowStartedAt != nil {
+		shadowStartedAt = existingStored.ShadowStartedAt
+	}
+
 	stored := jev.StoredConfig{
 		Enabled:                 &candidate.Enabled,
 		BaseURL:                 candidate.BaseURL,
@@ -262,6 +392,7 @@ func (s *server) handlePutJevConfig(w http.ResponseWriter, r *http.Request) {
 		ChatOps:                 &candidate.ChatOps,
 		EmergencyAdvisoryUntil:  emergencyUntil,
 		EmergencyAdvisoryReason: emergencyReason,
+		ShadowStartedAt:         shadowStartedAt,
 	}
 
 	if newKeyPlain != "" {

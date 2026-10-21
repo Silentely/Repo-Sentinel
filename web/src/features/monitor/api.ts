@@ -1000,6 +1000,22 @@ export interface JevPlaneConfig {
   circuit_reset_sec: number;
 }
 
+export interface JevStatusDTO {
+  mode: "disabled" | "shadow" | "active" | string;
+  shadow_days: number;
+  shadow_started_at?: string | null;
+  total_requests: number;
+  total_failed: number;
+  success_rate: number;
+  cache_hits: number;
+  would_suppress_count: number;
+  would_skip_count: number;
+  suppressed_count: number;
+  skipped_count: number;
+  active_ready: boolean;
+  active_gate_detail: string;
+}
+
 export interface JevConfigDTO {
   enabled: boolean;
   base_url: string;
@@ -1018,6 +1034,7 @@ export interface JevConfigDTO {
   chatops: JevPlaneConfig;
   emergency_advisory_until?: string | null;
   emergency_advisory_reason?: string;
+  status?: JevStatusDTO;
 }
 
 export interface UpdateJevConfigPayload {

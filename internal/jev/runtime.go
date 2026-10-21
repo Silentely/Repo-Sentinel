@@ -40,6 +40,7 @@ type StoredConfig struct {
 
 	EmergencyAdvisoryUntil  *time.Time `json:"emergency_advisory_until,omitempty"`
 	EmergencyAdvisoryReason string     `json:"emergency_advisory_reason,omitempty"`
+	ShadowStartedAt         *time.Time `json:"shadow_started_at,omitempty"`
 }
 
 // RuntimeConfig 持有进程内可热更新的 Jev 运行时配置与各决策面客户端。
