@@ -487,7 +487,7 @@ func (c *AppClient) GetPRDiff(ctx context.Context, token, owner, repo string, pr
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", githubClientUA)
+	req.Header.Set("User-Agent", githubClientUA())
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -535,7 +535,7 @@ func (c *AppClient) CreateIssueComment(ctx context.Context, token, owner, repo s
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", githubClientUA)
+	req.Header.Set("User-Agent", githubClientUA())
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -584,7 +584,7 @@ func (c *AppClient) CreatePullRequestReview(ctx context.Context, token, owner, r
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", githubClientUA)
+	req.Header.Set("User-Agent", githubClientUA())
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -629,7 +629,7 @@ func (c *AppClient) CloseIssue(ctx context.Context, token, owner, repo string, n
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", githubClientUA)
+	req.Header.Set("User-Agent", githubClientUA())
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

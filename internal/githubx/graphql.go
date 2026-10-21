@@ -328,7 +328,7 @@ func (c *AppClient) doGraphQL(ctx context.Context, token, query string, vars map
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("User-Agent", "Repo-Sentinel/1.0")
+	req.Header.Set("User-Agent", githubClientUA())
 
 	httpClient := c.HTTP
 	if httpClient == nil {

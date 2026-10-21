@@ -213,7 +213,7 @@ func (s *server) handlePutJevConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if candidate.BaseURL != "" {
 		parsed, err := url.Parse(candidate.BaseURL)
-		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || strings.HasPrefix(parsed.Path, "/v1") || (parsed.Path != "" && parsed.Path != "/") {
+		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "jev.base_url", "error": "invalid base url"})
 			return
 		}
@@ -357,7 +357,7 @@ func (s *server) handlePostJevTest(w http.ResponseWriter, r *http.Request) {
 		APIKey:  snap.APIKey,
 		Model:   snap.Model,
 		Plane:   "probe",
-		Timeout: 10 * time.Second,
+		Timeout: 30 * time.Second,
 	})
 	if err != nil {
 		if s.dependencies.Logger != nil {
@@ -380,7 +380,7 @@ func (s *server) handlePostJevTest(w http.ResponseWriter, r *http.Request) {
 	}
 	state := json.RawMessage(`{"kind":"test","synthetic":true}`)
 
-	testCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	testCtx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
 	res, err := client.Judge(testCtx, state, q)

@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 )
 
 // ErrNotConfigured 表示未配置 API Key；调用方应视为功能不可用并降级，不视为故障。
@@ -608,6 +610,7 @@ func (c *Client) doAttempt(ctx context.Context, s *Client, payload []byte, endpo
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.APIKey)
+	req.Header.Set("User-Agent", buildinfo.UserAgent("AIClient"))
 	if reqID := RequestIDFromContext(ctx); reqID != "" {
 		req.Header.Set("X-Request-ID", reqID)
 	}

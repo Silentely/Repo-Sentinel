@@ -165,7 +165,7 @@ func (c *AppClient) AddIssueLabels(ctx context.Context, token, owner, repo strin
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", githubClientUA)
+	req.Header.Set("User-Agent", githubClientUA())
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -228,7 +228,7 @@ func (c *AppClient) RerunWorkflow(ctx context.Context, token, owner, repo string
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", githubClientUA)
+	req.Header.Set("User-Agent", githubClientUA())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if token != "" {

@@ -338,3 +338,25 @@ func TestPlaneIsolation(t *testing.T) {
 		t.Fatalf("notification 面不应受 review 熔断影响: %v", err)
 	}
 }
+
+func TestNormalizeEndpoint(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected string
+	}{
+		{"https://api.example.com", "https://api.example.com/v1/systemone"},
+		{"https://api.example.com/", "https://api.example.com/v1/systemone"},
+		{"https://api.example.com/v1", "https://api.example.com/v1/systemone"},
+		{"https://api.example.com/v1/", "https://api.example.com/v1/systemone"},
+		{"https://api.example.com/v1/systemone", "https://api.example.com/v1/systemone"},
+		{"https://api.example.com/v1/systemone/", "https://api.example.com/v1/systemone"},
+		{"https://proxy.example.com/custom/path", "https://proxy.example.com/custom/path/v1/systemone"},
+	}
+
+	for _, c := range cases {
+		got := NormalizeEndpoint(c.input)
+		if got != c.expected {
+			t.Errorf("NormalizeEndpoint(%q) = %q; want %q", c.input, got, c.expected)
+		}
+	}
+}

@@ -211,8 +211,8 @@ func TestSendHTTPSetsUserAgent(t *testing.T) {
 	if err := w.sendHTTP(t.Context(), ch, "", item); err != nil {
 		t.Fatalf("不期望错误: %v", err)
 	}
-	if gotUA != "RepoSentinel-Webhook/1.0" {
-		t.Fatalf("User-Agent=%q，期望 RepoSentinel-Webhook/1.0", gotUA)
+	if gotUA != webhookUserAgent() {
+		t.Fatalf("User-Agent=%q，期望 %s", gotUA, webhookUserAgent())
 	}
 }
 

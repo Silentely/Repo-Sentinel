@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -371,7 +372,7 @@ func (c *AppClient) doJSONReq(ctx context.Context, method, path, token, ifNoneMa
 		return 0, "", "", err
 	}
 	// 出站标识：GitHub 要求 UA 识别客户端来源，未设置会命中默认 Go UA。
-	req.Header.Set("User-Agent", githubClientUA)
+	req.Header.Set("User-Agent", githubClientUA())
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -414,7 +415,9 @@ func statusError(status int, _ []byte) error {
 }
 
 // githubClientUA GitHub REST 出站请求的 User-Agent 标识。
-const githubClientUA = "RepoSentinel-GitHubClient/1.0"
+func githubClientUA() string {
+	return buildinfo.UserAgent("GitHubClient")
+}
 
 var errNotModified = fmt.Errorf("not_modified")
 

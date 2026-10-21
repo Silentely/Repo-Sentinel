@@ -1,7 +1,9 @@
 package buildinfo
 
 import (
+	"fmt"
 	"runtime"
+	"strings"
 )
 
 var (
@@ -32,4 +34,18 @@ func Current() Info {
 		BuildChannel: buildChannel,
 		GoVersion:    runtime.Version(),
 	}
+}
+
+// UserAgent 返回遵循标准格式的出站 HTTP User-Agent 标识，版本号跟随编译/发布版本动态变化。
+// 格式如：Repo-Sentinel/<Version> (<Component>; +https://github.com/Silentely/Repo-Sentinel)
+func UserAgent(component ...string) string {
+	v := strings.TrimSpace(version)
+	if v == "" {
+		v = "dev"
+	}
+	comp := ""
+	if len(component) > 0 && strings.TrimSpace(component[0]) != "" {
+		comp = strings.TrimSpace(component[0]) + "; "
+	}
+	return fmt.Sprintf("Repo-Sentinel/%s (%s+https://github.com/Silentely/Repo-Sentinel)", v, comp)
 }

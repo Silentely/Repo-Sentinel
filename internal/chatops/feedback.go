@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -64,6 +66,7 @@ func (f *DefaultTelegramFeedback) AnswerCallback(ctx context.Context, callbackID
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", buildinfo.UserAgent("ChatOpsFeedback"))
 	resp, err := f.HTTPClient.Do(req)
 	if err == nil && resp != nil {
 		_ = resp.Body.Close()
@@ -129,6 +132,7 @@ func (f *DefaultTelegramFeedback) EditMessageReplyMarkup(ctx context.Context, ch
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", buildinfo.UserAgent("ChatOpsFeedback"))
 	resp, err := f.HTTPClient.Do(req)
 	if err == nil && resp != nil {
 		_ = resp.Body.Close()

@@ -5,8 +5,10 @@ package updatecheck
 
 import (
 	"context"
+
 	"encoding/json"
 	"fmt"
+	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"io"
 	"log/slog"
 	"net/http"
@@ -22,8 +24,12 @@ const (
 	DefaultAPILatestURL  = "https://api.github.com/repos/Silentely/Repo-Sentinel/releases/latest"
 	DefaultCacheTTL      = 6 * time.Hour
 	defaultHTTPTimeout   = 8 * time.Second
-	userAgent            = "RepoSentinel-VersionCheck/1.0"
 )
+
+// userAgent 返回版本检查的出站 User-Agent 标识。
+func userAgent() string {
+	return buildinfo.UserAgent("VersionCheck")
+}
 
 var githubAPIReleasesRE = regexp.MustCompile(`(?i)^https://api\.github\.com/repos/([^/]+)/([^/]+)/releases/latest/?$`)
 
@@ -224,7 +230,7 @@ func (c *Checker) fetchViaHTMLRedirect(ctx context.Context, htmlLatest string) (
 		return Result{}, err
 	}
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", userAgent())
 
 	// 不跟随跳转，只读 Location（与 TG-SignPulse 一致）。
 	client := c.client(true)
@@ -286,7 +292,7 @@ func (c *Checker) fetchJSONRelease(ctx context.Context, rawURL string) (Result, 
 		return Result{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", userAgent())
 	if tok := strings.TrimSpace(c.Token); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}

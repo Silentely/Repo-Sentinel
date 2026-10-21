@@ -767,7 +767,7 @@ func (w *Worker) postJSONChannel(ctx context.Context, ch store.NotificationChann
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", webhookUserAgent)
+	req.Header.Set("User-Agent", webhookUserAgent())
 
 	resp, err := w.Client.Do(req)
 	if err != nil {

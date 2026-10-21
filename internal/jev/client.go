@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"golang.org/x/sync/singleflight"
 )
@@ -48,6 +49,18 @@ type clientImpl struct {
 	nextAllowedAt time.Time
 }
 
+// NormalizeEndpoint 对输入的 Base URL 智能归一化，支持传入根路径、带 /v1 或完整 /v1/systemone 端点。
+func NormalizeEndpoint(baseURL string) string {
+	clean := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if strings.HasSuffix(clean, "/v1/systemone") {
+		return clean
+	}
+	if strings.HasSuffix(clean, "/v1") {
+		return clean + "/systemone"
+	}
+	return clean + "/v1/systemone"
+}
+
 // NewClient 构造带故障隔离与硬预算的 Jev 客户端实例。
 func NewClient(options ClientOptions) (Client, error) {
 	if options.BaseURL == "" {
@@ -59,8 +72,8 @@ func NewClient(options ClientOptions) (Client, error) {
 	}
 	isProbe := options.Plane == "probe" || options.Plane == "test"
 	if isProbe {
-		if options.Timeout <= 0 || options.Timeout > 30*time.Second {
-			options.Timeout = 10 * time.Second
+		if options.Timeout <= 0 || options.Timeout > 60*time.Second {
+			options.Timeout = 30 * time.Second
 		}
 	} else {
 		if options.Timeout <= 0 || options.Timeout > 1000*time.Millisecond {
@@ -133,7 +146,7 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	// 预算硬上限 min(父 ctx deadline, 面配置预算, 允许上限)
 	maxBudget := 1000 * time.Millisecond
 	if c.opts.Plane == "probe" || c.opts.Plane == "test" {
-		maxBudget = 30 * time.Second
+		maxBudget = 60 * time.Second
 	}
 	budget := c.opts.Timeout
 	if budget > maxBudget {
@@ -262,7 +275,7 @@ func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessa
 	}
 
 	maxAttempts := 1 + c.opts.Retries
-	endpoint := strings.TrimRight(c.opts.BaseURL, "/") + "/v1/systemone"
+	endpoint := NormalizeEndpoint(c.opts.BaseURL)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
@@ -271,6 +284,7 @@ func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessa
 		}
 
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", buildinfo.UserAgent("JevClient"))
 		if apiKey := c.opts.APIKey.Reveal(); apiKey != "" {
 			req.Header.Set("Authorization", "Bearer "+apiKey)
 		}
@@ -322,16 +336,24 @@ func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessa
 
 		// 5xx (500, 502, 503, 504 等) 可重试
 		if resp.StatusCode >= 500 && resp.StatusCode < 600 {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 			_ = resp.Body.Close()
 			if attempt+1 < maxAttempts {
 				continue
+			}
+			if len(body) > 0 {
+				return Result{}, fmt.Errorf("jev: server returned %d: %s", resp.StatusCode, string(body))
 			}
 			return Result{}, fmt.Errorf("jev: server returned %d", resp.StatusCode)
 		}
 
 		// 其它 4xx (401, 403, 422 等) 不重试
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 			_ = resp.Body.Close()
+			if len(body) > 0 {
+				return Result{}, fmt.Errorf("jev: client error %d: %s", resp.StatusCode, string(body))
+			}
 			return Result{}, fmt.Errorf("jev: client error %d", resp.StatusCode)
 		}
 
