@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -350,21 +351,24 @@ func (s *server) handlePostJevTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := s.dependencies.JevRuntime.Client("notification")
-	if client == nil {
-		// 尝试即时构造临时 client 用于连通性测试
-		var err error
-		client, err = jev.NewClient(jev.ClientOptions{
-			BaseURL: snap.BaseURL,
-			APIKey:  snap.APIKey,
-			Model:   snap.Model,
-			Plane:   "notification",
-			Timeout: 1000 * time.Millisecond,
-		})
-		if err != nil {
-			s.writeAPIError(w, r, http.StatusBadRequest, "client_init_failed", map[string]any{"error": err.Error()})
-			return
+	// 专门构造带有探针属性 (Plane: "probe", Timeout: 10s) 的客户端，避免受到生产业务面 500ms 严苛延时限制
+	client, err := jev.NewClient(jev.ClientOptions{
+		BaseURL: snap.BaseURL,
+		APIKey:  snap.APIKey,
+		Model:   snap.Model,
+		Plane:   "probe",
+		Timeout: 10 * time.Second,
+	})
+	if err != nil {
+		if s.dependencies.Logger != nil {
+			s.dependencies.Logger.WarnContext(r.Context(), "jev test connectivity: client init failed",
+				"error", err,
+				"model", snap.Model,
+				"base_url", snap.BaseURL,
+			)
 		}
+		s.writeAPIError(w, r, http.StatusBadRequest, "client_init_failed", map[string]any{"error": err.Error()})
+		return
 	}
 
 	// 发送固定非敏感测试样例
@@ -376,9 +380,23 @@ func (s *server) handlePostJevTest(w http.ResponseWriter, r *http.Request) {
 	}
 	state := json.RawMessage(`{"kind":"test","synthetic":true}`)
 
-	res, err := client.Judge(r.Context(), state, q)
+	testCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	res, err := client.Judge(testCtx, state, q)
 	if err != nil {
-		s.writeAPIError(w, r, http.StatusBadGateway, "jev_test_failed", map[string]any{"error": err.Error()})
+		if s.dependencies.Logger != nil {
+			s.dependencies.Logger.WarnContext(r.Context(), "jev test connectivity failed",
+				"error", err,
+				"model", snap.Model,
+				"base_url", snap.BaseURL,
+				"request_id", requestIDFromContext(r.Context()),
+			)
+		}
+		s.writeAPIError(w, r, http.StatusBadGateway, errorCodeJevTestFailed, map[string]any{
+			"error":      err.Error(),
+			"request_id": requestIDFromContext(r.Context()),
+		})
 		return
 	}
 

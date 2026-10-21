@@ -489,7 +489,6 @@ export function SettingsPage() {
       <section className="onboarding-card channel-form" aria-labelledby="settings-prefs-title">
         <h2 id="settings-prefs-title">运行偏好</h2>
         <p className="field-hint">时区与摘要时间影响本地展示与摘要调度；聚合/超频窗口用于短时合并与突发降级。保存后立即写入数据库。</p>
-        {settingsMsg ? <p className="success-banner" role="status">{settingsMsg}</p> : null}
         {settings.isError ? <ApiErrorAlert error={settings.error} title="无法加载设置" /> : null}
         <div className="form-grid">
           <label className="field--plain">
@@ -550,25 +549,30 @@ export function SettingsPage() {
           ) : null}
           <p className="field-hint">周报/月报与每日简报共用渠道的「接收定期汇总」开关；发送时刻沿用每日简报本地时间。正文在配置智能值守后由模型生成，否则使用分组模板。</p>
         </div>
-        <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("prefs")}>
-          {saveSettings.isPending ? "保存中…" : "保存偏好"}
-        </button>
+        <div>
+          <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("prefs")}>
+            {saveSettings.isPending ? "保存中…" : "保存偏好"}
+          </button>
+        </div>
+        {settingsMsg ? <p className="success-banner mt-2" role="status">{settingsMsg}</p> : null}
         {prefsError ? <ErrorAlert title="保存失败" message={prefsError} /> : null}
       </section>
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-features-title">
         <h2 id="settings-features-title">功能模块开关</h2>
         <p className="field-hint">关闭后：侧边栏隐藏对应入口、列表页显示已禁用；并停止该类型 Webhook 采集、对账与实时/摘要通知。仓库页对应开关会显示为关且不可改（仓级配置保留，重新开启全局后恢复）。渠道订阅勾选在全局关闭时也会灰显。</p>
-        {featuresMsg ? <p className="success-banner" role="status">{featuresMsg}</p> : null}
         <label className="check-row"><input type="checkbox" checked={form.featureIssues} onChange={(e) => set("featureIssues", e.target.checked)} /><span>Issues</span></label>
         <label className="check-row"><input type="checkbox" checked={form.featurePRs} onChange={(e) => set("featurePRs", e.target.checked)} /><span>Pull Requests</span></label>
         <label className="check-row"><input type="checkbox" checked={form.featureActions} onChange={(e) => set("featureActions", e.target.checked)} /><span>Actions</span></label>
         <label className="check-row"><input type="checkbox" checked={form.featureAlerts} onChange={(e) => set("featureAlerts", e.target.checked)} /><span>安全告警</span></label>
         <label className="check-row"><input type="checkbox" checked={form.featureStars} onChange={(e) => set("featureStars", e.target.checked)} /><span>Star 事件</span></label>
         <label className="check-row"><input type="checkbox" checked={form.featureWatches} onChange={(e) => set("featureWatches", e.target.checked)} /><span>Watch 事件</span></label>
-        <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("features")}>
-          {saveSettings.isPending ? "保存中…" : "保存开关"}
-        </button>
+        <div>
+          <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("features")}>
+            {saveSettings.isPending ? "保存中…" : "保存开关"}
+          </button>
+        </div>
+        {featuresMsg ? <p className="success-banner mt-2" role="status">{featuresMsg}</p> : null}
         {featuresError ? <ErrorAlert title="保存失败" message={featuresError} /> : null}
       </section>
 
@@ -579,7 +583,6 @@ export function SettingsPage() {
           网络波动瞬时失败（超时/5xx 等）按「重试次数」自动重试，0 表示不重试。
           环境变量（<code>REPOSENTINEL_AI_*</code>）已设置的字段在此锁定；API Key 加密存储，不回显明文。
         </p>
-        {aiMsg ? <p className="success-banner" role="status">{aiMsg}</p> : null}
         {aiConfig.isError ? <ApiErrorAlert error={aiConfig.error} title="无法加载智能值守配置" /> : null}
         <label className="check-row">
           <input type="checkbox" checked={aiForm.enabled} disabled={aiConfig.data?.enabled_locked} onChange={(e) => setAI("enabled", e.target.checked)} />
@@ -645,9 +648,10 @@ export function SettingsPage() {
             </button>
           ) : null}
         </div>
+        {aiMsg ? <p className="success-banner mt-2" role="status">{aiMsg}</p> : null}
         {aiTest ? (
           aiTest.ok ? (
-            <p className="success-banner" role="status">{aiTest.message}</p>
+            <p className="success-banner mt-2" role="status">{aiTest.message}</p>
           ) : (
             <ErrorAlert title="连通性测试失败" message={aiTest.message} />
           )
@@ -658,8 +662,6 @@ export function SettingsPage() {
       <section className="onboarding-card channel-form" aria-labelledby="settings-password-title">
         <h2 id="settings-password-title">修改管理员密码</h2>
         <p className="field-hint">修改成功后其它会话会失效。若已遗失当前密码，请在服务器上运行 <code>reposentinel admin reset-password --password-stdin</code>。</p>
-        {passwordMsg ? <p className="success-banner" role="status">{passwordMsg}</p> : null}
-        {passwordError ? <ErrorAlert title="无法修改密码" message={passwordError} /> : null}
         <label className="field--plain">
           <span>当前密码</span>
           <input size={24} type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
@@ -672,9 +674,13 @@ export function SettingsPage() {
           <span>确认新密码</span>
           <input size={24} type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
         </label>
-        <button className="primary-button primary-button--inline" type="button" disabled={savePassword.isPending || !currentPassword || !newPassword} onClick={submitPassword}>
-          {savePassword.isPending ? "更新中…" : "更新密码"}
-        </button>
+        <div>
+          <button className="primary-button primary-button--inline" type="button" disabled={savePassword.isPending || !currentPassword || !newPassword} onClick={submitPassword}>
+            {savePassword.isPending ? "更新中…" : "更新密码"}
+          </button>
+        </div>
+        {passwordMsg ? <p className="success-banner mt-2" role="status">{passwordMsg}</p> : null}
+        {passwordError ? <ErrorAlert title="无法修改密码" message={passwordError} /> : null}
       </section>
 
       <JevSettingsCard />

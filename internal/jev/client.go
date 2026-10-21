@@ -57,8 +57,15 @@ func NewClient(options ClientOptions) (Client, error) {
 	if err != nil || (parsed.Scheme != "https" && options.HTTPClient == nil) {
 		return nil, errors.New("jev: base_url must be https")
 	}
-	if options.Timeout <= 0 || options.Timeout > 1000*time.Millisecond {
-		options.Timeout = 500 * time.Millisecond
+	isProbe := options.Plane == "probe" || options.Plane == "test"
+	if isProbe {
+		if options.Timeout <= 0 || options.Timeout > 30*time.Second {
+			options.Timeout = 10 * time.Second
+		}
+	} else {
+		if options.Timeout <= 0 || options.Timeout > 1000*time.Millisecond {
+			options.Timeout = 500 * time.Millisecond
+		}
 	}
 	if options.MaxConcurrency <= 0 || options.MaxConcurrency > 32 {
 		options.MaxConcurrency = 8
@@ -123,10 +130,14 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 		return Result{}, ErrStateTooLarge
 	}
 
-	// 预算硬上限 min(父 ctx deadline, 面配置预算, 1000ms)
+	// 预算硬上限 min(父 ctx deadline, 面配置预算, 允许上限)
+	maxBudget := 1000 * time.Millisecond
+	if c.opts.Plane == "probe" || c.opts.Plane == "test" {
+		maxBudget = 30 * time.Second
+	}
 	budget := c.opts.Timeout
-	if budget > 1000*time.Millisecond {
-		budget = 1000 * time.Millisecond
+	if budget > maxBudget {
+		budget = maxBudget
 	}
 	if parentDeadline, ok := ctx.Deadline(); ok {
 		remaining := time.Until(parentDeadline)
@@ -208,8 +219,8 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	// 非 ChatOps：通过 singleflight.DoChan 抑制并发重复查询
 	// 共享远程工作 context 脱离单个 leader 取消，但受预算硬上限保护
 	sharedBudget := c.opts.Timeout
-	if sharedBudget > 1000*time.Millisecond {
-		sharedBudget = 1000 * time.Millisecond
+	if sharedBudget > maxBudget {
+		sharedBudget = maxBudget
 	}
 	ch := c.flight.DoChan(cacheKey, func() (interface{}, error) {
 		workCtx, workCancel := context.WithTimeout(context.Background(), sharedBudget)

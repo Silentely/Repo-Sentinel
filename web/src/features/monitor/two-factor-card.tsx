@@ -128,8 +128,6 @@ export function TwoFactorCard() {
         <ApiErrorAlert error={statusQuery.error} title="无法读取两步验证状态" />
       ) : (
         <>
-        {actionMsg ? <p className="success-banner" role="status">{actionMsg}</p> : null}
-        {actionError ? <ErrorAlert title="操作失败" message={actionError} /> : null}
 
         {!isEnabled && !setupData && (
           <div>
@@ -276,6 +274,10 @@ export function TwoFactorCard() {
             </div>
           </div>
         )}
+
+        {/* 操作反馈区：紧随操作下方 */}
+        {actionMsg ? <p className="success-banner mt-2" role="status">{actionMsg}</p> : null}
+        {actionError ? <div className="mt-2"><ErrorAlert title="操作失败" message={actionError} /></div> : null}
         </>
       )}
     </section>

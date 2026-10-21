@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiErrorAlert, ErrorAlert } from "../../components/error-alert";
 import { useAutoDismiss } from "../../lib/use-auto-dismiss";
+import { toApiError } from "../../lib/api/errors";
 import {
   jevConfigQueryOptions,
   testJevConfig,
@@ -90,7 +91,10 @@ export function JevSettingsCard() {
     },
     onError: (err) => {
       setTestResult(null);
-      setTestError(err instanceof Error ? err.message : String(err));
+      const apiErr = toApiError(err);
+      const detailErr = typeof apiErr.details?.error === "string" ? apiErr.details.error : "";
+      const msg = detailErr ? `${apiErr.message}（原因：${detailErr}）` : apiErr.message;
+      setTestError(msg || "测试连通性失败");
     },
   });
 
@@ -162,24 +166,6 @@ export function JevSettingsCard() {
         <div className="mb-4">
           <ApiErrorAlert error={jevQuery.error} title="无法加载 Jev 配置" />
         </div>
-      )}
-      {message && <p className="success-banner" role="status">{message}</p>}
-      {updateMutation.isError && (
-        <div className="mb-4">
-          <ApiErrorAlert error={updateMutation.error} title="保存配置失败" />
-        </div>
-      )}
-      {testError && (
-        <div className="mb-4">
-          <ErrorAlert title="测试失败" message={testError} />
-        </div>
-      )}
-
-      {testResult && (
-        <p className="success-banner" role="status">
-          连通性测试通过（模型: {testResult.model}，输入: {testResult.input_tokens} tokens，输出:{" "}
-          {testResult.output_tokens} tokens）
-        </p>
       )}
 
       {isEmergencyActive && (
@@ -359,6 +345,27 @@ export function JevSettingsCard() {
           >
             {testMutation.isPending ? "正在测试..." : "测试连通性"}
           </button>
+        </div>
+
+        {/* 保存与测试反馈区：紧随按钮下方 */}
+        <div className="grid__span-2">
+          {message && <p className="success-banner mt-2" role="status">{message}</p>}
+          {updateMutation.isError && (
+            <div className="mt-2">
+              <ApiErrorAlert error={updateMutation.error} title="保存配置失败" />
+            </div>
+          )}
+          {testResult && (
+            <p className="success-banner mt-2" role="status">
+              连通性测试通过（模型: {testResult.model}，输入: {testResult.input_tokens} tokens，输出:{" "}
+              {testResult.output_tokens} tokens）
+            </p>
+          )}
+          {testError && (
+            <div className="mt-2">
+              <ErrorAlert title="测试失败" message={testError} />
+            </div>
+          )}
         </div>
       </form>
     </section>
