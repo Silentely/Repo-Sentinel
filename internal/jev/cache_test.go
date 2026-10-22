@@ -284,9 +284,9 @@ func TestCanonicalKeyIncludesModel(t *testing.T) {
 }
 
 func TestStateDigestPreservesNumberRepresentation(t *testing.T) {
-	// 验证不同形式数值不发生错误重叠
-	s1 := json.RawMessage(`{"id": 100, "kind": "event"}`)
-	s2 := json.RawMessage(`{"id": 100.0, "kind": "event"}`)
+	// 验证大整数精度（超过 2^53 时 float64 会发生精度丢失，而 json.Number 严格保持字面精度）
+	s1 := json.RawMessage(`{"id": 9007199254740992, "kind": "event"}`)
+	s2 := json.RawMessage(`{"id": 9007199254740993, "kind": "event"}`)
 
 	d1, err := StateDigest(s1)
 	if err != nil {
@@ -297,8 +297,23 @@ func TestStateDigestPreservesNumberRepresentation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if d1 == "" || d2 == "" {
-		t.Fatal("digests should not be empty")
+	if d1 == d2 {
+		t.Fatalf("CRITICAL REGRESSION: float64 precision loss caused hash collision for distinct integers: %s == %s", d1, d2)
+	}
+
+	// 验证整数与浮点形式字面量不混淆
+	sInt := json.RawMessage(`{"val": 100}`)
+	sFloat := json.RawMessage(`{"val": 100.0}`)
+	dInt, err := StateDigest(sInt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dFloat, err := StateDigest(sFloat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dInt == dFloat {
+		t.Fatalf("CRITICAL REGRESSION: int literal and float literal collapsed to identical digest: %s", dInt)
 	}
 }
 

@@ -94,9 +94,17 @@ func TestSingleflightAndCancellation(t *testing.T) {
 	respBytes, _ := os.ReadFile("testdata/systemone.response.json")
 	var remoteCalls atomic.Int32
 
+	serverEntered := make(chan struct{})
+	proceedServer := make(chan struct{})
+
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		remoteCalls.Add(1)
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-serverEntered:
+		default:
+			close(serverEntered)
+		}
+		<-proceedServer
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(respBytes)
 	}))
@@ -106,7 +114,7 @@ func TestSingleflightAndCancellation(t *testing.T) {
 		BaseURL:        ts.URL,
 		Model:          "jev-1.14.0",
 		Plane:          "notification",
-		Timeout:        800 * time.Millisecond,
+		Timeout:        2 * time.Second,
 		MaxConcurrency: 8,
 		HTTPClient:     ts.Client(),
 	}
@@ -117,36 +125,90 @@ func TestSingleflightAndCancellation(t *testing.T) {
 	}
 	state := json.RawMessage(`{"job":"build"}`)
 
-	// 10 个相同并发请求
+	// 1. 首调用者（leader）启动请求并进入 singleflight
+	leaderCtx, leaderCancel := context.WithCancel(context.Background())
+	leaderDone := make(chan error, 1)
+	go func() {
+		_, err := client.Judge(leaderCtx, state, q)
+		leaderDone <- err
+	}()
+
+	// 2. 等待 leader 确实发起并进入 HTTP server（channel 屏障，消除调度依赖）
+	<-serverEntered
+
+	// 3. 此时共享任务已经在底层运行，启动 9 个并发等待者（加入同一 singleflight）
 	var wg sync.WaitGroup
 	var successCount atomic.Int32
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 9; i++ {
 		wg.Add(1)
-		go func(idx int) {
+		go func() {
 			defer wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-			if idx == 0 {
-				// leader 故意提前取消，验证不牵连其他等待者
-				go func() {
-					time.Sleep(20 * time.Millisecond)
-					cancel()
-				}()
-			} else {
-				defer cancel()
-			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
 			_, err := client.Judge(ctx, state, q)
 			if err == nil {
 				successCount.Add(1)
 			}
-		}(i)
+		}()
 	}
+
+	// 稍作微小延迟确保 9 个 goroutine 均已调用 Judge 并挂在 DoChan 上
+	time.Sleep(30 * time.Millisecond)
+
+	// 4. leader 故意取消自身 ctx，验证不牵连其他等待者
+	leaderCancel()
+	leaderErr := <-leaderDone
+	if !errors.Is(leaderErr, context.Canceled) {
+		t.Fatalf("expected leader to get context.Canceled, got: %v", leaderErr)
+	}
+
+	// 5. 放行 HTTP server 完成响应
+	close(proceedServer)
 	wg.Wait()
 
 	if calls := remoteCalls.Load(); calls != 1 {
 		t.Fatalf("Singleflight 必须只触发 1 次远程请求，实际: %d", calls)
 	}
-	if successCount.Load() < 8 {
-		t.Fatalf("除取消的调用者外，其余等待者应成功，成功数: %d", successCount.Load())
+	if successCount.Load() != 9 {
+		t.Fatalf("除取消的首调用者外，其余 9 个等待者全部应成功，实际成功数: %d", successCount.Load())
+	}
+}
+
+func TestSingleflightBudgetCompliance(t *testing.T) {
+	// 验证请求遵守调用者 context 超时预算
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+
+	opts := ClientOptions{
+		BaseURL:        ts.URL,
+		Model:          "jev-1.14.0",
+		Plane:          "notification",
+		Timeout:        2 * time.Second,
+		MaxConcurrency: 8,
+		HTTPClient:     ts.Client(),
+	}
+	client, _ := NewClient(opts)
+
+	// 提供仅 50ms 超时的短 context
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	q := map[string]Question{
+		"is_actionable": NoulQuestion{Type: "noul", Instructions: "Check"},
+	}
+	start := time.Now()
+	_, err := client.Judge(ctx, json.RawMessage(`{"job":"budget-check"}`), q)
+	cost := time.Since(start)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded, got: %v", err)
+	}
+	if cost >= 250*time.Millisecond {
+		t.Fatalf("call did not respect context timeout budget, took %v", cost)
 	}
 }
 
@@ -444,6 +506,11 @@ func TestClientSensitiveAndTruncatedBypassCache(t *testing.T) {
 	if !errors.Is(err, ErrTruncatedState) {
 		t.Fatalf("expected ErrTruncatedState, got %v", err)
 	}
+	truncatedTagState := json.RawMessage(`{"summary":"huge diff content [TRUNCATED]"}`)
+	_, err = client.Judge(context.Background(), truncatedTagState, q)
+	if !errors.Is(err, ErrTruncatedState) {
+		t.Fatalf("expected ErrTruncatedState for [TRUNCATED] tag, got %v", err)
+	}
 	// 截断请求在客户端直接安全拦截，不发起下游网络请求
 	if calls.Load() != 2 {
 		t.Fatalf("truncated request must be rejected directly before network; expected 2 calls, got %d", calls.Load())
@@ -516,38 +583,67 @@ func TestNormalizeEndpoint(t *testing.T) {
 }
 
 func TestClientUpstreamEchoHeaderLeakingPrevented(t *testing.T) {
-	// 模拟上游故意在 500 / 401 错误响应中回显 Authorization Header
-	sensitiveToken := "Bearer super-secret-leaked-api-token"
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"error": "forbidden", "echoed_auth": "%s"}`, sensitiveToken)))
-	}))
-	defer ts.Close()
-
-	client, err := NewClient(ClientOptions{
-		BaseURL:    ts.URL,
-		Plane:      "notification",
-		Timeout:    2 * time.Second,
-		HTTPClient: ts.Client(),
-	})
-	if err != nil {
-		t.Fatal(err)
+	// 模拟上游故意在 500 / 401 / 403 错误响应中回显 Authorization Header 或敏感正文
+	testCases := []struct {
+		statusCode     int
+		body           string
+		sensitiveToken string
+		expectedErrSub string
+	}{
+		{
+			statusCode:     http.StatusInternalServerError,
+			body:           `{"error": "internal_failure", "echoed_auth": "Bearer super-secret-leaked-api-token"}`,
+			sensitiveToken: "super-secret-leaked-api-token",
+			expectedErrSub: "server returned 500",
+		},
+		{
+			statusCode:     http.StatusUnauthorized,
+			body:           `{"error": "unauthorized", "api_key": "secret-unauthorized-token-401"}`,
+			sensitiveToken: "secret-unauthorized-token-401",
+			expectedErrSub: "client error 401",
+		},
+		{
+			statusCode:     http.StatusForbidden,
+			body:           `{"error": "forbidden", "private_info": "secret-forbidden-token-403"}`,
+			sensitiveToken: "secret-forbidden-token-403",
+			expectedErrSub: "client error 403",
+		},
 	}
 
-	q := map[string]Question{
-		"test": NoulQuestion{Type: "noul", Instructions: "test"},
-	}
-	_, err = client.Judge(context.Background(), json.RawMessage(`{"kind":"test"}`), q)
-	if err == nil {
-		t.Fatal("expected judge to fail on 500")
-	}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("status_%d", tc.statusCode), func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer ts.Close()
 
-	errMsg := err.Error()
-	if strings.Contains(errMsg, sensitiveToken) || strings.Contains(errMsg, "super-secret-leaked-api-token") {
-		t.Fatalf("CRITICAL SECURITY LEAK: error message contains upstream response body: %s", errMsg)
-	}
-	if !strings.Contains(errMsg, "server returned 500") {
-		t.Fatalf("expected generic server returned 500, got: %s", errMsg)
+			client, err := NewClient(ClientOptions{
+				BaseURL:    ts.URL,
+				Plane:      "notification",
+				Timeout:    2 * time.Second,
+				HTTPClient: ts.Client(),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			q := map[string]Question{
+				"test": NoulQuestion{Type: "noul", Instructions: "test"},
+			}
+			_, err = client.Judge(context.Background(), json.RawMessage(`{"kind":"test"}`), q)
+			if err == nil {
+				t.Fatalf("expected judge to fail on %d", tc.statusCode)
+			}
+
+			errMsg := err.Error()
+			if strings.Contains(errMsg, tc.sensitiveToken) {
+				t.Fatalf("CRITICAL SECURITY LEAK: error message contains upstream response body: %s", errMsg)
+			}
+			if !strings.Contains(errMsg, tc.expectedErrSub) {
+				t.Fatalf("expected error message to contain %q, got: %s", tc.expectedErrSub, errMsg)
+			}
+		})
 	}
 }
 
@@ -596,5 +692,77 @@ func TestClientCacheEvictionMetricRecord(t *testing.T) {
 	snap := GlobalMetrics().Snapshot()
 	if snap.CacheEvicts["probe"] < 1 {
 		t.Fatalf("expected at least 1 cache eviction in probe plane, got %d", snap.CacheEvicts["probe"])
+	}
+}
+
+func TestSingleflightPermitAcquireInClosureNoLeak(t *testing.T) {
+	respBytes, _ := os.ReadFile("testdata/systemone.response.json")
+	var remoteCalls atomic.Int32
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		remoteCalls.Add(1)
+		time.Sleep(30 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(respBytes)
+	}))
+	defer ts.Close()
+
+	now := time.Unix(1000, 0)
+	opts := ClientOptions{
+		BaseURL:        ts.URL,
+		Model:          "jev-1.14.0",
+		Plane:          "notification",
+		Timeout:        2 * time.Second,
+		MaxConcurrency: 8,
+		HTTPClient:     ts.Client(),
+		Now:            func() time.Time { return now },
+	}
+	client, _ := NewClient(opts)
+	cImpl := client.(*clientImpl)
+
+	// 1. 制造连续失败，使断路器进入 Open 状态
+	for i := 0; i < 5; i++ {
+		cImpl.breaker.record(false)
+	}
+	if cImpl.breaker.getState() != "open" {
+		t.Fatalf("expected open, got %s", cImpl.breaker.getState())
+	}
+
+	// 2. 推进时间，达到冷却，使断路器可进入半开探测（名额只有 1 个）
+	now = now.Add(35 * time.Second)
+
+	// 3. 并发发起 5 个相同请求
+	q := map[string]Question{
+		"is_actionable": NoulQuestion{Type: "noul", Instructions: "Check"},
+	}
+	state := json.RawMessage(`{"job":"halfopen-singleflight"}`)
+
+	var wg sync.WaitGroup
+	var successCount atomic.Int32
+	var breakerOpenCount atomic.Int32
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := client.Judge(context.Background(), state, q)
+			if err == nil {
+				successCount.Add(1)
+			} else if errors.Is(err, ErrCircuitOpen) {
+				breakerOpenCount.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	// 断言：在闭包内获取 permit，5 个请求共享 1 次探测名额，必须全部成功，绝不被 ErrCircuitOpen 误杀
+	if calls := remoteCalls.Load(); calls != 1 {
+		t.Fatalf("expected 1 remote call, got %d", calls)
+	}
+	if successCount.Load() != 5 {
+		t.Fatalf("expected all 5 callers to succeed, got %d (breakerOpen: %d)", successCount.Load(), breakerOpenCount.Load())
+	}
+	if cImpl.breaker.getState() != "closed" {
+		t.Fatalf("breaker should have closed after successful probe, got %s", cImpl.breaker.getState())
 	}
 }

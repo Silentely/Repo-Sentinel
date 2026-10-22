@@ -184,6 +184,12 @@ func TestJevConfigAPI_ValidationRejections(t *testing.T) {
 			expectErr:  "validation_failed",
 		},
 		{
+			name:       "http insecure base_url rejected",
+			body:       `{"base_url":"http://api.typesafe.ai"}`,
+			expectCode: http.StatusBadRequest,
+			expectErr:  "validation_failed",
+		},
+		{
 			name:       "base_url with query rejected",
 			body:       `{"base_url":"https://api.typesafe.ai?query=1"}`,
 			expectCode: http.StatusBadRequest,

@@ -230,16 +230,12 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	}
 	c.mu.Unlock()
 
-	permit := c.breaker.AcquirePermit()
-	if !permit.Allowed {
-		GlobalMetrics().RecordFallback(c.opts.Plane)
-		GlobalMetrics().RecordFailure(c.opts.Plane)
-		GlobalMetrics().RecordFailureClass(c.opts.Plane, "breaker_open")
-		return Result{}, ErrCircuitOpen
-	}
-
-	// 工作任务执行闭包
+	// 工作任务执行闭包：在闭包内部原子获取 permit，确保仅真正执行网络请求的 runner 占用半开名额
 	executeWork := func(workCtx context.Context) (Result, error) {
+		permit := c.breaker.AcquirePermit()
+		if !permit.Allowed {
+			return Result{}, ErrCircuitOpen
+		}
 		permitHandled := false
 		defer func() {
 			if !permitHandled {
@@ -276,6 +272,12 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	if isChatOps || !cacheable {
 		res, err := executeWork(waitCtx)
 		if err != nil {
+			if errors.Is(err, ErrCircuitOpen) {
+				GlobalMetrics().RecordFallback(c.opts.Plane)
+				GlobalMetrics().RecordFailure(c.opts.Plane)
+				GlobalMetrics().RecordFailureClass(c.opts.Plane, "breaker_open")
+				return Result{}, err
+			}
 			GlobalMetrics().RecordFailure(c.opts.Plane)
 			GlobalMetrics().RecordFailureClass(c.opts.Plane, ClassifyError(err))
 			return Result{}, err
@@ -285,9 +287,15 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	}
 
 	// 非 ChatOps 可缓存请求：通过 singleflight.DoChan 抑制并发重复查询
-	// 规则 8：共享网络任务遵守父 deadline，继承父 context 并保留最小预算
+	// 阻断项 1 & 2：共享任务运行在独立 context（不受首调用者提前取消牵连），但遵守配置的最大预算
+	sharedBudget := c.opts.Timeout
+	if sharedBudget <= 0 || sharedBudget > maxBudget {
+		sharedBudget = maxBudget
+	}
 	ch := c.flight.DoChan(cacheKey, func() (interface{}, error) {
-		return executeWork(waitCtx)
+		sharedCtx, sharedCancel := context.WithTimeout(context.Background(), sharedBudget)
+		defer sharedCancel()
+		return executeWork(sharedCtx)
 	})
 
 	select {
@@ -297,6 +305,12 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 		return Result{}, waitCtx.Err()
 	case res := <-ch:
 		if res.Err != nil {
+			if errors.Is(res.Err, ErrCircuitOpen) {
+				GlobalMetrics().RecordFallback(c.opts.Plane)
+				GlobalMetrics().RecordFailure(c.opts.Plane)
+				GlobalMetrics().RecordFailureClass(c.opts.Plane, "breaker_open")
+				return Result{}, res.Err
+			}
 			GlobalMetrics().RecordFailure(c.opts.Plane)
 			GlobalMetrics().RecordFailureClass(c.opts.Plane, ClassifyError(res.Err))
 			return Result{}, res.Err

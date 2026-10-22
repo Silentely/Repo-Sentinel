@@ -279,7 +279,7 @@ func TestBreakerOldInFlightRequestCannotCloseOpenBreaker(t *testing.T) {
 		HalfOpenConcurrency: 1,
 	})
 
-	// 请求 1 在 generation 1 获取凭证并发出（迟到）
+	// 请求 1 在 generation 1 获取凭证并发显（迟到）
 	slowPermit := b.AcquirePermit()
 	if !slowPermit.Allowed || slowPermit.Generation != 1 {
 		t.Fatalf("unexpected slowPermit: %+v", slowPermit)
@@ -301,6 +301,77 @@ func TestBreakerOldInFlightRequestCannotCloseOpenBreaker(t *testing.T) {
 	// 断言：熔断器必须依然处于 open 状态，绝不能被旧请求唤醒为 closed
 	if b.getState() != "open" {
 		t.Fatalf("old in-flight request closed open breaker! state: %s", b.getState())
+	}
+}
+
+func TestBreakerOldInFlightRequestCannotAffectHalfOpenProbe(t *testing.T) {
+	now := time.Unix(0, 0)
+	b := newBreaker(func() time.Time { return now }, BreakerConfig{
+		FailureThreshold:    2,
+		Cooldown:            20 * time.Second,
+		HalfOpenConcurrency: 1,
+	})
+
+	// 1. 旧请求在 generation 1 获取凭证并挂起
+	oldPermit := b.AcquirePermit()
+	if !oldPermit.Allowed || oldPermit.Generation != 1 {
+		t.Fatalf("unexpected oldPermit: %+v", oldPermit)
+	}
+
+	// 2. 连续 2 次失败触发熔断进入 open 状态
+	pFail1 := b.AcquirePermit()
+	b.RecordPermitResult(pFail1, false)
+	pFail2 := b.AcquirePermit()
+	b.RecordPermitResult(pFail2, false)
+
+	if b.getState() != "open" {
+		t.Fatalf("expected open state, got %s", b.getState())
+	}
+	initialFailures := b.failures
+	if initialFailures != 2 {
+		t.Fatalf("expected failures=2, got %d", initialFailures)
+	}
+
+	// 3. 冷却时间过去，放行半开探测
+	now = now.Add(20 * time.Second)
+	probePermit := b.AcquirePermit()
+	if !probePermit.Allowed || !probePermit.IsProbe {
+		t.Fatalf("expected probe permit allowed, got %+v", probePermit)
+	}
+	if b.getState() != "half_open" {
+		t.Fatalf("expected half_open state, got %s", b.getState())
+	}
+
+	// 4. 关键验证：探测挂起中，代次较旧的请求迟到返回成功
+	b.RecordPermitResult(oldPermit, true)
+
+	// 断言：不得影响当前探测，不得转为 closed，断路器依然处于 half_open，且 failures 保持不变
+	if b.getState() != "half_open" {
+		t.Fatalf("old in-flight success corrupted half_open probe! state: %s", b.getState())
+	}
+	if b.failures != initialFailures {
+		t.Fatalf("failures count modified by old request: expected %d, got %d", initialFailures, b.failures)
+	}
+	if b.halfOpenInFlight != 1 {
+		t.Fatalf("halfOpenInFlight corrupted: expected 1, got %d", b.halfOpenInFlight)
+	}
+
+	// 5. 关键验证：代次较旧的请求迟到返回失败
+	b.RecordPermitResult(oldPermit, false)
+	if b.getState() != "half_open" {
+		t.Fatalf("old in-flight failure corrupted half_open probe! state: %s", b.getState())
+	}
+	if b.failures != initialFailures {
+		t.Fatalf("failures count modified by old failure: expected %d, got %d", initialFailures, b.failures)
+	}
+
+	// 6. 此时真正的探测凭证完成并报告成功，断路器才恢复 Closed
+	b.RecordPermitResult(probePermit, true)
+	if b.getState() != "closed" {
+		t.Fatalf("expected closed after probe success, got %s", b.getState())
+	}
+	if b.failures != 0 {
+		t.Fatalf("expected failures reset to 0 after probe success, got %d", b.failures)
 	}
 }
 

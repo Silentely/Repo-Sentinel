@@ -88,3 +88,30 @@ func TestMetricsCollector_PersistenceAndRecovery(t *testing.T) {
 		t.Errorf("expected 1 pr_gate call after async persist, got %d", asyncCheckCollector.Snapshot().Calls["pr_gate"])
 	}
 }
+
+func TestMetricsCollector_RealSuccessesAndEvictions(t *testing.T) {
+	collector := newMetricsCollector()
+	collector.RecordCall("notification")
+	collector.RecordSuccess("notification")
+	collector.RecordCall("notification")
+	collector.RecordFailure("notification")
+	collector.RecordFailureClass("notification", "5xx")
+	collector.RecordCacheEviction("notification")
+
+	snap := collector.Snapshot()
+	if snap.Calls["notification"] != 2 {
+		t.Fatalf("expected 2 calls, got %d", snap.Calls["notification"])
+	}
+	if snap.Successes["notification"] != 1 {
+		t.Fatalf("expected exactly 1 real success, got %d", snap.Successes["notification"])
+	}
+	if snap.Failures["notification"] != 1 {
+		t.Fatalf("expected 1 failure, got %d", snap.Failures["notification"])
+	}
+	if snap.CacheEvicts["notification"] != 1 {
+		t.Fatalf("expected 1 cache eviction, got %d", snap.CacheEvicts["notification"])
+	}
+	if snap.FailureClass["notification"]["5xx"] != 1 {
+		t.Fatalf("expected 1 failure_class 5xx, got %d", snap.FailureClass["notification"]["5xx"])
+	}
+}
