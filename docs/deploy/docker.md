@@ -158,24 +158,54 @@ RepoSentinel **不走用户 OAuth 登录 GitHub**；认证是「App JWT → Inst
 
 > 本地开发可用 [smee.io](https://smee.io) / ngrok 等把公网 HTTPS 转到本机；Secret 仍要与环境变量一致。
 
-### 4.5 Repository permissions（建议只读）
+### 4.5 Repository permissions（按功能授权）
 
-权限选好后，下方「Subscribe to events」才会出现对应事件。
+要正常使用 Issue、PR 与 Actions 监控，请将下面七项权限设为 **Read-only**。PR 的 CI 状态查询同时读取 Checks 和 Commit statuses；只授权 Actions 无法替代这两项权限。
 
 | 权限 | Access | 用途 |
 |------|--------|------|
-| **Metadata** | Read-only | 必选（仓库基础信息） |
-| **Contents** | Read-only | 对账/元数据 |
-| **Issues** | Read-only；开启 PR 评论回写时需 Write | Issue Webhook + API 对账；`code_review_comment_on_pr` 经 Issue 评论接口把审查报告发到 PR 下 |
-| **Pull requests** | Read-only | PR Webhook + 对账、拉取 Diff 做代码审查 |
-| **Actions** | Read-only | `workflow_run` 与对账 |
-| **Dependabot alerts** | Read-only | Dependabot 告警 |
-| **Code scanning alerts** | Read-only | Code Scanning |
-| **Secret scanning alerts** | Read-only | Secret Scanning |
+| **Metadata** | Read-only | GitHub App 必选，读取仓库基础信息 |
+| **Contents** | Read-only | 读取提交、Release 与仓库内容，支持对账和代码审查 |
+| **Issues** | Read-only | Issue Webhook 与 API 对账 |
+| **Pull requests** | Read-only | PR Webhook、对账、读取 Diff 与审查信息 |
+| **Checks** | Read-only | 读取 PR 提交上的 Check runs 与 CI 检查结果 |
+| **Commit statuses** | Read-only | 读取 PR 提交上的状态检查，与 Checks 一起供 GraphQL CI 状态查询使用 |
+| **Actions** | Read-only | 接收 workflow_run 事件，读取工作流、任务与失败日志 |
 
-- **Organization permissions**：全部 **No access**（除非你明确需要组织级能力）。  
-- **Account permissions**：全部 **No access**。  
-- 默认全部只读即可。唯一需要 Write 的场景是开启 PR 审查报告回写（`REPOSENTINEL_AI_CODE_REVIEW_COMMENT_ON_PR=true`）：它通过 Issue 评论接口在 PR 下发表评论，要求 **Issues: Write**。不开这个开关就保持只读——开启后评论失败只写 Warn 日志，通知与审查结果本身不受影响。
+其中 Metadata 为必选权限，其余六项构成常用监控功能的只读权限集。若关闭某类功能，可按实际使用范围减少授权；启用 PR 监控时请保留 Checks 和 Commit statuses。
+
+开启安全告警监控时，再按需添加：
+
+| 权限 | Access | 用途 |
+|------|--------|------|
+| **Dependabot alerts** | Read-only | 依赖漏洞告警 |
+| **Code scanning alerts** | Read-only | 代码扫描告警 |
+| **Secret scanning alerts** | Read-only | 泄露凭据告警 |
+
+安全告警还受仓库是否启用相应扫描功能、仓库可见性及 GitHub 套餐限制。授权本身不会启用扫描服务。
+
+只有启用以下写入功能时，才需要将对应权限提高到 **Read and write**：
+
+| 功能 | 需要提高的权限 |
+|------|----------------|
+| PR 审查报告评论回写（`REPOSENTINEL_AI_CODE_REVIEW_COMMENT_ON_PR=true`） | **Issues**；PR 下的普通评论通过 Issue 评论接口发布 |
+| Issue 自动标签、ChatOps 回复、打标签、标记重复、标记垃圾并关闭等操作 | **Issues** |
+| ChatOps 快捷批准 PR（提交 APPROVE review） | **Pull requests** |
+| ChatOps 重跑工作流 | **Actions** |
+
+- **Organization permissions**：全部 **No access**，除非另外使用需要组织权限的能力。
+- **Account permissions**：全部 **No access**。
+- 只读监控无需申请写权限。评论回写失败会记录告警，不影响已生成的审查报告和通知。
+
+#### 已安装 App 增加权限后，让授权生效
+
+1. 在 GitHub App 的 **Permissions & events** 中修改并保存权限。
+2. 进入安装所属账号或组织的 **Settings → Applications / GitHub Apps → Installed GitHub Apps → Configure**，按 GitHub 提示批准新增权限。组织安装通常需要有权限的组织管理员操作。
+3. 确认安装选择的仓库包含所有需要监控的仓库。权限设置正确，但仓库不在授权范围内，也会出现 `Resource not accessible by integration`。
+4. 已缓存的 installation token 可能仍带旧权限。需要立即验证时，在批准权限后重启 RepoSentinel，让它重新签发 token；否则等待缓存 token 刷新（通常在一小时内）。健康探针结果还会缓存 60 秒。
+5. 在管理台 **GitHub App** 页点击 **从 GitHub 同步仓库**，更新仓库列表，再对目标仓库执行对账。同步仓库列表不能代替 GitHub 侧批准新增权限。
+
+收到 Webhook 只说明入站链路正常，不能证明主动调用 API 的权限齐全。出现 `graphql_permission_denied: Resource not accessible by integration` 时，优先核对目标仓库授权，以及 Pull requests、Contents、Checks、Commit statuses 的安装权限。
 
 ### 4.6 Subscribe to events（勾选）
 

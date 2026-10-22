@@ -252,8 +252,9 @@ export function GitHubPage() {
             <p className="field-hint">本产品<strong>不使用</strong> OAuth 登录，只用 App 私钥换 Installation Token。</p>
             <h3 className="section-subtitle">Webhook（必填）</h3>
             <p className="field-hint">Active <strong>必须勾选</strong>。URL 填上方复制框。Secret 用 <code>openssl rand -hex 32</code> 生成。</p>
-            <h3 className="section-subtitle">Repository permissions → 全部 Read-only</h3>
-            <p className="field-hint">Metadata、Contents、Issues、Pull requests、Actions、Dependabot/Code/Secret scanning alerts</p>
+            <h3 className="section-subtitle">Repository permissions → 监控使用 Read-only</h3>
+            <p className="field-hint">Metadata、Contents、Issues、Pull requests、Checks、Commit statuses、Actions；安全告警按需开启 Dependabot alerts、Code scanning alerts、Secret scanning alerts。</p>
+            <p className="field-hint">评论回写、Issue 标签与关闭操作需 Issues: Read and write；ChatOps 快捷批准 PR 需 Pull requests: Read and write；重跑工作流需 Actions: Read and write。修改权限后，须在安装所属账号或组织中批准新增权限，并确认目标仓库在授权范围内。</p>
             <h3 className="section-subtitle">Subscribe to events</h3>
             <p className="field-hint">勾选：Issues / Pull request / Workflow run / Dependabot alert / Code scanning alert / Secret scanning alert / Installation / Installation repositories / Repository</p>
           </div>

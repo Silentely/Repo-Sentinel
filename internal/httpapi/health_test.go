@@ -192,6 +192,9 @@ func generateTestRSAKey(t *testing.T) string {
 func TestSystemHealth_GitHubProbeCached(t *testing.T) {
 	callCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if handleProbeInstallationAuth(w, r) {
+			return
+		}
 		callCount++
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -248,6 +251,9 @@ func TestSystemHealth_GitHubProbeSingleFlight(t *testing.T) {
 	var callCount atomic.Int32
 	probeGate := make(chan struct{})
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if handleProbeInstallationAuth(w, r) {
+			return
+		}
 		callCount.Add(1)
 		<-probeGate // 阻塞直到并发请求全部发出
 		w.Header().Set("Content-Type", "application/json")
@@ -302,6 +308,9 @@ func TestSystemHealth_GitHubProbeSingleFlight(t *testing.T) {
 func TestSystemHealth_GitHubConfigUpdateClearsCache(t *testing.T) {
 	callCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if handleProbeInstallationAuth(w, r) {
+			return
+		}
 		callCount++
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -363,4 +372,19 @@ func TestSystemHealth_GitHubConfigUpdateClearsCache(t *testing.T) {
 	if callCount != 2 {
 		t.Fatalf("expected callCount to be 2 after config update invalidated cache, got %d", callCount)
 	}
+}
+
+// 仅模拟 App 安装发现与 token 签发；配额端点由各测试独立计数。
+func handleProbeInstallationAuth(w http.ResponseWriter, r *http.Request) bool {
+	switch r.URL.Path {
+	case "/app/installations":
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"id":42,"suspended_at":null}]`)
+		return true
+	case "/app/installations/42/access_tokens":
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"token":"installation-token","expires_at":%q}`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339))
+		return true
+	}
+	return false
 }

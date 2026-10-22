@@ -85,6 +85,25 @@ GET /api/v1/system/health
 - **强依赖故障**：底层数据库连接失败时，坚决返回 **HTTP 503 Service Unavailable**，保障集群探针判死语义；
 - **弱依赖与软限制**：仅当外部依赖探测超时（如 GitHub API 配额探测）或触发当日 AI 预算熔断时，返回 **HTTP 200 OK** 并标明 `"status": "degraded"`，系统进入局部平稳降级模式。
 
+## GitHub 配额异常如何排查
+
+健康探针先用 App JWT 查询安装列表，再用首个未暂停安装的 installation access token 请求 `/rate_limit`。App JWT 用于 App 身份认证，不能直接作为安装凭据查询该配额。
+
+仪表盘显示的是**一个可用安装的 REST core 配额**，不是所有安装的总额，也不是 GraphQL 配额。各安装配额独立；探针正常也不能证明每个仓库的权限齐全。探针结果缓存 60 秒。
+
+| 状态或错误 | 含义与处理 |
+|------|------|
+| `未知（探针失败）` | 配额未能读取。API 响应中的默认 `0 / 0` 不表示配额耗尽，应同时查看 `github.status` 和 `github.error` |
+| `github_app_no_active_installation` | App 尚未安装，或所有安装均暂停；先安装或恢复安装 |
+| `github_probe_installations: github_http_401` | 获取安装列表时鉴权失败；核对 App ID、对应 RSA 私钥与服务器时间 |
+| `github_probe_token: installation_token_http_401` | 签发安装 token 时鉴权失败；核对 App 凭据与服务器时间 |
+| 错误包含 `http_403` | 核对安装状态、仓库范围和权限批准；若错误为 `github_rate_limited`，按限流处理 |
+| `github_probe_rate_limit: ...` | 已进入安装配额查询阶段，按后续 HTTP 错误或网络错误排查 |
+| 剩余配额为 `0`，上限大于 `0`，且无探针错误 | 已成功读到配额，当前安装的 REST 配额确实耗尽，等待重置 |
+| `graphql_permission_denied` / `Resource not accessible by integration` | PR 补充查询缺少权限或仓库访问授权；与 REST 配额探针分别排查 |
+
+权限清单、新增权限批准与 token 刷新步骤见 [GitHub App 仓库权限配置](/deploy/docker#_4-5-repository-permissions-按功能授权)。Webhook 使用独立的 Secret 验签，Webhook 接收正常与 API 调用失败可以同时发生。
+
 ## 版本 API
 
 ```http

@@ -271,7 +271,8 @@ func (c *AppClient) fetchInstallationToken(ctx context.Context, installationID i
 	return parsed.Token, parsed.ExpiresAt, nil
 }
 
-// ProbeRateLimit 探测 GitHub API 速率限制（使用 App JWT 请求 /rate_limit）。
+// ProbeRateLimit 查询首个未暂停安装的 REST 配额，不汇总各安装的独立配额。
+// App JWT 只用于发现安装；/rate_limit 必须使用 installation access token。
 func (c *AppClient) ProbeRateLimit(ctx context.Context) (limit int, remaining int, err error) {
 	if !c.Configured() {
 		return 0, 0, ErrAppNotConfigured
@@ -279,6 +280,33 @@ func (c *AppClient) ProbeRateLimit(ctx context.Context) (limit int, remaining in
 	jwt, err := c.AppJWT()
 	if err != nil {
 		return 0, 0, err
+	}
+	var installationID int64
+	for page := 1; ; page++ {
+		var installations []struct {
+			ID          int64   `json:"id"`
+			SuspendedAt *string `json:"suspended_at"`
+		}
+		_, link, err := c.DoJSONPage(ctx, http.MethodGet, fmt.Sprintf("/app/installations?per_page=100&page=%d", page), jwt, &installations)
+		if err != nil {
+			return 0, 0, fmt.Errorf("github_probe_installations: %w", err)
+		}
+		for _, installation := range installations {
+			if installation.ID > 0 && installation.SuspendedAt == nil {
+				installationID = installation.ID
+				break
+			}
+		}
+		if installationID > 0 || !strings.Contains(link, `rel="next"`) {
+			break
+		}
+	}
+	if installationID == 0 {
+		return 0, 0, errors.New("github_app_no_active_installation")
+	}
+	token, err := c.InstallationToken(ctx, installationID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("github_probe_token: %w", err)
 	}
 	var res struct {
 		Resources struct {
@@ -288,9 +316,9 @@ func (c *AppClient) ProbeRateLimit(ctx context.Context) (limit int, remaining in
 			} `json:"core"`
 		} `json:"resources"`
 	}
-	_, err = c.DoJSON(ctx, http.MethodGet, "/rate_limit", jwt, &res)
+	_, err = c.DoJSON(ctx, http.MethodGet, "/rate_limit", token, &res)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("github_probe_rate_limit: %w", err)
 	}
 	return res.Resources.Core.Limit, res.Resources.Core.Remaining, nil
 }

@@ -144,7 +144,21 @@ function SystemHealthBadges({ health, jev }: { health?: SystemHealthDiagnostics;
   const ghError = health.github?.error;
   const ghLimit = health.github?.rate_limit_limit ?? 0;
   const ghRemaining = health.github?.rate_limit_remaining ?? 0;
-  const ghRateZero = ghLimit > 0 && ghRemaining === 0;
+  const ghRateZero = !ghError && ghLimit > 0 && ghRemaining === 0;
+  let ghHint = "配额暂不可用，请检查 GitHub App 配置及服务器到 GitHub 的网络连接";
+  if (ghError?.includes("github_app_no_active_installation")) {
+    ghHint = "请先安装 GitHub App，或恢复已暂停的安装";
+  } else if (ghError?.includes("http_401")) {
+    ghHint = "请检查 App ID、对应私钥及服务器时间";
+  } else if (ghError?.includes("http_403")) {
+    ghHint = "请检查安装授权、仓库访问范围及新增权限是否已获批准";
+  } else if (ghError?.includes("github_rate_limited")) {
+    ghHint = "GitHub API 已限流，请稍后重试或等待配额重置";
+  } else if (ghStatus === "ok") {
+    ghHint = "显示首个可用安装的 REST 配额；各安装配额独立，仓库权限需另行确认";
+  } else if (ghRateZero) {
+    ghHint = "当前安装的 REST 配额已耗尽，请等待 GitHub 配额重置";
+  }
 
   let ghTitle = `GitHub 剩余配额: ${ghRemaining}/${ghLimit}`;
   if (ghError) {
@@ -224,7 +238,7 @@ function SystemHealthBadges({ health, jev }: { health?: SystemHealthDiagnostics;
           rows={[
             {
               label: "API 剩余配额",
-              value: ghError && ghLimit === 0 ? "0 / 0 (探针异常)" : `${ghRemaining} / ${ghLimit}`,
+              value: ghError || ghLimit === 0 ? "未知（探针失败）" : `${ghRemaining} / ${ghLimit}`,
             },
             { label: "集成模式", value: "已配置 GitHub App" },
           ]}
@@ -235,11 +249,7 @@ function SystemHealthBadges({ health, jev }: { health?: SystemHealthDiagnostics;
                 ? { type: "warning", message: "API 速率限制已耗尽 (Rate Limit Exceeded)" }
                 : undefined
           }
-          hint={
-            ghStatus === "ok"
-              ? "速率自适应与健康监控正常"
-              : "可在「设置」中检查 GitHub App 凭据或排查外网连通性"
-          }
+          hint={ghHint}
         >
           <span
             className={`system-badge system-badge--${ghStatus === "ok" ? "success" : "warning"}`}

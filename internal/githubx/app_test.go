@@ -415,3 +415,99 @@ func TestAppClientConcurrentDefaultHTTP(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// GitHub 的 /rate_limit 不接受 App JWT；必须先换取 installation token。
+func TestProbeRateLimitUsesInstallationToken(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemText := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	for _, tc := range []struct {
+		name          string
+		installations string
+		nextPage      bool
+		failPath      string
+		wantErr       string
+	}{
+		{name: "active installation", installations: `[{"id":7,"suspended_at":"2026-01-01T00:00:00Z"},{"id":42,"suspended_at":null}]`},
+		{name: "active installation on next page", installations: `[{"id":7,"suspended_at":"2026-01-01T00:00:00Z"}]`, nextPage: true},
+		{name: "not installed", installations: `[]`, wantErr: "github_app_no_active_installation"},
+		{name: "all suspended", installations: `[{"id":7,"suspended_at":"2026-01-01T00:00:00Z"}]`, wantErr: "github_app_no_active_installation"},
+		{name: "invalid app", failPath: "/app/installations", wantErr: "github_probe_installations: github_http_401"},
+		{name: "token rejected", installations: `[{"id":42}]`, failPath: "/app/installations/42/access_tokens", wantErr: "github_probe_token: installation_token_http_401"},
+		{name: "rate probe rejected", installations: `[{"id":42}]`, failPath: "/rate_limit", wantErr: "github_probe_rate_limit: github_http_401"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var paths []string
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				paths = append(paths, r.URL.Path)
+				auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+				if r.URL.Path == "/rate_limit" {
+					if auth != "installation-token" {
+						http.Error(w, "App JWT is not accepted", http.StatusUnauthorized)
+						return
+					}
+				} else {
+					parsed, err := jwt.Parse(auth, func(token *jwt.Token) (any, error) { return &key.PublicKey, nil })
+					if err != nil || !parsed.Valid {
+						t.Errorf("expected valid App JWT, got error %v", err)
+					}
+				}
+				if r.URL.Path == tc.failPath {
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/app/installations":
+					if tc.nextPage {
+						if r.URL.Query().Get("page") == "1" {
+							w.Header().Set("Link", `<https://api.github.com/app/installations?per_page=100&page=2>; rel="next"`)
+						} else if r.URL.Query().Get("page") == "2" {
+							fmt.Fprint(w, `[{"id":42}]`)
+							return
+						} else {
+							t.Errorf("unexpected installations page: %s", r.URL.RawQuery)
+						}
+					}
+					fmt.Fprint(w, tc.installations)
+				case "/app/installations/42/access_tokens":
+					if r.Method != http.MethodPost {
+						t.Errorf("token method = %s", r.Method)
+					}
+					fmt.Fprintf(w, `{"token":"installation-token","expires_at":%q}`, time.Now().Add(time.Hour).UTC().Format(time.RFC3339))
+				case "/rate_limit":
+					fmt.Fprint(w, `{"resources":{"core":{"limit":5000,"remaining":4321}}}`)
+				default:
+					t.Errorf("unexpected request: %s", r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer ts.Close()
+			c := NewAppClient(12345, "")
+			c.Configure(12345, "", pemText)
+			c.BaseURL = ts.URL
+			limit, remaining, err := c.ProbeRateLimit(context.Background())
+			if tc.wantErr != "" {
+				if err == nil || err.Error() != tc.wantErr {
+					t.Fatalf("error = %v, want %s", err, tc.wantErr)
+				}
+				if limit != 0 || remaining != 0 {
+					t.Fatalf("failed probe returned quota %d/%d", remaining, limit)
+				}
+				return
+			}
+			if err != nil || limit != 5000 || remaining != 4321 {
+				t.Fatalf("quota = %d/%d, error = %v; paths = %v", remaining, limit, err, paths)
+			}
+			// Installation token 应复用缓存；配额仍重新查询。
+			if _, _, err := c.ProbeRateLimit(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Count(strings.Join(paths, ","), "access_tokens") != 1 {
+				t.Fatalf("token was not cached: %v", paths)
+			}
+		})
+	}
+}

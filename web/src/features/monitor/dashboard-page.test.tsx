@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DashboardStats } from "./api";
@@ -119,6 +119,7 @@ const fixtures = vi.hoisted(() => ({
       rate_limit_limit: 5000,
       rate_limit_remaining: 4999,
       status: "ok",
+      error: "",
     },
     ai_budget: {
       daily_tokens_used: 1200,
@@ -259,6 +260,7 @@ function renderPage() {
 
 describe("仪表盘", () => {
   beforeEach(() => {
+    fixtures.health.github = { configured: true, rate_limit_limit: 5000, rate_limit_remaining: 4999, status: "ok", error: "" };
     // 默认回到「超出展示上限」场景，截断相关的用例各自覆写。
     fixtures.events = makeEventsPage(20);
     fixtures.outbox = makeOutboxPage(20);
@@ -572,5 +574,30 @@ describe("仪表盘", () => {
     const eventsPanel = await screen.findByRole("region", { name: "最近事件" });
     const loadMoreBtn = await within(eventsPanel).findByRole("button", { name: /加载更多/ });
     expect(loadMoreBtn).toBeInTheDocument();
+  });
+});
+
+
+describe("GitHub 配额诊断", () => {
+  it.each([
+    ["github_probe_installations: github_http_401", "请检查 App ID、对应私钥及服务器时间"],
+    ["github_app_no_active_installation", "请先安装 GitHub App，或恢复已暂停的安装"],
+    ["github_probe_token: installation_token_http_403", "请检查安装授权、仓库访问范围及新增权限是否已获批准"],
+    ["github_probe_rate_limit: github_rate_limited", "GitHub API 已限流，请稍后重试或等待配额重置"],
+  ])("探针失败时显示未知配额并提供对应提示：%s", async (error, hint) => {
+    fixtures.health.github = { configured: true, rate_limit_limit: 0, rate_limit_remaining: 0, status: "degraded", error };
+    renderPage();
+    fireEvent.focus(await screen.findByText("GH: 降级"));
+    expect(await screen.findByText("未知（探针失败）")).toBeInTheDocument();
+    expect(screen.getByText(hint)).toBeInTheDocument();
+    expect(screen.queryByText(/API 速率限制已耗尽/)).not.toBeInTheDocument();
+  });
+
+  it("成功读取到零剩余配额时显示真实耗尽", async () => {
+    fixtures.health.github = { configured: true, rate_limit_limit: 5000, rate_limit_remaining: 0, status: "degraded", error: "" };
+    renderPage();
+    fireEvent.focus(await screen.findByText("GH: 降级"));
+    expect(await screen.findByText("0 / 5000")).toBeInTheDocument();
+    expect(screen.getByText(/API 速率限制已耗尽/)).toBeInTheDocument();
   });
 });

@@ -156,6 +156,8 @@ GitHub App Webhook URL：
 https://你的域名/webhooks/github
 ```
 
+GitHub App 常用监控权限：Metadata、Contents、Issues、Pull requests、Checks、Commit statuses、Actions 均设为 Read-only；安全告警和写入功能按需授权。已有安装增加权限后，需要在 GitHub 批准新增权限。详见 [权限清单与生效步骤](https://repo.cosr.eu.org/deploy/docker.html#_4-5-repository-permissions-按功能授权)。
+
 完整步骤见 [Docker 部署](https://repo.cosr.eu.org/deploy/docker.html) 与 [快速开始](https://repo.cosr.eu.org/guide/quick-start.html)。
 
 ### 源码运行
