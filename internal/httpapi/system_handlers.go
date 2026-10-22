@@ -210,21 +210,37 @@ func (s *server) handleSystemHealth(w http.ResponseWriter, r *http.Request) {
 	if s.dependencies.GitHubRuntime != nil && s.dependencies.GitHubRuntime.Client != nil {
 		if s.dependencies.GitHubRuntime.Client.Configured() {
 			ghProbe.Configured = true
-			ghCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-			limit, remaining, err := s.dependencies.GitHubRuntime.Client.ProbeRateLimit(ghCtx)
-			cancel()
-			if err != nil {
-				ghProbe.Status = "degraded"
-				ghProbe.Error = err.Error()
-				overallStatus = "degraded"
+
+			s.ghProbeMu.Lock()
+			// 缓存 60 秒：GitHub 配额按小时重置，无需频繁外呼，既加速健康接口响应，又避免频繁触发网络超时
+			if s.ghProbeCache != nil && time.Since(s.ghProbeAt) < 60*time.Second {
+				ghProbe = *s.ghProbeCache
+				s.ghProbeMu.Unlock()
 			} else {
-				ghProbe.Status = "ok"
-				ghProbe.RateLimitLimit = limit
-				ghProbe.RateLimitRemaining = remaining
-				if remaining == 0 {
+				s.ghProbeMu.Unlock()
+				// 将超时从 2 秒放宽到 5 秒，容忍跨国网络抖动与代理延迟
+				ghCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+				limit, remaining, err := s.dependencies.GitHubRuntime.Client.ProbeRateLimit(ghCtx)
+				cancel()
+				if err != nil {
 					ghProbe.Status = "degraded"
-					overallStatus = "degraded"
+					ghProbe.Error = err.Error()
+				} else {
+					ghProbe.Status = "ok"
+					ghProbe.RateLimitLimit = limit
+					ghProbe.RateLimitRemaining = remaining
+					if remaining == 0 {
+						ghProbe.Status = "degraded"
+					}
 				}
+				s.ghProbeMu.Lock()
+				s.ghProbeCache = &ghProbe
+				s.ghProbeAt = time.Now()
+				s.ghProbeMu.Unlock()
+			}
+
+			if ghProbe.Status == "degraded" {
+				overallStatus = "degraded"
 			}
 		}
 	}

@@ -185,3 +185,58 @@ func generateTestRSAKey(t *testing.T) string {
 	}
 	return string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
 }
+
+func TestSystemHealth_GitHubProbeCached(t *testing.T) {
+	callCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"resources": map[string]any{
+				"core": map[string]any{
+					"limit":     5000,
+					"remaining": 4888,
+				},
+			},
+		})
+	}))
+	defer ts.Close()
+
+	ghClient := &githubx.AppClient{
+		AppID:   12345,
+		BaseURL: ts.URL,
+	}
+	ghClient.Configure(12345, "", generateTestRSAKey(t))
+
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		githubClient: ghClient,
+	})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	// 第 1 次请求：发起探针
+	rec1 := fixture.request(t, http.MethodGet, "/api/v1/system/health", "", "127.0.0.1:45205", cookies, nil)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec1.Code)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected 1 call to GitHub API, got %d", callCount)
+	}
+
+	// 第 2 次请求：60秒内复用缓存，不额外发起网络调用
+	rec2 := fixture.request(t, http.MethodGet, "/api/v1/system/health", "", "127.0.0.1:45206", cookies, nil)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec2.Code)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected callCount to remain 1 due to cache, got %d", callCount)
+	}
+
+	var res systemHealthResponse
+	if err := json.Unmarshal(rec2.Body.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if res.GitHub.RateLimitRemaining != 4888 {
+		t.Fatalf("expected cached rate_limit_remaining=4888, got %d", res.GitHub.RateLimitRemaining)
+	}
+}

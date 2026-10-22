@@ -987,8 +987,8 @@ export interface SystemHealthDiagnostics {
 export const systemHealthQueryOptions = queryOptions({
   queryKey: ["system-health"] as const,
   queryFn: () => apiRequest<SystemHealthDiagnostics>("/api/v1/system/health"),
-  staleTime: 10_000,
-  refetchInterval: 30_000,
+  staleTime: 30_000,
+  refetchInterval: 60_000,
 });
 
 export interface JevPlaneConfig {
@@ -1091,5 +1091,6 @@ export async function testJevConfig(): Promise<JevTestResult> {
 export const jevConfigQueryOptions = queryOptions({
   queryKey: ["system", "jev"] as const,
   queryFn: () => fetchJevConfig(),
-  staleTime: 15_000,
+  staleTime: 60_000,
+  refetchInterval: 60_000,
 });

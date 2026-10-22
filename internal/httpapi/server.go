@@ -118,6 +118,9 @@ type server struct {
 	chatOpsService  chatops.Service
 	startedAt       time.Time
 	workerID        string
+	ghProbeMu       sync.Mutex
+	ghProbeCache    *gitHubProbe
+	ghProbeAt       time.Time
 }
 
 func (s *server) getWorkerID() string {
