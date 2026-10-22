@@ -188,8 +188,13 @@ func prepareNotificationWithChannels(
 
 	wouldSuppress := activeSuppressEligible && isActionableLow && isBotChatter
 	isSuppressed := false
-	if cfg.Mode == "active" && wouldSuppress {
-		isSuppressed = true
+	if wouldSuppress {
+		if cfg.Mode == "active" {
+			isSuppressed = true
+			jev.GlobalMetrics().RecordSuppressed()
+		} else {
+			jev.GlobalMetrics().RecordWouldSuppress()
+		}
 	}
 
 	if l != nil {

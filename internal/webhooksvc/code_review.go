@@ -12,6 +12,7 @@ import (
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/botutil"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -290,12 +291,14 @@ func (s *Service) evaluatePRGate(ctx context.Context, req prReviewRequest, diff 
 	}
 
 	if snap.Mode == "shadow" {
+		jev.GlobalMetrics().RecordWouldSkip()
 		if s.Logger != nil {
 			s.Logger.Info("[shadow] pr review cascade gate would skip", "repo", req.fullName, "pr", req.prNum, "reason", skipReason)
 		}
 		return false, ""
 	}
 
+	jev.GlobalMetrics().RecordSkipped()
 	if s.Logger != nil {
 		s.Logger.Info("pr review cascade gate skipped deep review", "repo", req.fullName, "pr", req.prNum, "reason", skipReason)
 	}

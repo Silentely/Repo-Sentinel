@@ -168,6 +168,9 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		jevRuntime.Replace(jev.RuntimeFromEnv(disabledCfg))
 	}
 	aggregator.JevRuntime = jevRuntime
+	if err := jev.GlobalMetrics().BindStore(ctx, data); err != nil && logger != nil {
+		logger.Warn("bootstrap: load jev metrics from store failed", "error", err)
+	}
 
 	digestGen := &digest.Generator{Store: data, AI: aiClient, Logger: logger}
 
