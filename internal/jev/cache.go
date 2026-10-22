@@ -7,9 +7,13 @@ import (
 	"encoding/json"
 	"math/rand/v2"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
+
+// MaxCacheableStateSize 定义允许进入决策缓存的最大状态字节数（超长请求不入缓存）。
+const MaxCacheableStateSize = 4096
 
 type canonicalQuestion struct {
 	Type         string   `json:"type"`
@@ -24,23 +28,32 @@ type kvPair struct {
 }
 
 type canonicalPayload struct {
-	Plane                string                       `json:"plane"`
-	Endpoint             string                       `json:"endpoint"`
-	CredentialGeneration uint64                       `json:"credential_generation"`
-	ConfiguredModel      string                       `json:"configured_model"`
-	PolicyVersion        string                       `json:"policy_version"`
-	RuntimeGeneration    uint64                       `json:"runtime_generation"`
-	State                any                          `json:"state"`
-	Questions            map[string]canonicalQuestion `json:"questions"`
+	Plane                string `json:"plane"`
+	Endpoint             string `json:"endpoint"`
+	CredentialGeneration uint64 `json:"credential_generation"`
+	ConfiguredModel      string `json:"configured_model"`
+	PolicyVersion        string `json:"policy_version"`
+	RuntimeGeneration    uint64 `json:"runtime_generation"`
+	StateDigest          string `json:"state_digest"`
+	QuestionFingerprint  string `json:"question_fingerprint"`
 }
 
-// CanonicalKey 生成跨环境确定性的决策缓存键 SHA256。
-func CanonicalKey(options ClientOptions, state json.RawMessage, questions map[string]Question) (string, error) {
-	var stateVal any
-	if err := json.Unmarshal(state, &stateVal); err != nil {
+// StateDigest 计算状态对象的规范化 SHA256 摘要。
+func StateDigest(state json.RawMessage) (string, error) {
+	var val any
+	if err := json.Unmarshal(state, &val); err != nil {
 		return "", err
 	}
+	canonicalData, err := json.Marshal(val)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256(canonicalData)
+	return hex.EncodeToString(hash[:]), nil
+}
 
+// QuestionFingerprint 计算问题集合的规范化 SHA256 指纹。
+func QuestionFingerprint(questions map[string]Question) (string, error) {
 	normQuestions := make(map[string]canonicalQuestion, len(questions))
 	for qName, q := range questions {
 		cq := canonicalQuestion{
@@ -75,6 +88,80 @@ func CanonicalKey(options ClientOptions, state json.RawMessage, questions map[st
 		normQuestions[qName] = cq
 	}
 
+	data, err := json.Marshal(normQuestions)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:]), nil
+}
+
+// IsCacheable 判定请求状态是否允许进入决策缓存。
+// 敏感请求、超长或截断请求严禁进入缓存。
+func IsCacheable(state json.RawMessage) bool {
+	if len(state) == 0 || len(state) > MaxCacheableStateSize {
+		return false
+	}
+	rawStr := string(state)
+	// 敏感凭据/邮箱
+	if strings.Contains(rawStr, "[REDACTED_SECRET]") || strings.Contains(rawStr, "[REDACTED_EMAIL]") {
+		return false
+	}
+	// 超长/截断标记
+	if strings.Contains(rawStr, "[TRUNCATED]") {
+		return false
+	}
+
+	var stateMap map[string]any
+	if err := json.Unmarshal(state, &stateMap); err != nil {
+		return false
+	}
+
+	// 检查顶层布尔标记
+	for _, key := range []string{"sensitive", "is_sensitive"} {
+		if v, ok := stateMap[key]; ok {
+			if b, ok := v.(bool); ok && b {
+				return false
+			}
+		}
+	}
+	for _, key := range []string{"truncated", "is_truncated", "diff_truncated"} {
+		if v, ok := stateMap[key]; ok {
+			if b, ok := v.(bool); ok && b {
+				return false
+			}
+		}
+	}
+
+	// 检查嵌套 files 中的敏感或截断标记
+	if files, ok := stateMap["files"].([]any); ok {
+		for _, f := range files {
+			if fMap, ok := f.(map[string]any); ok {
+				if s, ok := fMap["sensitive"].(bool); ok && s {
+					return false
+				}
+				if t, ok := fMap["truncated"].(bool); ok && t {
+					return false
+				}
+			}
+		}
+	}
+
+	return true
+}
+
+// CanonicalKey 生成跨环境确定性的决策缓存键 SHA256。
+// 键由规范化 state 摘要 + question 指纹及运行时上下文共同决定。
+func CanonicalKey(options ClientOptions, state json.RawMessage, questions map[string]Question) (string, error) {
+	stateDigest, err := StateDigest(state)
+	if err != nil {
+		return "", err
+	}
+	qFingerprint, err := QuestionFingerprint(questions)
+	if err != nil {
+		return "", err
+	}
+
 	payload := canonicalPayload{
 		Plane:                options.Plane,
 		Endpoint:             options.BaseURL,
@@ -82,8 +169,8 @@ func CanonicalKey(options ClientOptions, state json.RawMessage, questions map[st
 		ConfiguredModel:      options.Model,
 		PolicyVersion:        options.PolicyVersion,
 		RuntimeGeneration:    options.RuntimeGeneration,
-		State:                stateVal,
-		Questions:            normQuestions,
+		StateDigest:          stateDigest,
+		QuestionFingerprint:  qFingerprint,
 	}
 
 	data, err := json.Marshal(payload)
@@ -101,6 +188,16 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
+// CacheStats 统计缓存运行时的命中率与淘汰数。
+type CacheStats struct {
+	Hits      uint64  `json:"hits"`
+	Misses    uint64  `json:"misses"`
+	Evictions uint64  `json:"evictions"`
+	HitRate   float64 `json:"hit_rate"`
+	Size      int     `json:"size"`
+	Capacity  int     `json:"capacity"`
+}
+
 type decisionCache struct {
 	mu        sync.Mutex
 	capacity  int
@@ -109,6 +206,9 @@ type decisionCache struct {
 	jitter    func() float64
 	items     map[string]*list.Element
 	evictList *list.List
+	hits      uint64
+	misses    uint64
+	evictions uint64
 }
 
 func newCache(capacity int, ttl time.Duration, now func() time.Time, jitter func() float64) *decisionCache {
@@ -143,15 +243,18 @@ func (c *decisionCache) get(key string) (Result, bool) {
 
 	elem, ok := c.items[key]
 	if !ok {
+		c.misses++
 		return Result{}, false
 	}
 
 	entry := elem.Value.(*cacheEntry)
 	if c.now().After(entry.expiresAt) {
 		c.evictElement(elem)
+		c.misses++
 		return Result{}, false
 	}
 
+	c.hits++
 	c.evictList.MoveToFront(elem)
 	return cloneResult(entry.result), true
 }
@@ -202,6 +305,26 @@ func (c *decisionCache) evictElement(elem *list.Element) {
 	c.evictList.Remove(elem)
 	entry := elem.Value.(*cacheEntry)
 	delete(c.items, entry.key)
+	c.evictions++
+}
+
+func (c *decisionCache) stats() CacheStats {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	total := c.hits + c.misses
+	rate := 0.0
+	if total > 0 {
+		rate = float64(c.hits) / float64(total) * 100
+	}
+	return CacheStats{
+		Hits:      c.hits,
+		Misses:    c.misses,
+		Evictions: c.evictions,
+		HitRate:   rate,
+		Size:      c.evictList.Len(),
+		Capacity:  c.capacity,
+	}
 }
 
 func cloneResult(src Result) Result {

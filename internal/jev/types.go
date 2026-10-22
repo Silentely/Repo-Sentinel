@@ -45,6 +45,13 @@ type ScoreQuestion struct {
 
 func (q ScoreQuestion) questionType() string { return "score" }
 
+// Request 表示向 Jev 发起的请求实体契约。
+type Request struct {
+	Model     string              `json:"model"`
+	State     json.RawMessage     `json:"state"`
+	Questions map[string]Question `json:"questions"`
+}
+
 // Answer 是 Jev 返回的单题回答联合类型。
 type Answer struct {
 	Type          string             `json:"type"`

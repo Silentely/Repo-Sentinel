@@ -2,6 +2,8 @@ package jev
 
 import (
 	"encoding/json"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -94,6 +96,11 @@ func TestCacheTTLAndEviction(t *testing.T) {
 		t.Fatal("k1 应该仍然存在")
 	}
 
+	st := c.stats()
+	if st.Evictions != 1 {
+		t.Fatalf("expected 1 eviction, got %d", st.Evictions)
+	}
+
 	// 时间前进 11 分钟后全部过期
 	now = now.Add(11 * time.Minute)
 	if _, ok := c.get("k1"); ok {
@@ -102,6 +109,112 @@ func TestCacheTTLAndEviction(t *testing.T) {
 	if _, ok := c.get("k3"); ok {
 		t.Fatal("过期后 k3 不应命中")
 	}
+
+	st2 := c.stats()
+	// k1 和 k3 过期访问被移除各算一次 eviction
+	if st2.Evictions != 3 {
+		t.Fatalf("expected 3 evictions after TTL expiry, got %d", st2.Evictions)
+	}
+	if st2.Hits != 2 {
+		t.Fatalf("expected 2 hits, got %d", st2.Hits)
+	}
+	if st2.Misses != 3 {
+		t.Fatalf("expected 3 misses, got %d", st2.Misses)
+	}
+	// 命中率 2 / (2 + 3) = 40%
+	if st2.HitRate != 40.0 {
+		t.Fatalf("expected 40.0 hit rate, got %f", st2.HitRate)
+	}
+}
+
+func TestCacheIsCacheable(t *testing.T) {
+	// 正常可缓存请求
+	normalState := json.RawMessage(`{"kind":"workflow_run","conclusion":"failure"}`)
+	if !IsCacheable(normalState) {
+		t.Fatal("normal state should be cacheable")
+	}
+
+	// 敏感请求：顶层 sensitive 字段
+	sensitive1 := json.RawMessage(`{"sensitive":true,"kind":"push"}`)
+	if IsCacheable(sensitive1) {
+		t.Fatal("sensitive state must not be cacheable")
+	}
+
+	// 敏感请求：文件列表中存在 sensitive: true
+	sensitiveFiles := json.RawMessage(`{"files":[{"path":".env","sensitive":true}]}`)
+	if IsCacheable(sensitiveFiles) {
+		t.Fatal("state with sensitive files must not be cacheable")
+	}
+
+	// 敏感请求：包含 [REDACTED_SECRET]
+	sensitiveSecret := json.RawMessage(`{"text":"token is [REDACTED_SECRET]"}`)
+	if IsCacheable(sensitiveSecret) {
+		t.Fatal("state with redacted secret must not be cacheable")
+	}
+
+	// 超长/截断请求：顶层 truncated
+	truncated1 := json.RawMessage(`{"truncated":true,"kind":"push"}`)
+	if IsCacheable(truncated1) {
+		t.Fatal("truncated state must not be cacheable")
+	}
+	truncated2 := json.RawMessage(`{"diff_truncated":true,"kind":"pr"}`)
+	if IsCacheable(truncated2) {
+		t.Fatal("diff_truncated state must not be cacheable")
+	}
+
+	// 包含 [TRUNCATED] 标识
+	truncatedTag := json.RawMessage(`{"summary":"diff [TRUNCATED]"}`)
+	if IsCacheable(truncatedTag) {
+		t.Fatal("state with [TRUNCATED] must not be cacheable")
+	}
+
+	// 超过缓存体积上限 (MaxCacheableStateSize = 4096)
+	oversize := json.RawMessage(`{"padding":"` + strings.Repeat("x", 4100) + `"}`)
+	if IsCacheable(oversize) {
+		t.Fatal("oversize state must not be cacheable")
+	}
+}
+
+func TestCacheConcurrentReadWriteRace(t *testing.T) {
+	now := time.Unix(1000, 0)
+	c := newCache(50, 10*time.Minute, func() time.Time { return now }, nil)
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	// 读 goroutines
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					_, _ = c.get("k1")
+					_, _ = c.get("k2")
+					_ = c.stats()
+				}
+			}
+		}()
+	}
+
+	// 写 goroutines
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				c.put("k1", Result{Model: "m1"})
+				c.put("k2", Result{Model: "m2"})
+			}
+		}(i)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	close(stop)
+	wg.Wait()
 }
 
 func TestCacheDeepClone(t *testing.T) {

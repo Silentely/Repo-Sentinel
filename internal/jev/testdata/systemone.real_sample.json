@@ -1,0 +1,115 @@
+{
+  "notification_triage": {
+    "model": "jev-1.14.0",
+    "answers": {
+      "is_actionable": {
+        "type": "noul",
+        "noul": 0.05,
+        "confidence": 0.94
+      },
+      "noise_type": {
+        "type": "choice",
+        "choice": "bot_chatter",
+        "confidence": 0.95,
+        "probabilities": {
+          "normal": 0.05,
+          "bot_chatter": 0.95
+        }
+      },
+      "severity_tier": {
+        "type": "choice",
+        "choice": "low",
+        "confidence": 0.91,
+        "probabilities": {
+          "critical": 0.01,
+          "high": 0.02,
+          "medium": 0.07,
+          "low": 0.90
+        }
+      },
+      "incident_tag": {
+        "type": "choice",
+        "choice": "general",
+        "confidence": 0.93,
+        "probabilities": {
+          "security": 0.01,
+          "ci": 0.02,
+          "dependency": 0.02,
+          "maintenance": 0.02,
+          "general": 0.93
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 284,
+      "output_tokens": 52
+    }
+  },
+  "review_cascade": {
+    "model": "jev-1.14.0",
+    "answers": {
+      "needs_deep_review": {
+        "type": "noul",
+        "noul": 0.02,
+        "confidence": 0.98
+      },
+      "risk_surface": {
+        "type": "choice",
+        "choice": "documentation_only",
+        "confidence": 0.97,
+        "probabilities": {
+          "documentation_only": 0.97,
+          "business_logic": 0.02,
+          "security_critical": 0.01
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 195,
+      "output_tokens": 36
+    }
+  },
+  "chatops_guardrail": {
+    "model": "jev-1.14.0",
+    "answers": {
+      "safety_decision": {
+        "type": "choice",
+        "choice": "allow",
+        "confidence": 0.96,
+        "probabilities": {
+          "allow": 0.96,
+          "deny": 0.02,
+          "uncertain": 0.02
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 142,
+      "output_tokens": 28
+    }
+  },
+  "score_metric": {
+    "model": "jev-1.14.0",
+    "answers": {
+      "urgency": {
+        "type": "score",
+        "score": 1.7,
+        "confidence": 0.88,
+        "legend": {
+          "0": "Routine",
+          "1": "Soon",
+          "2": "Immediate"
+        },
+        "probabilities": {
+          "0": 0.05,
+          "1": 0.20,
+          "2": 0.75
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 210,
+      "output_tokens": 40
+    }
+  }
+}

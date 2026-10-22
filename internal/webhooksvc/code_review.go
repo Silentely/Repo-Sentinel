@@ -275,7 +275,7 @@ func (s *Service) evaluatePRGate(ctx context.Context, req prReviewRequest, diff 
 		skip, err := shouldSkipByJev(ctx, cli, files)
 		if err != nil {
 			if s.Logger != nil {
-				s.Logger.Warn("pr review cascade gate: jev evaluation failed, fallback to deep review", "repo", req.fullName, "pr", req.prNum, "error", err)
+				s.Logger.Warn("pr review cascade gate: jev evaluation failed, fallback to deep review", "repo", req.fullName, "pr", req.prNum, "error", err, "error_class", jev.ClassifyError(err))
 			}
 			return false, ""
 		}

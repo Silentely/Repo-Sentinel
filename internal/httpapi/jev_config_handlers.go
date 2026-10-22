@@ -45,6 +45,12 @@ type jevStatusResponse struct {
 	TotalFailed        uint64  `json:"total_failed"`
 	SuccessRate        float64 `json:"success_rate"`
 	CacheHits          uint64  `json:"cache_hits"`
+	CacheHitRate       float64 `json:"cache_hit_rate"`
+	CacheEvictions     uint64  `json:"cache_evictions"`
+	LatencyP50Ms       float64 `json:"latency_p50_ms"`
+	LatencyP95Ms       float64 `json:"latency_p95_ms"`
+	CircuitState       string  `json:"circuit_state"`
+	CircuitTransitions int64   `json:"circuit_transitions"`
 	WouldSuppressCount uint64  `json:"would_suppress_count"`
 	WouldSkipCount     uint64  `json:"would_skip_count"`
 	SuppressedCount    uint64  `json:"suppressed_count"`
@@ -126,7 +132,8 @@ func (s *server) handleGetJevConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mSnap := jev.GlobalMetrics().Snapshot()
-	var totalCalls, totalFailures, totalHits uint64
+	var totalCalls, totalFailures, totalHits, totalMisses, totalEvicts uint64
+	var maxP50, maxP95 float64
 	for _, c := range mSnap.Calls {
 		totalCalls += c
 	}
@@ -136,6 +143,41 @@ func (s *server) handleGetJevConfig(w http.ResponseWriter, r *http.Request) {
 	for _, h := range mSnap.CacheHits {
 		totalHits += h
 	}
+	for _, m := range mSnap.CacheMisses {
+		totalMisses += m
+	}
+	for _, e := range mSnap.CacheEvicts {
+		totalEvicts += e
+	}
+	for _, p := range mSnap.LatencyP50 {
+		if p > maxP50 {
+			maxP50 = p
+		}
+	}
+	for _, p := range mSnap.LatencyP95 {
+		if p > maxP95 {
+			maxP95 = p
+		}
+	}
+	cacheHitRate := 0.0
+	if totalHits+totalMisses > 0 {
+		cacheHitRate = float64(totalHits) / float64(totalHits+totalMisses) * 100
+	}
+
+	circuitState := "closed"
+	var totalTransitions int64
+	if s.dependencies.JevRuntime != nil {
+		bStats := s.dependencies.JevRuntime.BreakerStats()
+		for _, st := range bStats {
+			totalTransitions += st.TotalTransitions
+			if st.State == "open" {
+				circuitState = "open"
+			} else if st.State == "half_open" && circuitState != "open" {
+				circuitState = "half_open"
+			}
+		}
+	}
+
 	successRate := 100.0
 	if totalCalls > 0 {
 		if totalFailures >= totalCalls {
@@ -191,6 +233,12 @@ func (s *server) handleGetJevConfig(w http.ResponseWriter, r *http.Request) {
 		TotalFailed:        totalFailures,
 		SuccessRate:        successRate,
 		CacheHits:          totalHits,
+		CacheHitRate:       cacheHitRate,
+		CacheEvictions:     totalEvicts,
+		LatencyP50Ms:       maxP50,
+		LatencyP95Ms:       maxP95,
+		CircuitState:       circuitState,
+		CircuitTransitions: totalTransitions,
 		WouldSuppressCount: mSnap.WouldSuppress,
 		WouldSkipCount:     mSnap.WouldSkip,
 		SuppressedCount:    mSnap.Suppressed,
@@ -540,6 +588,7 @@ func (s *server) handlePostJevTest(w http.ResponseWriter, r *http.Request) {
 		if s.dependencies.Logger != nil {
 			s.dependencies.Logger.WarnContext(r.Context(), "jev test connectivity failed",
 				"error", err,
+				"error_class", jev.ClassifyError(err),
 				"model", snap.Model,
 				"base_url", snap.BaseURL,
 				"request_id", requestIDFromContext(r.Context()),

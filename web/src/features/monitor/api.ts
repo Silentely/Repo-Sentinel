@@ -1008,6 +1008,12 @@ export interface JevStatusDTO {
   total_failed: number;
   success_rate: number;
   cache_hits: number;
+  cache_hit_rate?: number;
+  cache_evictions?: number;
+  latency_p50_ms?: number;
+  latency_p95_ms?: number;
+  circuit_state?: "closed" | "half_open" | "open" | string;
+  circuit_transitions?: number;
   would_suppress_count: number;
   would_skip_count: number;
   suppressed_count: number;

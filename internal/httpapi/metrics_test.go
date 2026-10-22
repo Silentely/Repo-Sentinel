@@ -211,9 +211,16 @@ func TestJevMetricsExport(t *testing.T) {
 
 	for _, expected := range []string{
 		"reposentinel_jev_requests_total{plane=\"notification\"}",
+		"reposentinel_jev_requests_success_total{plane=\"notification\"}",
 		"reposentinel_jev_requests_failed_total{plane=\"notification\"}",
 		"reposentinel_jev_cache_hits_total{plane=\"notification\"}",
+		"reposentinel_jev_cache_hit_rate{plane=\"notification\"}",
+		"reposentinel_jev_cache_evicts_total{plane=\"notification\"}",
 		"reposentinel_jev_fallbacks_total{plane=\"notification\"}",
+		"reposentinel_jev_latency_p50_ms{plane=\"notification\"}",
+		"reposentinel_jev_latency_p95_ms{plane=\"notification\"}",
+		"reposentinel_jev_circuit_state{plane=\"notification\"}",
+		"reposentinel_jev_circuit_transitions_total{plane=\"notification\"}",
 		"reposentinel_jev_suppressed_total",
 		"reposentinel_jev_skipped_total",
 		"reposentinel_jev_would_skip_total",

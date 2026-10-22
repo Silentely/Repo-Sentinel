@@ -186,11 +186,48 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	// Jev 判别式决策指标导出
 	jevSnap := jev.GlobalMetrics().Snapshot()
+	var bStats map[string]jev.BreakerStats
+	if s.dependencies.JevRuntime != nil {
+		bStats = s.dependencies.JevRuntime.BreakerStats()
+	}
 	for _, plane := range []string{"notification", "review", "chatops"} {
 		writeMetric("reposentinel_jev_requests_total{plane=\""+plane+"\"}", "Jev decision requests issued", "counter", jevSnap.Calls[plane])
+		succ := uint64(0)
+		if jevSnap.Calls[plane] >= jevSnap.Failures[plane] {
+			succ = jevSnap.Calls[plane] - jevSnap.Failures[plane]
+		}
+		writeMetric("reposentinel_jev_requests_success_total{plane=\""+plane+"\"}", "Jev decision requests succeeded", "counter", succ)
 		writeMetric("reposentinel_jev_requests_failed_total{plane=\""+plane+"\"}", "Jev decision requests failed", "counter", jevSnap.Failures[plane])
 		writeMetric("reposentinel_jev_cache_hits_total{plane=\""+plane+"\"}", "Jev decision cache hits", "counter", jevSnap.CacheHits[plane])
+		hits := jevSnap.CacheHits[plane]
+		misses := jevSnap.CacheMisses[plane]
+		hitRate := 0.0
+		if hits+misses > 0 {
+			hitRate = float64(hits) / float64(hits+misses)
+		}
+		writeFloatMetric("reposentinel_jev_cache_hit_rate{plane=\""+plane+"\"}", "Jev decision cache hit rate", "gauge", hitRate)
+		writeMetric("reposentinel_jev_cache_evicts_total{plane=\""+plane+"\"}", "Jev decision cache evictions", "counter", jevSnap.CacheEvicts[plane])
 		writeMetric("reposentinel_jev_fallbacks_total{plane=\""+plane+"\"}", "Jev circuit/rate-limit fallbacks", "counter", jevSnap.Fallbacks[plane])
+		writeFloatMetric("reposentinel_jev_latency_p50_ms{plane=\""+plane+"\"}", "Jev decision latency P50 in ms", "gauge", jevSnap.LatencyP50[plane])
+		writeFloatMetric("reposentinel_jev_latency_p95_ms{plane=\""+plane+"\"}", "Jev decision latency P95 in ms", "gauge", jevSnap.LatencyP95[plane])
+
+		stateVal := uint64(0)
+		transitions := uint64(0)
+		if bStats != nil {
+			if st, ok := bStats[plane]; ok {
+				switch st.State {
+				case "closed":
+					stateVal = 0
+				case "half_open":
+					stateVal = 1
+				case "open":
+					stateVal = 2
+				}
+				transitions = uint64(st.TotalTransitions)
+			}
+		}
+		writeMetric("reposentinel_jev_circuit_state{plane=\""+plane+"\"}", "Jev circuit breaker state (0=closed, 1=half_open, 2=open)", "gauge", stateVal)
+		writeMetric("reposentinel_jev_circuit_transitions_total{plane=\""+plane+"\"}", "Jev circuit state transitions", "counter", transitions)
 	}
 	writeMetric("reposentinel_jev_suppressed_total", "Notifications suppressed by Jev noise filter", "counter", jevSnap.Suppressed)
 	writeMetric("reposentinel_jev_skipped_total", "PR reviews skipped by Jev cascade gate", "counter", jevSnap.Skipped)

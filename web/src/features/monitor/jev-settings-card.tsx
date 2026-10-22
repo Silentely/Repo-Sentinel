@@ -107,10 +107,31 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
         </div>
 
         <div className="status-item" style={{ padding: "12px" }}>
-          <span className="status-item__label">决策缓存命中</span>
+          <span className="status-item__label">决策缓存 (LRU+TTL)</span>
           <strong>{status.cache_hits.toLocaleString()}</strong>
           <span style={{ display: "block", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px" }}>
-            节省外部开销
+            命中率 {(status.cache_hit_rate ?? 0).toFixed(1)}% · 淘汰 {status.cache_evictions ?? 0}
+          </span>
+        </div>
+
+        <div className="status-item" style={{ padding: "12px" }}>
+          <span className="status-item__label">熔断状态 (Circuit)</span>
+          <strong style={{
+            fontSize: "1.1rem",
+            color: status.circuit_state === "open" ? "var(--danger)" : status.circuit_state === "half_open" ? "var(--warning)" : "var(--success)"
+          }}>
+            {status.circuit_state === "open" ? "熔断开启" : status.circuit_state === "half_open" ? "半开探测" : "正常闭合"}
+          </strong>
+          <span style={{ display: "block", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px" }}>
+            流转 {status.circuit_transitions ?? 0} 次 · {status.circuit_state || "closed"}
+          </span>
+        </div>
+
+        <div className="status-item" style={{ padding: "12px" }}>
+          <span className="status-item__label">研判延时 (分位)</span>
+          <strong>{(status.latency_p50_ms ?? 0).toFixed(1)} <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>ms</span></strong>
+          <span style={{ display: "block", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px" }}>
+            P50 · P95: {(status.latency_p95_ms ?? 0).toFixed(1)} ms
           </span>
         </div>
       </div>

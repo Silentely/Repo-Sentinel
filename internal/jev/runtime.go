@@ -126,6 +126,36 @@ func (r *RuntimeConfig) Client(plane string) Client {
 	return r.clients[plane]
 }
 
+// BreakerStats 获取所有决策面的熔断器状态快照。
+func (r *RuntimeConfig) BreakerStats() map[string]BreakerStats {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	res := make(map[string]BreakerStats, len(r.clients))
+	for name, cli := range r.clients {
+		if impl, ok := cli.(*clientImpl); ok {
+			res[name] = impl.BreakerStats()
+		} else {
+			res[name] = BreakerStats{State: "closed"}
+		}
+	}
+	return res
+}
+
+// CacheStats 获取所有决策面的缓存统计快照。
+func (r *RuntimeConfig) CacheStats() map[string]CacheStats {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	res := make(map[string]CacheStats, len(r.clients))
+	for name, cli := range r.clients {
+		if impl, ok := cli.(*clientImpl); ok {
+			res[name] = impl.CacheStats()
+		} else {
+			res[name] = CacheStats{}
+		}
+	}
+	return res
+}
+
 // SetClientForTest 注入指定决策面的测试客户端（仅供单元测试使用）。
 func (r *RuntimeConfig) SetClientForTest(plane string, cli Client) {
 	r.mu.Lock()
@@ -213,7 +243,7 @@ func DecryptAPIKey(ctx context.Context, ring *cryptox.KeyRing, envelope string) 
 // LoadStoredConfig 从持久化存储读取配置。
 func LoadStoredConfig(ctx context.Context, data store.Store) (StoredConfig, error) {
 	var stored StoredConfig
-	if data == nil {
+	if data == nil || data.Settings() == nil {
 		return stored, nil
 	}
 	setting, err := data.Settings().Get(ctx, RuntimeSettingKey)
@@ -231,6 +261,9 @@ func LoadStoredConfig(ctx context.Context, data store.Store) (StoredConfig, erro
 
 // SaveStoredConfig 将配置写入持久化存储。
 func SaveStoredConfig(ctx context.Context, data store.Store, stored StoredConfig) error {
+	if data == nil || data.Settings() == nil {
+		return nil
+	}
 	raw, err := json.Marshal(stored)
 	if err != nil {
 		return err
@@ -247,7 +280,7 @@ func SaveStoredConfig(ctx context.Context, data store.Store, stored StoredConfig
 
 // MergeFromStore 从持久化存储读取配置并与当前环境变量运行时合并。
 func MergeFromStore(ctx context.Context, data store.Store, ring *cryptox.KeyRing, rt *RuntimeConfig) error {
-	if data == nil || rt == nil {
+	if data == nil || data.Settings() == nil || rt == nil {
 		return nil
 	}
 

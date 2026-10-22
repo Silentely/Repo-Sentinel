@@ -166,6 +166,7 @@ func prepareNotificationWithChannels(
 			l.WarnContext(ctx, "notification jev judge failed, fallback to raw event",
 				"repo", repoFullName,
 				"error", err,
+				"error_class", jev.ClassifyError(err),
 				"mode", cfg.Mode,
 				"model", cfg.Model,
 			)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -34,6 +35,7 @@ type ClientOptions struct {
 	HTTPClient           *http.Client
 	Now                  func() time.Time
 	Jitter               func() float64
+	Breaker              BreakerConfig
 }
 
 type clientImpl struct {
@@ -61,7 +63,7 @@ func NormalizeEndpoint(baseURL string) string {
 	return clean + "/v1/systemone"
 }
 
-// NewClient 构造带故障隔离与硬预算的 Jev 客户端实例。
+// NewClient 构造带故障隔离、硬预算与连接超时的 Jev 客户端实例。
 func NewClient(options ClientOptions) (Client, error) {
 	if options.BaseURL == "" {
 		return nil, errors.New("jev: base_url is required")
@@ -70,15 +72,8 @@ func NewClient(options ClientOptions) (Client, error) {
 	if err != nil || (parsed.Scheme != "https" && options.HTTPClient == nil) {
 		return nil, errors.New("jev: base_url must be https")
 	}
-	isProbe := options.Plane == "probe" || options.Plane == "test"
-	if isProbe {
-		if options.Timeout <= 0 || options.Timeout > 60*time.Second {
-			options.Timeout = 30 * time.Second
-		}
-	} else {
-		if options.Timeout <= 0 || options.Timeout > 60*time.Second {
-			options.Timeout = 30 * time.Second
-		}
+	if options.Timeout <= 0 || options.Timeout > 60*time.Second {
+		options.Timeout = 30 * time.Second
 	}
 	if options.MaxConcurrency <= 0 || options.MaxConcurrency > 32 {
 		options.MaxConcurrency = 8
@@ -102,10 +97,20 @@ func NewClient(options ClientOptions) (Client, error) {
 
 	httpClient := options.HTTPClient
 	if httpClient == nil {
+		connectTimeout := options.Timeout / 2
+		if connectTimeout <= 0 || connectTimeout > 5*time.Second {
+			connectTimeout = 5 * time.Second
+		}
 		transport := &http.Transport{
-			MaxConnsPerHost:     options.MaxConcurrency,
-			MaxIdleConnsPerHost: options.MaxConcurrency,
-			IdleConnTimeout:     90 * time.Second,
+			DialContext: (&net.Dialer{
+				Timeout:   connectTimeout,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout:   connectTimeout,
+			ResponseHeaderTimeout: options.Timeout,
+			MaxConnsPerHost:       options.MaxConcurrency,
+			MaxIdleConnsPerHost:   options.MaxConcurrency,
+			IdleConnTimeout:       90 * time.Second,
 		}
 		httpClient = &http.Client{
 			Transport: transport,
@@ -118,7 +123,7 @@ func NewClient(options ClientOptions) (Client, error) {
 	return &clientImpl{
 		opts:       options,
 		httpClient: httpClient,
-		breaker:    newBreaker(now, 30*time.Second),
+		breaker:    newBreaker(now, options.Breaker),
 		cache:      newCache(5000, 10*time.Minute, now, jitter),
 		flight:     new(singleflight.Group),
 		semaphore:  make(chan struct{}, options.MaxConcurrency),
@@ -127,19 +132,40 @@ func NewClient(options ClientOptions) (Client, error) {
 	}, nil
 }
 
+func (c *clientImpl) BreakerStats() BreakerStats {
+	if c.breaker == nil {
+		return BreakerStats{State: "closed"}
+	}
+	return c.breaker.getStats()
+}
+
+func (c *clientImpl) CacheStats() CacheStats {
+	if c.cache == nil {
+		return CacheStats{}
+	}
+	return c.cache.stats()
+}
+
 func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions map[string]Question) (Result, error) {
 	GlobalMetrics().RecordCall(c.opts.Plane)
+	start := c.now()
+	defer func() {
+		costMs := float64(c.now().Sub(start).Microseconds()) / 1000.0
+		GlobalMetrics().RecordLatency(c.opts.Plane, costMs)
+	}()
 
 	// 状态大小硬限制 8KiB
-	if len(state) > 8*1024 {
+	if len(state) > MaxStateSize {
 		GlobalMetrics().RecordFailure(c.opts.Plane)
+		GlobalMetrics().RecordFailureClass(c.opts.Plane, "decode")
 		return Result{}, ErrStateTooLarge
 	}
 
 	// 预估问题大小限制 8KiB
 	rawQ, err := json.Marshal(questions)
-	if err != nil || len(rawQ) > 8*1024 {
+	if err != nil || len(rawQ) > MaxStateSize {
 		GlobalMetrics().RecordFailure(c.opts.Plane)
+		GlobalMetrics().RecordFailureClass(c.opts.Plane, "decode")
 		return Result{}, ErrStateTooLarge
 	}
 
@@ -157,6 +183,7 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	}
 	if budget <= 0 {
 		GlobalMetrics().RecordFailure(c.opts.Plane)
+		GlobalMetrics().RecordFailureClass(c.opts.Plane, "timeout")
 		return Result{}, context.DeadlineExceeded
 	}
 
@@ -164,19 +191,23 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	defer cancel()
 
 	isChatOps := c.opts.Plane == "chatops"
+	cacheable := !isChatOps && IsCacheable(state)
 	var cacheKey string
 
-	if !isChatOps {
+	if cacheable {
 		var keyErr error
 		cacheKey, keyErr = CanonicalKey(c.opts, state, questions)
 		if keyErr != nil {
 			GlobalMetrics().RecordFailure(c.opts.Plane)
+			GlobalMetrics().RecordFailureClass(c.opts.Plane, "decode")
 			return Result{}, keyErr
 		}
 		if cached, hit := c.cache.get(cacheKey); hit {
 			GlobalMetrics().RecordCacheHit(c.opts.Plane)
+			GlobalMetrics().RecordSuccess(c.opts.Plane)
 			return cached, nil
 		}
+		GlobalMetrics().RecordCacheMiss(c.opts.Plane)
 	}
 
 	// 限流与熔断快速短路
@@ -184,12 +215,16 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	if c.now().Before(c.nextAllowedAt) {
 		c.mu.Unlock()
 		GlobalMetrics().RecordFallback(c.opts.Plane)
+		GlobalMetrics().RecordFailure(c.opts.Plane)
+		GlobalMetrics().RecordFailureClass(c.opts.Plane, "rate_limited")
 		return Result{}, ErrRateLimited
 	}
 	c.mu.Unlock()
 
 	if !c.breaker.allow() {
 		GlobalMetrics().RecordFallback(c.opts.Plane)
+		GlobalMetrics().RecordFailure(c.opts.Plane)
+		GlobalMetrics().RecordFailureClass(c.opts.Plane, "breaker_open")
 		return Result{}, ErrCircuitOpen
 	}
 
@@ -216,18 +251,19 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 		return res, nil
 	}
 
-	if isChatOps {
-		// ChatOps 严禁单飞与写缓存
+	// ChatOps 或非可缓存（敏感/超长截断）请求：严禁并发单飞，直通执行
+	if isChatOps || !cacheable {
 		res, err := executeWork(waitCtx)
 		if err != nil {
 			GlobalMetrics().RecordFailure(c.opts.Plane)
+			GlobalMetrics().RecordFailureClass(c.opts.Plane, ClassifyError(err))
 			return Result{}, err
 		}
+		GlobalMetrics().RecordSuccess(c.opts.Plane)
 		return res, nil
 	}
 
-	// 非 ChatOps：通过 singleflight.DoChan 抑制并发重复查询
-	// 共享远程工作 context 脱离单个 leader 取消，但受预算硬上限保护
+	// 非 ChatOps 可缓存请求：通过 singleflight.DoChan 抑制并发重复查询
 	sharedBudget := c.opts.Timeout
 	if sharedBudget <= 0 || sharedBudget > maxBudget {
 		sharedBudget = maxBudget
@@ -241,20 +277,27 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	select {
 	case <-waitCtx.Done():
 		GlobalMetrics().RecordFailure(c.opts.Plane)
+		GlobalMetrics().RecordFailureClass(c.opts.Plane, "timeout")
 		return Result{}, waitCtx.Err()
 	case res := <-ch:
 		if res.Err != nil {
 			GlobalMetrics().RecordFailure(c.opts.Plane)
+			GlobalMetrics().RecordFailureClass(c.opts.Plane, ClassifyError(res.Err))
 			return Result{}, res.Err
 		}
 		result := res.Val.(Result)
 		// 成功且非空写入缓存
 		c.cache.put(cacheKey, result)
+		GlobalMetrics().RecordSuccess(c.opts.Plane)
 		return result, nil
 	}
 }
 
 func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessage, questions map[string]Question) (Result, error) {
+	if ctx.Err() != nil {
+		return Result{}, ctx.Err()
+	}
+
 	parsedQuestions := make(map[string]interface{})
 	for k, q := range questions {
 		parsedQuestions[k] = q
@@ -275,6 +318,10 @@ func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessa
 	endpoint := NormalizeEndpoint(c.opts.BaseURL)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if ctx.Err() != nil {
+			return Result{}, ctx.Err()
+		}
+
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 		if err != nil {
 			return Result{}, err
@@ -289,7 +336,10 @@ func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessa
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			// context 超时/取消不重试
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+				if ctx.Err() != nil {
+					return Result{}, ctx.Err()
+				}
 				return Result{}, err
 			}
 			if attempt+1 < maxAttempts {

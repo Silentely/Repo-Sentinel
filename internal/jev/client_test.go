@@ -339,6 +339,161 @@ func TestPlaneIsolation(t *testing.T) {
 	}
 }
 
+func TestClientContextCancellationImmediatelyInterrupts(t *testing.T) {
+	requestStarted := make(chan struct{})
+	testDone := make(chan struct{})
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		// 阻塞等待测试结束或上层主动取消
+		select {
+		case <-testDone:
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"model":"m"}`))
+	}))
+	defer ts.Close()
+	defer close(testDone)
+
+	opts := ClientOptions{
+		BaseURL:        ts.URL,
+		Model:          "jev-1.14.0",
+		Plane:          "chatops",
+		Timeout:        10 * time.Second,
+		MaxConcurrency: 4,
+		HTTPClient:     ts.Client(),
+	}
+	client, err := NewClient(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	q := map[string]Question{"is_actionable": NoulQuestion{Type: "noul", Instructions: "Check"}}
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		_, err := client.Judge(ctx, json.RawMessage(`{}`), q)
+		done <- err
+	}()
+
+	// 等待服务端收到请求
+	<-requestStarted
+	// 上层主动取消
+	cancel()
+
+	// 验证 Judge 立刻中断返回 context.Canceled，而不是等待服务端的 5 秒
+	select {
+	case err := <-done:
+		cost := time.Since(start)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context.Canceled, got %v", err)
+		}
+		if cost >= 1*time.Second {
+			t.Fatalf("cancellation took too long: %v", cost)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("Judge did not cancel promptly")
+	}
+}
+
+func TestClientSensitiveAndTruncatedBypassCache(t *testing.T) {
+	respBytes, _ := os.ReadFile("testdata/systemone.response.json")
+	var calls atomic.Int32
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(respBytes)
+	}))
+	defer ts.Close()
+
+	opts := ClientOptions{
+		BaseURL:        ts.URL,
+		Model:          "jev-1.14.0",
+		Plane:          "notification",
+		Timeout:        1 * time.Second,
+		MaxConcurrency: 4,
+		HTTPClient:     ts.Client(),
+	}
+	client, _ := NewClient(opts)
+	q := map[string]Question{"is_actionable": NoulQuestion{Type: "noul", Instructions: "Check"}}
+
+	// 1. 敏感请求：两次相同请求均应透传到底层服务器，不入缓存
+	sensitiveState := json.RawMessage(`{"sensitive":true,"kind":"pr"}`)
+	_, err := client.Judge(context.Background(), sensitiveState, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Judge(context.Background(), sensitiveState, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("sensitive request must bypass cache; expected 2 calls, got %d", calls.Load())
+	}
+
+	// 2. 截断请求：两次相同请求同样不入缓存
+	truncatedState := json.RawMessage(`{"truncated":true,"kind":"push"}`)
+	_, err = client.Judge(context.Background(), truncatedState, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Judge(context.Background(), truncatedState, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 4 {
+		t.Fatalf("truncated request must bypass cache; expected 4 calls, got %d", calls.Load())
+	}
+
+	// 3. 正常请求：第 1 次调后端，第 2 次走缓存
+	normalState := json.RawMessage(`{"kind":"push","id":"123"}`)
+	_, err = client.Judge(context.Background(), normalState, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Judge(context.Background(), normalState, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 5 {
+		t.Fatalf("normal request should hit cache on second call; expected 5 calls, got %d", calls.Load())
+	}
+}
+
+func TestClassifyError(t *testing.T) {
+	cases := []struct {
+		err      error
+		expected string
+	}{
+		{nil, ""},
+		{ErrCircuitOpen, "breaker_open"},
+		{ErrRateLimited, "rate_limited"},
+		{context.DeadlineExceeded, "timeout"},
+		{context.Canceled, "timeout"},
+		{errors.New("connection timeout"), "timeout"},
+		{ErrMalformedDecision, "decode"},
+		{ErrStateTooLarge, "decode"},
+		{errors.New("json: cannot unmarshal string into Go struct"), "decode"},
+		{errors.New("jev: client error 404: not found"), "4xx"},
+		{errors.New("jev: client error 422: unprocessable"), "4xx"},
+		{errors.New("jev: server returned 500: internal error"), "5xx"},
+		{errors.New("jev: server returned 503"), "5xx"},
+		{errors.New("something totally arbitrary"), "unknown"},
+	}
+
+	for _, c := range cases {
+		got := ClassifyError(c.err)
+		if got != c.expected {
+			t.Errorf("ClassifyError(%v) = %q; want %q", c.err, got, c.expected)
+		}
+	}
+}
+
 func TestNormalizeEndpoint(t *testing.T) {
 	cases := []struct {
 		input    string

@@ -145,7 +145,7 @@ func (s *service) checkGuardrail(ctx context.Context, action ActionData, tokenID
 	if err != nil {
 		decision = StatusGuardrailUnavailable
 		if s.logger != nil {
-			s.logger.Warn("chatops guardrail: jev judge failed", "action", action.Action, "error", err)
+			s.logger.Warn("chatops guardrail: jev judge failed", "action", action.Action, "error", err, "error_class", jev.ClassifyError(err))
 		}
 	} else {
 		ans, hasAns := res.Answers["safety_decision"]

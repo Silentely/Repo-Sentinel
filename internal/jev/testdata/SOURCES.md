@@ -13,5 +13,6 @@
 
 - **本地样例身份声明**：
   - `systemone.request.json` 与 `systemone.response.json` 为严格依照官方协议规范构造的本地合成测试样例（Synthetic Test Fixtures），非生产在线真实请求录制。
+  - `systemone.real_sample.json` 为基于真实判别决策业务场景（通知分诊、PR 放行、ChatOps 护栏及评分度量）提取并彻底脱敏的响应自检样例，完全剥离所有私有代码、密钥凭据、真实主机与用户身份数据。
   - 测试样例中未包含任何真实 API 密钥、私有仓库代码、真实 Token 或未脱敏的用户身份标识。
   - 后续针对在线服务的 Opt-in 冒烟与录制测试将单独建立独立用例，并在归档前剥离凭据与真实 state。

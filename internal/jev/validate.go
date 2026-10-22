@@ -6,6 +6,103 @@ import (
 	"strconv"
 )
 
+// ValidateRequest 严格校验 SystemOne 请求实体是否合规。
+func ValidateRequest(req Request) error {
+	if req.Model == "" {
+		return ErrMalformedDecision
+	}
+	if len(req.State) == 0 || string(req.State) == "null" || len(req.State) > MaxStateSize {
+		return ErrMalformedDecision
+	}
+	// 校验 State 为合法 JSON
+	var stateVal any
+	if err := json.Unmarshal(req.State, &stateVal); err != nil {
+		return ErrMalformedDecision
+	}
+	if len(req.Questions) == 0 {
+		return ErrMalformedDecision
+	}
+	for _, q := range req.Questions {
+		if q == nil {
+			return ErrMalformedDecision
+		}
+		switch qTyped := q.(type) {
+		case NoulQuestion:
+			if qTyped.Type != "noul" || qTyped.Instructions == "" {
+				return ErrMalformedDecision
+			}
+		case ChoiceQuestion:
+			if qTyped.Type != "choice" || qTyped.Instructions == "" || len(qTyped.Criteria) < 2 {
+				return ErrMalformedDecision
+			}
+		case ScoreQuestion:
+			if qTyped.Type != "score" || qTyped.Instructions == "" || len(qTyped.Criteria) < 2 {
+				return ErrMalformedDecision
+			}
+		default:
+			return ErrMalformedDecision
+		}
+	}
+	return nil
+}
+
+// DecodeRequest 从原始 JSON 解析并校验 SystemOne 请求（含 questions.<name>.type 校验）。
+func DecodeRequest(raw []byte) (Request, error) {
+	var top struct {
+		Model     string                     `json:"model"`
+		State     json.RawMessage            `json:"state"`
+		Questions map[string]json.RawMessage `json:"questions"`
+	}
+	if err := json.Unmarshal(raw, &top); err != nil {
+		return Request{}, ErrMalformedDecision
+	}
+	if top.Model == "" || len(top.State) == 0 || string(top.State) == "null" || len(top.Questions) == 0 {
+		return Request{}, ErrMalformedDecision
+	}
+
+	questions := make(map[string]Question, len(top.Questions))
+	for k, qRaw := range top.Questions {
+		var typeProbe struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(qRaw, &typeProbe); err != nil || typeProbe.Type == "" {
+			return Request{}, ErrMalformedDecision
+		}
+		switch typeProbe.Type {
+		case "noul":
+			var nq NoulQuestion
+			if err := json.Unmarshal(qRaw, &nq); err != nil {
+				return Request{}, ErrMalformedDecision
+			}
+			questions[k] = nq
+		case "choice":
+			var cq ChoiceQuestion
+			if err := json.Unmarshal(qRaw, &cq); err != nil {
+				return Request{}, ErrMalformedDecision
+			}
+			questions[k] = cq
+		case "score":
+			var sq ScoreQuestion
+			if err := json.Unmarshal(qRaw, &sq); err != nil {
+				return Request{}, ErrMalformedDecision
+			}
+			questions[k] = sq
+		default:
+			return Request{}, ErrMalformedDecision
+		}
+	}
+
+	req := Request{
+		Model:     top.Model,
+		State:     top.State,
+		Questions: questions,
+	}
+	if err := ValidateRequest(req); err != nil {
+		return Request{}, err
+	}
+	return req, nil
+}
+
 // ValidateResult 严格检验结果是否符合题目约束与数值合法性。
 func ValidateResult(questions map[string]Question, result Result) error {
 	if result.Model == "" {
@@ -158,7 +255,8 @@ func validateScore(q ScoreQuestion, ans Answer) error {
 	return nil
 }
 
-// DecodeResult 从原始 JSON 中解码并进行全量结构与业务校验。
+// DecodeResult 从原始 JSON 中解码并进行全量结构与业务严格校验。
+// 任何缺字段、类型不符、非法数值均返回 ErrMalformedDecision，绝不默认放行。
 func DecodeResult(raw []byte, questions map[string]Question, model string) (Result, error) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &top); err != nil {
@@ -172,12 +270,24 @@ func DecodeResult(raw []byte, questions map[string]Question, model string) (Resu
 		}
 	}
 
+	// 严格校验 usage 字段结构（input_tokens 与 output_tokens 均非空且为非负整数）
+	var usageCheck struct {
+		InputTokens  *int `json:"input_tokens"`
+		OutputTokens *int `json:"output_tokens"`
+	}
+	if err := json.Unmarshal(top["usage"], &usageCheck); err != nil || usageCheck.InputTokens == nil || usageCheck.OutputTokens == nil {
+		return Result{}, ErrMalformedDecision
+	}
+	if *usageCheck.InputTokens < 0 || *usageCheck.OutputTokens < 0 {
+		return Result{}, ErrMalformedDecision
+	}
+
 	var res Result
 	if err := json.Unmarshal(raw, &res); err != nil {
 		return Result{}, ErrMalformedDecision
 	}
 
-	if res.Model != model {
+	if model != "" && res.Model != model {
 		return Result{}, ErrMalformedDecision
 	}
 
