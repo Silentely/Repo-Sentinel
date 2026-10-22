@@ -7,6 +7,7 @@ import { EmptyState } from "../../components/empty-state";
 import { ApiErrorAlert } from "../../components/error-alert";
 import { QueryGate } from "../../components/query-gate";
 import { RelativeTime } from "../../components/relative-time";
+import { StatusTooltip } from "../../components/status-tooltip";
 import { toApiError } from "../../lib/api/errors";
 import {
   channelLabel,
@@ -28,8 +29,10 @@ import {
   settingsQueryOptions,
   starTrendQueryOptions,
   systemHealthQueryOptions,
+  jevConfigQueryOptions,
   type SystemHealthDiagnostics,
   type SyncFreshnessSummary,
+  type JevConfigDTO,
 } from "./api";
 const StarTrendChart = lazy(() =>
   import("./star-trend-chart").then((m) => ({ default: m.StarTrendChart })),
@@ -92,19 +95,42 @@ function FreshnessBadge({ freshness }: { freshness?: SyncFreshnessSummary }) {
     : `同步状态正常${has_sync_error ? " [存在同步错误]" : ""}${as_of ? ` · 采样时间: ${new Date(as_of).toLocaleTimeString()}` : ""}`;
 
   return (
-    <span
-      className={`freshness-badge freshness-badge--${variant}`}
-      title={title}
-      data-testid="freshness-badge"
-      role="status"
+    <StatusTooltip
+      title="数据同步新鲜度"
+      badge={{
+        text: variant === "success" ? "实时正常" : variant === "warning" ? "对账延迟" : "同步滞后",
+        variant,
+      }}
+      rows={[
+        { label: "当前滞后", value: formatDuration(max_lag_seconds) },
+        ...(most_lagged_repo_name ? [{ label: "最大滞后仓库", value: most_lagged_repo_name }] : []),
+        ...(lagging_repo_count > 0 ? [{ label: "超5分钟仓库数", value: `${lagging_repo_count} 个` }] : []),
+        ...(as_of ? [{ label: "采样时间", value: new Date(as_of).toLocaleTimeString() }] : []),
+      ]}
+      alert={
+        has_sync_error
+          ? { type: "danger", message: "检测到同步错误，后台对账重试中" }
+          : max_lag_seconds > 300
+            ? { type: "danger", message: "数据滞后超 5 分钟，通常与 GitHub API 降级或后台任务受阻有关" }
+            : undefined
+      }
+      hint={max_lag_seconds > 300 ? "请检查 GitHub 连通性与后台调度状态" : "数据与 GitHub 保持实时同步"}
     >
-      {label}
-    </span>
+      <span
+        className={`freshness-badge freshness-badge--${variant}`}
+        title={title}
+        data-testid="freshness-badge"
+        role="status"
+        tabIndex={0}
+      >
+        {label}
+      </span>
+    </StatusTooltip>
   );
 }
 
 
-function SystemHealthBadges({ health }: { health?: SystemHealthDiagnostics }) {
+function SystemHealthBadges({ health, jev }: { health?: SystemHealthDiagnostics; jev?: JevConfigDTO }) {
   if (!health) return null;
 
   const isDegraded = health.status === "degraded";
@@ -114,6 +140,18 @@ function SystemHealthBadges({ health }: { health?: SystemHealthDiagnostics }) {
   const fileSize = health.storage?.file_size_bytes ?? 0;
   const storageMb = (fileSize / (1024 * 1024)).toFixed(1);
 
+  const ghError = health.github?.error;
+  const ghLimit = health.github?.rate_limit_limit ?? 0;
+  const ghRemaining = health.github?.rate_limit_remaining ?? 0;
+  const ghRateZero = ghLimit > 0 && ghRemaining === 0;
+
+  let ghTitle = `GitHub 剩余配额: ${ghRemaining}/${ghLimit}`;
+  if (ghError) {
+    ghTitle = `GitHub 探测失败: ${ghError}`;
+  } else if (ghRateZero) {
+    ghTitle = `GitHub 配额耗尽 (0/${ghLimit})`;
+  }
+
   return (
     <div
       className="system-health-badges"
@@ -121,42 +159,273 @@ function SystemHealthBadges({ health }: { health?: SystemHealthDiagnostics }) {
       data-testid="system-health-badges"
       role="status"
     >
-      <span
-        className={`system-badge system-badge--${dbOk ? "success" : "danger"}`}
-        title={`数据库驱动: ${health.database_driver}`}
+      <StatusTooltip
+        title="底层数据库"
+        badge={{ text: dbOk ? "正常" : "故障", variant: dbOk ? "success" : "danger" }}
+        rows={[
+          { label: "驱动类型", value: health.database_driver || "内置驱动" },
+          { label: "连通性", value: dbOk ? "OK (Ping 正常)" : "DOWN (连接中断)" },
+          { label: "系统运行", value: formatDuration(health.uptime_seconds) },
+        ]}
+        alert={!dbOk ? { type: "danger", message: "数据库连接中断，请排查数据库服务" } : undefined}
       >
-        DB: {dbOk ? "OK" : "DOWN"}
-      </span>
+        <span
+          className={`system-badge system-badge--${dbOk ? "success" : "danger"}`}
+          title={`数据库驱动: ${health.database_driver}`}
+          tabIndex={0}
+        >
+          DB: {dbOk ? "OK" : "DOWN"}
+        </span>
+      </StatusTooltip>
+
       {fileSize > 0 ? (
-        <span className="system-badge system-badge--neutral" title="数据库存储占用">
-          存储: {storageMb} MB
-        </span>
+        <StatusTooltip
+          title="数据库存储占用"
+          badge={{ text: "存储正常", variant: "neutral" }}
+          rows={[
+            { label: "数据大小", value: `${storageMb} MB` },
+            ...(health.storage?.wal_size_bytes
+              ? [{ label: "WAL 缓存", value: `${(health.storage.wal_size_bytes / (1024 * 1024)).toFixed(1)} MB` }]
+              : []),
+            { label: "进程内存", value: `${health.memory_alloc_mb} MB (分配)` },
+          ]}
+        >
+          <span className="system-badge system-badge--neutral" title="数据库存储占用" tabIndex={0}>
+            存储: {storageMb} MB
+          </span>
+        </StatusTooltip>
       ) : null}
+
       {(health.outbox?.pending_count ?? 0) > 0 ? (
-        <span className="system-badge system-badge--warning" title="Outbox 待投递消息">
-          Outbox: {health.outbox.pending_count} 待发
-        </span>
+        <StatusTooltip
+          title="Outbox 异步队列"
+          badge={{ text: `${health.outbox.pending_count} 待发`, variant: "warning" }}
+          rows={[
+            { label: "待投递消息", value: `${health.outbox.pending_count} 条` },
+            { label: "累计已送达", value: `${health.outbox.delivered_count} 条` },
+            { label: "死信积压", value: `${health.outbox.dead_count} 条` },
+          ]}
+          hint="Webhook / Telegram 异步分发管道"
+        >
+          <span className="system-badge system-badge--warning" title="Outbox 待投递消息" tabIndex={0}>
+            Outbox: {health.outbox.pending_count} 待发
+          </span>
+        </StatusTooltip>
       ) : null}
+
       {health.github?.configured ? (
-        <span
-          className={`system-badge system-badge--${ghStatus === "ok" ? "success" : "warning"}`}
-          title={`GitHub 剩余配额: ${health.github.rate_limit_remaining}/${health.github.rate_limit_limit}`}
+        <StatusTooltip
+          title="GitHub API 状态"
+          badge={{
+            text: ghStatus === "ok" ? "正常" : "降级",
+            variant: ghStatus === "ok" ? "success" : "warning",
+          }}
+          rows={[
+            {
+              label: "API 剩余配额",
+              value: ghError && ghLimit === 0 ? "0 / 0 (探针异常)" : `${ghRemaining} / ${ghLimit}`,
+            },
+            { label: "集成模式", value: "已配置 GitHub App" },
+          ]}
+          alert={
+            ghError
+              ? { type: "danger", message: `探针探测异常: ${ghError}` }
+              : ghRateZero
+                ? { type: "warning", message: "API 速率限制已耗尽 (Rate Limit Exceeded)" }
+                : undefined
+          }
+          hint={
+            ghStatus === "ok"
+              ? "速率自适应与健康监控正常"
+              : "可在「设置」中检查 GitHub App 凭据或排查外网连通性"
+          }
         >
-          GH: {ghStatus === "ok" ? "OK" : "降级"}
-        </span>
+          <span
+            className={`system-badge system-badge--${ghStatus === "ok" ? "success" : "warning"}`}
+            title={ghTitle}
+            tabIndex={0}
+          >
+            GH: {ghStatus === "ok" ? "OK" : "降级"}
+          </span>
+        </StatusTooltip>
       ) : null}
+
       {health.ai_budget ? (
-        <span
-          className={`system-badge system-badge--${aiThrottled ? "danger" : "success"}`}
-          title={`AI 当日调用: ${health.ai_budget.daily_calls_used} 次, Token: ${health.ai_budget.daily_tokens_used}`}
+        <StatusTooltip
+          title="AI 智能分析预算"
+          badge={{
+            text: aiThrottled ? "熔断限流" : "预算正常",
+            variant: aiThrottled ? "danger" : "success",
+          }}
+          align="right"
+          rows={[
+            {
+              label: "今日调用次数",
+              value: health.ai_budget.daily_call_limit > 0
+                ? `${health.ai_budget.daily_calls_used} / ${health.ai_budget.daily_call_limit} 次`
+                : `${health.ai_budget.daily_calls_used} 次 (不限)`,
+            },
+            {
+              label: "今日 Token 消耗",
+              value: health.ai_budget.daily_token_limit > 0
+                ? `${health.ai_budget.daily_tokens_used.toLocaleString()} / ${health.ai_budget.daily_token_limit.toLocaleString()}`
+                : `${health.ai_budget.daily_tokens_used.toLocaleString()} (不限)`,
+            },
+          ]}
+          alert={
+            aiThrottled
+              ? { type: "danger", message: "单日调用或 Token 超出限额，已触发保护熔断" }
+              : undefined
+          }
+          hint="每天 00:00 UTC 自动重置配额"
         >
-          AI: {aiThrottled ? "熔断限流" : "正常"}
-        </span>
+          <span
+            className={`system-badge system-badge--${aiThrottled ? "danger" : "success"}`}
+            title={`AI 当日调用: ${health.ai_budget.daily_calls_used} 次, Token: ${health.ai_budget.daily_tokens_used}`}
+            tabIndex={0}
+          >
+            AI: {aiThrottled ? "熔断限流" : "正常"}
+          </span>
+        </StatusTooltip>
       ) : null}
+
+      {jev ? (() => {
+        const jevStatus = jev.status;
+        const mode = jevStatus?.mode || (jev.enabled ? jev.mode : "disabled") || "disabled";
+        const isCircuitOpen = jevStatus?.circuit_state === "open";
+        const isShadow = mode === "shadow";
+        const isActive = mode === "active";
+        const isDisabled = mode === "disabled" || !jev.enabled;
+
+        let jevVariant: "success" | "warning" | "danger" | "neutral" = "neutral";
+        let jevLabel = "Jev: 未启用";
+        let badgeText = "未启用";
+
+        if (isCircuitOpen) {
+          jevVariant = "danger";
+          jevLabel = "Jev: 熔断";
+          badgeText = "熔断保护";
+        } else if (isActive) {
+          jevVariant = "success";
+          jevLabel = "Jev: 接管中";
+          badgeText = "生产接管";
+        } else if (isShadow) {
+          jevVariant = "warning";
+          jevLabel = `Jev: 影子 (${jevStatus?.shadow_days ?? 0}天)`;
+          badgeText = "影子观察";
+        }
+
+        const jevTitle = `Jev 引擎: ${badgeText} (模型: ${jev.model || "默认"})`;
+
+        return (
+          <StatusTooltip
+            title="Jev 智能决策引擎"
+            badge={{ text: badgeText, variant: jevVariant }}
+            align="right"
+            rows={[
+              {
+                label: "运行模式",
+                value: isActive ? "生产接管 (Active)" : isShadow ? "影子观察 (Shadow)" : "未启用",
+              },
+              { label: "决策模型", value: jev.model || "默认模型" },
+              {
+                label: "熔断状态",
+                value: isCircuitOpen
+                  ? "🔴 触发熔断 (Open)"
+                  : jevStatus?.circuit_state === "half_open"
+                    ? "🟡 半开探测 (Half-Open)"
+                    : "🟢 闭合正常 (Closed)",
+              },
+              ...(jevStatus?.total_requests
+                ? [
+                    {
+                      label: "P50 / P95",
+                      value: `${jevStatus.latency_p50_ms ?? 0}ms / ${jevStatus.latency_p95_ms ?? 0}ms`,
+                    },
+                    {
+                      label: "请求成功率",
+                      value: `${((jevStatus.success_rate ?? 1) * 100).toFixed(1)}% (${jevStatus.total_requests} 次)`,
+                    },
+                  ]
+                : []),
+              ...(isShadow
+                ? [
+                    {
+                      label: "观察进度",
+                      value: `${jevStatus?.shadow_days ?? 0} 天 / 目标 7 天`,
+                    },
+                    {
+                      label: "拟抑制通知",
+                      value: `${jevStatus?.would_suppress_count ?? 0} 条`,
+                    },
+                    {
+                      label: "拟跳过审查",
+                      value: `${jevStatus?.would_skip_count ?? 0} 次`,
+                    },
+                  ]
+                : []),
+              ...(isActive
+                ? [
+                    {
+                      label: "已抑制通知",
+                      value: `${jevStatus?.suppressed_count ?? 0} 条`,
+                    },
+                    {
+                      label: "已跳过审查",
+                      value: `${jevStatus?.skipped_count ?? 0} 次`,
+                    },
+                  ]
+                : []),
+            ]}
+            alert={
+              isCircuitOpen
+                ? {
+                    type: "danger",
+                    message: "Jev 熔断保护已开启，决策已自动回退至本地启发式规则",
+                  }
+                : isShadow
+                  ? {
+                      type: "warning",
+                      message: `当前处于 7 天影子观察期（第 ${jevStatus?.shadow_days ?? 0} 天），仅记录不阻断`,
+                    }
+                  : undefined
+            }
+            hint="智能门控与通知降噪引擎 · 可在「设置 -> Jev 引擎」中调整规则"
+          >
+            <span
+              className={`system-badge system-badge--${jevVariant}`}
+              title={jevTitle}
+              data-testid="jev-badge"
+              tabIndex={0}
+            >
+              {jevLabel}
+            </span>
+          </StatusTooltip>
+        );
+      })() : null}
       {isDegraded ? (
-        <span className="system-badge system-badge--danger" title="系统处于局部降级运行模式">
-          ● 局部降级
-        </span>
+        <StatusTooltip
+          title="系统综合运行状态"
+          badge={{ text: "局部降级", variant: "danger" }}
+          align="right"
+          rows={[
+            { label: "运行模式", value: "局部降级 (Degraded)" },
+            { label: "活跃协程", value: `${health.goroutines} 个` },
+          ]}
+          alert={{
+            type: "warning",
+            message: ghStatus !== "ok"
+              ? "因 GitHub API 探测异常，系统已进入局部降级保护模式"
+              : aiThrottled
+                ? "因 AI 额度耗尽，相关智能分析降级"
+                : "部分外部依赖或组件运行受限",
+          }}
+          hint="核心值守功能仍在运转，受限子系统可能出现延迟"
+        >
+          <span className="system-badge system-badge--danger" title="系统处于局部降级运行模式" tabIndex={0}>
+            ● 局部降级
+          </span>
+        </StatusTooltip>
       ) : null}
     </div>
   );
@@ -167,6 +436,7 @@ export function DashboardPage() {
   const dashboard = useQuery(dashboardQueryOptions);
   const repos = useQuery(repositoriesQueryOptions);
   const health = useQuery(systemHealthQueryOptions);
+  const jevConfig = useQuery(jevConfigQueryOptions);
   // 折叠状态从 localStorage 恢复，切换后写回。
   // 面板查询按折叠状态暂停：折叠的「通知投递/最近事件/Star 增长」零请求零轮询，
   // 展开时若缓存新鲜直接显示，过期则骨架加载（QueryGate 兜底）。
@@ -324,7 +594,7 @@ export function DashboardPage() {
           <div className="page-intro__status">
             <p className="eyebrow">值守概览</p>
             <FreshnessBadge freshness={stats?.freshness} />
-            <SystemHealthBadges health={health.data} />
+            <SystemHealthBadges health={health.data} jev={jevConfig.data} />
           </div>
           <h1>现在是否健康，今天发生了什么。</h1>
           <p>Webhook 入库后会在此汇总。仓库对账与基线放行请在「设置」中操作。</p>

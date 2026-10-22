@@ -1,0 +1,139 @@
+/* 胶囊状态悬浮提示卡片 (Neo-brutalist Tooltip) */
+.status-tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.status-tooltip-wrapper .system-badge,
+.status-tooltip-wrapper .freshness-badge {
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.status-tooltip-wrapper .system-badge:hover,
+.status-tooltip-wrapper .freshness-badge:hover,
+.status-tooltip-wrapper .system-badge:focus-visible,
+.status-tooltip-wrapper .freshness-badge:focus-visible {
+  transform: translateY(-1px);
+}
+
+.status-tooltip-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 100;
+  width: max-content;
+  min-width: 220px;
+  max-width: 340px;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  box-shadow: 3px 3px 0 var(--shadow-neo);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+  text-align: left;
+  pointer-events: auto;
+  animation: tooltipFadeIn 0.15s ease-out;
+}
+
+.status-tooltip-panel--left {
+  left: 0;
+}
+
+.status-tooltip-panel--right {
+  right: 0;
+  left: auto;
+}
+
+.status-tooltip-panel--center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.status-tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px dashed var(--border-muted);
+  font-weight: 700;
+}
+
+.status-tooltip-title {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.status-tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.status-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.76rem;
+}
+
+.status-tooltip-label {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.status-tooltip-value {
+  font-weight: 600;
+  word-break: break-all;
+  text-align: right;
+}
+
+.status-tooltip-alert {
+  margin-top: 4px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  word-break: break-all;
+  line-height: 1.35;
+}
+
+.status-tooltip-alert--danger {
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  border: 1px solid var(--danger);
+}
+
+.status-tooltip-alert--warning {
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+  border: 1px solid var(--warning);
+}
+
+.status-tooltip-alert--info {
+  background: var(--info-bg);
+  color: var(--info-fg);
+  border: 1px solid var(--info);
+}
+
+.status-tooltip-footer {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-muted);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}

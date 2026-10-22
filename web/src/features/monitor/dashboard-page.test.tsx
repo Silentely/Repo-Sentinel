@@ -126,6 +126,28 @@ const fixtures = vi.hoisted(() => ({
       is_throttled: false,
     },
   },
+  jev: {
+    enabled: true,
+    model: "jev-1.14.0",
+    mode: "active",
+    status: {
+      mode: "active",
+      shadow_days: 0,
+      total_requests: 120,
+      total_failed: 0,
+      success_rate: 1.0,
+      cache_hits: 85,
+      latency_p50_ms: 120,
+      latency_p95_ms: 310,
+      circuit_state: "closed",
+      would_suppress_count: 0,
+      would_skip_count: 0,
+      suppressed_count: 42,
+      skipped_count: 18,
+      active_ready: true,
+      active_gate_detail: "",
+    },
+  },
   // 分页数据由 beforeEach 用工厂函数重建，便于单测切换截断/未截断场景。
   events: null as null | { items: Record<string, unknown>[]; page: number; per_page: number; total: number },
   outbox: null as null | { items: Record<string, unknown>[]; page: number; per_page: number; total: number },
@@ -211,6 +233,10 @@ vi.mock("./api", () => ({
   systemHealthQueryOptions: {
     queryKey: ["test", "health"],
     queryFn: async () => fixtures.health,
+  },
+  jevConfigQueryOptions: {
+    queryKey: ["test", "jev"],
+    queryFn: async () => fixtures.jev,
   },
 
   retryOutbox: vi.fn(async () => {}),
@@ -460,5 +486,61 @@ describe("仪表盘", () => {
     expect(badge).toHaveClass("freshness-badge--danger");
     expect(badge).toHaveAttribute("title", expect.stringContaining("owner/repo-b"));
     expect(badge).toHaveAttribute("title", expect.stringContaining("存在同步错误"));
+  });
+
+  it("渲染 Jev 引擎胶囊（生产接管态）", async () => {
+    fixtures.jev = {
+      enabled: true,
+      model: "jev-1.14.0",
+      mode: "active",
+      status: {
+        mode: "active",
+        shadow_days: 0,
+        total_requests: 50,
+        total_failed: 0,
+        success_rate: 1,
+        cache_hits: 20,
+        circuit_state: "closed",
+        would_suppress_count: 0,
+        would_skip_count: 0,
+        suppressed_count: 10,
+        skipped_count: 5,
+        active_ready: true,
+        active_gate_detail: "",
+      },
+    } as any;
+    renderPage();
+
+    const badge = await screen.findByTestId("jev-badge");
+    expect(badge).toHaveTextContent("Jev: 接管中");
+    expect(badge).toHaveClass("system-badge--success");
+  });
+
+  it("渲染 Jev 引擎胶囊（影子观察态与熔断态）", async () => {
+    fixtures.jev = {
+      enabled: true,
+      model: "jev-1.14.0",
+      mode: "shadow",
+      status: {
+        mode: "shadow",
+        shadow_days: 3,
+        total_requests: 20,
+        total_failed: 0,
+        success_rate: 1,
+        cache_hits: 5,
+        circuit_state: "open",
+        would_suppress_count: 2,
+        would_skip_count: 1,
+        suppressed_count: 0,
+        skipped_count: 0,
+        active_ready: false,
+        active_gate_detail: "",
+      },
+    } as any;
+    renderPage();
+
+    const badge = await screen.findByTestId("jev-badge");
+    expect(badge).toHaveTextContent("Jev: 熔断");
+    expect(badge).toHaveClass("system-badge--danger");
   });
 });
