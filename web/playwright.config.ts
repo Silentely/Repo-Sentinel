@@ -6,6 +6,8 @@ const desktopPort = 34_117;
 const mobilePort = 34_118;
 
 function serverCommand(name: string, port: number): string {
+  // CI 预编译二进制供复用，跳过 `go run` 每次重新编译；本地开发时回退到 go run。
+  const binary = process.env.REPOSENTINEL_E2E_BIN || "go run -tags production ./cmd/reposentinel";
   return [
     "sh -c '",
     "mkdir -p .test-run-data && ",
@@ -22,7 +24,7 @@ function serverCommand(name: string, port: number): string {
     "REPOSENTINEL_LOG_LEVEL=error ",
     "REPOSENTINEL_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff ",
     'REPOSENTINEL_DATABASE_URL="file:$e2e_dir/reposentinel.db" ',
-    "exec go run -tags production ./cmd/reposentinel serve'",
+    `exec ${binary} serve'`,
   ].join("");
 }
 

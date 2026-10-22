@@ -98,6 +98,11 @@ jobs:
           # 未设置时契约测试自动 skip；设置后对 PostgreSQL 跑全套运行时契约与迁移
           REPOSENTINEL_TEST_POSTGRES_URL: postgres://reposentinel:reposentinel@127.0.0.1:55432/reposentinel_test?sslmode=disable
 
+      # 预编译 e2e 用的 Go 二进制，供 Playwright 的两个 webServer 复用，
+      # 避免各自通过 `go run` 编译二进制时多次重复编译。
+      - name: Build e2e binary
+        run: go build -tags production -ldflags "-X github.com/Silentely/Repo-Sentinel/internal/buildinfo.buildChannel=e2e" -o web/reposentinel-e2e ./cmd/reposentinel
+
       - name: Set up pnpm
         # 先装 pnpm 再加入 PATH：setup-node 的 cache:pnpm 需要 pnpm 可执行文件
         # 定位 store 目录，不能依赖 runner 镜像预装（镜像滚动更新可能移除）。
@@ -122,15 +127,23 @@ jobs:
           pnpm lint
           pnpm test -- --run
 
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('web/package.json') }}
+
       - name: Install Playwright Chromium
         working-directory: web
         run: pnpm exec playwright install --with-deps chromium
 
-      # e2e 覆盖首次设置/登录/移动端抽屉等关键路径；webServer 经 go run 编译生产构建，
-      # 复用 setup-go 的构建缓存。
+      # e2e 覆盖首次设置/登录/移动端抽屉等关键路径；webServer 使用 workflow 预编译的二进制，
+      # 避免重复通过 `go run` 编译。
       - name: Playwright e2e
         working-directory: web
         run: pnpm e2e
+        env:
+          REPOSENTINEL_E2E_BIN: ${{ github.workspace }}/web/reposentinel-e2e
 
       - name: Upload Playwright report on failure
         if: failure()
