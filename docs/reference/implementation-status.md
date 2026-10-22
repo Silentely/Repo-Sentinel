@@ -60,4 +60,4 @@ pnpm --dir web test -- --run
 5. `restore` 后必须用匹配主密钥启动，否则加密渠道凭据失效。  
 6. 周报/月报与每日摘要共用渠道的「接收定期汇总」开关，暂不支持按报告类型分渠道订阅。  
 7. 智能值守功能默认关闭：未配置 `REPOSENTINEL_AI_API_KEY` 时不发起任何外部请求；AI 输出经 HTML 转义后嵌入通知，失败自动降级不影响投递。  
-8. 主密钥轮换没有批量重加密命令：`REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS` 仅用于解密存量密文，必须保留至所有凭据在管理台重新保存，提前移除会使未重存的凭据无法解密。详见 [运维手册 · 主密钥轮换](/reference/ops#主密钥轮换)。  
+8. 主密钥轮换支持 `reposentinel secret rotate-keys` 批量重加密与 `--dry-run` 只读预检；`REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS` 必须保留至重加密完成且预检确认无待轮换记录，提前移除会使未迁移的凭据无法解密。详见 [运维手册 · 主密钥轮换](/reference/ops#主密钥轮换)。

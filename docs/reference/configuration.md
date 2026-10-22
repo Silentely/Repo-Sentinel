@@ -115,7 +115,7 @@ reposentinel config validate --config configs/reposentinel.example.yaml
 | 变量 | 说明 |
 |------|------|
 | `REPOSENTINEL_ENCRYPTION_KEY` | 当前主密钥；解码后 **正好 32 字节**（base64 或 hex） |
-| `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS` | 轮换期间的上一把密钥，仅用于解密存量密文；须保留至所有凭据在管理台重新保存（见 [运维手册 · 主密钥轮换](/reference/ops#主密钥轮换)） |
+| `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS` | 轮换期间的上一把密钥，用于解密存量密文；须保留至批量重加密或逐处重新保存完成（见 [运维手册 · 主密钥轮换](/reference/ops#主密钥轮换)） |
 
 ```bash
 openssl rand -base64 32
@@ -213,6 +213,32 @@ openssl rand -hex 32
 
 配置错误返回稳定 `validation_failed`，不会回显密码、连接串或主密钥原文。
 
+### Jev 判别式决策（可选）
+
+Jev 为通知降噪、PR 审查门控与 ChatOps 护栏提供判定，独立于智能值守的生成式模型配置。默认关闭；启用时需提供 API Key，并分别开启所需能力。上线门禁与应急操作见 [Jev 运维手册](/guide/jev-operations)。
+
+| 变量 | 说明 |
+|------|------|
+| `REPOSENTINEL_JEV_ENABLED` | 总开关，默认 `false` |
+| `REPOSENTINEL_JEV_BASE_URL` | HTTPS 主机地址，默认 `https://api.typesafe.ai`；不含路径、查询参数或凭据 |
+| `REPOSENTINEL_JEV_API_KEY` | API Key，启用时必填 |
+| `REPOSENTINEL_JEV_MODEL` | 默认 `jev-1.14.0` |
+| `REPOSENTINEL_JEV_MODE` | `shadow`（默认）或 `active`；关闭请设置 `enabled=false`，不支持 `off` |
+| `REPOSENTINEL_JEV_RETRIES` | 重试次数，`0` / `1`，默认 `1`，仍受单次预算约束 |
+| `REPOSENTINEL_JEV_NOISE_FILTER_ENABLED` | 通知降噪，默认 `false` |
+| `REPOSENTINEL_JEV_ROUTING_ENABLED` | 通知智能路由，默认 `false` |
+| `REPOSENTINEL_JEV_CASCADE_GATE_ENABLED` | PR 审查门控，默认 `false` |
+| `REPOSENTINEL_JEV_CHATOPS_GUARDRAIL_ENABLED` | ChatOps 护栏，默认 `false` |
+| `REPOSENTINEL_JEV_ALLOW_PRIVATE_STATE` | 允许发送私有仓库的脱敏状态，默认 `false` |
+| `REPOSENTINEL_JEV_NOTIFICATION_TIMEOUT` | 通知判定预算，默认 `30s`，范围 `1ms`–`60s` |
+| `REPOSENTINEL_JEV_REVIEW_TIMEOUT` | PR 门控预算，默认 `30s`，范围 `1ms`–`60s` |
+| `REPOSENTINEL_JEV_CHATOPS_TIMEOUT` | ChatOps 护栏预算，默认 `30s`，范围 `1ms`–`60s` |
+| `REPOSENTINEL_JEV_NOTIFICATION_MAX_CONCURRENCY` | 通知并发上限，默认 `8`，范围 `1`–`32` |
+| `REPOSENTINEL_JEV_REVIEW_MAX_CONCURRENCY` | PR 门控并发上限，默认 `8`，范围 `1`–`32` |
+| `REPOSENTINEL_JEV_CHATOPS_MAX_CONCURRENCY` | ChatOps 护栏并发上限，默认 `8`，范围 `1`–`32` |
+
+管理后台可保存配置并热生效，API Key 加密存储且不回显。数据库中已保存的非密钥设置会覆盖启动配置；启动配置提供了 API Key 时使用该密钥，否则读取数据库中的密文。加载数据库配置时，旧版保存的不超过 `1s` 的各决策面预算会升级为 `30s`。
+
 ---
 
 ## YAML
@@ -230,6 +256,7 @@ reposentinel serve --config configs/reposentinel.example.yaml
 ```yaml
 ai:
   enabled: true
+  api_key: "ollama" # 本地网关可用占位值；应用启用校验要求非空
   base_url: "http://127.0.0.1:11434/v1"
   model: "llama3.1"
   timeout: "60s"

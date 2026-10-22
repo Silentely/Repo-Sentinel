@@ -32,7 +32,8 @@ Jev 在系统中承担三个业务面的轻量判别式决策（YES/NO/CHOICE/SC
 ```
 
 ### 步骤一：初始配置（Shadow 模式）
-在管理面板「Jev 判别引擎」或配置文件中填入 Endpoint、API Key 及模型，模式设为 `shadow`：
+在管理面板 **Jev 判别引擎** 或配置文件的 `jev` 段中填入 Base URL、API Key 及模型，模式设为 `shadow`。Base URL 使用 HTTPS 主机地址（默认 `https://api.typesafe.ai`），不含路径、查询参数或凭据。完整变量见 [配置参考](/reference/configuration#jev-判别式决策-可选)。
+- `enabled: true`
 - `mode: "shadow"`
 - `noise_filter_enabled: true`
 - `cascade_gate_enabled: true`
@@ -45,13 +46,23 @@ Jev 在系统中承担三个业务面的轻量判别式决策（YES/NO/CHOICE/SC
 2. 管理员在后台定期抽样检查跳过的 PR 与被标记抑制的通知，确认无漏报和误杀。
 
 ### 步骤三：执行上线门禁验证
-在将模式切换为 `active` 之前，必须通过本地测试套件完成基线验证，将经过审计签名的评估记录写入 `system_settings` 的 `jev.evaluation.v1`：
+在将模式切换为 `active` 之前，必须通过本地测试套件完成基线验证，由维护者审核评估结果并将摘要写入 `system_settings` 的 `jev.evaluation.v1`：
 - **标注数据集校验**：195 条金标样本测试全通过，误抑制率 = 0，敏感 PR 误跳过 = 0，合法高危动作误拒率 <= 5%。
-- **真实 API 冒烟**：使用 `REPOSENTINEL_JEV_LIVE_EVAL=1` 验证真实 API 凭据及协议兼容性。
-- **负载演练**：通过 `REPOSENTINEL_JEV_LOAD_TEST=1` 验证 30 秒高并发注入下断路器熔断与降级正常。
+- **真实 API 冒烟**：设置 `REPOSENTINEL_JEV_LIVE_TEST=1` 与 `REPOSENTINEL_JEV_API_KEY`，验证真实 API 凭据及协议兼容性。缺少任一条件时测试会跳过，不能视为通过。
+- **负载演练**：有界测试覆盖并发限制、500 故障熔断与决策面隔离；设置 `REPOSENTINEL_JEV_LOAD_TEST=1` 可追加 30 秒并发循环。该循环复用相同状态并可命中缓存，不能视为持续远程故障注入的证据。
+
+在仓库根目录执行（真实冒烟前先设置 API Key 环境变量）：
+
+```bash
+go test -race ./internal/jev -run 'TestCasesDatasetIntegrity|TestOfflineSimulationEvaluation' -v
+REPOSENTINEL_JEV_LIVE_TEST=1 go test ./internal/jev -run TestLiveSystemOne -v
+REPOSENTINEL_JEV_LOAD_TEST=1 go test -race ./internal/jev -run TestLoadAndFaultInjection_Bounded -v
+```
+
+这些测试不会自动写入 `jev.evaluation.v1`。当前 API 校验摘要中的字段和门槛，不验证密码学签名；评估证据的审核与入库流程需由维护者确认。离线模拟结果不能替代生产影子期、真实 API 或双数据库回归证据。
 
 ### 步骤四：渐进式激活 (Active)
-在管理后台将模式变更为 `active`。若门禁未全部满足，API 将拒绝变更并返回 `activation_evidence_missing`。
+在管理后台将模式变更为 `active`。API 拒绝变更时，错误码区分为：`activation_evidence_missing`（缺少记录）、`activation_evidence_invalid`（记录无法解析）、`activation_evidence_mismatch`（模型不匹配）或 `activation_gate_failed`（门槛未满足）。
 
 ---
 
@@ -62,8 +73,8 @@ Jev API Key 使用系统主密钥进行 AES-GCM 封装加密存储（绑定 AAD 
   ```bash
   reposentinel secret rotate-keys --config configs/reposentinel.yaml
   ```
-  该命令会自动重新加密 Jev API Key 密文并更新其 `credential_generation`。
-- **缓存失效机制**：决策缓存 Key 绑定了 `CredentialGeneration` 与 `RuntimeGeneration`。一旦轮换密钥或更新配置，旧凭据下的所有缓存即刻逻辑失效，防止凭据撤销后依然复用旧决策。
+  按 [主密钥轮换流程](/reference/ops#主密钥轮换) 先停止服务，并设置当前与上一把主密钥，再执行该命令。它会重新加密数据库中的 Jev API Key 信封，不会更换上游 API Key，也不会更新持久化的 `credential_generation`。
+- **缓存失效机制**：决策缓存为进程内缓存；重启后为空。通过管理后台保存配置时会重建客户端及缓存。CLI 重加密数据库不会清除仍在运行的服务进程中的缓存。
 
 ---
 
@@ -72,7 +83,8 @@ Jev API Key 使用系统主密钥进行 AES-GCM 封装加密存储（绑定 AAD 
 ### 限流与自适应退避 (429 / 529)
 当 Jev 上游返回 HTTP 429 或 529 时：
 1. 客户端解析 `Retry-After` 头（支持秒数或 HTTP-Date）。
-2. 在退避时间窗口内，后续请求立即短路返回 `ErrRateLimited`，平滑回退到传统规则或全量审查，绝不重试堆积。
+2. 在退避时间窗口内，后续需要远程判定的请求快速失败。当前请求可在剩余预算允许时退避并重试一次（`retries: 1`，默认值）；预算不足或禁用重试时返回 `ErrRateLimited`。
+3. `Retry-After` 达到 15 秒时同时触发断路器，冷却期采用该退避时长。通知回退到静态规则，PR 门控回退到深度审查；ChatOps 高危操作在 `active` 模式下需明确放行，否则拒绝执行。
 
 ### 断路器熔断与自愈 (5xx & 网络中断)
 1. **熔断阈值**：任一决策面在连续遭遇 5 次上游真正失败（5xx、网络中断、畸形响应）后，断路器进入 `Open` 状态。
@@ -87,16 +99,16 @@ Jev API Key 使用系统主密钥进行 AES-GCM 封装加密存储（绑定 AAD 
 当 Jev 出现未预期的上游异常或决策偏差，而运维人员需要快速临时旁路时，可通过管理后台启用应急顾问降级：
 - **最大有效期**：单次最多 15 分钟（`now < until <= now + 15m`）。
 - **强制填写原因**：提交必须附带非空操作原因（`emergency_advisory_reason`），系统全程计入安全审计日志。
-- **降级行为**：在降级窗口内，决策引擎表现如同 `shadow` 模式，所有决策面安全旁路，保障主干业务绝对不受阻。
-- **自动恢复**：达到指定截止时间后，系统自动退出降级恢复 `active` 状态，无需人工二次操作；系统重启也会自动继承有效截止时间。
+- **降级行为**：降级窗口仅影响 ChatOps 护栏：Jev 判定改为仅记录、不拦截，原有鉴权与单次令牌检查仍生效。通知降噪与 PR 审查门控不受该窗口影响；如需三个决策面均只观察，请将模式改为 `shadow`。
+- **自动恢复**：截止后，ChatOps 按当前配置模式恢复护栏判定；系统重启会继承尚未过期的截止时间。
 
 ---
 
 ## 6. 特殊场景操作指南
 
-### ChatOps 临时确认 Token 清理失败
-- ChatOps 敏感操作确认采用零缓存单次 Token 机制。
-- 若因网络抖动导致操作后清理 Token 失败，该 Token 将在到期（默认 5 分钟）后由系统 GC 自动作废；运维人员亦可在管理后台强制废弃。
+### ChatOps 操作令牌释放失败
+- ChatOps 使用持久化的单次操作令牌；Jev 护栏请求不缓存、不合并。
+- 护栏不可用时，系统尝试释放已领取的令牌以允许重试。若释放失败，该令牌仍保持已消费状态，应重新生成操作。令牌在消费时检查到期时间；未指定 TTL 时默认为 15 分钟。当前未提供管理后台强制废弃入口。
 
 ### 强制深度审查 (`force_deep_review`)
 - 对于被 Jev 级联门控判为跳过的 Pull Request，开发或评审人员可在 PR 详情卡片中点击「⚡ 强制深度审查」。
@@ -104,6 +116,6 @@ Jev API Key 使用系统主密钥进行 AES-GCM 封装加密存储（绑定 AAD 
 
 ### 总开关彻底关闭与平滑回退
 若需彻底停用 Jev：
-1. 在管理后台将模式设置为 `off`。
-2. 现有在途请求将收到 context 取消并安全退出。
-3. 数据库保留配置字段，所有通知和审查流程无缝回退至纯规则引擎模式。
+1. 在管理后台关闭 **启用 Jev 决策引擎**（`enabled: false`）；`mode` 仅支持 `shadow` / `active`，不接受 `off`。
+2. 保存后，新请求不再使用 Jev；已有在途请求仍按原上下文和超时预算结束。
+3. 数据库保留配置字段，通知使用静态规则，PR 恢复常规深度审查流程，ChatOps 保留原有鉴权与令牌检查。

@@ -22,7 +22,7 @@ pnpm --dir web install
 pnpm --dir web dev
 ```
 
-Vite 默认监听 `5173`，并把 `/api`、`/health`、`/metrics`、`/oauth`、`/mcp`、`/openapi.json`、`/.well-known` 代理到 `127.0.0.1:8080`。本地联调登录页版本号、MCP 与 OAuth 端点不必绕过 dev server。前端客户端使用相对路径，与嵌入式生产模式一致。
+Vite 默认监听 `5173`，并把 `/api`、`/health`、`/oauth`、`/mcp`、`/openapi.json`、`/.well-known` 代理到 `127.0.0.1:8080`。本地联调登录页版本号、MCP 与 OAuth 端点不必绕过 dev server。前端客户端使用相对路径，与嵌入式生产模式一致。
 
 ## 生产式单二进制
 

@@ -38,4 +38,4 @@
 ## 4. 缓存与失效机制
 
 - 采用 LRU 缓存，键值基于 `CanonicalKey`：包含 Endpoint、Model、PolicyVersion、CredentialGeneration、RuntimeGeneration、Plane、State、Questions 经统一标准化排序后的 SHA256。
-- 密钥轮换或配置热更会导致 `CredentialGeneration` / `RuntimeGeneration` 单调递增，自动使既往缓存逻辑失效。
+- 管理后台保存配置会重建客户端与缓存；进程重启后缓存为空。CLI 主密钥轮换仅重加密数据库中的 API Key 信封，不更新持久化的 credential generation，也不清除其他运行中进程的缓存。

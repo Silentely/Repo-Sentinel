@@ -101,12 +101,20 @@ docker run --rm -v "$PWD:/backup" postgres:17-alpine \
 
 主密钥加密库内敏感凭据（通知渠道密钥、AI API Key、两步验证密钥等）。轮换要让新旧密钥短暂共存：旧密钥负责解密存量密文，新密钥负责之后写入的密文。
 
-1. 生成新的 32 字节密钥：`openssl rand -base64 32`
-2. 把旧值写入 `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS`，新值写入 `REPOSENTINEL_ENCRYPTION_KEY`
-3. 重启服务。启动时应用会用新密钥重写内部加密探针，探针随即由新密钥保护；渠道凭据仍由旧密钥加密，读取时自动回退到 `PREVIOUS` 解密
-4. 在管理台重新保存每一处加密凭据：通知渠道密钥、AI API Key、两步验证密钥。每次保存都会用新密钥重新加密该条数据
+1. 备份数据库和当前主密钥，停止服务，避免运行中的进程继续写入旧密钥密文。
+2. 生成新的 32 字节密钥：`openssl rand -base64 32`。把旧值写入 `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS`，新值写入 `REPOSENTINEL_ENCRYPTION_KEY`。
+3. 使用与服务相同的数据库配置，先预检再执行批量重加密：
 
-**在全部凭据重新保存之前，不要移除 `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS`。** 当前没有批量重加密命令，移除后尚未重存的凭据将无法解密：通知渠道取不到密钥会投递失败，AI 配置读取报错，两步验证无法启用。解密回退不会输出日志，无法从服务端判断旧密文是否已全部清空，因此以「管理台已逐处重新保存」作为移除条件。
+   ```bash
+   reposentinel secret rotate-keys --config /path/to/reposentinel.yaml --dry-run
+   reposentinel secret rotate-keys --config /path/to/reposentinel.yaml
+   ```
+
+   `--dry-run` 只读扫描，不修改数据库；不带该参数时，在事务中重加密通知渠道、AI/Jev API Key、GitHub App 配置与两步验证密钥等存量凭据。
+4. 确认命令成功，再运行一次 `--dry-run`，核对 `channels_rotated=0`、`settings_rotated=0`；它们在预检输出中表示仍需轮换的记录数。
+5. 保管旧密钥用于恢复旧备份，移除服务环境中的 `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS`，使用新主密钥重启并验证登录与通知。
+
+**重加密成功并确认无待轮换记录之前，不要移除 `REPOSENTINEL_ENCRYPTION_KEY_PREVIOUS`。** 未迁移的凭据仍依赖旧密钥解密。若选择在管理台逐处重新保存凭据，也必须保留旧密钥直至所有凭据完成迁移。
 
 `PREVIOUS` 必须填加密时实际使用的旧值；填错时启动会因内部探针无法解密而报 `encryption_key_mismatch`。
 
