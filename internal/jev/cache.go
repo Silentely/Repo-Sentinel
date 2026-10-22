@@ -2,20 +2,20 @@ package jev
 
 import (
 	"bytes"
-	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"math"
-	"math/rand/v2"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
-// MaxCacheableStateSize 定义允许进入决策缓存的最大状态字节数（超长请求不入缓存）。
-const MaxCacheableStateSize = 4096
+const (
+	MaxAllowedStateSize   = 64 * 1024 // 64 KiB
+	MaxCacheableStateSize = 4 * 1024  // 4 KiB
+)
 
 type canonicalQuestion struct {
 	Type         string   `json:"type"`
@@ -102,35 +102,86 @@ func QuestionFingerprint(questions map[string]Question) (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
-// IsTruncatedState 判断请求状态是否包含截断标记（截断状态严禁自动放行，必须保守终局）。
+// CanonicalKey 计算客户端调用的完整缓存键（严格区分不同 Model、Endpoint 与配置代次）。
+func CanonicalKey(opts ClientOptions, state json.RawMessage, questions map[string]Question) (string, error) {
+	sd, err := StateDigest(state)
+	if err != nil {
+		return "", err
+	}
+	qf, err := QuestionFingerprint(questions)
+	if err != nil {
+		return "", err
+	}
+
+	model := opts.Model
+	if model == "" {
+		model = "default"
+	}
+
+	payload := canonicalPayload{
+		Plane:                opts.Plane,
+		Endpoint:             NormalizeEndpoint(opts.BaseURL),
+		Model:                model,
+		ConfiguredModel:      opts.Model,
+		CredentialGeneration: opts.CredentialGeneration,
+		PolicyVersion:        opts.PolicyVersion,
+		RuntimeGeneration:    opts.RuntimeGeneration,
+		StateDigest:          sd,
+		QuestionFingerprint:  qf,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:]), nil
+}
+
+// IsTruncatedState 判定请求状态是否包含截断标记（截断状态严禁自动放行，必须保守终局）。
+// 必须在解码后递归检查，防止 Unicode 转义（如 \u0074runcated、\u005bTRUNCATED\u005d）绕过。
 func IsTruncatedState(state json.RawMessage) bool {
 	if len(state) == 0 {
 		return false
 	}
-	rawStr := string(state)
-	if strings.Contains(rawStr, "[TRUNCATED]") {
+	// 快速原串预检
+	if strings.Contains(string(state), "[TRUNCATED]") {
 		return true
 	}
 
-	var stateMap map[string]any
-	if err := json.Unmarshal(state, &stateMap); err != nil {
+	var decoded any
+	if err := json.Unmarshal(state, &decoded); err != nil {
 		return false
 	}
 
-	for _, key := range []string{"truncated", "is_truncated", "diff_truncated"} {
-		if v, ok := stateMap[key]; ok {
-			if b, ok := v.(bool); ok && b {
+	return containsTruncatedDecoded(decoded)
+}
+
+func containsTruncatedDecoded(val any) bool {
+	switch v := val.(type) {
+	case string:
+		if strings.Contains(v, "[TRUNCATED]") {
+			return true
+		}
+	case map[string]any:
+		for k, child := range v {
+			lowerK := strings.ToLower(k)
+			if lowerK == "truncated" || lowerK == "is_truncated" || lowerK == "diff_truncated" {
+				if b, ok := child.(bool); ok && b {
+					return true
+				}
+				if s, ok := child.(string); ok && (strings.EqualFold(s, "true") || strings.Contains(s, "[TRUNCATED]")) {
+					return true
+				}
+			}
+			if containsTruncatedDecoded(child) {
 				return true
 			}
 		}
-	}
-
-	if files, ok := stateMap["files"].([]any); ok {
-		for _, f := range files {
-			if fMap, ok := f.(map[string]any); ok {
-				if t, ok := fMap["truncated"].(bool); ok && t {
-					return true
-				}
+	case []any:
+		for _, child := range v {
+			if containsTruncatedDecoded(child) {
+				return true
 			}
 		}
 	}
@@ -144,12 +195,16 @@ func IsCacheable(state json.RawMessage) bool {
 		return false
 	}
 
+	if IsTruncatedState(state) {
+		return false
+	}
+
 	var stateMap map[string]any
 	if err := json.Unmarshal(state, &stateMap); err != nil {
 		return false
 	}
 
-	// 检查顶层布尔标记
+	// 检查顶层敏感布尔标记
 	for _, key := range []string{"sensitive", "is_sensitive"} {
 		if v, ok := stateMap[key]; ok {
 			if b, ok := v.(bool); ok && b {
@@ -157,22 +212,12 @@ func IsCacheable(state json.RawMessage) bool {
 			}
 		}
 	}
-	for _, key := range []string{"truncated", "is_truncated", "diff_truncated"} {
-		if v, ok := stateMap[key]; ok {
-			if b, ok := v.(bool); ok && b {
-				return false
-			}
-		}
-	}
 
-	// 检查嵌套 files 中的敏感或截断标记
+	// 检查嵌套 files 中的敏感标记
 	if files, ok := stateMap["files"].([]any); ok {
 		for _, f := range files {
 			if fMap, ok := f.(map[string]any); ok {
 				if s, ok := fMap["sensitive"].(bool); ok && s {
-					return false
-				}
-				if t, ok := fMap["truncated"].(bool); ok && t {
 					return false
 				}
 			}
@@ -233,6 +278,7 @@ func hasHighEntropySecretToken(s string) bool {
 	return false
 }
 
+// calcShannonEntropy 计算字符串的香农信息熵
 func calcShannonEntropy(s string) float64 {
 	if len(s) == 0 {
 		return 0
@@ -241,62 +287,25 @@ func calcShannonEntropy(s string) float64 {
 	for _, r := range s {
 		freq[r]++
 	}
-	length := float64(len(s))
-	var ent float64
+	l := float64(len(s))
+	var entropy float64
 	for _, count := range freq {
-		p := count / length
-		ent -= p * math.Log2(p)
+		p := count / l
+		entropy -= p * math.Log2(p)
 	}
-	return ent
+	return entropy
 }
 
-// CanonicalKey 生成跨环境确定性的决策缓存键 SHA256。
-// 键由规范化 state 摘要 + question 指纹及运行时上下文共同决定（必须含 Model）。
-func CanonicalKey(options ClientOptions, state json.RawMessage, questions map[string]Question) (string, error) {
-	stateDigest, err := StateDigest(state)
-	if err != nil {
-		return "", err
-	}
-	qFingerprint, err := QuestionFingerprint(questions)
-	if err != nil {
-		return "", err
-	}
-
-	payload := canonicalPayload{
-		Plane:                options.Plane,
-		Endpoint:             options.BaseURL,
-		Model:                options.Model,
-		ConfiguredModel:      options.Model,
-		CredentialGeneration: options.CredentialGeneration,
-		PolicyVersion:        options.PolicyVersion,
-		RuntimeGeneration:    options.RuntimeGeneration,
-		StateDigest:          stateDigest,
-		QuestionFingerprint:  qFingerprint,
-	}
-
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-
-	hash := sha256.Sum256(data)
-	return hex.EncodeToString(hash[:]), nil
-}
-
-type cacheEntry struct {
-	key       string
+type cacheItem struct {
 	result    Result
 	expiresAt time.Time
 }
 
-// CacheStats 统计缓存运行时的命中率与淘汰数。
 type CacheStats struct {
 	Hits      uint64  `json:"hits"`
 	Misses    uint64  `json:"misses"`
 	Evictions uint64  `json:"evictions"`
 	HitRate   float64 `json:"hit_rate"`
-	Size      int     `json:"size"`
-	Capacity  int     `json:"capacity"`
 }
 
 type decisionCache struct {
@@ -305,12 +314,12 @@ type decisionCache struct {
 	ttl       time.Duration
 	now       func() time.Time
 	jitter    func() float64
-	onEvict   func()
-	items     map[string]*list.Element
-	evictList *list.List
+	items     map[string]cacheItem
+	accessLog []string // 维护访问顺序以实现 LRU 淘汰
 	hits      uint64
 	misses    uint64
 	evictions uint64
+	onEvict   func()
 }
 
 func newCache(capacity int, ttl time.Duration, now func() time.Time, jitter func() float64) *decisionCache {
@@ -319,7 +328,7 @@ func newCache(capacity int, ttl time.Duration, now func() time.Time, jitter func
 
 func newCacheWithOnEvict(capacity int, ttl time.Duration, now func() time.Time, jitter func() float64, onEvict func()) *decisionCache {
 	if capacity <= 0 {
-		capacity = 5000
+		capacity = 1000
 	}
 	if ttl <= 0 {
 		ttl = 10 * time.Minute
@@ -328,18 +337,16 @@ func newCacheWithOnEvict(capacity int, ttl time.Duration, now func() time.Time, 
 		now = time.Now
 	}
 	if jitter == nil {
-		jitter = func() float64 {
-			return rand.Float64()*2 - 1
-		}
+		jitter = func() float64 { return 0 }
 	}
 	return &decisionCache{
 		capacity:  capacity,
 		ttl:       ttl,
 		now:       now,
 		jitter:    jitter,
+		items:     make(map[string]cacheItem),
+		accessLog: make([]string, 0, capacity),
 		onEvict:   onEvict,
-		items:     make(map[string]*list.Element),
-		evictList: list.New(),
 	}
 }
 
@@ -347,82 +354,78 @@ func (c *decisionCache) get(key string) (Result, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	elem, ok := c.items[key]
-	if !ok {
+	item, exists := c.items[key]
+	if !exists {
 		c.misses++
 		return Result{}, false
 	}
 
-	entry := elem.Value.(*cacheEntry)
-	if c.now().After(entry.expiresAt) {
-		// 规则 11：过期访问属于 miss，从缓存中清理，但只计为 miss，不计入容量淘汰 evictions
-		c.removeExpiredElement(elem)
+	// 检查是否过期
+	if c.now().After(item.expiresAt) {
+		delete(c.items, key)
+		c.removeAccessKey(key)
+		// 规则 11：过期访问按 miss 统计，不虚高计入 capacity evictions
 		c.misses++
 		return Result{}, false
 	}
 
 	c.hits++
-	c.evictList.MoveToFront(elem)
-	return cloneResult(entry.result), true
+	c.updateAccessOrder(key)
+	return cloneResult(item.result), true
 }
 
-func (c *decisionCache) put(key string, result Result) {
+func (c *decisionCache) put(key string, res Result) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// 计算 jitter 后的有效 TTL: [0.9, 1.1] * ttl
-	j := c.jitter()
-	if j < -1 {
-		j = -1
-	} else if j > 1 {
-		j = 1
-	}
-	actualTTL := time.Duration(float64(c.ttl) * (1.0 + 0.1*j))
-	expiresAt := c.now().Add(actualTTL)
-
-	if elem, ok := c.items[key]; ok {
-		c.evictList.MoveToFront(elem)
-		entry := elem.Value.(*cacheEntry)
-		entry.result = cloneResult(result)
-		entry.expiresAt = expiresAt
-		return
+	if _, exists := c.items[key]; exists {
+		c.updateAccessOrder(key)
+	} else {
+		// 容量达到上限，淘汰最久未访问的项
+		if len(c.items) >= c.capacity {
+			c.evictOldest()
+		}
+		c.accessLog = append(c.accessLog, key)
 	}
 
-	if c.evictList.Len() >= c.capacity {
-		c.evictOldest()
+	// 规则 3：TTL 加 ±10% 抖动，防止雪崩
+	jitterRatio := c.jitter() * 0.1
+	jitteredTTL := time.Duration(float64(c.ttl) * (1.0 + jitterRatio))
+	if jitteredTTL <= 0 {
+		jitteredTTL = c.ttl
 	}
 
-	entry := &cacheEntry{
-		key:       key,
-		result:    cloneResult(result),
-		expiresAt: expiresAt,
+	c.items[key] = cacheItem{
+		result:    cloneResult(res),
+		expiresAt: c.now().Add(jitteredTTL),
 	}
-	elem := c.evictList.PushFront(entry)
-	c.items[key] = elem
+}
+
+func (c *decisionCache) updateAccessOrder(key string) {
+	c.removeAccessKey(key)
+	c.accessLog = append(c.accessLog, key)
+}
+
+func (c *decisionCache) removeAccessKey(key string) {
+	for i, k := range c.accessLog {
+		if k == key {
+			c.accessLog = append(c.accessLog[:i], c.accessLog[i+1:]...)
+			break
+		}
+	}
 }
 
 func (c *decisionCache) evictOldest() {
-	elem := c.evictList.Back()
-	if elem != nil {
-		c.evictElement(elem)
+	if len(c.accessLog) == 0 {
+		return
 	}
-}
-
-func (c *decisionCache) evictElement(elem *list.Element) {
-	c.evictList.Remove(elem)
-	entry := elem.Value.(*cacheEntry)
-	delete(c.items, entry.key)
+	oldestKey := c.accessLog[0]
+	c.accessLog = c.accessLog[1:]
+	delete(c.items, oldestKey)
 	c.evictions++
 	if c.onEvict != nil {
 		c.onEvict()
 	}
-}
-
-func (c *decisionCache) removeExpiredElement(elem *list.Element) {
-	c.evictList.Remove(elem)
-	entry := elem.Value.(*cacheEntry)
-	delete(c.items, entry.key)
-	// 过期清除不计入 c.evictions
 }
 
 func (c *decisionCache) stats() CacheStats {
@@ -430,61 +433,46 @@ func (c *decisionCache) stats() CacheStats {
 	defer c.mu.Unlock()
 
 	total := c.hits + c.misses
-	rate := 0.0
+	hitRate := 0.0
 	if total > 0 {
-		rate = float64(c.hits) / float64(total) * 100
+		hitRate = float64(c.hits) / float64(total) * 100.0
 	}
+
 	return CacheStats{
 		Hits:      c.hits,
 		Misses:    c.misses,
 		Evictions: c.evictions,
-		HitRate:   rate,
-		Size:      c.evictList.Len(),
-		Capacity:  c.capacity,
+		HitRate:   hitRate,
 	}
 }
 
-func cloneResult(src Result) Result {
-	dst := Result{
-		Model: src.Model,
-		Usage: src.Usage,
-	}
-	if src.Answers != nil {
-		dst.Answers = make(map[string]Answer, len(src.Answers))
-		for k, v := range src.Answers {
-			ans := Answer{
-				Type: v.Type,
-			}
-			if v.Noul != nil {
-				val := *v.Noul
-				ans.Noul = &val
-			}
+func cloneResult(r Result) Result {
+	clone := r
+	if r.Answers != nil {
+		clone.Answers = make(map[string]Answer, len(r.Answers))
+		for k, v := range r.Answers {
+			ansCopy := v
 			if v.Choice != nil {
-				val := *v.Choice
-				ans.Choice = &val
+				s := *v.Choice
+				ansCopy.Choice = &s
 			}
 			if v.Score != nil {
-				val := *v.Score
-				ans.Score = &val
+				sc := *v.Score
+				ansCopy.Score = &sc
 			}
-			if v.Confidence != nil {
-				val := *v.Confidence
-				ans.Confidence = &val
-			}
-			if v.Legend != nil {
-				ans.Legend = make(map[string]string, len(v.Legend))
-				for lk, lv := range v.Legend {
-					ans.Legend[lk] = lv
-				}
+			if v.Noul != nil {
+				n := *v.Noul
+				ansCopy.Noul = &n
 			}
 			if v.Probabilities != nil {
-				ans.Probabilities = make(map[string]float64, len(v.Probabilities))
+				pMap := make(map[string]float64, len(v.Probabilities))
 				for pk, pv := range v.Probabilities {
-					ans.Probabilities[pk] = pv
+					pMap[pk] = pv
 				}
+				ansCopy.Probabilities = pMap
 			}
-			dst.Answers[k] = ans
+			clone.Answers[k] = ansCopy
 		}
 	}
-	return dst
+	return clone
 }

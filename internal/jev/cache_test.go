@@ -336,3 +336,29 @@ func TestIsCacheableWithDecodedSensitiveTextAndEntropy(t *testing.T) {
 		t.Fatal("high entropy token must NOT be cacheable")
 	}
 }
+
+func TestIsTruncatedStateDecodedUnicodeVariants(t *testing.T) {
+	// 1. Unicode 转义的 key: "\u0074runcated": true
+	s1 := json.RawMessage(`{"\u0074runcated": true, "kind": "push"}`)
+	if !IsTruncatedState(s1) {
+		t.Fatal("expected IsTruncatedState=true for unicode escaped \u0074runcated key")
+	}
+
+	// 2. 嵌套在内部对象的 Unicode 转义 key
+	s2 := json.RawMessage(`{"meta": {"\u0064iff_truncated": true}}`)
+	if !IsTruncatedState(s2) {
+		t.Fatal("expected IsTruncatedState=true for nested unicode escaped \u0064iff_truncated")
+	}
+
+	// 3. 文本中包含 Unicode 转义的 \u005bTRUNCATED\u005d
+	s3 := json.RawMessage(`{"summary": "diff output \u005bTRUNCATED\u005d"}`)
+	if !IsTruncatedState(s3) {
+		t.Fatal("expected IsTruncatedState=true for unicode escaped \u005bTRUNCATED\u005d")
+	}
+
+	// 4. 正常非截断状态
+	sNormal := json.RawMessage(`{"kind": "push", "title": "feat: normal changes"}`)
+	if IsTruncatedState(sNormal) {
+		t.Fatal("expected IsTruncatedState=false for normal non-truncated state")
+	}
+}

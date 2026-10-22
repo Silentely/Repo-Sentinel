@@ -132,10 +132,13 @@ func (s *server) handleGetJevConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mSnap := jev.GlobalMetrics().Snapshot()
-	var totalCalls, totalFailures, totalHits, totalMisses, totalEvicts uint64
+	var totalCalls, totalSuccesses, totalFailures, totalHits, totalMisses, totalEvicts uint64
 	var maxP50, maxP95 float64
 	for _, c := range mSnap.Calls {
 		totalCalls += c
+	}
+	for _, s := range mSnap.Successes {
+		totalSuccesses += s
 	}
 	for _, f := range mSnap.Failures {
 		totalFailures += f
@@ -180,11 +183,7 @@ func (s *server) handleGetJevConfig(w http.ResponseWriter, r *http.Request) {
 
 	successRate := 100.0
 	if totalCalls > 0 {
-		if totalFailures >= totalCalls {
-			successRate = 0
-		} else {
-			successRate = float64(totalCalls-totalFailures) / float64(totalCalls) * 100
-		}
+		successRate = float64(totalSuccesses) / float64(totalCalls) * 100
 	}
 
 	statusMode := "disabled"
@@ -311,10 +310,10 @@ func (s *server) handlePutJevConfig(w http.ResponseWriter, r *http.Request) {
 	if req.Enabled != nil {
 		candidate.Enabled = *req.Enabled
 	}
-	if req.BaseURL != nil && strings.TrimSpace(*req.BaseURL) != "" {
+	if req.BaseURL != nil {
 		candidate.BaseURL = strings.TrimSpace(*req.BaseURL)
 	}
-	if req.Model != nil && strings.TrimSpace(*req.Model) != "" {
+	if req.Model != nil {
 		candidate.Model = strings.TrimSpace(*req.Model)
 	}
 	if req.Mode != nil && strings.TrimSpace(*req.Mode) != "" {
@@ -487,7 +486,17 @@ func (s *server) handlePutJevConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 使用事务原子持久化系统设置与审计日志
+	// 先行构造候选 Runtime 确保参数与客户端初始化校验通过，构造成功后才允许提交事务落库，杜绝"库变了、内存没变"
+	nextRuntime, rtErr := jev.NewRuntime(candidate)
+	if rtErr != nil {
+		s.writeAPIError(w, r, http.StatusBadRequest, "runtime_init_failed", map[string]any{"error": rtErr.Error()})
+		return
+	}
+	if emergencyUntil != nil {
+		nextRuntime.SetEmergencyAdvisory(*emergencyUntil, emergencyReason)
+	}
+
+	// 构造成功后，使用事务原子持久化系统设置与审计日志
 	err = s.dependencies.Store.WithTx(r.Context(), func(tx store.Store) error {
 		setting := store.SystemSetting{
 			ID:        ulid.Make().String(),
@@ -529,15 +538,7 @@ func (s *server) handlePutJevConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 事务提交成功后构建候选 Runtime 并原子替换
-	nextRuntime, rtErr := jev.NewRuntime(candidate)
-	if rtErr != nil {
-		s.writeAPIError(w, r, http.StatusBadRequest, "runtime_init_failed", map[string]any{"error": rtErr.Error()})
-		return
-	}
-	if emergencyUntil != nil {
-		nextRuntime.SetEmergencyAdvisory(*emergencyUntil, emergencyReason)
-	}
+	// 事务提交成功后，原子替换内存中的 JevRuntime
 	s.dependencies.JevRuntime.Replace(nextRuntime)
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
@@ -557,11 +558,12 @@ func (s *server) handlePostJevTest(w http.ResponseWriter, r *http.Request) {
 
 	// 专门构造带有探针属性 (Plane: "probe", Timeout: 10s) 的客户端，避免受到生产业务面 500ms 严苛延时限制
 	client, err := jev.NewClient(jev.ClientOptions{
-		BaseURL: snap.BaseURL,
-		APIKey:  snap.APIKey,
-		Model:   snap.Model,
-		Plane:   "probe",
-		Timeout: 30 * time.Second,
+		BaseURL:    snap.BaseURL,
+		APIKey:     snap.APIKey,
+		Model:      snap.Model,
+		Plane:      "probe",
+		Timeout:    30 * time.Second,
+		HTTPClient: s.dependencies.JevHTTPClient,
 	})
 	if err != nil {
 		if s.dependencies.Logger != nil {

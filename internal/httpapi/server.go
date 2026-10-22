@@ -85,8 +85,9 @@ type Dependencies struct {
 	// AI 可选；默认 rules.Engine 的安全告警分诊客户端（webhooksvc 透传）。
 	AI *ai.Client
 	// AIRuntime 可选；管理台可编辑的 AI 配置（env 优先，DB 补缺）。
-	AIRuntime  *ai.RuntimeConfig
-	JevRuntime *jev.RuntimeConfig
+	AIRuntime     *ai.RuntimeConfig
+	JevRuntime    *jev.RuntimeConfig
+	JevHTTPClient *http.Client
 	// StarredPoller 可选；star 仓库 release 追踪轮询（配置保存/立即同步触发）。
 	StarredPoller *syncx.StarredReleasePoller
 	// WebhookService 可选；由 App 持有时可在关闭前等待异步 PR 审查任务排空。

@@ -20,6 +20,35 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+// UpstreamError 表示由上游系统错误（如 5xx、网络中断、协议断开）引起的失败。
+type UpstreamError struct {
+	StatusCode int
+	Err        error
+}
+
+func (e *UpstreamError) Error() string {
+	if e.StatusCode > 0 {
+		return fmt.Sprintf("jev: server returned %d", e.StatusCode)
+	}
+	if e.Err != nil {
+		return fmt.Sprintf("jev: upstream error: %v", e.Err)
+	}
+	return "jev: upstream error"
+}
+
+func (e *UpstreamError) Unwrap() error {
+	return e.Err
+}
+
+// ClientHTTPError 表示由下游或客户端参数引起的 4xx 错误。
+type ClientHTTPError struct {
+	StatusCode int
+}
+
+func (e *ClientHTTPError) Error() string {
+	return fmt.Sprintf("jev: client error %d", e.StatusCode)
+}
+
 // ClientOptions 注入客户端运行时参数与依赖。
 type ClientOptions struct {
 	BaseURL              string
@@ -38,12 +67,23 @@ type ClientOptions struct {
 	Breaker              BreakerConfig
 }
 
+type sharedFlightState struct {
+	mu           sync.Mutex
+	waiters      int
+	cancelRunner context.CancelFunc
+	runnerCtx    context.Context
+	startGen     uint64
+	allGone      bool
+}
+
 type clientImpl struct {
 	opts          ClientOptions
 	httpClient    *http.Client
 	breaker       *circuitBreaker
 	cache         *decisionCache
 	flight        *singleflight.Group
+	flightsMu     sync.Mutex
+	flights       map[string]*sharedFlightState
 	semaphore     chan struct{}
 	now           func() time.Time
 	jitter        func() float64
@@ -128,6 +168,7 @@ func NewClient(options ClientOptions) (Client, error) {
 			GlobalMetrics().RecordCacheEviction(options.Plane)
 		}),
 		flight:    new(singleflight.Group),
+		flights:   make(map[string]*sharedFlightState),
 		semaphore: make(chan struct{}, options.MaxConcurrency),
 		now:       now,
 		jitter:    jitter,
@@ -149,74 +190,54 @@ func (c *clientImpl) CacheStats() CacheStats {
 }
 
 func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions map[string]Question) (Result, error) {
+	// 每次调用必须增加总计数
 	GlobalMetrics().RecordCall(c.opts.Plane)
-	start := c.now()
-	defer func() {
-		costMs := float64(c.now().Sub(start).Microseconds()) / 1000.0
-		GlobalMetrics().RecordLatency(c.opts.Plane, costMs)
-	}()
 
-	// 状态大小硬限制 8KiB
-	if len(state) > MaxStateSize {
-		GlobalMetrics().RecordFailure(c.opts.Plane)
-		GlobalMetrics().RecordFailureClass(c.opts.Plane, "decode")
-		return Result{}, ErrStateTooLarge
-	}
-
-	// 规则 6：截断必须保守终局，截断状态严禁放行，必须判定为失败并升级人工
+	// 规则 6：超长/截断请求必须保守终局（直接拦截判失败，严禁进入判定引擎）
 	if IsTruncatedState(state) {
 		GlobalMetrics().RecordFailure(c.opts.Plane)
 		GlobalMetrics().RecordFailureClass(c.opts.Plane, "truncated")
 		return Result{}, ErrTruncatedState
 	}
 
-	// 预估问题大小限制 8KiB
-	rawQ, err := json.Marshal(questions)
-	if err != nil || len(rawQ) > MaxStateSize {
+	if len(state) > MaxAllowedStateSize {
 		GlobalMetrics().RecordFailure(c.opts.Plane)
 		GlobalMetrics().RecordFailureClass(c.opts.Plane, "decode")
 		return Result{}, ErrStateTooLarge
 	}
 
-	// 预算硬上限 min(父 ctx deadline, 面配置预算, 允许上限 60s)
+	// 规则 4：单请求超时用 context.WithTimeout 贯穿到底
+	waitCtx := ctx
+	var cancel context.CancelFunc
 	maxBudget := 60 * time.Second
 	budget := c.opts.Timeout
 	if budget <= 0 || budget > maxBudget {
 		budget = maxBudget
 	}
-	if parentDeadline, ok := ctx.Deadline(); ok {
-		remaining := time.Until(parentDeadline)
+
+	if d, ok := ctx.Deadline(); ok {
+		remaining := time.Until(d)
 		if remaining < budget {
 			budget = remaining
 		}
 	}
-	if budget <= 0 {
-		GlobalMetrics().RecordFailure(c.opts.Plane)
-		GlobalMetrics().RecordFailureClass(c.opts.Plane, "timeout")
-		return Result{}, context.DeadlineExceeded
-	}
-
-	waitCtx, cancel := context.WithTimeout(ctx, budget)
+	waitCtx, cancel = context.WithTimeout(ctx, budget)
 	defer cancel()
 
 	isChatOps := c.opts.Plane == "chatops"
-	cacheable := !isChatOps && IsCacheable(state)
-	var cacheKey string
+	cacheable := IsCacheable(state)
 
-	if cacheable {
+	var cacheKey string
+	if !isChatOps && cacheable {
 		var keyErr error
 		cacheKey, keyErr = CanonicalKey(c.opts, state, questions)
-		if keyErr != nil {
-			GlobalMetrics().RecordFailure(c.opts.Plane)
-			GlobalMetrics().RecordFailureClass(c.opts.Plane, "decode")
-			return Result{}, keyErr
+		if keyErr == nil {
+			if cachedResult, ok := c.cache.get(cacheKey); ok {
+				GlobalMetrics().RecordCacheHit(c.opts.Plane)
+				return cachedResult, nil
+			}
+			GlobalMetrics().RecordCacheMiss(c.opts.Plane)
 		}
-		if cached, hit := c.cache.get(cacheKey); hit {
-			GlobalMetrics().RecordCacheHit(c.opts.Plane)
-			GlobalMetrics().RecordSuccess(c.opts.Plane)
-			return cached, nil
-		}
-		GlobalMetrics().RecordCacheMiss(c.opts.Plane)
 	}
 
 	// 限流与熔断快速短路
@@ -286,24 +307,77 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 		return res, nil
 	}
 
-	// 非 ChatOps 可缓存请求：通过 singleflight.DoChan 抑制并发重复查询
-	// 阻断项 1 & 2：共享任务运行在独立 context（不受首调用者提前取消牵连），但遵守配置的最大预算
+	// 非 ChatOps 可缓存请求：通过 singleflight 抑制并发重复查询
+	// 共享 runner 遵守所有等待者生命周期：引用计数 + 归零即 cancel（all-gone cancel），写缓存前校验活跃等待者与代次未变
 	sharedBudget := c.opts.Timeout
 	if sharedBudget <= 0 || sharedBudget > maxBudget {
 		sharedBudget = maxBudget
 	}
-	ch := c.flight.DoChan(cacheKey, func() (interface{}, error) {
+
+	c.flightsMu.Lock()
+	flight, exists := c.flights[cacheKey]
+	if !exists || flight.runnerCtx.Err() != nil {
 		sharedCtx, sharedCancel := context.WithTimeout(context.Background(), sharedBudget)
-		defer sharedCancel()
-		return executeWork(sharedCtx)
+		flight = &sharedFlightState{
+			waiters:      1,
+			cancelRunner: sharedCancel,
+			runnerCtx:    sharedCtx,
+			startGen:     c.breaker.getGeneration(),
+		}
+		c.flights[cacheKey] = flight
+	} else {
+		flight.mu.Lock()
+		flight.waiters++
+		flight.mu.Unlock()
+	}
+	c.flightsMu.Unlock()
+
+	ch := c.flight.DoChan(cacheKey, func() (interface{}, error) {
+		defer func() {
+			c.flightsMu.Lock()
+			if c.flights[cacheKey] == flight {
+				delete(c.flights, cacheKey)
+			}
+			c.flightsMu.Unlock()
+		}()
+
+		res, err := executeWork(flight.runnerCtx)
+		if err != nil {
+			return nil, err
+		}
+
+		// 写缓存前校验：仍有活跃等待者 / 代次未变
+		flight.mu.Lock()
+		hasWaiters := flight.waiters > 0 && !flight.allGone
+		flight.mu.Unlock()
+
+		currentGen := c.breaker.getGeneration()
+		if hasWaiters && currentGen == flight.startGen {
+			c.cache.put(cacheKey, res)
+		}
+		return res, nil
 	})
 
 	select {
 	case <-waitCtx.Done():
+		flight.mu.Lock()
+		flight.waiters--
+		if flight.waiters <= 0 {
+			flight.allGone = true
+			flight.cancelRunner()
+			c.flight.Forget(cacheKey)
+		}
+		flight.mu.Unlock()
+
 		GlobalMetrics().RecordFailure(c.opts.Plane)
 		GlobalMetrics().RecordFailureClass(c.opts.Plane, "timeout")
 		return Result{}, waitCtx.Err()
+
 	case res := <-ch:
+		flight.mu.Lock()
+		flight.waiters--
+		flight.mu.Unlock()
+
 		if res.Err != nil {
 			if errors.Is(res.Err, ErrCircuitOpen) {
 				GlobalMetrics().RecordFallback(c.opts.Plane)
@@ -316,8 +390,6 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 			return Result{}, res.Err
 		}
 		result := res.Val.(Result)
-		// 成功且非空写入缓存
-		c.cache.put(cacheKey, result)
 		GlobalMetrics().RecordSuccess(c.opts.Plane)
 		return result, nil
 	}
@@ -338,44 +410,43 @@ func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessa
 		"state":     state,
 		"questions": parsedQuestions,
 	}
-
 	bodyBytes, err := json.Marshal(bodyData)
 	if err != nil {
 		return Result{}, err
 	}
 
-	maxAttempts := 1 + c.opts.Retries
 	endpoint := NormalizeEndpoint(c.opts.BaseURL)
+	maxAttempts := 1 + c.opts.Retries
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if ctx.Err() != nil {
 			return Result{}, ctx.Err()
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
-		if err != nil {
-			return Result{}, err
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+		if reqErr != nil {
+			return Result{}, reqErr
 		}
-
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", buildinfo.UserAgent("JevClient"))
-		if apiKey := c.opts.APIKey.Reveal(); apiKey != "" {
-			req.Header.Set("Authorization", "Bearer "+apiKey)
+		if c.opts.APIKey.Reveal() != "" {
+			req.Header.Set("Authorization", "Bearer "+c.opts.APIKey.Reveal())
 		}
 
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			// context 超时/取消不重试
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
-				if ctx.Err() != nil {
-					return Result{}, ctx.Err()
-				}
-				return Result{}, err
+		startReq := c.now()
+		resp, reqErr := c.httpClient.Do(req)
+		latency := float64(c.now().Sub(startReq).Milliseconds())
+		GlobalMetrics().RecordLatency(c.opts.Plane, latency)
+
+		if reqErr != nil {
+			if ctx.Err() != nil {
+				return Result{}, ctx.Err()
 			}
 			if attempt+1 < maxAttempts {
+				time.Sleep(50 * time.Millisecond)
 				continue
 			}
-			return Result{}, err
+			return Result{}, &UpstreamError{Err: reqErr}
 		}
 
 		// 处理 429 与 529
@@ -423,14 +494,14 @@ func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessa
 			if attempt+1 < maxAttempts {
 				continue
 			}
-			return Result{}, fmt.Errorf("jev: server returned %d", resp.StatusCode)
+			return Result{}, &UpstreamError{StatusCode: resp.StatusCode}
 		}
 
 		// 其它 4xx (401, 403, 422 等) 不重试
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
 			_ = resp.Body.Close()
-			return Result{}, fmt.Errorf("jev: client error %d", resp.StatusCode)
+			return Result{}, &ClientHTTPError{StatusCode: resp.StatusCode}
 		}
 
 		// 响应体上限 64KiB
@@ -457,6 +528,17 @@ func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessa
 func isUpstreamFailure(err error) bool {
 	if err == nil {
 		return false
+	}
+	var upErr *UpstreamError
+	if errors.As(err, &upErr) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "server returned") || strings.Contains(msg, "connection refused") || strings.Contains(msg, "EOF")

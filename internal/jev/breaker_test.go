@@ -406,3 +406,38 @@ func TestBreakerTripOpen(t *testing.T) {
 		t.Fatal("should allow probe after 60s cooldown")
 	}
 }
+
+func TestBreakerOpenStateRecordDoesNotClearFailures(t *testing.T) {
+	now := time.Unix(0, 0)
+	b := newBreaker(func() time.Time { return now }, BreakerConfig{
+		FailureThreshold: 3,
+		Cooldown:         30 * time.Second,
+	})
+
+	// 连续 3 次失败触发熔断进入 Open
+	b.record(false)
+	b.record(false)
+	b.record(false)
+
+	if b.getState() != "open" {
+		t.Fatalf("expected open, got %s", b.getState())
+	}
+	if b.failures != 3 {
+		t.Fatalf("expected failures=3, got %d", b.failures)
+	}
+
+	// 统一性验证：在 stateOpen 状态下调用 record(true) 绝不得清除 failures 计数
+	b.record(true)
+	if b.failures != 3 {
+		t.Fatalf("record(true) in stateOpen must NOT clear failures, got %d", b.failures)
+	}
+	if b.getState() != "open" {
+		t.Fatalf("state must remain open, got %s", b.getState())
+	}
+
+	// 调用 record(false) 同样保持 open
+	b.record(false)
+	if b.getState() != "open" {
+		t.Fatalf("state must remain open, got %s", b.getState())
+	}
+}

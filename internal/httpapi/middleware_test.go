@@ -184,9 +184,10 @@ type httpTestOptions struct {
 	githubClient *githubx.AppClient
 	// aiConfig 装配到 Dependencies.Config.AI，供 PUT 热更新路径使用；
 	// 需与 aiRuntime 同源（默认值一致），避免 RuntimeFromEnv 把零值误判为 env 锁定。
-	aiConfig   config.AIConfig
-	jevRuntime *jev.RuntimeConfig
-	jevConfig  config.JevConfig
+	aiConfig      config.AIConfig
+	jevRuntime    *jev.RuntimeConfig
+	jevConfig     config.JevConfig
+	jevHTTPClient *http.Client
 	// starPoller 装配到 Dependencies.StarredPoller，供 star release 追踪 API 测试。
 	starPoller      *syncx.StarredReleasePoller
 	chatOpsExecutor ChatOpsActionExecutor
@@ -298,6 +299,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		AI:              options.aiClient,
 		AIRuntime:       options.aiRuntime,
 		JevRuntime:      options.jevRuntime,
+		JevHTTPClient:   options.jevHTTPClient,
 		StarredPoller:   options.starPoller,
 		ChatOpsExecutor: options.chatOpsExecutor,
 	}

@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -305,5 +307,108 @@ func TestJevConfigAPI_EmergencyAdvisoryAndTestEndpoint(t *testing.T) {
 	}
 	if testRes.Code == http.StatusBadGateway {
 		assertAPIError(t, testRes, http.StatusBadGateway, "jev_test_failed")
+	}
+}
+
+func TestJevTestAPI_DoesNotLeakUpstreamResponseBodyOrLogs(t *testing.T) {
+	testCases := []struct {
+		name       string
+		statusCode int
+		secret     string
+	}{
+		{name: "upstream_500", statusCode: http.StatusInternalServerError, secret: "leaked-token-500-xyz"},
+		{name: "upstream_401", statusCode: http.StatusUnauthorized, secret: "leaked-token-401-abc"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+				_, _ = w.Write([]byte(`{"error":"upstream failure","sensitive_auth":"Bearer ` + tc.secret + `"}`))
+			}))
+			defer ts.Close()
+
+			var logBuf bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+
+			ring := testHTTPKeyRing(t)
+			jevCfg := config.JevConfig{
+				Enabled: true,
+				BaseURL: ts.URL,
+				APIKey:  config.NewSecret("test-api-key"),
+				Model:   "jev-1.14.0",
+				Mode:    "shadow",
+			}
+			rt, _ := jev.NewRuntime(jevCfg)
+
+			fixture := newHTTPTestFixture(t, httpTestOptions{
+				keyRing:       ring,
+				jevRuntime:    rt,
+				jevConfig:     jevCfg,
+				logger:        logger,
+				jevHTTPClient: ts.Client(),
+			})
+			fixture.bootstrapAdmin(t)
+			cookies := fixture.login(t, httpTestPassword)
+			csrf := cookieByName(t, cookies, CSRFCookieName)
+
+			testRes := fixture.request(t, http.MethodPost, "/api/v1/jev/test", "{}", "127.0.0.1:45120", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+			if testRes.Code != http.StatusBadGateway {
+				t.Fatalf("expected StatusBadGateway (502), got %d, body=%s", testRes.Code, testRes.Body.String())
+			}
+
+			respBody := testRes.Body.String()
+			// 断言 1：HTTP 响应体绝对不包含上游回显的正文敏感内容
+			if strings.Contains(respBody, tc.secret) {
+				t.Fatalf("SECURITY VIOLATION: HTTP response leaked upstream secret: %s", respBody)
+			}
+			// 断言 2：响应包含规范化的 error_class
+			assertAPIError(t, testRes, http.StatusBadGateway, errorCodeJevTestFailed)
+
+			// 断言 3：服务端日志输出绝对不包含上游回显的正文敏感内容
+			logOutput := logBuf.String()
+			if strings.Contains(logOutput, tc.secret) {
+				t.Fatalf("SECURITY VIOLATION: server logs leaked upstream secret: %s", logOutput)
+			}
+		})
+	}
+}
+
+func TestJevConfigAPI_RollbackWhenRuntimeInitFails(t *testing.T) {
+	fixture, _, _ := jevTestFixture(t)
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	// 首先写入一条初始有效配置
+	initReq := `{"enabled":true,"base_url":"https://api.typesafe.ai","api_key":"initial-key","model":"jev-1.14.0","mode":"shadow"}`
+	putInitOK := fixture.request(t, http.MethodPut, "/api/v1/jev/config", initReq, "127.0.0.1:45130", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if putInitOK.Code != http.StatusOK {
+		t.Fatalf("initial PUT failed: %d, body=%s", putInitOK.Code, putInitOK.Body.String())
+	}
+
+	// 记录初始持久化配置状态
+	initialStored, err := jev.LoadStoredConfig(t.Context(), fixture.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initialStored.Model != "jev-1.14.0" {
+		t.Fatalf("expected initial model jev-1.14.0, got %+v", initialStored)
+	}
+
+	// 尝试写入一条在 NewRuntime 时必然构造失败的非法配置（如启用时 Model 为空）
+	badReq := `{"enabled":true,"model":""}`
+	putBad := fixture.request(t, http.MethodPut, "/api/v1/jev/config", badReq, "127.0.0.1:45131", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if putBad.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 bad request for bad runtime init, got %d, body=%s", putBad.Code, putBad.Body.String())
+	}
+
+	// 关键断言：事务必须未提交或已回滚，数据库中的配置绝不变更（杜绝"库变了、内存没变"）
+	storedAfter, err := jev.LoadStoredConfig(t.Context(), fixture.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if storedAfter.Model != "jev-1.14.0" {
+		t.Fatalf("TRANSACTION ROLLBACK FAILED: database was modified by failed runtime init! Model=%s", storedAfter.Model)
 	}
 }

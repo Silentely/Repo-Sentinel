@@ -227,6 +227,12 @@ func (b *circuitBreaker) transitionLocked(next breakerState) {
 	b.generation++
 }
 
+func (b *circuitBreaker) getGeneration() uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.generation
+}
+
 func (b *circuitBreaker) getState() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()

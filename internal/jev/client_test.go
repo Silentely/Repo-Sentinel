@@ -766,3 +766,237 @@ func TestSingleflightPermitAcquireInClosureNoLeak(t *testing.T) {
 		t.Fatalf("breaker should have closed after successful probe, got %s", cImpl.breaker.getState())
 	}
 }
+
+func TestSingleflightAllWaitersCancelRunnerAndNoCache(t *testing.T) {
+	serverStarted := make(chan struct{})
+	serverCanceled := make(chan struct{})
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		select {
+		case <-serverStarted:
+		default:
+			close(serverStarted)
+		}
+		// 等待客户端取消
+		select {
+		case <-r.Context().Done():
+			close(serverCanceled)
+		case <-time.After(3 * time.Second):
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"jev-1.14.0","answers":{"test":{"type":"noul","noul":0.5}}}`))
+	}))
+	defer ts.Close()
+
+	opts := ClientOptions{
+		BaseURL:        ts.URL,
+		Model:          "jev-1.14.0",
+		Plane:          "notification",
+		Timeout:        5 * time.Second,
+		MaxConcurrency: 8,
+		HTTPClient:     ts.Client(),
+	}
+	client, _ := NewClient(opts)
+
+	q := map[string]Question{
+		"test": NoulQuestion{Type: "noul", Instructions: "test"},
+	}
+	state := json.RawMessage(`{"job":"cancel-all-waiters"}`)
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	ctx3, cancel3 := context.WithCancel(context.Background())
+
+	var wg sync.WaitGroup
+	var err1, err2, err3 error
+
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		_, err1 = client.Judge(ctx1, state, q)
+	}()
+	go func() {
+		defer wg.Done()
+		_, err2 = client.Judge(ctx2, state, q)
+	}()
+	go func() {
+		defer wg.Done()
+		_, err3 = client.Judge(ctx3, state, q)
+	}()
+
+	// 等待服务端收到请求，且确保 3 个等待者均已加入该 flight
+	select {
+	case <-serverStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not receive request")
+	}
+
+	cImpl := client.(*clientImpl)
+	cacheKey, _ := CanonicalKey(opts, state, q)
+	for i := 0; i < 50; i++ {
+		cImpl.flightsMu.Lock()
+		f := cImpl.flights[cacheKey]
+		var w int
+		if f != nil {
+			f.mu.Lock()
+			w = f.waiters
+			f.mu.Unlock()
+		}
+		cImpl.flightsMu.Unlock()
+		if w == 3 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// 所有等待者取消
+	cancel1()
+	cancel2()
+	cancel3()
+
+	wg.Wait()
+
+	if !errors.Is(err1, context.Canceled) || !errors.Is(err2, context.Canceled) || !errors.Is(err3, context.Canceled) {
+		t.Fatalf("all callers must return context.Canceled, got err1=%v, err2=%v, err3=%v", err1, err2, err3)
+	}
+
+	// 共享 runner 必须在短时间内被取消（all-gone cancel）
+	select {
+	case <-serverCanceled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("shared runner was NOT canceled promptly after all waiters canceled")
+	}
+
+	// 验证未写缓存
+	if _, ok := cImpl.cache.get(cacheKey); ok {
+		t.Fatal("CRITICAL: canceled runner must NOT write result to cache!")
+	}
+}
+
+func TestClientPermitReleasedOnAllErrorExits(t *testing.T) {
+	testCases := []struct {
+		name       string
+		statusCode int
+		hang       bool
+		queueFull  bool
+		cancelCtx  bool
+		retryAfter string
+	}{
+		{name: "queue_timeout", queueFull: true},
+		{name: "status_401", statusCode: http.StatusUnauthorized},
+		{name: "status_403", statusCode: http.StatusForbidden},
+		{name: "status_429", statusCode: http.StatusTooManyRequests, retryAfter: "10"},
+		{name: "context_canceled", cancelCtx: true, hang: true},
+		{name: "network_500", statusCode: http.StatusInternalServerError},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			serverReceived := make(chan struct{})
+			ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				select {
+				case <-serverReceived:
+				default:
+					close(serverReceived)
+				}
+				if tc.hang {
+					<-r.Context().Done()
+					return
+				}
+				if tc.retryAfter != "" {
+					w.Header().Set("Retry-After", tc.retryAfter)
+				}
+				w.WriteHeader(tc.statusCode)
+				_, _ = w.Write([]byte(`{"error":"upstream"}`))
+			}))
+			defer ts.Close()
+
+			now := time.Unix(1000, 0)
+			opts := ClientOptions{
+				BaseURL:        ts.URL,
+				Model:          "jev-1.14.0",
+				Plane:          "notification",
+				Timeout:        200 * time.Millisecond,
+				MaxConcurrency: 1,
+				Retries:        0,
+				HTTPClient:     ts.Client(),
+				Now:            func() time.Time { return now },
+			}
+			client, _ := NewClient(opts)
+			cImpl := client.(*clientImpl)
+
+			// 触发熔断
+			for i := 0; i < 5; i++ {
+				cImpl.breaker.record(false)
+			}
+			// 推进时间进入半开
+			now = now.Add(35 * time.Second)
+
+			// 断言当前为半开，半开占用为 0
+			p := cImpl.breaker.AcquirePermit()
+			if !p.Allowed || !p.IsProbe {
+				t.Fatalf("expected allowed probe, got %+v", p)
+			}
+			cImpl.breaker.ReleasePermit(p)
+
+			cImpl.breaker.mu.Lock()
+			inFlightBefore := cImpl.breaker.halfOpenInFlight
+			cImpl.breaker.mu.Unlock()
+			if inFlightBefore != 0 {
+				t.Fatalf("expected halfOpenInFlight=0 before request, got %d", inFlightBefore)
+			}
+
+			q := map[string]Question{
+				"test": NoulQuestion{Type: "noul", Instructions: "test"},
+			}
+			state := json.RawMessage(fmt.Sprintf(`{"test":"%s"}`, tc.name))
+
+			ctx := context.Background()
+			var cancel context.CancelFunc
+			if tc.cancelCtx {
+				ctx, cancel = context.WithCancel(context.Background())
+			} else {
+				ctx, cancel = context.WithTimeout(context.Background(), 200*time.Millisecond)
+			}
+			defer cancel()
+
+			if tc.queueFull {
+				// 占满信号量
+				cImpl.semaphore <- struct{}{}
+			}
+
+			if tc.cancelCtx {
+				go func() {
+					<-serverReceived
+					cancel()
+				}()
+			}
+
+			_, _ = client.Judge(ctx, state, q)
+
+			if tc.queueFull {
+				<-cImpl.semaphore
+			}
+
+			// 关键断言：无论何种错误退出，halfOpenInFlight 名额必须被完全释放（等于 0）
+			for i := 0; i < 200; i++ {
+				cImpl.breaker.mu.Lock()
+				inFlight := cImpl.breaker.halfOpenInFlight
+				cImpl.breaker.mu.Unlock()
+				if inFlight == 0 {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			cImpl.breaker.mu.Lock()
+			inFlightAfter := cImpl.breaker.halfOpenInFlight
+			cImpl.breaker.mu.Unlock()
+
+			if inFlightAfter != 0 {
+				t.Fatalf("PERMIT LEAK: halfOpenInFlight must be 0 after error exit %s, got %d", tc.name, inFlightAfter)
+			}
+		})
+	}
+}
