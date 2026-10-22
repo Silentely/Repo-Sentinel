@@ -75,15 +75,15 @@ func defaultConfig() Config {
 			ChatOpsGuardrailEnabled: false,
 			AllowPrivateState:       false,
 			Notification: PlaneConfig{
-				Timeout:        500 * time.Millisecond,
+				Timeout:        30 * time.Second,
 				MaxConcurrency: 8,
 			},
 			Review: PlaneConfig{
-				Timeout:        300 * time.Millisecond,
+				Timeout:        30 * time.Second,
 				MaxConcurrency: 8,
 			},
 			ChatOps: PlaneConfig{
-				Timeout:        500 * time.Millisecond,
+				Timeout:        30 * time.Second,
 				MaxConcurrency: 8,
 			},
 		},

@@ -86,6 +86,10 @@ func (r *RuntimeConfig) rebuildClientsLocked() {
 	}
 
 	for _, p := range planes {
+		timeout := p.conf.Timeout
+		if timeout <= 0 || timeout > 60*time.Second {
+			timeout = 30 * time.Second
+		}
 		opts := ClientOptions{
 			BaseURL:              r.cfg.BaseURL,
 			APIKey:               r.cfg.APIKey,
@@ -94,7 +98,7 @@ func (r *RuntimeConfig) rebuildClientsLocked() {
 			PolicyVersion:        "jev-policy-v1",
 			CredentialGeneration: r.credentialGeneration,
 			RuntimeGeneration:    r.generation,
-			Timeout:              p.conf.Timeout,
+			Timeout:              timeout,
 			MaxConcurrency:       p.conf.MaxConcurrency,
 			Retries:              r.cfg.Retries,
 		}
@@ -296,12 +300,21 @@ func MergeFromStore(ctx context.Context, data store.Store, ring *cryptox.KeyRing
 	}
 	if stored.Notification != nil {
 		rt.cfg.Notification = *stored.Notification
+		if rt.cfg.Notification.Timeout <= 1000*time.Millisecond {
+			rt.cfg.Notification.Timeout = 30 * time.Second
+		}
 	}
 	if stored.Review != nil {
 		rt.cfg.Review = *stored.Review
+		if rt.cfg.Review.Timeout <= 1000*time.Millisecond {
+			rt.cfg.Review.Timeout = 30 * time.Second
+		}
 	}
 	if stored.ChatOps != nil {
 		rt.cfg.ChatOps = *stored.ChatOps
+		if rt.cfg.ChatOps.Timeout <= 1000*time.Millisecond {
+			rt.cfg.ChatOps.Timeout = 30 * time.Second
+		}
 	}
 
 	if stored.EmergencyAdvisoryUntil != nil {

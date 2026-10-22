@@ -316,13 +316,34 @@ func (s *server) handlePutJevConfig(w http.ResponseWriter, r *http.Request) {
 		candidate.AllowPrivateState = *req.AllowPrivateState
 	}
 	if req.Notification != nil {
-		candidate.Notification = *req.Notification
+		if req.Notification.Timeout > 0 {
+			candidate.Notification.Timeout = req.Notification.Timeout
+		} else if candidate.Notification.Timeout == 0 {
+			candidate.Notification.Timeout = 30 * time.Second
+		}
+		if req.Notification.MaxConcurrency > 0 {
+			candidate.Notification.MaxConcurrency = req.Notification.MaxConcurrency
+		}
 	}
 	if req.Review != nil {
-		candidate.Review = *req.Review
+		if req.Review.Timeout > 0 {
+			candidate.Review.Timeout = req.Review.Timeout
+		} else if candidate.Review.Timeout == 0 {
+			candidate.Review.Timeout = 30 * time.Second
+		}
+		if req.Review.MaxConcurrency > 0 {
+			candidate.Review.MaxConcurrency = req.Review.MaxConcurrency
+		}
 	}
 	if req.ChatOps != nil {
-		candidate.ChatOps = *req.ChatOps
+		if req.ChatOps.Timeout > 0 {
+			candidate.ChatOps.Timeout = req.ChatOps.Timeout
+		} else if candidate.ChatOps.Timeout == 0 {
+			candidate.ChatOps.Timeout = 30 * time.Second
+		}
+		if req.ChatOps.MaxConcurrency > 0 {
+			candidate.ChatOps.MaxConcurrency = req.ChatOps.MaxConcurrency
+		}
 	}
 
 	// 基础校验

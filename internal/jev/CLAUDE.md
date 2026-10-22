@@ -29,7 +29,7 @@
 ## 3. 并发与硬限制基线
 
 - **State 大小限制**：序列化后体积严格 `<= 8KiB`，超限立即返回 `ErrStateTooLarge` 并中断，防止 prompt 污染或资源耗尽。
-- **超时与预算**：各 Plane 预算硬上限为 `min(ctx.Deadline, Timeout, 1000ms)`。单次决策网络请求超时不得超过 1000ms。
+- **超时与预算**：各 Plane 预算硬上限为 `min(ctx.Deadline, Timeout, 60s)`。单次决策网络请求超时不得超过 60s。
 - **最大并发度**：每个 Plane 独立配置信号量槽位，默认 8，硬上限为 32。
 - **退避与熔断**：
   - 遇到 429/529 遵循 `Retry-After` 头自适应退避，退避窗口内直接快速失败（Fast Fallback）。

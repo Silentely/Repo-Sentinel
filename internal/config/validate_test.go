@@ -420,7 +420,7 @@ func TestJevValidation(t *testing.T) {
 
 		for _, p := range planes {
 			// Timeout < 1ms 或 > 1000ms
-			for _, d := range []time.Duration{0, 1001 * time.Millisecond} {
+			for _, d := range []time.Duration{0, 61 * time.Second} {
 				c := defaultConfig()
 				p.set(&c, d, 8)
 				var validation *ValidationError

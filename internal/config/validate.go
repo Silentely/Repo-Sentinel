@@ -180,8 +180,8 @@ func validatePlaneConfig(name string, p PlaneConfig, enabled bool) error {
 	if !enabled && p.Timeout == 0 && p.MaxConcurrency == 0 {
 		return nil
 	}
-	if p.Timeout < time.Millisecond || p.Timeout > 1000*time.Millisecond {
-		return newValidationError("jev."+name+".timeout", "must be between 1ms and 1000ms")
+	if p.Timeout < time.Millisecond || p.Timeout > 60*time.Second {
+		return newValidationError("jev."+name+".timeout", "must be between 1ms and 60s")
 	}
 	if p.MaxConcurrency < 1 || p.MaxConcurrency > 32 {
 		return newValidationError("jev."+name+".max_concurrency", "must be between 1 and 32")

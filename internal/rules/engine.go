@@ -180,7 +180,7 @@ func (e *Engine) Evaluate(ctx context.Context, res normalizer.Result, repoFullNa
 	}
 
 	jevClient, jevCfg := e.resolveJev()
-	prep, err := PrepareNotification(ctx, res, repoFullName, jevClient, jevCfg, e.Store)
+	prep, err := PrepareNotification(ctx, res, repoFullName, jevClient, jevCfg, e.Store, e.Logger)
 	if err != nil {
 		return err
 	}

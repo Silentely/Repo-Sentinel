@@ -245,7 +245,7 @@ func (a *Aggregator) Evaluate(ctx context.Context, res normalizer.Result, repoFu
 
 	// 锁外统一准备通知：静态预检、Jev 裁决、active 抑制落库与路由
 	jevClient, jevCfg := a.resolveJev()
-	prep, err := PrepareNotification(ctx, res, repoFullName, jevClient, jevCfg, a.Store)
+	prep, err := PrepareNotification(ctx, res, repoFullName, jevClient, jevCfg, a.Store, a.Logger)
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -55,6 +56,7 @@ func PrepareNotification(
 	client jev.Client,
 	cfg config.JevConfig,
 	st store.Store,
+	logger ...*slog.Logger,
 ) (preparedEvent, error) {
 	if st == nil {
 		return preparedEvent{Result: res}, errors.New("rules: store is required for notification preparation")
@@ -65,7 +67,12 @@ func PrepareNotification(
 		return preparedEvent{Result: res}, err
 	}
 
-	prep, err := prepareNotificationWithChannels(ctx, res, repoFullName, client, cfg, channels)
+	var l *slog.Logger
+	if len(logger) > 0 {
+		l = logger[0]
+	}
+
+	prep, err := prepareNotificationWithChannels(ctx, res, repoFullName, client, cfg, channels, l)
 	if err != nil {
 		return prep, err
 	}
@@ -94,7 +101,13 @@ func prepareNotificationWithChannels(
 	client jev.Client,
 	cfg config.JevConfig,
 	channels []store.NotificationChannel,
+	logger ...*slog.Logger,
 ) (preparedEvent, error) {
+	var l *slog.Logger
+	if len(logger) > 0 {
+		l = logger[0]
+	}
+
 	ev := res.Event
 	if ev == nil || res.SuppressNotify || ev.SuppressNotification {
 		return preparedEvent{Result: res, Suppressed: false}, nil
@@ -123,7 +136,7 @@ func prepareNotificationWithChannels(
 		return fallbackPrep, nil
 	}
 
-	// 若 Jev 未启用或无可用客户端，走静态规则
+	// 若 Jev 未启用或无可客户端，走静态规则
 	if !cfg.Enabled || client == nil {
 		return fallbackPrep, nil
 	}
@@ -137,12 +150,26 @@ func prepareNotificationWithChannels(
 	// 构建中性状态
 	state, err := jev.BuildNotificationState(*ev, repoFullName)
 	if err != nil {
+		if l != nil {
+			l.WarnContext(ctx, "notification jev build state failed, fallback to raw event",
+				"repo", repoFullName,
+				"error", err,
+			)
+		}
 		return fallbackPrep, nil
 	}
 
 	// 发起 Jev 判定
 	result, err := client.Judge(ctx, state, questions)
 	if err != nil {
+		if l != nil {
+			l.WarnContext(ctx, "notification jev judge failed, fallback to raw event",
+				"repo", repoFullName,
+				"error", err,
+				"mode", cfg.Mode,
+				"model", cfg.Model,
+			)
+		}
 		// 任何网络、超时、熔断或协议错误均降级为静态原事件放行
 		return fallbackPrep, nil
 	}
@@ -163,6 +190,16 @@ func prepareNotificationWithChannels(
 	isSuppressed := false
 	if cfg.Mode == "active" && wouldSuppress {
 		isSuppressed = true
+	}
+
+	if l != nil {
+		l.InfoContext(ctx, "notification jev judge completed",
+			"repo", repoFullName,
+			"model", result.Model,
+			"mode", cfg.Mode,
+			"would_suppress", wouldSuppress,
+			"is_suppressed", isSuppressed,
+		)
 	}
 
 	// 2. 严重度与路由计算
