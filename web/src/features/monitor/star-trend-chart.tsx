@@ -80,12 +80,22 @@ export const StarTrendChart = memo(function StarTrendChart({
       delta: i > 0 ? p.total - (points[i - 1]?.total ?? 0) : null,
     }));
   }, [points]);
+
+  const isFlat = useMemo(() => {
+    const first = points[0];
+    return Boolean(points.length > 1 && first && points.every((p) => p.total === first.total));
+  }, [points]);
   return (
     <div className="star-trend" data-testid="star-trend">
       <div className="star-trend__head">
         <div>
           <strong>全部仓库 Star 总数</strong>
           {current !== undefined ? <span className="star-trend__value">{current}</span> : null}
+          {points.length === 1 ? (
+            <span className="star-trend__hint-tag">首日基线已建</span>
+          ) : isFlat ? (
+            <span className="star-trend__hint-tag">区间内基线平稳</span>
+          ) : null}
         </div>
         <div className="star-trend__ranges" role="group" aria-label="时间范围">
           {RANGES.map((r) => (

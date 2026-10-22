@@ -834,7 +834,24 @@ a.primary-button {
   display: flex;
   align-items: center;
   gap: 10px;
+  row-gap: 8px;
+  flex-wrap: wrap;
   margin-bottom: 4px;
+}
+
+.dashboard-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dashboard-refresh-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
 }
 
 .page-intro__status .eyebrow {
@@ -943,6 +960,56 @@ a.status-item--link:focus-visible {
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+}
+
+.status-item--danger strong {
+  color: var(--danger);
+}
+
+.status-item--warning strong {
+  color: var(--warning);
+}
+
+.status-item--danger {
+  border-color: color-mix(in oklch, var(--danger) 70%, var(--border-subtle));
+}
+
+.status-item--warning {
+  border-color: color-mix(in oklch, var(--warning) 70%, var(--border-subtle));
+}
+
+.feed-load-more {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.star-trend__hint-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-panel-warm-light);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+
+.feed-row__error-dismiss {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0 3px;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.75;
+}
+
+.feed-row__error-dismiss:hover {
+  opacity: 1;
 }
 
 /* 指标加载骨架：与列表骨架同款脉冲，避免加载中露出「—」被误读为零值。 */

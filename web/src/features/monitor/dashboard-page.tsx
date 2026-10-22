@@ -1,6 +1,7 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { RefreshCw } from "lucide-react";
 
 import { CollapsiblePanel } from "../../components/collapsible-panel";
 import { EmptyState } from "../../components/empty-state";
@@ -440,9 +441,25 @@ export function DashboardPage() {
   // 折叠状态从 localStorage 恢复，切换后写回。
   // 面板查询按折叠状态暂停：折叠的「通知投递/最近事件/Star 增长」零请求零轮询，
   // 展开时若缓存新鲜直接显示，过期则骨架加载（QueryGate 兜底）。
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleRefreshAll = useCallback(async () => {
+    setIsRefreshing(true);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["system-health"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["system", "jev"] }),
+      queryClient.invalidateQueries({ queryKey: ["events"] }),
+      queryClient.invalidateQueries({ queryKey: ["outbox"] }),
+      queryClient.invalidateQueries({ queryKey: ["repos"] }),
+    ]);
+    setTimeout(() => setIsRefreshing(false), 500);
+  }, [queryClient]);
+
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(readOpenPanels);
-  const events = useQuery({ ...eventsQueryOptions(DASHBOARD_FEED_LIMIT), enabled: openPanels.events });
-  const outbox = useQuery({ ...outboxQueryOptions("", "", DASHBOARD_FEED_LIMIT), enabled: openPanels.outbox });
+  const [eventsLimit, setEventsLimit] = useState(DASHBOARD_FEED_LIMIT);
+  const [outboxLimit, setOutboxLimit] = useState(DASHBOARD_FEED_LIMIT);
+  const events = useQuery({ ...eventsQueryOptions(eventsLimit), enabled: openPanels.events });
+  const outbox = useQuery({ ...outboxQueryOptions("", "", outboxLimit), enabled: openPanels.outbox });
   const settings = useQuery(settingsQueryOptions);
   const githubConfig = useQuery(githubConfigQueryOptions);
 
@@ -465,17 +482,38 @@ export function DashboardPage() {
     ]);
   };
 
-  // 行级重试错误：失败时在该行旁提示，避免「按钮恢复但无任何反馈」的静默失败。
+  // 行级重试错误：失败时在该行旁提示，带 6 秒自动淡出与手动关闭按键。
   const [retryError, setRetryError] = useState<{ id: string; message: string } | null>(null);
+  const retryTimerRef = useRef<number | null>(null);
+
+  const clearRetryError = useCallback(() => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    setRetryError(null);
+  }, []);
+
+  const setRetryErrorAutoDismiss = useCallback((err: { id: string; message: string }) => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+    }
+    setRetryError(err);
+    retryTimerRef.current = window.setTimeout(() => {
+      setRetryError(null);
+      retryTimerRef.current = null;
+    }, 6000);
+  }, []);
+
   const retry = useMutation({
     mutationFn: retryOutbox,
     onMutate: (id) => {
       setRetryBusyId(id);
-      setRetryError(null);
+      clearRetryError();
     },
     onSettled: () => setRetryBusyId(null),
     onSuccess: invalidateOutboxAndDashboard,
-    onError: (err, id) => setRetryError({ id, message: toApiError(err).message || "重试失败" }),
+    onError: (err, id) => setRetryErrorAutoDismiss({ id, message: toApiError(err).message || "重试失败" }),
   });
 
   const stats = dashboard.data;
@@ -595,6 +633,18 @@ export function DashboardPage() {
             <p className="eyebrow">值守概览</p>
             <FreshnessBadge freshness={stats?.freshness} />
             <SystemHealthBadges health={health.data} jev={jevConfig.data} />
+            <button
+              type="button"
+              className={`quiet-button quiet-button--compact dashboard-refresh-btn${isRefreshing ? " is-refreshing" : ""}`}
+              onClick={handleRefreshAll}
+              disabled={isRefreshing}
+              title="立即重新检测系统健康并刷新大盘数据"
+              aria-label="刷新大盘数据"
+              data-testid="dashboard-refresh-btn"
+            >
+              <RefreshCw className={`w-3.5 h-3.5${isRefreshing ? " animate-spin" : ""}`} aria-hidden="true" />
+              <span>{isRefreshing ? "检测中…" : "刷新"}</span>
+            </button>
           </div>
           <h1>现在是否健康，今天发生了什么。</h1>
           <p>Webhook 入库后会在此汇总。仓库对账与基线放行请在「设置」中操作。</p>
@@ -649,14 +699,14 @@ export function DashboardPage() {
           ) : null}
           {featurePRs ? <Metric label="开放 PR" value={stats?.open_pulls} to="/pull-requests" loading={dashboard.isPending} /> : null}
           {featureActions ? (
-            <Metric label="失败 Actions" value={stats?.failed_actions} to="/actions" loading={dashboard.isPending} />
+            <Metric label="失败 Actions" value={stats?.failed_actions} to="/actions" loading={dashboard.isPending} tone="warning" />
           ) : null}
           {featureAlerts ? (
-            <Metric label="开放安全告警" value={stats?.open_security} to="/security" loading={dashboard.isPending} />
+            <Metric label="开放安全告警" value={stats?.open_security} to="/security" loading={dashboard.isPending} tone="danger" />
           ) : null}
           <Metric label="24h 事件" value={stats?.events_24h} loading={dashboard.isPending} />
           {/* 跳转带 status=dead：outbox 页按 URL 初始筛选，直达失败投递列表。 */}
-          <Metric label="投递失败" value={stats?.outbox_dead} to="/notifications/outbox?status=dead" loading={dashboard.isPending} />
+          <Metric label="投递失败" value={stats?.outbox_dead} to="/notifications/outbox?status=dead" loading={dashboard.isPending} tone="danger" />
         </div>
         <div className="status-grid status-grid--secondary">
           <Metric label="活跃仓库" value={stats?.repos_active} to="/repos" loading={dashboard.isPending} />
@@ -754,6 +804,18 @@ export function DashboardPage() {
               );
             })}
           </ul>
+          {eventTotal > eventItems.length ? (
+            <div className="feed-load-more">
+              <button
+                type="button"
+                className="quiet-button quiet-button--compact"
+                onClick={() => setEventsLimit((prev) => prev + 15)}
+                disabled={events.isFetching}
+              >
+                {events.isFetching ? "加载中…" : "加载更多 (+15 条)"}
+              </button>
+            </div>
+          ) : null}
           {eventItems.length > 0 ? (
             <p className="panel-footnote">
               {eventTotal > DASHBOARD_FEED_LIMIT
@@ -827,7 +889,16 @@ export function DashboardPage() {
                       </button>
                       {retryError?.id === item.id ? (
                         <span className="feed-row__error" role="alert">
-                          {retryError.message}
+                          <span>{retryError.message}</span>
+                          <button
+                            type="button"
+                            className="feed-row__error-dismiss"
+                            onClick={clearRetryError}
+                            title="关闭提示"
+                            aria-label="关闭错误提示"
+                          >
+                            ×
+                          </button>
                         </span>
                       ) : null}
                     </>
@@ -836,6 +907,18 @@ export function DashboardPage() {
               </li>
             ))}
           </ul>
+          {outboxTotal > outboxItems.length ? (
+            <div className="feed-load-more">
+              <button
+                type="button"
+                className="quiet-button quiet-button--compact"
+                onClick={() => setOutboxLimit((prev) => prev + 15)}
+                disabled={outbox.isFetching}
+              >
+                {outbox.isFetching ? "加载中…" : "加载更多 (+15 条)"}
+              </button>
+            </div>
+          ) : null}
           {outboxTotal > DASHBOARD_FEED_LIMIT ? (
             <p className="panel-footnote">
               共 {outboxTotal} 条投递记录，仅显示最近 {DASHBOARD_FEED_LIMIT} 条。
@@ -848,7 +931,23 @@ export function DashboardPage() {
   );
 }
 
-function Metric({ label, value, to, loading }: { label: string; value?: number; to?: string; loading?: boolean }) {
+function Metric({
+  label,
+  value,
+  to,
+  loading,
+  tone = "default",
+}: {
+  label: string;
+  value?: number;
+  to?: string;
+  loading?: boolean;
+  tone?: "default" | "danger" | "warning";
+}) {
+  const toneClass =
+    !loading && value !== undefined && value > 0 && tone !== "default"
+      ? ` status-item--${tone}`
+      : "";
   const inner = (
     <>
       <span className="status-item__label">{label}</span>
@@ -862,10 +961,10 @@ function Metric({ label, value, to, loading }: { label: string; value?: number; 
   );
   if (to) {
     return (
-      <Link className="status-item status-item--link" to={to}>
+      <Link className={`status-item status-item--link${toneClass}`} to={to}>
         {inner}
       </Link>
     );
   }
-  return <div className="status-item">{inner}</div>;
+  return <div className={`status-item${toneClass}`}>{inner}</div>;
 }

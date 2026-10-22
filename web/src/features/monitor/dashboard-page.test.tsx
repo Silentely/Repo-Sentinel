@@ -7,7 +7,9 @@ import type { DashboardStats } from "./api";
 
 // 页面内链接与真实路由解耦：渲染为普通锚点即可。
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ to, children }: { to: string; children?: ReactNode }) => <a href={to}>{children}</a>,
+  Link: ({ to, children, className }: { to: string; children?: ReactNode; className?: string }) => (
+    <a href={to} className={className}>{children}</a>
+  ),
 }));
 
 // 测试数据经 vi.hoisted 注入：vi.mock 工厂提升执行时不能引用模块级变量。
@@ -543,4 +545,33 @@ describe("仪表盘", () => {
     expect(badge).toHaveTextContent("Jev: 熔断");
     expect(badge).toHaveClass("system-badge--danger");
   });
+  it("渲染大盘一键刷新按钮，点击可触发重新检测", async () => {
+    renderPage();
+    const refreshBtn = await screen.findByTestId("dashboard-refresh-btn");
+    expect(refreshBtn).toBeInTheDocument();
+    expect(refreshBtn).toHaveTextContent("刷新");
+  });
+
+  it("高危指标出现时应用异常语义告警样式（投递失败 > 0 时带 status-item--danger）", async () => {
+    fixtures.dashboard = {
+      ...fixtures.dashboard,
+      outbox_dead: 3,
+    };
+    renderPage();
+
+    const deadMetricLink = await screen.findByRole("link", { name: /投递失败/ });
+    await waitFor(() => {
+      expect(deadMetricLink).toHaveClass("status-item--danger");
+    });
+  });
+
+  it("事件超限时展示加载更多按钮", async () => {
+    fixtures.events = makeEventsPage(30);
+    renderPage();
+
+    const eventsPanel = await screen.findByRole("region", { name: "最近事件" });
+    const loadMoreBtn = await within(eventsPanel).findByRole("button", { name: /加载更多/ });
+    expect(loadMoreBtn).toBeInTheDocument();
+  });
 });
+
