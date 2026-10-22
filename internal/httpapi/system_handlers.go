@@ -218,25 +218,48 @@ func (s *server) handleSystemHealth(w http.ResponseWriter, r *http.Request) {
 				s.ghProbeMu.Unlock()
 			} else {
 				s.ghProbeMu.Unlock()
-				// 将超时从 2 秒放宽到 5 秒，容忍跨国网络抖动与代理延迟
-				ghCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-				limit, remaining, err := s.dependencies.GitHubRuntime.Client.ProbeRateLimit(ghCtx)
-				cancel()
-				if err != nil {
-					ghProbe.Status = "degraded"
-					ghProbe.Error = err.Error()
-				} else {
-					ghProbe.Status = "ok"
-					ghProbe.RateLimitLimit = limit
-					ghProbe.RateLimitRemaining = remaining
-					if remaining == 0 {
-						ghProbe.Status = "degraded"
+				// 使用 singleflight 合并并发探针调用，避免缓存过期时的并发惊群
+				ch := s.ghProbeSF.DoChan("github_probe", func() (any, error) {
+					// 二次检查缓存：排队的并发请求可能直接命中上一轮刚完成的结果
+					s.ghProbeMu.Lock()
+					if s.ghProbeCache != nil && time.Since(s.ghProbeAt) < 60*time.Second {
+						p := *s.ghProbeCache
+						s.ghProbeMu.Unlock()
+						return p, nil
+					}
+					s.ghProbeMu.Unlock()
+
+					p := gitHubProbe{Configured: true}
+					// 将超时放宽到 5 秒，容忍跨国网络抖动与代理延迟；使用独立 Background 避免因单次连接取消打断共享探针
+					ghCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					limit, remaining, err := s.dependencies.GitHubRuntime.Client.ProbeRateLimit(ghCtx)
+					cancel()
+					if err != nil {
+						p.Status = "degraded"
+						p.Error = err.Error()
+					} else {
+						p.Status = "ok"
+						p.RateLimitLimit = limit
+						p.RateLimitRemaining = remaining
+						if remaining == 0 {
+							p.Status = "degraded"
+						}
+					}
+					s.ghProbeMu.Lock()
+					s.ghProbeCache = &p
+					s.ghProbeAt = time.Now()
+					s.ghProbeMu.Unlock()
+					return p, nil
+				})
+
+				select {
+				case <-r.Context().Done():
+					return
+				case res := <-ch:
+					if res.Val != nil {
+						ghProbe = res.Val.(gitHubProbe)
 					}
 				}
-				s.ghProbeMu.Lock()
-				s.ghProbeCache = &ghProbe
-				s.ghProbeAt = time.Now()
-				s.ghProbeMu.Unlock()
 			}
 
 			if ghProbe.Status == "degraded" {

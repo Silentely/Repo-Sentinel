@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import "./status-tooltip.css";
 
 export interface StatusTooltipRow {
@@ -35,6 +35,11 @@ export function StatusTooltip({
 }: StatusTooltipProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
+  const isPinnedRef = useRef(isPinned);
+  useEffect(() => {
+    isPinnedRef.current = isPinned;
+  }, [isPinned]);
+  const tooltipId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const enterTimerRef = useRef<number | null>(null);
   const leaveTimerRef = useRef<number | null>(null);
@@ -60,7 +65,7 @@ export function StatusTooltip({
   function handleMouseLeave() {
     clearTimers();
     leaveTimerRef.current = window.setTimeout(() => {
-      if (!isPinned) {
+      if (!isPinnedRef.current) {
         setIsOpen(false);
       }
     }, 150);
@@ -74,7 +79,7 @@ export function StatusTooltip({
   function handleBlur(e: React.FocusEvent) {
     clearTimers();
     if (!containerRef.current?.contains(e.relatedTarget as Node)) {
-      if (!isPinned) {
+      if (!isPinnedRef.current) {
         setIsOpen(false);
       }
     }
@@ -82,6 +87,7 @@ export function StatusTooltip({
 
   function handleClick(e: React.MouseEvent) {
     // 允许通过点击锁定/关闭浮层，对触控板和移动端友好
+    clearTimers();
     e.stopPropagation();
     if (isPinned) {
       setIsPinned(false);
@@ -94,8 +100,19 @@ export function StatusTooltip({
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
+      clearTimers();
       setIsPinned(false);
       setIsOpen(false);
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      clearTimers();
+      if (isPinned) {
+        setIsPinned(false);
+        setIsOpen(false);
+      } else {
+        setIsPinned(true);
+        setIsOpen(true);
+      }
     }
   }
 
@@ -142,11 +159,13 @@ export function StatusTooltip({
       onKeyDown={handleKeyDown}
       role="group"
       aria-expanded={isOpen || isPinned}
+      aria-controls={isOpen || isPinned ? tooltipId : undefined}
     >
       {children}
 
       {(isOpen || isPinned) && (
         <div
+          id={tooltipId}
           className={`status-tooltip-panel ${alignClass}`}
           role="tooltip"
           data-testid="status-tooltip-panel"
@@ -156,8 +175,7 @@ export function StatusTooltip({
             <span className="status-tooltip-title">{title}</span>
             {badge && (
               <span
-                className={`system-badge system-badge--${badge.variant}`}
-                style={{ fontSize: "0.7rem", padding: "1px 6px" }}
+                className={`system-badge system-badge--${badge.variant} status-tooltip-header-badge`}
               >
                 {badge.text}
               </span>

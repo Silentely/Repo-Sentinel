@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
@@ -296,7 +296,6 @@ function SystemHealthBadges({ health, jev }: { health?: SystemHealthDiagnostics;
         const isCircuitOpen = jevStatus?.circuit_state === "open";
         const isShadow = mode === "shadow";
         const isActive = mode === "active";
-        const isDisabled = mode === "disabled" || !jev.enabled;
 
         let jevVariant: "success" | "warning" | "danger" | "neutral" = "neutral";
         let jevLabel = "Jev: 未启用";
@@ -442,17 +441,27 @@ export function DashboardPage() {
   // 面板查询按折叠状态暂停：折叠的「通知投递/最近事件/Star 增长」零请求零轮询，
   // 展开时若缓存新鲜直接显示，过期则骨架加载（QueryGate 兜底）。
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshTimerRef = useRef<number | null>(null);
   const handleRefreshAll = useCallback(async () => {
     setIsRefreshing(true);
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["system-health"] }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      queryClient.invalidateQueries({ queryKey: ["system", "jev"] }),
-      queryClient.invalidateQueries({ queryKey: ["events"] }),
-      queryClient.invalidateQueries({ queryKey: ["outbox"] }),
-      queryClient.invalidateQueries({ queryKey: ["repos"] }),
-    ]);
-    setTimeout(() => setIsRefreshing(false), 500);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["system-health"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["system", "jev"] }),
+        queryClient.invalidateQueries({ queryKey: ["events"] }),
+        queryClient.invalidateQueries({ queryKey: ["outbox"] }),
+        queryClient.invalidateQueries({ queryKey: ["repositories"] }),
+      ]);
+    } finally {
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current);
+      }
+      refreshTimerRef.current = window.setTimeout(() => {
+        setIsRefreshing(false);
+        refreshTimerRef.current = null;
+      }, 500);
+    }
   }, [queryClient]);
 
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>(readOpenPanels);
@@ -515,6 +524,17 @@ export function DashboardPage() {
     onSuccess: invalidateOutboxAndDashboard,
     onError: (err, id) => setRetryErrorAutoDismiss({ id, message: toApiError(err).message || "重试失败" }),
   });
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current);
+      }
+      if (retryTimerRef.current !== null) {
+        window.clearTimeout(retryTimerRef.current);
+      }
+    };
+  }, []);
 
   const stats = dashboard.data;
   const featureIssues = settings.data?.["feature.issues"] !== false;
@@ -748,7 +768,7 @@ export function DashboardPage() {
         id="events"
         title="最近事件"
         count={
-          eventTotal > DASHBOARD_FEED_LIMIT ? `${DASHBOARD_FEED_LIMIT}+` : eventItems.length
+          eventTotal > eventsLimit ? `${eventsLimit}+` : eventItems.length
         }
         open={openPanels.events}
         onToggle={() => togglePanel("events")}
@@ -818,8 +838,8 @@ export function DashboardPage() {
           ) : null}
           {eventItems.length > 0 ? (
             <p className="panel-footnote">
-              {eventTotal > DASHBOARD_FEED_LIMIT
-                ? `共 ${eventTotal} 条事件，仅显示最近 ${DASHBOARD_FEED_LIMIT} 条。`
+              {eventTotal > eventsLimit
+                ? `共 ${eventTotal} 条事件，仅显示最近 ${eventsLimit} 条。`
                 : `共 ${eventTotal} 条事件。`}
               {kindQuickLinks.length > 0 ? (
                 <>
@@ -842,7 +862,7 @@ export function DashboardPage() {
         id="outbox"
         title="通知投递"
         count={
-          outboxTotal > DASHBOARD_FEED_LIMIT ? `${DASHBOARD_FEED_LIMIT}+` : outboxItems.length
+          outboxTotal > outboxLimit ? `${outboxLimit}+` : outboxItems.length
         }
         open={openPanels.outbox}
         onToggle={() => togglePanel("outbox")}
@@ -919,9 +939,9 @@ export function DashboardPage() {
               </button>
             </div>
           ) : null}
-          {outboxTotal > DASHBOARD_FEED_LIMIT ? (
+          {outboxTotal > outboxLimit ? (
             <p className="panel-footnote">
-              共 {outboxTotal} 条投递记录，仅显示最近 {DASHBOARD_FEED_LIMIT} 条。
+              共 {outboxTotal} 条投递记录，仅显示最近 {outboxLimit} 条。
               <Link to="/notifications/outbox">查看全部</Link>
             </p>
           ) : null}

@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
@@ -121,6 +123,7 @@ type server struct {
 	ghProbeMu       sync.Mutex
 	ghProbeCache    *gitHubProbe
 	ghProbeAt       time.Time
+	ghProbeSF       singleflight.Group
 }
 
 func (s *server) getWorkerID() string {

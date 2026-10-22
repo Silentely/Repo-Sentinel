@@ -199,6 +199,11 @@ func (s *server) handlePutGitHubConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GitHub 配置更新后主动清空探针缓存，让下次健康检查立即采用新凭证进行探测
+	s.ghProbeMu.Lock()
+	s.ghProbeCache = nil
+	s.ghProbeMu.Unlock()
+
 	s.dependencies.Logger.Info(
 		"github config updated",
 		"request_id", requestIDFromContext(r.Context()),

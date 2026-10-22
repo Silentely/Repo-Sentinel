@@ -2,6 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -238,5 +241,126 @@ func TestSystemHealth_GitHubProbeCached(t *testing.T) {
 	}
 	if res.GitHub.RateLimitRemaining != 4888 {
 		t.Fatalf("expected cached rate_limit_remaining=4888, got %d", res.GitHub.RateLimitRemaining)
+	}
+}
+
+func TestSystemHealth_GitHubProbeSingleFlight(t *testing.T) {
+	var callCount atomic.Int32
+	probeGate := make(chan struct{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		<-probeGate // 阻塞直到并发请求全部发出
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"resources": map[string]any{
+				"core": map[string]any{
+					"limit":     5000,
+					"remaining": 4777,
+				},
+			},
+		})
+	}))
+	defer ts.Close()
+
+	ghClient := &githubx.AppClient{
+		AppID:   12345,
+		BaseURL: ts.URL,
+	}
+	ghClient.Configure(12345, "", generateTestRSAKey(t))
+
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		githubClient: ghClient,
+	})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	// 启动 10 个并发请求，验证 singleflight 合并只发起一次真实 probe
+	const concurrency = 10
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			rec := fixture.request(t, http.MethodGet, "/api/v1/system/health", "", fmt.Sprintf("127.0.0.1:453%02d", idx), cookies, nil)
+			if rec.Code != http.StatusOK {
+				t.Errorf("request %d returned %d", idx, rec.Code)
+			}
+		}(i)
+	}
+
+	// 稍作等待确保并发协程均已进入 singleflight 排队
+	time.Sleep(50 * time.Millisecond)
+	close(probeGate)
+	wg.Wait()
+
+	if got := callCount.Load(); got != 1 {
+		t.Fatalf("expected singleflight to make exactly 1 probe call, got %d", got)
+	}
+}
+
+func TestSystemHealth_GitHubConfigUpdateClearsCache(t *testing.T) {
+	callCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"resources": map[string]any{
+				"core": map[string]any{
+					"limit":     5000,
+					"remaining": 4000 + callCount,
+				},
+			},
+		})
+	}))
+	defer ts.Close()
+
+	ghClient := &githubx.AppClient{
+		AppID:   12345,
+		BaseURL: ts.URL,
+	}
+	ghClient.Configure(12345, "", generateTestRSAKey(t))
+
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		githubClient: ghClient,
+		keyRing:      testHTTPKeyRing(t),
+	})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	// 第一次请求进入缓存
+	rec1 := fixture.request(t, http.MethodGet, "/api/v1/system/health", "", "127.0.0.1:45401", cookies, nil)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec1.Code)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected callCount 1, got %d", callCount)
+	}
+
+	// 更新 GitHub 配置，触发缓存清理
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	if csrf == nil {
+		t.Fatal("missing csrf cookie")
+	}
+	putData, _ := json.Marshal(map[string]any{
+		"app_id":         int64(12345),
+		"client_id":      "cli-2",
+		"private_key_pem":    generateTestRSAKey(t),
+		"webhook_secret": "new-secret",
+	})
+	recPut := fixture.request(t, http.MethodPut, "/api/v1/github/config", string(putData), "127.0.0.1:45402", cookies, map[string]string{
+		CSRFHeaderName: csrf.Value,
+	})
+	if recPut.Code != http.StatusOK {
+		t.Fatalf("expected 200 on config update, got %d: %s", recPut.Code, recPut.Body.String())
+	}
+
+	// 第二次请求应当穿透重新探测，因为缓存已在配置更新时清空
+	rec2 := fixture.request(t, http.MethodGet, "/api/v1/system/health", "", "127.0.0.1:45403", cookies, nil)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("expected 200 on health after update, got %d", rec2.Code)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected callCount to be 2 after config update invalidated cache, got %d", callCount)
 	}
 }

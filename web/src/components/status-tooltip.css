@@ -50,6 +50,7 @@
 .status-tooltip-panel--center {
   left: 50%;
   transform: translateX(-50%);
+  animation-name: tooltipFadeInCenter;
 }
 
 @keyframes tooltipFadeIn {
@@ -61,6 +62,22 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes tooltipFadeInCenter {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.status-tooltip-header-badge {
+  font-size: 0.7rem;
+  padding: 1px 6px;
 }
 
 .status-tooltip-header {
