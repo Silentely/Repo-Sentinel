@@ -2,17 +2,17 @@ package httpapi
 
 import (
 	"context"
-	"fmt"
-	"sync"
-	"sync/atomic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -343,10 +343,10 @@ func TestSystemHealth_GitHubConfigUpdateClearsCache(t *testing.T) {
 		t.Fatal("missing csrf cookie")
 	}
 	putData, _ := json.Marshal(map[string]any{
-		"app_id":         int64(12345),
-		"client_id":      "cli-2",
-		"private_key_pem":    generateTestRSAKey(t),
-		"webhook_secret": "new-secret",
+		"app_id":          int64(12345),
+		"client_id":       "cli-2",
+		"private_key_pem": generateTestRSAKey(t),
+		"webhook_secret":  "new-secret",
 	})
 	recPut := fixture.request(t, http.MethodPut, "/api/v1/github/config", string(putData), "127.0.0.1:45402", cookies, map[string]string{
 		CSRFHeaderName: csrf.Value,

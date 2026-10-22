@@ -204,6 +204,7 @@ npm run docs:build
 
 # 综合验证
 make verify                   # fmt + test + vet + build + test-frontend
+gofmt -l cmd internal migrations # CI 格式检查门禁，提交前必须无输出
 ```
 
 ## 提交规范
@@ -220,6 +221,10 @@ make verify                   # fmt + test + vet + build + test-frontend
 - 描述使用简体中文
 - 禁止出现 `Co-Authored-By: Claude` 等 AI 生成标识
 - 一个提交解决一个问题，不做无关改动
+- **提交前必须执行代码格式化（强制）**：
+  - 任何包含 Go 代码修改的提交，在 `git commit` 前**必须**对修改涉及的文件执行 `gofmt -w <相关文件>`（或运行 `gofmt -w cmd internal migrations`）。
+  - 提交前必须执行 `gofmt -l cmd internal migrations`，确保输出为空。
+  - CI (`.github/workflows/docker.yml`) 的 `Gofmt check` 步骤会在检测到任何未格式化文件时以 exit code 1 失败并阻断 Docker 镜像构建。
 
 ## 文档与提交措辞（强制）
 
