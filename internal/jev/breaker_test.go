@@ -214,3 +214,124 @@ func TestParseRetryAfter(t *testing.T) {
 		t.Errorf("expected 0 for invalid, got %v", d)
 	}
 }
+
+func TestBreakerPermitAtomicAcquireAndRelease(t *testing.T) {
+	now := time.Unix(0, 0)
+	b := newBreaker(func() time.Time { return now }, BreakerConfig{
+		FailureThreshold:    2,
+		Cooldown:            10 * time.Second,
+		HalfOpenConcurrency: 1,
+	})
+
+	// 触发熔断进入 Open
+	p1 := b.AcquirePermit()
+	b.RecordPermitResult(p1, false)
+	p2 := b.AcquirePermit()
+	b.RecordPermitResult(p2, false)
+
+	if b.getState() != "open" {
+		t.Fatalf("expected open, got %s", b.getState())
+	}
+
+	// 冷却时间到，并发 10 个 AcquirePermit，断言只放行 1 个探测请求
+	now = now.Add(10 * time.Second)
+	var allowedCount int
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var probePermit BreakerPermit
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			p := b.AcquirePermit()
+			if p.Allowed {
+				mu.Lock()
+				allowedCount++
+				probePermit = p
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if allowedCount != 1 {
+		t.Fatalf("expected exactly 1 permit allowed, got %d", allowedCount)
+	}
+	if !probePermit.IsProbe {
+		t.Fatal("allowed permit must be marked as probe")
+	}
+
+	// 释放名额（例如排队超时），名额应回退
+	b.ReleasePermit(probePermit)
+	// 再次尝试，应该可以再次获取探测凭证
+	pRetry := b.AcquirePermit()
+	if !pRetry.Allowed || !pRetry.IsProbe {
+		t.Fatal("expected retry permit to be allowed after release")
+	}
+}
+
+func TestBreakerOldInFlightRequestCannotCloseOpenBreaker(t *testing.T) {
+	now := time.Unix(0, 0)
+	b := newBreaker(func() time.Time { return now }, BreakerConfig{
+		FailureThreshold:    2,
+		Cooldown:            20 * time.Second,
+		HalfOpenConcurrency: 1,
+	})
+
+	// 请求 1 在 generation 1 获取凭证并发出（迟到）
+	slowPermit := b.AcquirePermit()
+	if !slowPermit.Allowed || slowPermit.Generation != 1 {
+		t.Fatalf("unexpected slowPermit: %+v", slowPermit)
+	}
+
+	// 其它请求连续失败，触发熔断，generation 跃迁
+	pFail1 := b.AcquirePermit()
+	b.RecordPermitResult(pFail1, false)
+	pFail2 := b.AcquirePermit()
+	b.RecordPermitResult(pFail2, false)
+
+	if b.getState() != "open" {
+		t.Fatalf("expected open state, got %s", b.getState())
+	}
+
+	// 旧在途请求 slowPermit 迟到成功
+	b.RecordPermitResult(slowPermit, true)
+
+	// 断言：熔断器必须依然处于 open 状态，绝不能被旧请求唤醒为 closed
+	if b.getState() != "open" {
+		t.Fatalf("old in-flight request closed open breaker! state: %s", b.getState())
+	}
+}
+
+func TestBreakerTripOpen(t *testing.T) {
+	now := time.Unix(0, 0)
+	b := newBreaker(func() time.Time { return now }, BreakerConfig{
+		FailureThreshold: 5,
+		Cooldown:         30 * time.Second,
+	})
+
+	if b.getState() != "closed" {
+		t.Fatal("expected initially closed")
+	}
+
+	// 显式 TripOpen（例如 429 Retry-After=60s）
+	b.TripOpen(60 * time.Second)
+	if b.getState() != "open" {
+		t.Fatalf("expected open after TripOpen, got %s", b.getState())
+	}
+
+	// 30s 冷却后仍为 open（因为设定了 60s 冷却）
+	now = now.Add(30 * time.Second)
+	p := b.AcquirePermit()
+	if p.Allowed {
+		t.Fatal("should not allow at 30s when TripOpen cooldown is 60s")
+	}
+
+	// 60s 到期后允许探测
+	now = now.Add(31 * time.Second)
+	p2 := b.AcquirePermit()
+	if !p2.Allowed || !p2.IsProbe {
+		t.Fatal("should allow probe after 60s cooldown")
+	}
+}

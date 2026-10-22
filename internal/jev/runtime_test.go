@@ -256,3 +256,66 @@ func TestRuntimeStorePersistenceAndMerge(t *testing.T) {
 		t.Errorf("save with nil store should not error: %v", err)
 	}
 }
+
+func TestRuntimeValidateConfig(t *testing.T) {
+	// 1. 未启用时合法
+	disabled := config.JevConfig{Enabled: false}
+	if err := ValidateConfig(disabled); err != nil {
+		t.Fatalf("disabled config should be valid: %v", err)
+	}
+
+	// 2. 启用时缺少 base_url
+	noURL := config.JevConfig{Enabled: true, APIKey: config.NewSecret("key"), Model: "m"}
+	if err := ValidateConfig(noURL); err == nil {
+		t.Fatal("expected error for empty base_url when enabled")
+	}
+
+	// 3. HTTP 必须被拒绝（统一规则强制 https）
+	httpURL := config.JevConfig{
+		Enabled: true,
+		BaseURL: "http://api.typesafe.ai",
+		APIKey:  config.NewSecret("key"),
+		Model:   "m",
+	}
+	if err := ValidateConfig(httpURL); err == nil {
+		t.Fatal("expected error for http scheme: must be https")
+	}
+
+	// 4. 缺少 api_key
+	noKey := config.JevConfig{
+		Enabled: true,
+		BaseURL: "https://api.typesafe.ai",
+		Model:   "m",
+	}
+	if err := ValidateConfig(noKey); err == nil {
+		t.Fatal("expected error for empty api_key when enabled")
+	}
+
+	// 5. 非法 retries
+	badRetries := config.JevConfig{
+		Enabled: true,
+		BaseURL: "https://api.typesafe.ai",
+		APIKey:  config.NewSecret("key"),
+		Model:   "m",
+		Retries: 5,
+	}
+	if err := ValidateConfig(badRetries); err == nil {
+		t.Fatal("expected error for retries > 1")
+	}
+
+	// 6. 合法 https 配置
+	valid := config.JevConfig{
+		Enabled: true,
+		BaseURL: "https://api.typesafe.ai",
+		APIKey:  config.NewSecret("key"),
+		Model:   "jev-1.14.0",
+		Retries: 1,
+	}
+	if err := ValidateConfig(valid); err != nil {
+		t.Fatalf("expected valid config, got: %v", err)
+	}
+	rt, err := NewRuntime(valid)
+	if err != nil || rt == nil {
+		t.Fatalf("NewRuntime failed: %v", err)
+	}
+}

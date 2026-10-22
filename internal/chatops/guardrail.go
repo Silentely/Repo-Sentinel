@@ -58,7 +58,7 @@ func sanitizeGuardrailText(s string) string {
 	s = emailRegex.ReplaceAllString(s, "[REDACTED_EMAIL]")
 	s = secretRegex.ReplaceAllString(s, "[REDACTED_SECRET]")
 	if len(s) > 2048 {
-		s = s[:2048]
+		s = s[:2048] + " [TRUNCATED]"
 	}
 	return strings.TrimSpace(s)
 }

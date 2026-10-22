@@ -192,11 +192,7 @@ func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, plane := range []string{"notification", "review", "chatops"} {
 		writeMetric("reposentinel_jev_requests_total{plane=\""+plane+"\"}", "Jev decision requests issued", "counter", jevSnap.Calls[plane])
-		succ := uint64(0)
-		if jevSnap.Calls[plane] >= jevSnap.Failures[plane] {
-			succ = jevSnap.Calls[plane] - jevSnap.Failures[plane]
-		}
-		writeMetric("reposentinel_jev_requests_success_total{plane=\""+plane+"\"}", "Jev decision requests succeeded", "counter", succ)
+		writeMetric("reposentinel_jev_requests_success_total{plane=\""+plane+"\"}", "Jev decision requests succeeded", "counter", jevSnap.Successes[plane])
 		writeMetric("reposentinel_jev_requests_failed_total{plane=\""+plane+"\"}", "Jev decision requests failed", "counter", jevSnap.Failures[plane])
 		writeMetric("reposentinel_jev_cache_hits_total{plane=\""+plane+"\"}", "Jev decision cache hits", "counter", jevSnap.CacheHits[plane])
 		hits := jevSnap.CacheHits[plane]

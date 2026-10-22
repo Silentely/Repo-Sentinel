@@ -11,6 +11,7 @@ var (
 	ErrStateTooLarge     = errors.New("jev: state too large")
 	ErrCircuitOpen       = errors.New("jev: circuit breaker open")
 	ErrRateLimited       = errors.New("jev: rate limited")
+	ErrTruncatedState    = errors.New("jev: truncated state must not be judged automatically")
 )
 
 // Question 表示向 Jev 提出的问题契约。

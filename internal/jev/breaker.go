@@ -32,9 +32,17 @@ type BreakerStats struct {
 	TotalTransitions int64  `json:"total_transitions"`
 }
 
+// BreakerPermit 是一次允许调用的探测凭证，与当前熔断器的代次绑定。
+type BreakerPermit struct {
+	Allowed    bool
+	Generation uint64
+	IsProbe    bool
+}
+
 type circuitBreaker struct {
 	mu               sync.Mutex
 	state            breakerState
+	generation       uint64
 	failures         int
 	openedAt         time.Time
 	cooldown         time.Duration
@@ -63,6 +71,7 @@ func newBreaker(now func() time.Time, cfg BreakerConfig) *circuitBreaker {
 	}
 	return &circuitBreaker{
 		state:       stateClosed,
+		generation:  1,
 		now:         now,
 		threshold:   threshold,
 		cooldown:    cooldown,
@@ -73,80 +82,124 @@ func newBreaker(now func() time.Time, cfg BreakerConfig) *circuitBreaker {
 	}
 }
 
-func (b *circuitBreaker) allow() bool {
+// AcquirePermit 在同一临界区内原子判定是否放行、推进状态、递增半开计数并返回凭证。
+func (b *circuitBreaker) AcquirePermit() BreakerPermit {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	now := b.now()
 	switch b.state {
 	case stateClosed:
-		return true
+		return BreakerPermit{
+			Allowed:    true,
+			Generation: b.generation,
+			IsProbe:    false,
+		}
 	case stateOpen:
 		if now.Sub(b.openedAt) >= b.cooldown {
 			b.transitionLocked(stateHalfOpen)
 			b.halfOpenInFlight = 1
-			return true
+			return BreakerPermit{
+				Allowed:    true,
+				Generation: b.generation,
+				IsProbe:    true,
+			}
 		}
-		return false
+		return BreakerPermit{Allowed: false, Generation: b.generation}
 	case stateHalfOpen:
-		// 纪律：半开状态只放行指定并发数（默认1个请求），其余快速失败
 		if b.halfOpenInFlight < b.halfOpenMax {
 			b.halfOpenInFlight++
-			return true
+			return BreakerPermit{
+				Allowed:    true,
+				Generation: b.generation,
+				IsProbe:    true,
+			}
 		}
-		return false
+		return BreakerPermit{Allowed: false, Generation: b.generation}
 	default:
-		return false
+		return BreakerPermit{Allowed: false, Generation: b.generation}
 	}
+}
+
+// ReleasePermit 在请求提前取消、排队超时或非上游失败时释放半开名额。
+func (b *circuitBreaker) ReleasePermit(permit BreakerPermit) {
+	if !permit.Allowed || !permit.IsProbe {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if permit.Generation != b.generation || b.state != stateHalfOpen {
+		return
+	}
+	if b.halfOpenInFlight > 0 {
+		b.halfOpenInFlight--
+	}
+}
+
+// RecordPermitResult 报告与凭证绑定的执行结果。
+func (b *circuitBreaker) RecordPermitResult(permit BreakerPermit, success bool) {
+	if !permit.Allowed {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	// 规则 3：若代次不匹配，说明该请求属于旧代次，绝不作为探测成功关闭熔断
+	if permit.Generation != b.generation {
+		// 代次已变（例如已经在某次失败后转为了新 Open），旧请求即便成功也不能恢复熔断
+		return
+	}
+
+	if success {
+		switch b.state {
+		case stateClosed:
+			b.failures = 0
+		case stateHalfOpen:
+			if b.halfOpenInFlight > 0 {
+				b.halfOpenInFlight--
+			}
+			b.failures = 0
+			b.transitionLocked(stateClosed)
+		case stateOpen:
+			// open 分支绝不清理 failures 计数，保持当前状态
+		}
+	} else {
+		switch b.state {
+		case stateClosed:
+			b.failures++
+			if b.failures >= b.threshold {
+				b.transitionLocked(stateOpen)
+				b.openedAt = b.now()
+			}
+		case stateHalfOpen:
+			if b.halfOpenInFlight > 0 {
+				b.halfOpenInFlight--
+			}
+			b.transitionLocked(stateOpen)
+			b.openedAt = b.now()
+		case stateOpen:
+			// 保持 open
+		}
+	}
+}
+
+// 保持向下兼容的 allow 与 record 方法
+func (b *circuitBreaker) allow() bool {
+	p := b.AcquirePermit()
+	return p.Allowed
 }
 
 func (b *circuitBreaker) record(success bool) {
-	if success {
-		b.recordSuccess()
-	} else {
-		b.recordFailure()
-	}
-}
-
-func (b *circuitBreaker) recordSuccess() {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	switch b.state {
-	case stateClosed:
-		b.failures = 0
-	case stateHalfOpen:
-		if b.halfOpenInFlight > 0 {
-			b.halfOpenInFlight--
-		}
-		b.failures = 0
-		b.transitionLocked(stateClosed)
-	case stateOpen:
-		// 理论上不会发生，但重置计数
-		b.failures = 0
-	}
-}
-
-func (b *circuitBreaker) recordFailure() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	switch b.state {
-	case stateClosed:
-		b.failures++
-		if b.failures >= b.threshold {
-			b.transitionLocked(stateOpen)
-			b.openedAt = b.now()
-		}
-	case stateHalfOpen:
-		if b.halfOpenInFlight > 0 {
-			b.halfOpenInFlight--
-		}
-		b.transitionLocked(stateOpen)
-		b.openedAt = b.now()
-	case stateOpen:
-		// 保持 open
-	}
+	gen := b.generation
+	st := b.state
+	b.mu.Unlock()
+	b.RecordPermitResult(BreakerPermit{
+		Allowed:    true,
+		Generation: gen,
+		IsProbe:    st == stateHalfOpen,
+	}, success)
 }
 
 func (b *circuitBreaker) transitionLocked(next breakerState) {
@@ -171,6 +224,7 @@ func (b *circuitBreaker) transitionLocked(next breakerState) {
 	}
 	b.stats.TotalTransitions++
 	b.state = next
+	b.generation++
 }
 
 func (b *circuitBreaker) getState() string {
@@ -203,6 +257,18 @@ func (b *circuitBreaker) getStats() BreakerStats {
 		st.State = "unknown"
 	}
 	return st
+}
+
+// TripOpen 显式将断路器转入 Open 状态并设定冷却时间（如与长时间 Retry-After 联动）。
+func (b *circuitBreaker) TripOpen(cooldown time.Duration) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if cooldown > 0 {
+		b.cooldown = cooldown
+	}
+	b.transitionLocked(stateOpen)
+	b.openedAt = b.now()
 }
 
 // parseRetryAfter 解析 Retry-After 标头（秒数或 HTTP-Date）。

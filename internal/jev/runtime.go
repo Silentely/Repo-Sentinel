@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,8 +59,52 @@ type RuntimeConfig struct {
 	emergencyReason        string
 }
 
+// ValidateConfig 校验 Jev 配置是否满足生产与运行时约束。
+func ValidateConfig(cfg config.JevConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		return errors.New("jev: base_url is required when enabled")
+	}
+	parsed, err := url.Parse(cfg.BaseURL)
+	if err != nil || (parsed.Scheme != "https" && !strings.HasPrefix(cfg.BaseURL, "https://")) {
+		return errors.New("jev: base_url must be https")
+	}
+	if parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("jev: invalid base_url format")
+	}
+	if cfg.APIKey.Reveal() == "" {
+		return errors.New("jev: api_key is required when enabled")
+	}
+	if strings.TrimSpace(cfg.Model) == "" {
+		return errors.New("jev: model is required when enabled")
+	}
+	if cfg.Retries < 0 || cfg.Retries > 1 {
+		return errors.New("jev: retries must be 0 or 1")
+	}
+	return nil
+}
+
 // RuntimeFromEnv 从静态环境配置构建初始运行时。
 func RuntimeFromEnv(cfg config.JevConfig) *RuntimeConfig {
+	rt, _ := NewRuntime(cfg)
+	return rt
+}
+
+// NewRuntime 校验配置并构建带有各决策面客户端的运行时配置，构造错误显式传出。
+func NewRuntime(cfg config.JevConfig) (*RuntimeConfig, error) {
+	if err := ValidateConfig(cfg); err != nil {
+		// 仍保留一个空客户端的运行时，以防上层 panic，同时显式返回错误
+		rt := &RuntimeConfig{
+			cfg:                  cfg,
+			clients:              make(map[string]Client),
+			generation:           1,
+			credentialGeneration: 1,
+			envApiKeySet:         cfg.APIKey.Reveal() != "",
+		}
+		return rt, err
+	}
 	rt := &RuntimeConfig{
 		cfg:                  cfg,
 		clients:              make(map[string]Client),
@@ -66,14 +112,16 @@ func RuntimeFromEnv(cfg config.JevConfig) *RuntimeConfig {
 		credentialGeneration: 1,
 		envApiKeySet:         cfg.APIKey.Reveal() != "",
 	}
-	rt.rebuildClientsLocked()
-	return rt
+	if err := rt.rebuildClientsLocked(); err != nil {
+		return rt, err
+	}
+	return rt, nil
 }
 
-func (r *RuntimeConfig) rebuildClientsLocked() {
+func (r *RuntimeConfig) rebuildClientsLocked() error {
 	if !r.cfg.Enabled {
 		r.clients = make(map[string]Client)
-		return
+		return nil
 	}
 
 	planes := []struct {
@@ -103,10 +151,12 @@ func (r *RuntimeConfig) rebuildClientsLocked() {
 			Retries:              r.cfg.Retries,
 		}
 		cli, err := NewClient(opts)
-		if err == nil {
-			r.clients[p.name] = cli
+		if err != nil {
+			return fmt.Errorf("jev: build client for plane %s failed: %w", p.name, err)
 		}
+		r.clients[p.name] = cli
 	}
+	return nil
 }
 
 // Snapshot 获取当前 Jev 运行时配置的深拷贝快照。
@@ -365,6 +415,5 @@ func MergeFromStore(ctx context.Context, data store.Store, ring *cryptox.KeyRing
 	}
 
 	rt.generation++
-	rt.rebuildClientsLocked()
-	return nil
+	return rt.rebuildClientsLocked()
 }

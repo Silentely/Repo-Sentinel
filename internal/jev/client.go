@@ -124,11 +124,13 @@ func NewClient(options ClientOptions) (Client, error) {
 		opts:       options,
 		httpClient: httpClient,
 		breaker:    newBreaker(now, options.Breaker),
-		cache:      newCache(5000, 10*time.Minute, now, jitter),
-		flight:     new(singleflight.Group),
-		semaphore:  make(chan struct{}, options.MaxConcurrency),
-		now:        now,
-		jitter:     jitter,
+		cache: newCacheWithOnEvict(5000, 10*time.Minute, now, jitter, func() {
+			GlobalMetrics().RecordCacheEviction(options.Plane)
+		}),
+		flight:    new(singleflight.Group),
+		semaphore: make(chan struct{}, options.MaxConcurrency),
+		now:       now,
+		jitter:    jitter,
 	}, nil
 }
 
@@ -159,6 +161,13 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 		GlobalMetrics().RecordFailure(c.opts.Plane)
 		GlobalMetrics().RecordFailureClass(c.opts.Plane, "decode")
 		return Result{}, ErrStateTooLarge
+	}
+
+	// 规则 6：截断必须保守终局，截断状态严禁放行，必须判定为失败并升级人工
+	if IsTruncatedState(state) {
+		GlobalMetrics().RecordFailure(c.opts.Plane)
+		GlobalMetrics().RecordFailureClass(c.opts.Plane, "truncated")
+		return Result{}, ErrTruncatedState
 	}
 
 	// 预估问题大小限制 8KiB
@@ -221,7 +230,8 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	}
 	c.mu.Unlock()
 
-	if !c.breaker.allow() {
+	permit := c.breaker.AcquirePermit()
+	if !permit.Allowed {
 		GlobalMetrics().RecordFallback(c.opts.Plane)
 		GlobalMetrics().RecordFailure(c.opts.Plane)
 		GlobalMetrics().RecordFailureClass(c.opts.Plane, "breaker_open")
@@ -230,7 +240,14 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 
 	// 工作任务执行闭包
 	executeWork := func(workCtx context.Context) (Result, error) {
-		// 获取并发槽位（等待槽位超时不记断路器错误）
+		permitHandled := false
+		defer func() {
+			if !permitHandled {
+				c.breaker.ReleasePermit(permit)
+			}
+		}()
+
+		// 获取并发槽位（等待槽位超时不记断路器错误，退出时释放名额）
 		select {
 		case c.semaphore <- struct{}{}:
 			defer func() { <-c.semaphore }()
@@ -240,14 +257,18 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 
 		res, remoteErr := c.doRequestWithRetry(workCtx, state, questions)
 		if remoteErr != nil {
+			permitHandled = true
 			// 仅上游真正的失败（5xx、网络中断、协议畸形）计入断路器失败
 			if errors.Is(remoteErr, ErrMalformedDecision) || isUpstreamFailure(remoteErr) {
-				c.breaker.record(false)
+				c.breaker.RecordPermitResult(permit, false)
+			} else {
+				c.breaker.ReleasePermit(permit)
 			}
 			return Result{}, remoteErr
 		}
 
-		c.breaker.record(true)
+		permitHandled = true
+		c.breaker.RecordPermitResult(permit, true)
 		return res, nil
 	}
 
@@ -264,14 +285,9 @@ func (c *clientImpl) Judge(ctx context.Context, state json.RawMessage, questions
 	}
 
 	// 非 ChatOps 可缓存请求：通过 singleflight.DoChan 抑制并发重复查询
-	sharedBudget := c.opts.Timeout
-	if sharedBudget <= 0 || sharedBudget > maxBudget {
-		sharedBudget = maxBudget
-	}
+	// 规则 8：共享网络任务遵守父 deadline，继承父 context 并保留最小预算
 	ch := c.flight.DoChan(cacheKey, func() (interface{}, error) {
-		workCtx, workCancel := context.WithTimeout(context.Background(), sharedBudget)
-		defer workCancel()
-		return executeWork(workCtx)
+		return executeWork(waitCtx)
 	})
 
 	select {
@@ -365,6 +381,11 @@ func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessa
 			}
 			c.mu.Unlock()
 
+			// 规则 10：Retry-After 很长（>= 15s）时触发熔断保护，避免大量请求空转
+			if retryDuration >= 15*time.Second {
+				c.breaker.TripOpen(retryDuration)
+			}
+
 			if deadline, ok := ctx.Deadline(); ok {
 				if time.Until(deadline) < retryDuration+200*time.Millisecond {
 					return Result{}, ErrRateLimited
@@ -383,24 +404,18 @@ func (c *clientImpl) doRequestWithRetry(ctx context.Context, state json.RawMessa
 
 		// 5xx (500, 502, 503, 504 等) 可重试
 		if resp.StatusCode >= 500 && resp.StatusCode < 600 {
-			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
 			_ = resp.Body.Close()
 			if attempt+1 < maxAttempts {
 				continue
-			}
-			if len(body) > 0 {
-				return Result{}, fmt.Errorf("jev: server returned %d: %s", resp.StatusCode, string(body))
 			}
 			return Result{}, fmt.Errorf("jev: server returned %d", resp.StatusCode)
 		}
 
 		// 其它 4xx (401, 403, 422 等) 不重试
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
 			_ = resp.Body.Close()
-			if len(body) > 0 {
-				return Result{}, fmt.Errorf("jev: client error %d: %s", resp.StatusCode, string(body))
-			}
 			return Result{}, fmt.Errorf("jev: client error %d", resp.StatusCode)
 		}
 

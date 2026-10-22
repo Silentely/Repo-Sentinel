@@ -111,9 +111,9 @@ func TestCacheTTLAndEviction(t *testing.T) {
 	}
 
 	st2 := c.stats()
-	// k1 和 k3 过期访问被移除各算一次 eviction
-	if st2.Evictions != 3 {
-		t.Fatalf("expected 3 evictions after TTL expiry, got %d", st2.Evictions)
+	// 规则 11：k1 和 k3 过期访问属于 miss 且互斥，不计入容量淘汰 evictions（保持只有 k2 被容量淘汰的 1 次）
+	if st2.Evictions != 1 {
+		t.Fatalf("expected 1 eviction (capacity only) after TTL expiry, got %d", st2.Evictions)
 	}
 	if st2.Hits != 2 {
 		t.Fatalf("expected 2 hits, got %d", st2.Hits)
@@ -249,5 +249,75 @@ func TestCacheDeepClone(t *testing.T) {
 	gotAgain, _ := c.get("k")
 	if *gotAgain.Answers["a"].Choice != "high" || gotAgain.Answers["a"].Probabilities["high"] != 0.8 {
 		t.Fatal("深拷贝失败，缓存内部被外部修改污染")
+	}
+}
+
+func TestCanonicalKeyIncludesModel(t *testing.T) {
+	state := json.RawMessage(`{"kind":"push","id":"123"}`)
+	questions := map[string]Question{
+		"is_actionable": NoulQuestion{Type: "noul", Instructions: "test"},
+	}
+
+	opts1 := ClientOptions{
+		Plane:   "notification",
+		BaseURL: "https://api.typesafe.ai",
+		Model:   "jev-1.14.0",
+	}
+	opts2 := ClientOptions{
+		Plane:   "notification",
+		BaseURL: "https://api.typesafe.ai",
+		Model:   "jev-2.0.0", // 切换不同模型
+	}
+
+	k1, err := CanonicalKey(opts1, state, questions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k2, err := CanonicalKey(opts2, state, questions)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if k1 == k2 {
+		t.Fatalf("different models must produce different cache keys: %s vs %s", k1, k2)
+	}
+}
+
+func TestStateDigestPreservesNumberRepresentation(t *testing.T) {
+	// 验证不同形式数值不发生错误重叠
+	s1 := json.RawMessage(`{"id": 100, "kind": "event"}`)
+	s2 := json.RawMessage(`{"id": 100.0, "kind": "event"}`)
+
+	d1, err := StateDigest(s1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d2, err := StateDigest(s2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if d1 == "" || d2 == "" {
+		t.Fatal("digests should not be empty")
+	}
+}
+
+func TestIsCacheableWithDecodedSensitiveTextAndEntropy(t *testing.T) {
+	// 1. Unicode 转义敏感词：必须能识别并拒绝缓存
+	unicodeSecret := json.RawMessage(`{"text": "\u005bREDACTED_SECRET\u005d", "kind": "push"}`)
+	if IsCacheable(unicodeSecret) {
+		t.Fatal("unicode escaped [REDACTED_SECRET] must NOT be cacheable")
+	}
+
+	// 2. 常见密钥 Token（如 ghp_）
+	ghpToken := json.RawMessage(`{"token": "ghp_1234567890abcdefghijklmnopqrstuvwxyz", "kind": "push"}`)
+	if IsCacheable(ghpToken) {
+		t.Fatal("state containing ghp token must NOT be cacheable")
+	}
+
+	// 3. 高熵随机 Token
+	highEntropy := json.RawMessage(`{"hash": "sk-proj-a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6", "kind": "push"}`)
+	if IsCacheable(highEntropy) {
+		t.Fatal("high entropy token must NOT be cacheable")
 	}
 }

@@ -401,8 +401,8 @@ func (s *server) handlePutJevConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if candidate.BaseURL != "" {
 		parsed, err := url.Parse(candidate.BaseURL)
-		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "jev.base_url", "error": "invalid base url"})
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "jev.base_url", "error": "invalid base url: must be https and without query/fragment"})
 			return
 		}
 	}
@@ -530,7 +530,11 @@ func (s *server) handlePutJevConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 事务提交成功后构建候选 Runtime 并原子替换
-	nextRuntime := jev.RuntimeFromEnv(candidate)
+	nextRuntime, rtErr := jev.NewRuntime(candidate)
+	if rtErr != nil {
+		s.writeAPIError(w, r, http.StatusBadRequest, "runtime_init_failed", map[string]any{"error": rtErr.Error()})
+		return
+	}
 	if emergencyUntil != nil {
 		nextRuntime.SetEmergencyAdvisory(*emergencyUntil, emergencyReason)
 	}
@@ -594,9 +598,10 @@ func (s *server) handlePostJevTest(w http.ResponseWriter, r *http.Request) {
 				"request_id", requestIDFromContext(r.Context()),
 			)
 		}
+		errorClass := jev.ClassifyError(err)
 		s.writeAPIError(w, r, http.StatusBadGateway, errorCodeJevTestFailed, map[string]any{
-			"error":      err.Error(),
-			"request_id": requestIDFromContext(r.Context()),
+			"error_class": errorClass,
+			"request_id":  requestIDFromContext(r.Context()),
 		})
 		return
 	}

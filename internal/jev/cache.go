@@ -1,10 +1,12 @@
 package jev
 
 import (
+	"bytes"
 	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"math/rand/v2"
 	"sort"
 	"strings"
@@ -30,8 +32,9 @@ type kvPair struct {
 type canonicalPayload struct {
 	Plane                string `json:"plane"`
 	Endpoint             string `json:"endpoint"`
-	CredentialGeneration uint64 `json:"credential_generation"`
+	Model                string `json:"model"`
 	ConfiguredModel      string `json:"configured_model"`
+	CredentialGeneration uint64 `json:"credential_generation"`
 	PolicyVersion        string `json:"policy_version"`
 	RuntimeGeneration    uint64 `json:"runtime_generation"`
 	StateDigest          string `json:"state_digest"`
@@ -39,9 +42,12 @@ type canonicalPayload struct {
 }
 
 // StateDigest 计算状态对象的规范化 SHA256 摘要。
+// 使用 json.Number 保留原始数值表示，避免不同类型解析为 float64 引起的同键或精度漂移。
 func StateDigest(state json.RawMessage) (string, error) {
+	d := json.NewDecoder(bytes.NewReader(state))
+	d.UseNumber()
 	var val any
-	if err := json.Unmarshal(state, &val); err != nil {
+	if err := d.Decode(&val); err != nil {
 		return "", err
 	}
 	canonicalData, err := json.Marshal(val)
@@ -96,19 +102,45 @@ func QuestionFingerprint(questions map[string]Question) (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
+// IsTruncatedState 判断请求状态是否包含截断标记（截断状态严禁自动放行，必须保守终局）。
+func IsTruncatedState(state json.RawMessage) bool {
+	if len(state) == 0 {
+		return false
+	}
+	rawStr := string(state)
+	if strings.Contains(rawStr, "[TRUNCATED]") {
+		return true
+	}
+
+	var stateMap map[string]any
+	if err := json.Unmarshal(state, &stateMap); err != nil {
+		return false
+	}
+
+	for _, key := range []string{"truncated", "is_truncated", "diff_truncated"} {
+		if v, ok := stateMap[key]; ok {
+			if b, ok := v.(bool); ok && b {
+				return true
+			}
+		}
+	}
+
+	if files, ok := stateMap["files"].([]any); ok {
+		for _, f := range files {
+			if fMap, ok := f.(map[string]any); ok {
+				if t, ok := fMap["truncated"].(bool); ok && t {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // IsCacheable 判定请求状态是否允许进入决策缓存。
 // 敏感请求、超长或截断请求严禁进入缓存。
 func IsCacheable(state json.RawMessage) bool {
 	if len(state) == 0 || len(state) > MaxCacheableStateSize {
-		return false
-	}
-	rawStr := string(state)
-	// 敏感凭据/邮箱
-	if strings.Contains(rawStr, "[REDACTED_SECRET]") || strings.Contains(rawStr, "[REDACTED_EMAIL]") {
-		return false
-	}
-	// 超长/截断标记
-	if strings.Contains(rawStr, "[TRUNCATED]") {
 		return false
 	}
 
@@ -147,11 +179,79 @@ func IsCacheable(state json.RawMessage) bool {
 		}
 	}
 
+	// 深度遍历 JSON 文本内容：检查解码后文本中的敏感/截断标记及高熵 Token
+	if containsSensitiveOrTruncatedDecoded(stateMap) {
+		return false
+	}
+
 	return true
 }
 
+func containsSensitiveOrTruncatedDecoded(val any) bool {
+	switch v := val.(type) {
+	case string:
+		if strings.Contains(v, "[REDACTED_SECRET]") || strings.Contains(v, "[REDACTED_EMAIL]") || strings.Contains(v, "[TRUNCATED]") {
+			return true
+		}
+		if hasHighEntropySecretToken(v) {
+			return true
+		}
+	case map[string]any:
+		for _, child := range v {
+			if containsSensitiveOrTruncatedDecoded(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range v {
+			if containsSensitiveOrTruncatedDecoded(child) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasHighEntropySecretToken 检测字符串是否包含疑似高熵敏感 Token（如密钥、hash、token）
+func hasHighEntropySecretToken(s string) bool {
+	words := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '"' || r == '\'' || r == ',' || r == ';'
+	})
+	for _, w := range words {
+		// 常见密钥前缀
+		if strings.HasPrefix(w, "ghp_") || strings.HasPrefix(w, "gho_") || strings.HasPrefix(w, "ghu_") ||
+			strings.HasPrefix(w, "ghs_") || strings.HasPrefix(w, "ghr_") || strings.HasPrefix(w, "sk-") {
+			return true
+		}
+		// 长度 >= 24 且高香农熵的连续随机串
+		if len(w) >= 24 && len(w) <= 128 {
+			if calcShannonEntropy(w) >= 4.5 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func calcShannonEntropy(s string) float64 {
+	if len(s) == 0 {
+		return 0
+	}
+	freq := make(map[rune]float64)
+	for _, r := range s {
+		freq[r]++
+	}
+	length := float64(len(s))
+	var ent float64
+	for _, count := range freq {
+		p := count / length
+		ent -= p * math.Log2(p)
+	}
+	return ent
+}
+
 // CanonicalKey 生成跨环境确定性的决策缓存键 SHA256。
-// 键由规范化 state 摘要 + question 指纹及运行时上下文共同决定。
+// 键由规范化 state 摘要 + question 指纹及运行时上下文共同决定（必须含 Model）。
 func CanonicalKey(options ClientOptions, state json.RawMessage, questions map[string]Question) (string, error) {
 	stateDigest, err := StateDigest(state)
 	if err != nil {
@@ -165,8 +265,9 @@ func CanonicalKey(options ClientOptions, state json.RawMessage, questions map[st
 	payload := canonicalPayload{
 		Plane:                options.Plane,
 		Endpoint:             options.BaseURL,
-		CredentialGeneration: options.CredentialGeneration,
+		Model:                options.Model,
 		ConfiguredModel:      options.Model,
+		CredentialGeneration: options.CredentialGeneration,
 		PolicyVersion:        options.PolicyVersion,
 		RuntimeGeneration:    options.RuntimeGeneration,
 		StateDigest:          stateDigest,
@@ -204,6 +305,7 @@ type decisionCache struct {
 	ttl       time.Duration
 	now       func() time.Time
 	jitter    func() float64
+	onEvict   func()
 	items     map[string]*list.Element
 	evictList *list.List
 	hits      uint64
@@ -212,6 +314,10 @@ type decisionCache struct {
 }
 
 func newCache(capacity int, ttl time.Duration, now func() time.Time, jitter func() float64) *decisionCache {
+	return newCacheWithOnEvict(capacity, ttl, now, jitter, nil)
+}
+
+func newCacheWithOnEvict(capacity int, ttl time.Duration, now func() time.Time, jitter func() float64, onEvict func()) *decisionCache {
 	if capacity <= 0 {
 		capacity = 5000
 	}
@@ -223,7 +329,6 @@ func newCache(capacity int, ttl time.Duration, now func() time.Time, jitter func
 	}
 	if jitter == nil {
 		jitter = func() float64 {
-			// 返回 [-1, 1] 之间的浮点随机数
 			return rand.Float64()*2 - 1
 		}
 	}
@@ -232,6 +337,7 @@ func newCache(capacity int, ttl time.Duration, now func() time.Time, jitter func
 		ttl:       ttl,
 		now:       now,
 		jitter:    jitter,
+		onEvict:   onEvict,
 		items:     make(map[string]*list.Element),
 		evictList: list.New(),
 	}
@@ -249,7 +355,8 @@ func (c *decisionCache) get(key string) (Result, bool) {
 
 	entry := elem.Value.(*cacheEntry)
 	if c.now().After(entry.expiresAt) {
-		c.evictElement(elem)
+		// 规则 11：过期访问属于 miss，从缓存中清理，但只计为 miss，不计入容量淘汰 evictions
+		c.removeExpiredElement(elem)
 		c.misses++
 		return Result{}, false
 	}
@@ -306,6 +413,16 @@ func (c *decisionCache) evictElement(elem *list.Element) {
 	entry := elem.Value.(*cacheEntry)
 	delete(c.items, entry.key)
 	c.evictions++
+	if c.onEvict != nil {
+		c.onEvict()
+	}
+}
+
+func (c *decisionCache) removeExpiredElement(elem *list.Element) {
+	c.evictList.Remove(elem)
+	entry := elem.Value.(*cacheEntry)
+	delete(c.items, entry.key)
+	// 过期清除不计入 c.evictions
 }
 
 func (c *decisionCache) stats() CacheStats {

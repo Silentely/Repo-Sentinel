@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -436,18 +438,15 @@ func TestClientSensitiveAndTruncatedBypassCache(t *testing.T) {
 		t.Fatalf("sensitive request must bypass cache; expected 2 calls, got %d", calls.Load())
 	}
 
-	// 2. 截断请求：两次相同请求同样不入缓存
+	// 2. 规则 6：截断必须保守终局，截断请求严禁自动放行，必须判定为失败并升级人工
 	truncatedState := json.RawMessage(`{"truncated":true,"kind":"push"}`)
 	_, err = client.Judge(context.Background(), truncatedState, q)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, ErrTruncatedState) {
+		t.Fatalf("expected ErrTruncatedState, got %v", err)
 	}
-	_, err = client.Judge(context.Background(), truncatedState, q)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if calls.Load() != 4 {
-		t.Fatalf("truncated request must bypass cache; expected 4 calls, got %d", calls.Load())
+	// 截断请求在客户端直接安全拦截，不发起下游网络请求
+	if calls.Load() != 2 {
+		t.Fatalf("truncated request must be rejected directly before network; expected 2 calls, got %d", calls.Load())
 	}
 
 	// 3. 正常请求：第 1 次调后端，第 2 次走缓存
@@ -460,8 +459,8 @@ func TestClientSensitiveAndTruncatedBypassCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 5 {
-		t.Fatalf("normal request should hit cache on second call; expected 5 calls, got %d", calls.Load())
+	if calls.Load() != 3 {
+		t.Fatalf("normal request should hit cache on second call; expected 3 calls, got %d", calls.Load())
 	}
 }
 
@@ -513,5 +512,89 @@ func TestNormalizeEndpoint(t *testing.T) {
 		if got != c.expected {
 			t.Errorf("NormalizeEndpoint(%q) = %q; want %q", c.input, got, c.expected)
 		}
+	}
+}
+
+func TestClientUpstreamEchoHeaderLeakingPrevented(t *testing.T) {
+	// 模拟上游故意在 500 / 401 错误响应中回显 Authorization Header
+	sensitiveToken := "Bearer super-secret-leaked-api-token"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"error": "forbidden", "echoed_auth": "%s"}`, sensitiveToken)))
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ClientOptions{
+		BaseURL:    ts.URL,
+		Plane:      "notification",
+		Timeout:    2 * time.Second,
+		HTTPClient: ts.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	q := map[string]Question{
+		"test": NoulQuestion{Type: "noul", Instructions: "test"},
+	}
+	_, err = client.Judge(context.Background(), json.RawMessage(`{"kind":"test"}`), q)
+	if err == nil {
+		t.Fatal("expected judge to fail on 500")
+	}
+
+	errMsg := err.Error()
+	if strings.Contains(errMsg, sensitiveToken) || strings.Contains(errMsg, "super-secret-leaked-api-token") {
+		t.Fatalf("CRITICAL SECURITY LEAK: error message contains upstream response body: %s", errMsg)
+	}
+	if !strings.Contains(errMsg, "server returned 500") {
+		t.Fatalf("expected generic server returned 500, got: %s", errMsg)
+	}
+}
+
+func TestClientCacheEvictionMetricRecord(t *testing.T) {
+	// 验证容量上限淘汰时触发 RecordCacheEviction
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"model": "jev-1.14.0",
+			"answers": map[string]any{
+				"test": map[string]any{
+					"type": "noul",
+					"noul": 0.05,
+				},
+			},
+			"usage": map[string]any{"input_tokens": 10, "output_tokens": 2},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(ClientOptions{
+		BaseURL:    ts.URL,
+		Plane:      "probe",
+		Timeout:    2 * time.Second,
+		HTTPClient: ts.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	impl := client.(*clientImpl)
+	// 将容量设小以便测试淘汰
+	impl.cache.capacity = 2
+
+	q := map[string]Question{
+		"test": NoulQuestion{Type: "noul", Instructions: "test"},
+	}
+	for i := 1; i <= 3; i++ {
+		state := json.RawMessage(fmt.Sprintf(`{"id": %d}`, i))
+		_, err := client.Judge(context.Background(), state, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	snap := GlobalMetrics().Snapshot()
+	if snap.CacheEvicts["probe"] < 1 {
+		t.Fatalf("expected at least 1 cache eviction in probe plane, got %d", snap.CacheEvicts["probe"])
 	}
 }

@@ -43,6 +43,9 @@ func ClassifyError(err error) string {
 	if strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded") {
 		return "timeout"
 	}
+	if errors.Is(err, ErrTruncatedState) {
+		return "truncated"
+	}
 	if errors.Is(err, ErrMalformedDecision) || errors.Is(err, ErrStateTooLarge) {
 		return "decode"
 	}
