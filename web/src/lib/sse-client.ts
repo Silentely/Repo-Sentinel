@@ -276,18 +276,25 @@ export class SSEManager {
  */
 export function useLiveEventStream(options?: SSEManagerOptions): void {
   const queryClient = useQueryClient();
-  // onCircuitBreak 走 ref 保持最新实现；options 对象本身不进依赖数组，
+  // onCircuitBreak / onEvent 走 ref 保持最新实现；options 对象本身不进依赖数组，
   // 避免调用方传内联对象时每次渲染都重连。
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+
+  const url = options?.url ?? "/api/v1/events/stream";
+  const maxRetries = options?.maxRetries ?? 4;
+  const debounceMs = options?.debounceMs ?? 150;
 
   useEffect(() => {
-    const opts = optionsRef.current;
+    optionsRef.current = options;
+  });
+
+  useEffect(() => {
     const manager = new SSEManager(queryClient, {
-      ...opts,
-      onCircuitBreak: () => {
-        opts?.onCircuitBreak?.();
-      },
+      url,
+      maxRetries,
+      debounceMs,
+      onCircuitBreak: () => optionsRef.current?.onCircuitBreak?.(),
+      onEvent: (event) => optionsRef.current?.onEvent?.(event),
     });
 
     manager.start();
@@ -295,5 +302,5 @@ export function useLiveEventStream(options?: SSEManagerOptions): void {
     return () => {
       manager.stop();
     };
-  }, [queryClient]);
+  }, [queryClient, url, maxRetries, debounceMs]);
 }
