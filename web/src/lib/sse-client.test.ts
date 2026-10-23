@@ -90,7 +90,7 @@ describe("createDebouncedInvalidator", () => {
     expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["dashboard"]))).toBe(true);
   });
 
-  it("routes workflow_runs.changed to the workflow-runs query key", () => {
+  it("routes workflow_runs.changed to the workflow-runs and actions-insights query keys", () => {
     const queryClient = new QueryClient();
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
 
@@ -100,6 +100,7 @@ describe("createDebouncedInvalidator", () => {
 
     const calls = invalidateSpy.mock.calls;
     expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["workflow-runs"]))).toBe(true);
+    expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["actions-insights"]))).toBe(true);
     expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["dashboard"]))).toBe(true);
   });
 
@@ -271,6 +272,46 @@ describe("SSEManager circuit breaker & lifecycle", () => {
     vi.advanceTimersByTime(160);
 
     expect(invalidateSpy).toHaveBeenCalled();
+    manager.stop();
+  });
+
+  it("dispatches workflow_runs.changed and security_alerts.changed via EventSource listeners", () => {
+    const queryClient = new QueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const manager = new SSEManager(queryClient, { debounceMs: 150 });
+
+    manager.start();
+    const es = mockEventSourceInstances[0]!;
+
+    es.emit("workflow_runs.changed", {
+      id: "evt-wf",
+      topic: "workflow_runs.changed",
+      version: 1,
+      occurred_at: new Date().toISOString(),
+      resource: "workflow_run",
+      resource_id: "wf-1",
+    });
+    vi.advanceTimersByTime(160);
+
+    let calls = invalidateSpy.mock.calls;
+    expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["workflow-runs"]))).toBe(true);
+    expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["actions-insights"]))).toBe(true);
+
+    invalidateSpy.mockClear();
+
+    es.emit("security_alerts.changed", {
+      id: "evt-sec",
+      topic: "security_alerts.changed",
+      version: 1,
+      occurred_at: new Date().toISOString(),
+      resource: "security_alert",
+      resource_id: "sec-1",
+    });
+    vi.advanceTimersByTime(160);
+
+    calls = invalidateSpy.mock.calls;
+    expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["security-alerts"]))).toBe(true);
+
     manager.stop();
   });
 });

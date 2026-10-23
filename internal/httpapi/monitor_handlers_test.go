@@ -521,7 +521,7 @@ func (s *toggleableChannelFailure) Channels() store.ChannelStore {
 	return s.Store.Channels()
 }
 
-// failingChannelStore 仅让 GetEnabledByType 失败，其余方法透传真实实现。
+// failingChannelStore 让 GetEnabledByType 与 GetByType 失败，其余方法透传真实实现。
 type failingChannelStore struct {
 	store.ChannelStore
 	err error
@@ -598,7 +598,7 @@ func TestDeleteRepository审计写入失败仍完成删除并留痕(t *testing.T
 }
 
 func Test渠道Upsert在渠道存储故障时返回500而非静默创建(t *testing.T) {
-	// 保护行为：handleUpsertChannel 中 GetEnabledByType 返回 DB 故障（非 ErrNotFound）时，
+	// 保护行为：handleUpsertChannel 中 GetByType 返回 DB 故障（非 ErrNotFound）时，
 	// 必须向上返回 500 internal_error；历史 bug 把故障当作"无既有渠道"继续静默创建，
 	// 会生成重复渠道并丢失原配置。这里只让渠道子存储按开关失败，认证与 CSRF 不受影响，
 	// 因此 500 必然来自 handler 的错误分支本身。

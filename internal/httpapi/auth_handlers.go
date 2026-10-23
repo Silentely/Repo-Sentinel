@@ -60,8 +60,10 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if s.loginSem != nil {
 		select {
 		case s.loginSem <- struct{}{}:
-			admin, err = s.dependencies.AdminService.Authenticate(r.Context(), request.Username, request.Password)
-			<-s.loginSem
+			func() {
+				defer func() { <-s.loginSem }()
+				admin, err = s.dependencies.AdminService.Authenticate(r.Context(), request.Username, request.Password)
+			}()
 		case <-time.After(1 * time.Second):
 			s.dependencies.Logger.Warn(
 				"login concurrency limit reached",

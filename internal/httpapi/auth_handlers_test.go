@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -501,7 +502,7 @@ func TestEnableAndDisable2FA_AuditLog(t *testing.T) {
 	}
 }
 
-// TestHandleEnable2FARequiresSession 守护启用 2FA 的会话前置校验：
+// TestHandleEnable2FARequiresSession 守护开启 2FA 的会话前置校验：
 // 未携带会话时必须在落库前直接 401。会话校验前置于落库是因为审计记录需要
 // admin_id 作 actor，无法定位会话时拒绝开启，避免 TOTP 已保存却写不出审计条目
 // （与 handleDisable2FA 同一模式）。
@@ -523,44 +524,62 @@ func TestHandleEnable2FARequiresSession(t *testing.T) {
 	assertAPIError(t, rec, http.StatusUnauthorized, errorCodeUnauthorized)
 }
 
+type syncPasswordHasher struct {
+	auth.PasswordHasher
+	onVerifyDone func()
+}
+
+func (s *syncPasswordHasher) Verify(password, hash string) (bool, error) {
+	ok, err := s.PasswordHasher.Verify(password, hash)
+	if s.onVerifyDone != nil {
+		s.onVerifyDone()
+	}
+	return ok, err
+}
+
 // TestLoginSemReleasedBeforeRateLimitDelay 回归：Argon2id 认证并发信号量 loginSem 必须在 Authenticate 完成后立即释放，
-// 不得持有跨越登录惩罚延迟 time.After(delay)。否则连续失败请求将独占信号量，造成后续其他正常请求误报 429 concurrency limit reached。
+// 不得持有跨越登录惩罚延迟 time.After(delay)。否则当并发失败请求占满信号量容量（容量为3）时，后续其他正常请求将全部误报 429 concurrency limit reached。
 func TestLoginSemReleasedBeforeRateLimitDelay(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
 	fixture.bootstrapAdmin(t)
 
-	// 先让账号积累失败次数产生 delayFor
-	for i := 0; i < 4; i++ {
+	// 先让账号累积 5 次失败，使后续每次失败惩罚延时均达到上限 2 秒
+	for i := 0; i < 5; i++ {
 		fixture.loginLimiter.RecordFailure("Repo Admin")
 	}
-	delay := fixture.loginLimiter.DelayFor("Repo Admin")
-	if delay < 200*time.Millisecond {
-		t.Fatalf("expected positive progressive delay, got %v", delay)
+	if d := fixture.loginLimiter.DelayFor("Repo Admin"); d < 2*time.Second {
+		t.Fatalf("expected >= 2s delay, got %v", d)
 	}
 
-	// 启动一个必定触发 delay 的失败登录
-	firstDone := make(chan struct{})
-	go func() {
-		defer close(firstDone)
-		_ = fixture.request(
-			t, http.MethodPost, "/api/v1/auth/login",
-			`{"username":"Repo Admin","password":"wrong-password-123"}`,
-			"198.51.100.20:42001", nil, nil,
-		)
-	}()
+	// 启动 3 个来自不同 IP 的并发失败登录请求，打满容量为 3 的 loginSem 并进入 2 秒延时
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		ip := fmt.Sprintf("198.51.100.%d:420%02d", 21+i, i)
+		go func(remoteIP string) {
+			defer wg.Done()
+			_ = fixture.request(
+				t, http.MethodPost, "/api/v1/auth/login",
+				`{"username":"Repo Admin","password":"wrong-password-123"}`,
+				remoteIP, nil, nil,
+			)
+		}(ip)
+	}
 
-	// 等待首个请求进入并完成 Authenticate（开始 sleep delay）
-	time.Sleep(50 * time.Millisecond)
+	// 等待 150ms：Argon2id 认证计算约需数十毫秒，150ms 确保 3 个 goroutine 均已完成密码哈希校验并进入 2 秒的 delay 睡眠（剩余睡眠时间 > 1.8 秒）
+	time.Sleep(150 * time.Millisecond)
 
-	// 并发发送合法登录请求，由于信号量已被及时释放，该请求应直接执行成功，绝不能报 429
-	secondResp := fixture.request(
+	// 并发发送合法登录请求（来自第 4 个独立 IP），此时 3 个失败请求均处于 2 秒延时睡眠中：
+	// 若信号量在 Authenticate 完成后已及时释放，该请求应立即成功返回 200；
+	// 若旧实现持锁跨越 delay，信号量被占满，该请求将在 1 秒后超时并返回 429。
+	validResp := fixture.request(
 		t, http.MethodPost, "/api/v1/auth/login",
 		fmt.Sprintf(`{"username":"Repo Admin","password":%q}`, httpTestPassword),
-		"198.51.100.21:42002", nil, nil,
+		"198.51.100.25:42099", nil, nil,
 	)
-	if secondResp.Code != http.StatusOK {
-		t.Fatalf("concurrent valid login should succeed with 200, got status=%d body=%s", secondResp.Code, secondResp.Body.String())
+	if validResp.Code != http.StatusOK {
+		t.Fatalf("concurrent valid login should succeed with 200, got status=%d body=%s", validResp.Code, validResp.Body.String())
 	}
 
-	<-firstDone
+	wg.Wait()
 }

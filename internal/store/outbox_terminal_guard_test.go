@@ -32,8 +32,8 @@ func seedOutbox(t *testing.T, data Store, id, status string) {
 }
 
 // TestMarkSentCannotRevertTerminalState 回归：终态标记必须带状态守卫。
-// 原实现 MarkSent/MarkRetry/MarkDead 均按 ID 无条件更新，租约过期导致的两份在途投递
-// 会让迟到的失败标记把已 sent 行改回 pending 再次投递，或让迟到的成功标记把 dead 行
+// 原实现 MarkSent/MarkRetry/MarkDead 均按 ID 无条件更新，租约过期导致的两份在途传递
+// 会让迟到的失败标记把已 sent 行改回 pending 再次传递，或让迟到的成功标记把 dead 行
 // 改成 sent——而同文件的 RetryDead/RetryAllDead 都带 StatusEQ(OutboxDead) 守卫，
 // 同类控制强弱不一致。
 func TestMarkSentCannotRevertTerminalState(t *testing.T) {
@@ -186,8 +186,10 @@ func TestRetryDeadResetsAttemptCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list outbox: %v", err)
 	}
+	var foundBatch bool
 	for _, r := range rows2 {
 		if r.ID == "ob-dead-batch-1" {
+			foundBatch = true
 			if r.Status != OutboxPending {
 				t.Fatalf("expected status %s, got %s", OutboxPending, r.Status)
 			}
@@ -195,5 +197,8 @@ func TestRetryDeadResetsAttemptCount(t *testing.T) {
 				t.Fatalf("expected AttemptCount reset to 0 in RetryAllDead, got %d", r.AttemptCount)
 			}
 		}
+	}
+	if !foundBatch {
+		t.Fatal("batch retried item ob-dead-batch-1 not found in outbox list")
 	}
 }
