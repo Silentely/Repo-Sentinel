@@ -355,7 +355,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
               </button>
               <button
                 type="button"
-                className="pixel-btn pixel-btn--danger"
+                className="primary-button primary-button--danger"
                 onClick={handleConfirmAction}
                 disabled={actionLoading}
               >

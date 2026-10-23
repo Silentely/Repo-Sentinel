@@ -580,25 +580,13 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
         </button>
         {review && review.review_status !== "skipped" && (
           <span
-            style={{
-              fontSize: "0.75rem",
-              fontWeight: 700,
-              padding: "0.15rem 0.55rem",
-              borderRadius: "9999px",
-              border: "1.5px solid var(--border-subtle)",
-              background:
-                hasSecurityRisks || review.score < 60
-                  ? "var(--danger-bg)"
-                  : review.score >= 80
-                  ? "var(--success-bg)"
-                  : "var(--warning-bg)",
-              color:
-                hasSecurityRisks || review.score < 60
-                  ? "var(--danger-fg)"
-                  : review.score >= 80
-                  ? "var(--success-fg)"
-                  : "var(--warning-fg)",
-            }}
+            className={`ai-tag ${
+              hasSecurityRisks || review.score < 60
+                ? "ai-tag--danger"
+                : review.score >= 80
+                ? "ai-tag--success"
+                : "ai-tag--warning"
+            }`}
           >
             {hasSecurityRisks ? "⚠️ " : ""}
             {review.score} 分
@@ -606,17 +594,7 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
         )}
       </div>
       {open && (
-        <div
-          className="ai-review-panel"
-          style={{
-            marginTop: "0.5rem",
-            padding: "0.75rem 1rem",
-            background: "var(--bg-surface)",
-            borderRadius: "6px",
-            border: "1px solid var(--border-subtle)",
-            fontSize: "0.85rem",
-          }}
-        >
+        <div className="ai-panel">
           {loading ? (
             <span className="muted">正在加载 AI 审查结果…</span>
           ) : error ? (
@@ -641,10 +619,10 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
               </span>
               <button
                 type="button"
-                className="quiet-button quiet-button--compact"
+                className="quiet-button quiet-button--compact quiet-button--primary-ghost"
                 onClick={() => handleTrigger(false)}
                 disabled={triggering}
-                style={{ alignSelf: "flex-start", background: "rgba(59, 130, 246, 0.1)", color: "#3b82f6" }}
+                style={{ alignSelf: "flex-start" }}
               >
                 {triggering ? "正在审查…" : "🚀 立即发起 AI 审查"}
               </button>
@@ -1036,19 +1014,6 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
     }
   };
 
-  const getPriorityStyle = (priority: string) => {
-    if (priority.includes("P0") || priority.toLowerCase().includes("blocker")) {
-      return { background: "var(--danger-bg)", color: "var(--danger-fg)" };
-    }
-    if (priority.includes("P1") || priority.toLowerCase().includes("high")) {
-      return { background: "var(--warning-bg)", color: "var(--warning-fg)" };
-    }
-    if (priority.includes("P2") || priority.toLowerCase().includes("normal")) {
-      return { background: "var(--info-bg)", color: "var(--info-fg)" };
-    }
-    return { background: "var(--bg-muted)", color: "var(--text-secondary)" };
-  };
-
   return (
     <div className="ai-triage-wrapper" style={{ marginTop: "0.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -1057,74 +1022,37 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
           className="quiet-button quiet-button--compact"
           onClick={toggle}
           aria-expanded={open}
-          style={{ fontSize: "0.8rem", padding: "0.15rem 0.5rem", borderRadius: "4px" }}
         >
           🤖 AI Issue 分诊与首响应 {loading ? "…" : open ? "▲" : "▼"}
         </button>
         {triage && (
           <>
             <span
-              style={{
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                padding: "0.1rem 0.4rem",
-                borderRadius: "4px",
-                ...getPriorityStyle(triage.priority),
-              }}
+              className={`ai-tag ${
+                triage.priority.includes("P0") || triage.priority.toLowerCase().includes("blocker")
+                  ? "ai-tag--danger"
+                  : triage.priority.includes("P1") || triage.priority.toLowerCase().includes("high")
+                  ? "ai-tag--warning"
+                  : "ai-tag--info"
+              }`}
             >
               {triage.priority}
             </span>
-            <span
-              style={{
-                fontSize: "0.75rem",
-                padding: "0.1rem 0.4rem",
-                borderRadius: "4px",
-                background: "var(--bg-muted)",
-                color: "var(--text-secondary)",
-                border: "1px solid var(--border-subtle)",
-              }}
-            >
+            <span className="ai-tag">
               {triage.category}
             </span>
             {triage.maintainer_action && (
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  padding: "0.1rem 0.4rem",
-                  borderRadius: "4px",
-                  ...maintainerActionStyle(triage.maintainer_action),
-                }}
-              >
+              <span className="ai-tag ai-tag--warning">
                 ☕ 建议: {triage.maintainer_action}
               </span>
             )}
             {triage.suspected_module && (
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  padding: "0.1rem 0.4rem",
-                  borderRadius: "4px",
-                  background: "var(--bg-muted)",
-                  color: "var(--text-secondary)",
-                  border: "1px solid var(--border-subtle)",
-                }}
-              >
+              <span className="ai-tag">
                 🧩 {triage.suspected_module}
               </span>
             )}
             {triage.is_self_issue && (
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  padding: "0.1rem 0.4rem",
-                  borderRadius: "4px",
-                  background: "var(--warning-bg)",
-                  color: "var(--warning-fg)",
-                  border: "1px solid var(--border-subtle)",
-                }}
-              >
+              <span className="ai-tag ai-tag--warning">
                 👤 自建任务
               </span>
             )}
@@ -1132,17 +1060,7 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
         )}
       </div>
       {open && (
-        <div
-          style={{
-            marginTop: "0.4rem",
-            padding: "0.6rem 0.75rem",
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border-subtle)",
-            borderRadius: "6px",
-            fontSize: "0.85rem",
-            lineHeight: 1.5,
-          }}
-        >
+        <div className="ai-panel">
           {loading && <p className="muted" style={{ margin: 0 }}>正在拉取 AI 分诊数据…</p>}
           {error && (
             <p style={{ margin: 0, color: "var(--danger-fg)" }}>{error}</p>

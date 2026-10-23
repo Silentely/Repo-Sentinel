@@ -535,17 +535,21 @@ export function SettingsPage() {
         <div className="report-schedule">
           <label className="check-row"><input type="checkbox" checked={form.reportWeekly} onChange={(e) => set("reportWeekly", e.target.checked)} /><span>启用每周报告</span></label>
           {form.reportWeekly ? (
-            <label className="field--plain"><span>每周发送日</span>
-              <select value={form.reportWeeklyDay} onChange={(e) => set("reportWeeklyDay", e.target.value)}>
-                {WEEKLY_DAYS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-              </select>
-            </label>
+            <div className="sub-field-group">
+              <label className="field--plain" style={{ margin: 0 }}><span>每周发送日</span>
+                <select value={form.reportWeeklyDay} onChange={(e) => set("reportWeeklyDay", e.target.value)}>
+                  {WEEKLY_DAYS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                </select>
+              </label>
+            </div>
           ) : null}
           <label className="check-row"><input type="checkbox" checked={form.reportMonthly} onChange={(e) => set("reportMonthly", e.target.checked)} /><span>启用每月报告</span></label>
           {form.reportMonthly ? (
-            <label className="field--plain"><span>每月发送日</span>
-              <NumberField min={1} max={28} integer value={form.reportMonthlyDay} onChange={(v) => set("reportMonthlyDay", v)} />
-            </label>
+            <div className="sub-field-group">
+              <label className="field--plain" style={{ margin: 0 }}><span>每月发送日</span>
+                <NumberField min={1} max={28} integer value={form.reportMonthlyDay} onChange={(v) => set("reportMonthlyDay", v)} />
+              </label>
+            </div>
           ) : null}
           <p className="field-hint">周报/月报与每日简报共用渠道的「接收定期汇总」开关；发送时刻沿用每日简报本地时间。正文在配置智能值守后由模型生成，否则使用分组模板。</p>
         </div>

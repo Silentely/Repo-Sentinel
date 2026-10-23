@@ -32,8 +32,8 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
   const shadowPercent = Math.min(100, Math.round((status.shadow_days / 7) * 100));
 
   return (
-    <div className="status-card mb-6" style={{ padding: "18px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "8px" }}>
+    <div className="status-card mb-6">
+      <div className="two-factor-header mb-3">
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span className="eyebrow" style={{ margin: 0 }}>引擎实时运行状态</span>
           {isDisabled && <span className="system-badge system-badge--neutral">未启用</span>}
@@ -49,32 +49,18 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
 
       {isShadow && (
         <div style={{ marginBottom: "16px" }}>
-          <div
-            style={{
-              width: "100%",
-              height: "10px",
-              background: "var(--bg-muted)",
-              border: "1.5px solid var(--border-subtle)",
-              borderRadius: "9999px",
-              boxShadow: "1.5px 1.5px 0 var(--shadow-neo)",
-              overflow: "hidden",
-            }}
-          >
+          <div className="neo-progress-bar">
             <div
-              style={{
-                width: `${shadowPercent}%`,
-                height: "100%",
-                background: status.shadow_days >= 7 ? "var(--success)" : "var(--accent)",
-                transition: "width 0.3s ease",
-              }}
+              className={`neo-progress-bar__fill${status.shadow_days >= 7 ? " neo-progress-bar__fill--success" : ""}`}
+              style={{ width: `${shadowPercent}%` }}
             />
           </div>
         </div>
       )}
 
-      {/* 复古新野兽派 4 宫格指标看板 */}
-      <div className="status-grid" style={{ marginBottom: "12px", gap: "10px" }}>
-        <div className="status-item" style={{ padding: "12px" }}>
+      {/* 复古新野兽派 6 宫格指标看板 */}
+      <div className="status-grid mb-3">
+        <div className="status-item">
           <span className="status-item__label">累计决策研判</span>
           <strong>{status.total_requests.toLocaleString()}</strong>
           <span style={{ display: "block", fontSize: "0.72rem", color: status.success_rate >= 99 ? "var(--success)" : "var(--warning)", marginTop: "4px", fontWeight: 600 }}>
@@ -82,7 +68,7 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
           </span>
         </div>
 
-        <div className="status-item" style={{ padding: "12px" }}>
+        <div className="status-item">
           <span className="status-item__label">
             {isShadow ? "建议静音通知" : "实际降噪静音"}
           </span>
@@ -94,7 +80,7 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
           </span>
         </div>
 
-        <div className="status-item" style={{ padding: "12px" }}>
+        <div className="status-item">
           <span className="status-item__label">
             {isShadow ? "建议放行 PR" : "实际放行 PR"}
           </span>
@@ -106,7 +92,7 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
           </span>
         </div>
 
-        <div className="status-item" style={{ padding: "12px" }}>
+        <div className="status-item">
           <span className="status-item__label">决策缓存 (LRU+TTL)</span>
           <strong>{status.cache_hits.toLocaleString()}</strong>
           <span style={{ display: "block", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px" }}>
@@ -114,7 +100,7 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
           </span>
         </div>
 
-        <div className="status-item" style={{ padding: "12px" }}>
+        <div className="status-item">
           <span className="status-item__label">熔断状态 (Circuit)</span>
           <strong style={{
             fontSize: "1.1rem",
@@ -127,7 +113,7 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
           </span>
         </div>
 
-        <div className="status-item" style={{ padding: "12px" }}>
+        <div className="status-item">
           <span className="status-item__label">研判延时 (分位)</span>
           <strong>{(status.latency_p50_ms ?? 0).toFixed(1)} <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>ms</span></strong>
           <span style={{ display: "block", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px" }}>
@@ -137,7 +123,7 @@ function JevStatusDashboard({ status }: { status?: JevStatusDTO }) {
       </div>
 
       {/* 门禁就绪提示 */}
-      <div className={`callout ${status.active_ready ? "callout--ok" : "callout--warn"}`} style={{ margin: 0, padding: "10px 14px", fontSize: "0.82rem" }}>
+      <div className={`callout ${status.active_ready ? "callout--ok" : "callout--warn"}`} style={{ margin: 0 }}>
         <strong>{status.active_ready ? "● 门禁状态：已就绪" : "● 门禁状态：观察准备中"}</strong> — {status.active_gate_detail}
       </div>
     </div>
@@ -304,7 +290,7 @@ export function JevSettingsCard() {
 
       <form onSubmit={handleSave} className="grid grid--2col gap-4">
         {/* 基础配置 */}
-        <div className="grid__span-2 border-b pb-2 font-medium">基本与运行模式</div>
+        <div className="grid__span-2 form-section-title">基本与运行模式</div>
 
         <label className="field--checkbox">
           <input
@@ -396,7 +382,7 @@ export function JevSettingsCard() {
         </label>
 
         {/* 能力开关 */}
-        <div className="grid__span-2 border-b pt-4 pb-2 font-medium">能力开关</div>
+        <div className="grid__span-2 form-section-title">能力开关</div>
 
         <label className="field--checkbox">
           <input
@@ -435,7 +421,7 @@ export function JevSettingsCard() {
         </label>
 
         {/* 应急临时降级 */}
-        <div className="grid__span-2 border-b pt-4 pb-2 font-medium">应急临时旁路降级 (Emergency Advisory)</div>
+        <div className="grid__span-2 form-section-title">应急临时旁路降级 (Emergency Advisory)</div>
 
         <label className="field--plain">
           <span>降级持续时间（分钟，最大 15 分钟）</span>

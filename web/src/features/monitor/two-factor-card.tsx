@@ -96,24 +96,24 @@ export function TwoFactorCard() {
 
   return (
     <section className="onboarding-card channel-form" aria-labelledby="settings-2fa-title">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h2 id="settings-2fa-title" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      <div className="two-factor-header">
+        <h2 id="settings-2fa-title" style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: 0 }}>
           <Shield size={20} />
           <span>两步验证 (2FA / TOTP)</span>
         </h2>
         {statusQuery.isError ? (
           // 状态读取失败时不得显示「未开启」：那会让管理员误判账号未受保护并重复配置。
-          <span className="badge badge--neutral" style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span className="system-badge system-badge--neutral">
             <ShieldAlert size={14} />
             状态未知
           </span>
         ) : isEnabled ? (
-          <span className="badge badge--success" style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span className="system-badge system-badge--success">
             <ShieldCheck size={14} />
             已开启
           </span>
         ) : (
-          <span className="badge badge--neutral" style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+          <span className="system-badge system-badge--neutral">
             <ShieldAlert size={14} />
             未开启
           </span>
@@ -143,45 +143,43 @@ export function TwoFactorCard() {
         )}
 
         {!isEnabled && setupData && (
-          <div className="callout" style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "0.75rem" }}>
-            <h3 style={{ fontSize: "1rem", fontWeight: 600 }}>第 1 步：在验证器中绑定密钥</h3>
-            <p className="field-hint" style={{ margin: 0 }}>
+          <div className="callout">
+            <h3 style={{ fontSize: "0.96rem", fontWeight: 700, margin: 0 }}>第 1 步：在验证器中绑定密钥</h3>
+            <p className="field-hint" style={{ margin: "6px 0 10px" }}>
               在身份验证器应用中选择「手动添加账号」，并输入以下密钥；或者在支持协议的应用中点击快捷导入：
             </p>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <code style={{ fontSize: "1.1rem", letterSpacing: "2px", fontWeight: "bold", padding: "0.4rem 0.8rem", background: "var(--bg-surface)", borderRadius: "8px", border: "2px solid var(--border-subtle)", boxShadow: "2px 2px 0 var(--shadow-neo)" }}>
+            <div className="two-factor-secret-row">
+              <code className="two-factor-secret-code">
                 {setupData.secret}
               </code>
               <button
                 type="button"
-                className="ghost-button"
+                className="quiet-button quiet-button--compact"
                 onClick={copySecret}
                 title="复制密钥"
-                style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
               >
-                {copied ? <Check size={16} /> : <Copy size={16} />}
-                {copied ? "已复制" : "复制"}
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                <span>{copied ? "已复制" : "复制"}</span>
               </button>
               <a
                 href={setupData.otpauth_url}
-                className="ghost-button"
-                style={{ display: "inline-flex", alignItems: "center" }}
+                className="quiet-button quiet-button--compact"
               >
                 应用快速唤起绑定
               </a>
             </div>
 
-            <h3 style={{ fontSize: "1rem", fontWeight: 600, marginTop: "0.5rem" }}>第 2 步：输入 6 位动态验证码完成激活</h3>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <h3 style={{ fontSize: "0.96rem", fontWeight: 700, margin: "14px 0 6px" }}>第 2 步：输入 6 位动态验证码完成激活</h3>
+            <div className="two-factor-verify-row">
               <input
-                size={12}
+                size={8}
                 type="text"
+                className="two-factor-code-input"
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 maxLength={6}
                 placeholder="000000"
-                style={{ letterSpacing: "0.2em", textAlign: "center", fontWeight: 700, fontSize: "1.1rem", minHeight: "42px", borderRadius: "12px", border: "2px solid var(--border-subtle)", boxShadow: "2px 2px 0 var(--shadow-neo)", background: "var(--bg-surface)" }}
                 value={verifyCode}
                 onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 onKeyDown={(e) => {
@@ -201,7 +199,7 @@ export function TwoFactorCard() {
               </button>
               <button
                 type="button"
-                className="ghost-button"
+                className="quiet-button"
                 onClick={() => {
                   setSetupData(null);
                   setVerifyCode("");
@@ -215,12 +213,12 @@ export function TwoFactorCard() {
         )}
 
         {isEnabled && !isDisabling && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div className="two-factor-header">
             <p className="field-hint" style={{ margin: 0 }}>
               若丢失验证器无法登录，可在服务器上运行 <code>reposentinel admin reset-2fa</code> 应急重置。
             </p>
             <button
-              className="ghost-button danger-button--ghost"
+              className="quiet-button quiet-button--danger"
               type="button"
               onClick={() => {
                 setIsDisabling(true);
@@ -233,16 +231,17 @@ export function TwoFactorCard() {
         )}
 
         {isEnabled && isDisabling && (
-          <div className="callout" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "0.75rem" }}>
-            <p style={{ margin: 0, fontWeight: 500 }}>
+          <div className="callout">
+            <p style={{ margin: "0 0 10px", fontWeight: 600 }}>
               关闭两步验证需核验当前管理员密码：
             </p>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <div className="two-factor-verify-row">
               <input
                 size={24}
                 type="password"
                 placeholder="请输入当前管理员密码"
-                style={{ minHeight: "42px", borderRadius: "12px", border: "2px solid var(--border-subtle)", boxShadow: "2px 2px 0 var(--shadow-neo)", background: "var(--bg-surface)", padding: "0 12px" }}
+                className="sub-field-input"
+                style={{ minHeight: "40px", padding: "0 12px", width: "auto", minWidth: "240px" }}
                 value={disablePassword}
                 onChange={(e) => setDisablePassword(e.target.value)}
                 onKeyDown={(e) => {
@@ -253,7 +252,7 @@ export function TwoFactorCard() {
                 }}
               />
               <button
-                className="primary-button primary-button--inline"
+                className="primary-button primary-button--danger primary-button--inline"
                 type="button"
                 disabled={disableMutation.isPending || !disablePassword.trim()}
                 onClick={() => disableMutation.mutate()}
@@ -262,7 +261,7 @@ export function TwoFactorCard() {
               </button>
               <button
                 type="button"
-                className="ghost-button"
+                className="quiet-button"
                 onClick={() => {
                   setIsDisabling(false);
                   setDisablePassword("");

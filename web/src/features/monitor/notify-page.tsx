@@ -309,7 +309,7 @@ function ChannelForm({
           接收定期汇总（日/周/月）
         </label>
         {digest && (
-          <div style={{ marginLeft: "24px", marginTop: "6px", display: "flex", gap: "16px", flexWrap: "wrap" }}>
+          <div className="sub-field-group">
             <label className="field--checkbox">
               <input type="checkbox" checked={dailyDigest} onChange={(e) => setDailyDigest(e.target.checked)} />
               每日晨报
@@ -345,40 +345,43 @@ function ChannelForm({
           🌙 开启免打扰静默时段（静默期内常规事件暂缓发送）
         </label>
         {quietHoursEnabled && (
-          <div style={{ marginLeft: "24px", marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+          <div className="sub-field-group sub-field-group--vertical">
             <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-              <label>
-                <span className="muted" style={{ marginRight: "4px" }}>起始时间:</span>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                <span className="muted">起始时间:</span>
                 <input
                   type="text"
                   size={6}
+                  className="sub-field-input"
                   value={quietHoursStart}
                   onChange={(e) => setQuietHoursStart(e.target.value)}
                   placeholder="23:00"
                 />
               </label>
-              <label>
-                <span className="muted" style={{ marginRight: "4px" }}>结束时间:</span>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                <span className="muted">结束时间:</span>
                 <input
                   type="text"
                   size={6}
+                  className="sub-field-input"
                   value={quietHoursEnd}
                   onChange={(e) => setQuietHoursEnd(e.target.value)}
                   placeholder="08:00"
                 />
               </label>
-              <label>
-                <span className="muted" style={{ marginRight: "4px" }}>时区:</span>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                <span className="muted">时区:</span>
                 <input
                   type="text"
                   size={14}
+                  className="sub-field-input"
                   value={quietHoursTimezone}
                   onChange={(e) => setQuietHoursTimezone(e.target.value)}
                   placeholder="Asia/Shanghai"
                 />
               </label>
             </div>
-            <p className="field-hint">安全高危告警固定突破静默时段即时发送。</p>
+            <p className="field-hint" style={{ margin: 0 }}>安全高危告警固定突破静默时段即时发送。</p>
           </div>
         )}
       </div>

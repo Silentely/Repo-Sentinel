@@ -816,6 +816,36 @@ a.primary-button {
   box-shadow: 0.5px 0.5px 0 var(--shadow-neo);
 }
 
+.quiet-select {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 2px solid var(--border-subtle);
+  border-radius: 9999px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  outline: none;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.quiet-select:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3.5px 3.5px 0 var(--shadow-neo);
+  background: var(--bg-panel-warm-light);
+}
+
+.quiet-select:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 3.5px 3.5px 0 var(--shadow-neo);
+}
+
 .app-content {
   width: min(100%, 1180px);
   padding: 42px 32px 64px;
@@ -1942,7 +1972,8 @@ a.status-item--link:focus-visible {
 
 /* 文本输入控件样式只作用于文本框类控件：checkbox/radio 是固定尺寸的勾选控件，
    若被 min-width/min-height/padding 等规则命中会被撑成巨大方块（渠道配置勾选框曾因此回归）。 */
-.field--plain input:not([type="checkbox"]):not([type="radio"]) {
+.field--plain input:not([type="checkbox"]):not([type="radio"]),
+.field--plain select {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -1970,7 +2001,8 @@ a.status-item--link:focus-visible {
   padding-right: 0.5rem;
 }
 
-.field--plain input:not([type="checkbox"]):not([type="radio"]):focus {
+.field--plain input:not([type="checkbox"]):not([type="radio"]):focus,
+.field--plain select:focus {
   border-color: var(--border-subtle);
   box-shadow: 4px 4px 0 var(--shadow-neo);
   outline: 0;
@@ -4205,4 +4237,283 @@ a.status-item--link:focus-visible {
   .auth-flanks {
     display: none !important;
   }
+}
+
+
+/* ── 复古新野蛮主义组件系统扩展与语义化组件 ── */
+
+/* 表单分节标题 */
+.form-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+  padding: 12px 0 6px;
+  border-bottom: 2px solid var(--border-subtle);
+  margin-bottom: 4px;
+}
+
+.form-section-title::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  background: var(--accent);
+  border: 1px solid var(--border-subtle);
+  border-radius: 2px;
+}
+
+/* 嵌套子配置项容器 */
+.sub-field-group {
+  margin-left: 24px;
+  margin-top: 6px;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  background: var(--bg-canvas);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 2px 2px 0 var(--shadow-neo);
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.sub-field-group--vertical {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sub-field-input {
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 0.84rem;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 1.5px 1.5px 0 var(--shadow-neo);
+}
+
+.sub-field-input:focus {
+  border-color: var(--border-subtle);
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+  outline: none;
+}
+
+/* ── 两步验证 (2FA / TOTP) ── */
+.two-factor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.two-factor-secret-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.two-factor-secret-code {
+  font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+  font-size: 1.05rem;
+  letter-spacing: 2px;
+  font-weight: 800;
+  padding: 6px 14px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 2px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+}
+
+.two-factor-verify-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.two-factor-code-input {
+  letter-spacing: 0.25em;
+  text-align: center;
+  font-weight: 800;
+  font-size: 1.15rem;
+  min-height: 42px;
+  width: 140px;
+  border-radius: 12px;
+  border: 2px solid var(--border-subtle);
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.two-factor-code-input:focus {
+  border-color: var(--border-subtle);
+  box-shadow: 4px 4px 0 var(--shadow-neo);
+  outline: 0;
+}
+
+/* 新野蛮主义胶囊进度条 */
+.neo-progress-bar {
+  width: 100%;
+  height: 12px;
+  background: var(--bg-muted);
+  border: 2px solid var(--border-subtle);
+  border-radius: 9999px;
+  box-shadow: 2px 2px 0 var(--shadow-neo);
+  overflow: hidden;
+}
+
+.neo-progress-bar__fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.neo-progress-bar__fill--success {
+  background: var(--success);
+}
+
+/* AI 审查 / 分诊折叠卡片与胶囊标牌 */
+.ai-panel {
+  margin-top: 8px;
+  padding: 12px 16px;
+  background: var(--bg-surface);
+  border: 2px solid var(--border-subtle);
+  border-radius: 12px;
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.ai-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--border-subtle);
+  box-shadow: 1.5px 1.5px 0 var(--shadow-neo);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+}
+
+.ai-tag--success {
+  background: var(--success-bg);
+  color: var(--success-fg);
+}
+
+.ai-tag--warning {
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+}
+
+.ai-tag--danger {
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+
+.ai-tag--info {
+  background: var(--info-bg);
+  color: var(--info-fg);
+}
+
+.auth-card__back-button {
+  width: 100%;
+  margin-top: 10px;
+}
+
+/* ── 按钮类容错与历史别名兼容（对齐新野蛮主义硬阴影与微动效） ── */
+.primary-btn {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 2px solid var(--border-subtle);
+  border-radius: 9999px;
+  color: var(--accent-fg);
+  background: var(--accent);
+  box-shadow: 3px 3px 0 var(--shadow-neo);
+  font-size: 0.88rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.primary-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--shadow-neo);
+  background: var(--accent-hover);
+}
+
+.primary-btn:active:not(:disabled) {
+  transform: translate(2.5px, 2.5px);
+  box-shadow: 1px 1px 0 var(--shadow-neo);
+}
+
+.secondary-btn,
+.ghost-button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 2px solid var(--border-subtle);
+  border-radius: 9999px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.secondary-btn:hover:not(:disabled),
+.ghost-button:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3.5px 3.5px 0 var(--shadow-neo);
+  background: var(--bg-panel-warm-light);
+}
+
+.secondary-btn:active:not(:disabled),
+.ghost-button:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 0.5px 0.5px 0 var(--shadow-neo);
+}
+
+.ghost-button--inline {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.ghost-button.danger-button--ghost,
+.pixel-btn--danger {
+  color: var(--danger-fg);
+  border: 2px solid var(--border-subtle);
+  background: var(--danger-bg);
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+  font-weight: 750;
+}
+
+.ghost-button.danger-button--ghost:hover:not(:disabled),
+.pixel-btn--danger:hover:not(:disabled) {
+  background: #f87171;
+  color: #ffffff;
+  transform: translate(-1px, -1px);
+  box-shadow: 3.5px 3.5px 0 var(--shadow-neo);
 }

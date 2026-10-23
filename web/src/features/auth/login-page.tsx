@@ -239,7 +239,7 @@ export function LoginPage({
 
             <button
               type="button"
-              className="ghost-button ghost-button--inline"
+              className="quiet-button auth-card__back-button"
               onClick={() => {
                 setTwoFactorTicket(undefined);
                 setRequestError(undefined);

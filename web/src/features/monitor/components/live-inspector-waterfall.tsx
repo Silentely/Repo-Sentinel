@@ -108,7 +108,7 @@ export function LiveInspectorWaterfall({ maxItems = 8 }: { maxItems?: number }) 
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="secondary-btn text-xs py-1 px-2.5 flex items-center gap-1.5"
+            className="quiet-button quiet-button--compact"
             onClick={() => setAutoScroll((prev) => !prev)}
             aria-label={autoScroll ? "暂停自动滚动" : "开启自动滚动"}
           >
@@ -127,7 +127,7 @@ export function LiveInspectorWaterfall({ maxItems = 8 }: { maxItems?: number }) 
           {deliveries.length > 0 ? (
             <button
               type="button"
-              className="secondary-btn text-xs py-1 px-2 text-muted-foreground hover:text-foreground"
+              className="quiet-button quiet-button--compact"
               onClick={() => setDeliveries([])}
             >
               清空

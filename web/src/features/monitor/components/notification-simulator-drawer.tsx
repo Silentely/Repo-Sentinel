@@ -146,11 +146,7 @@ export function NotificationSimulatorDrawer({
               <button
                 key={k}
                 type="button"
-                className={`text-xs px-2.5 py-1 rounded border transition-colors ${
-                  eventType === k
-                    ? "border-accent bg-accent/10 text-accent font-medium"
-                    : "border-border/60 hover:bg-muted/40 text-muted-foreground"
-                }`}
+                className={`quiet-button quiet-button--compact${eventType === k ? " active" : ""}`}
                 onClick={() => handleApplyPreset(k)}
               >
                 {k}
@@ -162,7 +158,7 @@ export function NotificationSimulatorDrawer({
             <div>
               <label className="text-xs font-medium text-muted-foreground block mb-1">事件类型 (Event Type)</label>
               <input
-                className="w-full text-xs font-mono p-2 rounded border border-border bg-background"
+                className="sub-field-input w-full text-xs font-mono"
                 value={eventType}
                 onChange={(e) => setEventType(e.target.value)}
                 placeholder="pull_request / issues / workflow_run"
@@ -171,7 +167,7 @@ export function NotificationSimulatorDrawer({
             <div>
               <label className="text-xs font-medium text-muted-foreground block mb-1">动作 (Action)</label>
               <input
-                className="w-full text-xs font-mono p-2 rounded border border-border bg-background"
+                className="sub-field-input w-full text-xs font-mono"
                 value={action}
                 onChange={(e) => setAction(e.target.value)}
                 placeholder="opened / closed / completed"
@@ -180,7 +176,7 @@ export function NotificationSimulatorDrawer({
             <div>
               <label className="text-xs font-medium text-muted-foreground block mb-1">目标仓库 (Repository)</label>
               <input
-                className="w-full text-xs font-mono p-2 rounded border border-border bg-background"
+                className="sub-field-input w-full text-xs font-mono"
                 value={repo}
                 onChange={(e) => setRepo(e.target.value)}
                 placeholder="org/repo"
@@ -189,7 +185,7 @@ export function NotificationSimulatorDrawer({
             <div>
               <label className="text-xs font-medium text-muted-foreground block mb-1">分支 (Branch, 可选)</label>
               <input
-                className="w-full text-xs font-mono p-2 rounded border border-border bg-background"
+                className="sub-field-input w-full text-xs font-mono"
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
                 placeholder="main / develop"
@@ -203,7 +199,7 @@ export function NotificationSimulatorDrawer({
               <span className="text-[11px] text-muted-foreground">将直接用于字段映射与提取</span>
             </div>
             <textarea
-              className="w-full font-mono text-xs p-2.5 rounded border border-border bg-background h-32 resize-y"
+              className="sub-field-input w-full font-mono text-xs p-2.5 h-32 resize-y"
               value={payloadRaw}
               onChange={(e) => setPayloadRaw(e.target.value)}
               placeholder="{ ... }"
@@ -213,12 +209,12 @@ export function NotificationSimulatorDrawer({
           <div className="flex items-center justify-end gap-2 pt-1">
             <button
               type="button"
-              className="primary-btn text-xs py-1.5 px-4 flex items-center gap-1.5"
+              className="primary-button primary-button--inline"
               disabled={dryRunMutation.isPending}
               onClick={handleRun}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              {dryRunMutation.isPending ? "正在评估..." : "运行模拟评估 (Dry-Run)"}
+              <span>{dryRunMutation.isPending ? "正在评估..." : "运行模拟评估 (Dry-Run)"}</span>
             </button>
           </div>
 
