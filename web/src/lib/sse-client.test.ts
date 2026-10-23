@@ -89,6 +89,32 @@ describe("createDebouncedInvalidator", () => {
     expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["webhook-deliveries"]))).toBe(true);
     expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["dashboard"]))).toBe(true);
   });
+
+  it("routes workflow_runs.changed to the workflow-runs query key", () => {
+    const queryClient = new QueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+
+    const invalidator = createDebouncedInvalidator(queryClient, 150);
+    invalidator.schedule("workflow_runs.changed");
+    vi.advanceTimersByTime(160);
+
+    const calls = invalidateSpy.mock.calls;
+    expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["workflow-runs"]))).toBe(true);
+    expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["dashboard"]))).toBe(true);
+  });
+
+  it("routes security_alerts.changed to the security-alerts query key", () => {
+    const queryClient = new QueryClient();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+
+    const invalidator = createDebouncedInvalidator(queryClient, 150);
+    invalidator.schedule("security_alerts.changed");
+    vi.advanceTimersByTime(160);
+
+    const calls = invalidateSpy.mock.calls;
+    expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["security-alerts"]))).toBe(true);
+    expect(calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(["dashboard"]))).toBe(true);
+  });
 });
 
 describe("SSEManager circuit breaker & lifecycle", () => {

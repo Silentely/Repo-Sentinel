@@ -531,6 +531,10 @@ func (f failingChannelStore) GetEnabledByType(context.Context, string) (store.No
 	return store.NotificationChannel{}, f.err
 }
 
+func (f failingChannelStore) GetByType(context.Context, string) (store.NotificationChannel, error) {
+	return store.NotificationChannel{}, f.err
+}
+
 // failingAuditStore 仅让审计写入失败，其余方法透传真实实现。
 type failingAuditStore struct {
 	store.AuditStore

@@ -123,3 +123,90 @@ func TestWorkItemIgnoreBroadcastsSSE(t *testing.T) {
 		t.Fatalf("批量端点广播的 resource_id 集合不完整: %v", got)
 	}
 }
+
+// TestWorkflowRunAndSecurityAlertIgnoreBroadcastsSSE 回归：WorkflowRun 和 SecurityAlert
+// 标记忽略后，也必须向 SSE 订阅者广播 workflow_runs.changed 与 security_alerts.changed 事件，
+// 确保多终端/多标签页实时联动。
+func TestWorkflowRunAndSecurityAlertIgnoreBroadcastsSSE(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	ctx := t.Context()
+
+	repo, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID:             "repo-sse-wf-sec",
+		FullName:       "org/sse-wf-sec",
+		MonitorEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+
+	if _, _, err := fixture.store.WorkflowRuns().UpsertIfNewer(ctx, store.WorkflowRun{
+		ID:           "wf-sse-1",
+		RepositoryID: repo.ID,
+		WorkflowName: "CI",
+		RunNumber:    1,
+		Status:       "completed",
+	}); err != nil {
+		t.Fatalf("upsert workflow run: %v", err)
+	}
+
+	if _, _, err := fixture.store.SecurityAlerts().UpsertIfNewer(ctx, store.SecurityAlert{
+		ID:           "sec-sse-1",
+		RepositoryID: repo.ID,
+		AlertKind:    store.AlertKindDependabot,
+		AlertNumber:  1,
+		State:        "open",
+	}); err != nil {
+		t.Fatalf("upsert security alert: %v", err)
+	}
+
+	hub := NewSSEHub(slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := New(Dependencies{
+		Config:         config.Config{HTTP: config.HTTPConfig{PublicBaseURL: "https://reposentinel.example"}},
+		Store:          fixture.store,
+		AdminService:   fixture.adminService,
+		SessionService: fixture.sessionService,
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		SSEHub:         hub,
+	})
+	ch, clientID, err := hub.Subscribe()
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer hub.Unsubscribe(clientID)
+
+	// 1. WorkflowRun ignore
+	wfResp := doRequest(t, handler, http.MethodPatch, "/api/v1/workflow-runs/wf-sse-1/ignored",
+		`{"ignored":true}`, cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if wfResp.Code != http.StatusOK {
+		t.Fatalf("workflow run ignore status=%d body=%s", wfResp.Code, wfResp.Body.String())
+	}
+
+	select {
+	case evt := <-ch:
+		if evt.Topic != "workflow_runs.changed" || evt.ResourceID != "wf-sse-1" {
+			t.Fatalf("expected workflow_runs.changed for wf-sse-1, got topic=%s id=%s", evt.Topic, evt.ResourceID)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for workflow_runs.changed SSE event")
+	}
+
+	// 2. SecurityAlert ignore
+	secResp := doRequest(t, handler, http.MethodPatch, "/api/v1/security-alerts/sec-sse-1/ignored",
+		`{"ignored":true}`, cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if secResp.Code != http.StatusOK {
+		t.Fatalf("security alert ignore status=%d body=%s", secResp.Code, secResp.Body.String())
+	}
+
+	select {
+	case evt := <-ch:
+		if evt.Topic != "security_alerts.changed" || evt.ResourceID != "sec-sse-1" {
+			t.Fatalf("expected security_alerts.changed for sec-sse-1, got topic=%s id=%s", evt.Topic, evt.ResourceID)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for security_alerts.changed SSE event")
+	}
+}

@@ -2501,6 +2501,7 @@ func (s *outboxStore) RetryDead(ctx context.Context, id string, next time.Time) 
 		SetNextAttemptAt(next.UTC()).
 		SetLastErrorCode("").
 		ClearLockedUntil().
+		SetAttemptCount(0).
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
@@ -2525,6 +2526,7 @@ func (s *outboxStore) RetryAllDead(ctx context.Context, channelIDs []string, nex
 		SetNextAttemptAt(next.UTC()).
 		SetLastErrorCode("").
 		ClearLockedUntil().
+		SetAttemptCount(0).
 		SetUpdatedAt(now).
 		Save(ctx)
 	return n, mapStoreError(err)

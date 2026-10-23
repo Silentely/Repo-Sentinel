@@ -98,6 +98,12 @@ export function createDebouncedInvalidator(
       case "delivery.stage":
         pendingDomains.add("webhook-deliveries");
         break;
+      case "workflow_runs.changed":
+        pendingDomains.add("workflow-runs");
+        break;
+      case "security_alerts.changed":
+        pendingDomains.add("security-alerts");
+        break;
       default:
         break;
     }
@@ -251,6 +257,8 @@ export class SSEManager {
       es.addEventListener("outbox.changed", handleEvent("outbox.changed"));
       es.addEventListener("ai_review.changed", handleEvent("ai_review.changed"));
       es.addEventListener("work_items.changed", handleEvent("work_items.changed"));
+      es.addEventListener("workflow_runs.changed", handleEvent("workflow_runs.changed"));
+      es.addEventListener("security_alerts.changed", handleEvent("security_alerts.changed"));
       es.addEventListener("delivery.stage", handleEvent("delivery.stage"));
     } catch {
       // EventSource instantiation error

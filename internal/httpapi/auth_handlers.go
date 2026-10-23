@@ -55,10 +55,13 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, r, http.StatusTooManyRequests, errorCodeRateLimited, nil)
 		return
 	}
+	var admin auth.Admin
+	var err error
 	if s.loginSem != nil {
 		select {
 		case s.loginSem <- struct{}{}:
-			defer func() { <-s.loginSem }()
+			admin, err = s.dependencies.AdminService.Authenticate(r.Context(), request.Username, request.Password)
+			<-s.loginSem
 		case <-time.After(1 * time.Second):
 			s.dependencies.Logger.Warn(
 				"login concurrency limit reached",
@@ -70,9 +73,9 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			s.writeAPIError(w, r, http.StatusTooManyRequests, errorCodeRateLimited, nil)
 			return
 		}
+	} else {
+		admin, err = s.dependencies.AdminService.Authenticate(r.Context(), request.Username, request.Password)
 	}
-
-	admin, err := s.dependencies.AdminService.Authenticate(r.Context(), request.Username, request.Password)
 	if err != nil {
 		s.dependencies.LoginLimiter.RecordFailure(request.Username)
 		if delay := s.dependencies.LoginLimiter.DelayFor(request.Username); delay > 0 {

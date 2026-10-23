@@ -416,11 +416,13 @@ func (s *server) handleBatchSetWorkItemIgnored(w http.ResponseWriter, r *http.Re
 }
 
 func (s *server) handleSetWorkflowRunIgnored(w http.ResponseWriter, r *http.Request) {
-	setResourceIgnored(s, w, r, s.dependencies.Store.WorkflowRuns().SetIgnored, s.dependencies.Store.WorkflowRuns().Get, nil)
+	setResourceIgnored(s, w, r, s.dependencies.Store.WorkflowRuns().SetIgnored, s.dependencies.Store.WorkflowRuns().Get,
+		func(id string) { s.broadcastResource("workflow_runs.changed", "workflow_run", id) })
 }
 
 func (s *server) handleSetSecurityAlertIgnored(w http.ResponseWriter, r *http.Request) {
-	setResourceIgnored(s, w, r, s.dependencies.Store.SecurityAlerts().SetIgnored, s.dependencies.Store.SecurityAlerts().Get, nil)
+	setResourceIgnored(s, w, r, s.dependencies.Store.SecurityAlerts().SetIgnored, s.dependencies.Store.SecurityAlerts().Get,
+		func(id string) { s.broadcastResource("security_alerts.changed", "security_alert", id) })
 }
 
 // getIntSetting 读取整数设置，失败时返回默认值（语义与 store.SettingInt 一致）。

@@ -522,3 +522,45 @@ func TestHandleEnable2FARequiresSession(t *testing.T) {
 	s.handleEnable2FA(rec, req)
 	assertAPIError(t, rec, http.StatusUnauthorized, errorCodeUnauthorized)
 }
+
+// TestLoginSemReleasedBeforeRateLimitDelay 回归：Argon2id 认证并发信号量 loginSem 必须在 Authenticate 完成后立即释放，
+// 不得持有跨越登录惩罚延迟 time.After(delay)。否则连续失败请求将独占信号量，造成后续其他正常请求误报 429 concurrency limit reached。
+func TestLoginSemReleasedBeforeRateLimitDelay(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+
+	// 先让账号积累失败次数产生 delayFor
+	for i := 0; i < 4; i++ {
+		fixture.loginLimiter.RecordFailure("Repo Admin")
+	}
+	delay := fixture.loginLimiter.DelayFor("Repo Admin")
+	if delay < 200*time.Millisecond {
+		t.Fatalf("expected positive progressive delay, got %v", delay)
+	}
+
+	// 启动一个必定触发 delay 的失败登录
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		_ = fixture.request(
+			t, http.MethodPost, "/api/v1/auth/login",
+			`{"username":"Repo Admin","password":"wrong-password-123"}`,
+			"198.51.100.20:42001", nil, nil,
+		)
+	}()
+
+	// 等待首个请求进入并完成 Authenticate（开始 sleep delay）
+	time.Sleep(50 * time.Millisecond)
+
+	// 并发发送合法登录请求，由于信号量已被及时释放，该请求应直接执行成功，绝不能报 429
+	secondResp := fixture.request(
+		t, http.MethodPost, "/api/v1/auth/login",
+		fmt.Sprintf(`{"username":"Repo Admin","password":%q}`, httpTestPassword),
+		"198.51.100.21:42002", nil, nil,
+	)
+	if secondResp.Code != http.StatusOK {
+		t.Fatalf("concurrent valid login should succeed with 200, got status=%d body=%s", secondResp.Code, secondResp.Body.String())
+	}
+
+	<-firstDone
+}

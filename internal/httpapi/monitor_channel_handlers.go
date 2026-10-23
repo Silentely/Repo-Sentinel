@@ -130,7 +130,7 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	existing, err := s.dependencies.Store.Channels().GetEnabledByType(r.Context(), channelType)
+	existing, err := s.dependencies.Store.Channels().GetByType(r.Context(), channelType)
 	// 真实存储故障不得按"无既有渠道"处理，否则会静默创建重复渠道并丢失原配置。
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		s.writeMappedError(w, r, err)

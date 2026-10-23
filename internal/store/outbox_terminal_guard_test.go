@@ -114,3 +114,86 @@ func TestMarkTransitionsStillWorkInFlight(t *testing.T) {
 		}
 	}
 }
+
+// TestRetryDeadResetsAttemptCount 回归：人工从管理台触发 RetryDead 或 RetryAllDead 时，
+// 必须重置 attempt_count 为 0。
+// 否则死信行已积累 8 次重试上限，worker 领取后一旦遇到任意瞬时故障（如临时网络抖动、429 退避）
+// 就会因 item.AttemptCount >= maxAttempts 直接再次打入死信，失去阶梯退避能力。
+func TestRetryDeadResetsAttemptCount(t *testing.T) {
+	data := openOutboxProbeStore(t)
+	ctx := t.Context()
+
+	// 1. 创建一条 attempt_count=8 的死信
+	if _, err := data.Outbox().Create(ctx, NotificationOutbox{
+		ID:             "ob-dead-max-attempts",
+		ChannelID:      "ch-1",
+		Status:         OutboxDead,
+		Title:          "probe-dead",
+		AttemptCount:   8,
+		IdempotencyKey: "probe-dead-max-attempts",
+	}); err != nil {
+		t.Fatalf("seed dead outbox: %v", err)
+	}
+
+	// 2. 单条重试
+	next := time.Now().UTC()
+	if err := data.Outbox().RetryDead(ctx, "ob-dead-max-attempts", next); err != nil {
+		t.Fatalf("RetryDead failed: %v", err)
+	}
+
+	rows, _, err := data.Outbox().List(ctx, ListFilter{PerPage: 10})
+	if err != nil {
+		t.Fatalf("list outbox: %v", err)
+	}
+	var found *NotificationOutbox
+	for _, r := range rows {
+		if r.ID == "ob-dead-max-attempts" {
+			found = &r
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("retried item not found")
+	}
+	if found.Status != OutboxPending {
+		t.Fatalf("expected status %s, got %s", OutboxPending, found.Status)
+	}
+	if found.AttemptCount != 0 {
+		t.Fatalf("expected AttemptCount reset to 0, got %d", found.AttemptCount)
+	}
+
+	// 3. 测试 RetryAllDead 批量重置
+	if _, err := data.Outbox().Create(ctx, NotificationOutbox{
+		ID:             "ob-dead-batch-1",
+		ChannelID:      "ch-2",
+		Status:         OutboxDead,
+		Title:          "probe-dead-2",
+		AttemptCount:   8,
+		IdempotencyKey: "probe-dead-batch-1",
+	}); err != nil {
+		t.Fatalf("seed dead outbox 2: %v", err)
+	}
+
+	retriedCount, err := data.Outbox().RetryAllDead(ctx, []string{"ch-2"}, next)
+	if err != nil {
+		t.Fatalf("RetryAllDead failed: %v", err)
+	}
+	if retriedCount != 1 {
+		t.Fatalf("expected 1 retried item, got %d", retriedCount)
+	}
+
+	rows2, _, err := data.Outbox().List(ctx, ListFilter{PerPage: 10})
+	if err != nil {
+		t.Fatalf("list outbox: %v", err)
+	}
+	for _, r := range rows2 {
+		if r.ID == "ob-dead-batch-1" {
+			if r.Status != OutboxPending {
+				t.Fatalf("expected status %s, got %s", OutboxPending, r.Status)
+			}
+			if r.AttemptCount != 0 {
+				t.Fatalf("expected AttemptCount reset to 0 in RetryAllDead, got %d", r.AttemptCount)
+			}
+		}
+	}
+}
