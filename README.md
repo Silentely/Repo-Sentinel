@@ -49,18 +49,48 @@ RepoSentinel 是面向个人与小团队的 **GitHub 仓库监控控制台**。�
 </p>
 
 <details>
-<summary><b>展开查看更多界面截图（仓库管理、系统设置、登录）</b></summary>
+<summary><b>展开查看更多界面截图（AI 代码审查、多渠道通知、Webhook 检查、移动端等）</b></summary>
 
 <br>
+
+#### Pull Requests 智能代码审查与合规裁决
+<p align="center">
+  <img src="docs/public/images/pull-requests-ai-preview.png" alt="PR AI 审查报告预览" width="100%">
+</p>
 
 #### 仓库管理与外部公开仓监控
 <p align="center">
   <img src="docs/public/images/repos-preview.png" alt="仓库管理预览" width="100%">
 </p>
 
-#### 智能值守、AI 审查与系统偏好
+#### 多渠道通知矩阵（Telegram、飞书、钉钉、企微等）
+<p align="center">
+  <img src="docs/public/images/notifications-preview.png" alt="通知渠道配置预览" width="100%">
+</p>
+
+#### 外发通知 Outbox 投递追踪
+<p align="center">
+  <img src="docs/public/images/outbox-preview.png" alt="投递记录预览" width="100%">
+</p>
+
+#### Webhook 检查与事件回放 (Inspector)
+<p align="center">
+  <img src="docs/public/images/webhooks-preview.png" alt="Webhook Inspector 预览" width="100%">
+</p>
+
+#### Star Release 公开仓库依赖动态追踪
+<p align="center">
+  <img src="docs/public/images/starred-releases-preview.png" alt="Star Release 预览" width="100%">
+</p>
+
+#### 智能值守、系统偏好与 2FA 安全设置
 <p align="center">
   <img src="docs/public/images/settings-preview.png" alt="系统设置预览" width="100%">
+</p>
+
+#### 移动端抽屉导航与响应式适配
+<p align="center">
+  <img src="docs/public/images/mobile-dashboard-preview.png" alt="移动端视图预览" width="45%">
 </p>
 
 #### 管理员登录与安全认证

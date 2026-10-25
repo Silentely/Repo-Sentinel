@@ -63,9 +63,51 @@ RepoSentinel 控制台采用独特的 **Retro Neo-Brutalism（复古新粗野主
 
 ![仓库列表预览](/images/repos-preview.png)
 
-### 智能值守配置与系统安全
+### Pull Requests 智能代码审查与合规裁决
+::: tip AI 代码审查与敏感资产嗅探
+PR 提交或更新时异步审查 Diff，给出健康评分、破坏性风险与维护者合入裁决（Ready to Merge / Block Risk 等），秒级嗅探敏感资产变动。
+:::
+
+![Pull Requests AI 审查预览](/images/pull-requests-ai-preview.png)
+
+### 多渠道通知矩阵与聚合调度
+::: tip 全渠道触达与防刷屏
+支持 Telegram、飞书、企业微信、钉钉、Discord、Bark、Slack 与 HTTP Webhook，支持独立订阅类型勾选与免打扰静默时段。
+:::
+
+![通知渠道配置预览](/images/notifications-preview.png)
+
+### 通知投递 Outbox 与实时交付排障
+::: tip 投递可靠性保障
+所有外发通知落库入 Outbox，提供完整的投递状态追踪、详情排障抽屉与死信一键重试。
+:::
+
+![投递记录预览](/images/outbox-preview.png)
+
+### Webhook 负载检查与实时回放 (Inspector)
+::: tip 零丢失可追溯
+实时记录每一笔入站 GitHub Webhook Delivery，支持结构化元数据穿透检查与事件一键重放。
+:::
+
+![Webhook 检查与回放预览](/images/webhooks-preview.png)
+
+### Star Release 公开仓库动态追踪
+::: tip 依赖上游更新雷达
+关注关键开源依赖的最新版本发布，ETag 条件轮询节省配额，支持 AI 中文提炼更新速览。
+:::
+
+![Star Release 追踪预览](/images/starred-releases-preview.png)
+
+### 智能值守配置与系统偏好
 ::: tip 灵活配置
-可自定义 LLM 审查提示词、通知聚合策略、双因素认证（2FA）及多渠道推送矩阵。
+可自定义大模型端点、超时重试、运维时区、双因素认证（2FA）及仓库基线对账。
 :::
 
 ![系统设置预览](/images/settings-preview.png)
+
+### 移动端抽屉与响应式设计
+::: tip 随时随地掌上运维
+完美适配移动端视口，提供流畅的离屏抽屉导航与无溢出卡片式排版。
+:::
+
+![移动端控制台预览](/images/mobile-dashboard-preview.png)
