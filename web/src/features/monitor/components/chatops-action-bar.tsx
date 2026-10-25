@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ConfirmDialog } from "../../../components/confirm-dialog";
 import { executeChatOpsWebAction, type ChatOpsWebActionResult } from "../api";
 
 export interface ChatOpsActionBarProps {
@@ -20,6 +21,7 @@ export function ChatOpsActionBar({
 }: ChatOpsActionBarProps) {
   const [executing, setExecuting] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
 
   const handleAction = async (action: string, payload?: string) => {
     setExecuting(action);
@@ -75,7 +77,7 @@ export function ChatOpsActionBar({
           <button
             type="button"
             className="quiet-button quiet-button--compact"
-            onClick={() => handleAction("issue_mark_spam_and_close")}
+            onClick={() => setConfirmCloseOpen(true)}
             disabled={executing !== null}
             style={{ fontSize: "0.75rem" }}
           >
@@ -95,6 +97,24 @@ export function ChatOpsActionBar({
           </button>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmCloseOpen}
+        title="标记并关闭 Issue"
+        message={
+          issueNumber !== undefined
+            ? `确定将 #${issueNumber} 判定为垃圾/无效工单并在 GitHub 上自动关闭吗？此操作将直接同步远端。`
+            : "确定将此工单判定为垃圾/无效并在 GitHub 上自动关闭吗？"
+        }
+        confirmLabel="确认关闭"
+        danger={true}
+        busy={executing === "issue_mark_spam_and_close"}
+        onConfirm={async () => {
+          setConfirmCloseOpen(false);
+          await handleAction("issue_mark_spam_and_close");
+        }}
+        onCancel={() => setConfirmCloseOpen(false)}
+      />
 
       {feedback && (
         <p

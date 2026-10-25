@@ -14,6 +14,7 @@ import {
   syncInstallationRepositories,
   versionQueryOptions,
   fetchGitHubManifest,
+  exchangeGitHubManifest,
 } from "./api";
 
 const DOCS_GITHUB_APP =
@@ -36,6 +37,32 @@ export function GitHubPage() {
   const [formMessage, setFormMessage] = useAutoDismiss();
   const [manifestLoading, setManifestLoading] = useState(false);
   const [manifestError, setManifestError] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useAutoDismiss();
+  const [configMessage, setConfigMessage] = useAutoDismiss();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (!code) return;
+
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    setManifestLoading(true);
+    setManifestError(null);
+    exchangeGitHubManifest(code)
+      .then((res) => {
+        queryClient.invalidateQueries({ queryKey: ["github-config"] });
+        queryClient.invalidateQueries({ queryKey: ["github-installations"] });
+        setConfigMessage(`🎉 GitHub App (App ID: ${res.app_id}) 已成功创建并完成自动配置！`);
+      })
+      .catch((err) => {
+        setManifestError(err instanceof Error ? err.message : "自动兑换 GitHub App 凭据失败");
+      })
+      .finally(() => {
+        setManifestLoading(false);
+      });
+  }, [queryClient, setConfigMessage]);
 
   const handleManifestLaunch = async () => {
     setManifestLoading(true);
@@ -60,8 +87,6 @@ export function GitHubPage() {
       setManifestLoading(false);
     }
   };
-  const [syncMessage, setSyncMessage] = useAutoDismiss();
-  const [configMessage, setConfigMessage] = useAutoDismiss();
   const [appID, setAppID] = useState("");
   const [clientID, setClientID] = useState("");
   const [publicBaseURL, setPublicBaseURL] = useState("");

@@ -6,9 +6,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
 
 type githubConfigResponse struct {
@@ -330,11 +334,12 @@ func (s *server) handleGetGitHubManifest(w http.ResponseWriter, r *http.Request)
 		"hook_attributes": map[string]any{
 			"url": fmt.Sprintf("%s/webhooks/github", baseURL),
 		},
-		"redirect_url": fmt.Sprintf("%s/github/manifest-callback", baseURL),
+		"redirect_url": fmt.Sprintf("%s/github", baseURL),
 		"public":       false,
 		"default_permissions": map[string]string{
-			"issues":        "write",
-			"pull_requests": "write", "contents": "read",
+			"issues":               "write",
+			"pull_requests":        "write",
+			"contents":             "read",
 			"actions":              "read",
 			"metadata":             "read",
 			"security_events":      "read",
@@ -376,7 +381,8 @@ func (s *server) handleExchangeGitHubManifest(w http.ResponseWriter, r *http.Req
 	ghReq.Header.Set("Accept", "application/vnd.github+json")
 	ghReq.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := http.DefaultClient.Do(ghReq)
+	ghClient := &http.Client{Timeout: 15 * time.Second}
+	resp, err := ghClient.Do(ghReq)
 	if err != nil {
 		s.writeAPIError(w, r, http.StatusBadGateway, "github_manifest_failed", map[string]any{"message": "连接 GitHub 兑换端点失败: " + err.Error()})
 		return
@@ -437,6 +443,26 @@ func (s *server) handleExchangeGitHubManifest(w http.ResponseWriter, r *http.Req
 	}
 
 	_ = githubx.MergeFromStore(r.Context(), s.dependencies.Store, s.dependencies.KeyRing, s.dependencies.GitHubRuntime)
+
+	actorID := "system"
+	if session, ok := sessionFromContext(r.Context()); ok && session.AdminID != "" {
+		actorID = session.AdminID
+	}
+	metaJSON, _ := json.Marshal(map[string]any{
+		"app_id":    converted.ID,
+		"client_id": converted.ClientID,
+	})
+	s.appendAudit(r.Context(), store.AuditLog{
+		ID:           ulid.Make().String(),
+		Action:       "github.manifest_exchange",
+		ActorType:    "admin",
+		ActorID:      actorID,
+		TargetType:   "github_app",
+		TargetID:     strconv.FormatInt(converted.ID, 10),
+		MetadataJSON: metaJSON,
+		IPAddress:    remoteIPFromContext(r.Context()),
+		CreatedAt:    time.Now().UTC(),
+	})
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":   true,

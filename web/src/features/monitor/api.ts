@@ -1119,3 +1119,10 @@ export async function executeChatOpsWebAction(req: ChatOpsWebActionRequest): Pro
 export async function fetchGitHubManifest(): Promise<Record<string, unknown>> {
   return await apiRequest<Record<string, unknown>>("/api/v1/github/manifest");
 }
+
+export async function exchangeGitHubManifest(code: string): Promise<{ success: boolean; app_id: number; client_id: string }> {
+  return await apiRequest<{ success: boolean; app_id: number; client_id: string }>("/api/v1/github/manifest/exchange", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}

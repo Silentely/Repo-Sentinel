@@ -79,4 +79,33 @@ describe("ChatOpsActionBar", () => {
       expect(screen.getByText("⚠ 网络超时")).toBeDefined();
     });
   });
+
+  it("renders mark spam button and requires confirmation before executing", async () => {
+    const mockExecute = vi.mocked(api.executeChatOpsWebAction).mockResolvedValue({
+      status: "executed",
+      message: "工单已关闭",
+      action: "issue_mark_spam_and_close",
+    });
+
+    render(<ChatOpsActionBar repoId="repo-123" issueNumber={99} isPR={false} />);
+
+    const spamBtn = screen.getByText("🚫 判定垃圾并关闭");
+    fireEvent.click(spamBtn);
+
+    expect(mockExecute).not.toHaveBeenCalled();
+    expect(screen.getByText("标记并关闭 Issue")).toBeDefined();
+
+    const confirmBtn = screen.getByRole("button", { name: "确认关闭" });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockExecute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "issue_mark_spam_and_close",
+          repo_id: "repo-123",
+          issue_number: 99,
+        })
+      );
+    });
+  });
 });

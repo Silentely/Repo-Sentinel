@@ -554,6 +554,13 @@ func (s *server) handleChatOpsWebAction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	actorID := "web_admin"
+	if session, ok := sessionFromContext(r.Context()); ok && session.AdminID != "" {
+		actorID = session.AdminID
+	} else if clientID, ok := agentClientIDFromContext(r.Context()); ok && clientID != "" {
+		actorID = clientID
+	}
+
 	actionData := chatops.ActionData{
 		ID:          ulid.Make().String(),
 		Action:      strings.TrimSpace(req.Action),
@@ -561,7 +568,7 @@ func (s *server) handleChatOpsWebAction(w http.ResponseWriter, r *http.Request) 
 		IssueNumber: req.IssueNumber,
 		RunID:       strings.TrimSpace(req.RunID),
 		Payload:     req.Payload,
-		ActorID:     "web_admin",
+		ActorID:     actorID,
 		ExpiresAt:   time.Now().Add(5 * time.Minute),
 	}
 
@@ -586,6 +593,24 @@ func (s *server) handleChatOpsWebAction(w http.ResponseWriter, r *http.Request) 
 		s.writeAPIError(w, r, http.StatusInternalServerError, "chatops_execution_failed", map[string]any{"message": msg})
 		return
 	}
+
+	metaJSON, _ := json.Marshal(map[string]any{
+		"action":       req.Action,
+		"issue_number": req.IssueNumber,
+		"run_id":       req.RunID,
+		"outcome":      string(outcome.Status),
+	})
+	s.appendAudit(r.Context(), store.AuditLog{
+		ID:           ulid.Make().String(),
+		Action:       "chatops.web_action",
+		ActorType:    "admin",
+		ActorID:      actorID,
+		TargetType:   "repository",
+		TargetID:     req.RepoID,
+		MetadataJSON: metaJSON,
+		IPAddress:    remoteIPFromContext(r.Context()),
+		CreatedAt:    time.Now().UTC(),
+	})
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  string(outcome.Status),

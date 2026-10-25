@@ -135,14 +135,23 @@ func (s *repositoryStore) Upsert(ctx context.Context, in Repository) (Repository
 	var err error
 	if in.ID != "" {
 		existing, err = s.client.Repository.Get(ctx, in.ID)
+		if err != nil && mapStoreError(err) != ErrNotFound {
+			return Repository{}, mapStoreError(err)
+		}
 	}
 	if existing == nil && in.GitHubRepoID != nil && *in.GitHubRepoID > 0 {
 		existing, err = s.client.Repository.Query().Where(repository.GithubRepoIDEQ(*in.GitHubRepoID)).Only(ctx)
+		if err != nil && mapStoreError(err) != ErrNotFound {
+			return Repository{}, mapStoreError(err)
+		}
 	}
 	if existing == nil {
 		existing, err = s.client.Repository.Query().Where(repository.FullNameEQ(in.FullName)).Only(ctx)
+		if err != nil && mapStoreError(err) != ErrNotFound {
+			return Repository{}, mapStoreError(err)
+		}
 	}
-	if err == nil && existing != nil {
+	if existing != nil {
 		// 类型降级守卫：安装仓改判为外部仓会退出安装对账并改走匿名轮询，私有仓随即被
 		// 404 钉成 unavailable 并永久跳过（ingestGate / RepoAllowsKind / ReconcileAll /
 		// PollAll 全部跳过），属于监控能力的静默丢失。采集方式由安装事件与设置页决定，
@@ -185,9 +194,6 @@ func (s *repositoryStore) Upsert(ctx context.Context, in Repository) (Repository
 		}
 		s.idsCache.Invalidate()
 		return repositoryFromEntity(entity), nil
-	}
-	if mapStoreError(err) != ErrNotFound {
-		return Repository{}, mapStoreError(err)
 	}
 	if in.ID == "" {
 		in.ID = newID()

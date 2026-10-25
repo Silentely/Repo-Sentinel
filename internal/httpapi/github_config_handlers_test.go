@@ -227,3 +227,16 @@ func TestGitHubManifest_Generate(t *testing.T) {
 		t.Errorf("expected issues: write permission, got %v", perms)
 	}
 }
+
+func TestGitHubManifest_Exchange_Validation(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	unauth := fixture.request(t, http.MethodPost, "/api/v1/github/manifest/exchange", `{"code":"123"}`, "127.0.0.1:45001", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	csrfCookie := cookieByName(t, cookies, CSRFCookieName)
+	badReq := fixture.request(t, http.MethodPost, "/api/v1/github/manifest/exchange", `{"code":""}`, "127.0.0.1:45002", cookies, map[string]string{CSRFHeaderName: csrfCookie.Value})
+	assertAPIError(t, badReq, http.StatusBadRequest, errorCodeValidationFailed)
+}

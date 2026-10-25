@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1101,5 +1102,26 @@ func TestClient_Complete_RecordsMonthlyUsageWhenSuccessful(t *testing.T) {
 	used := GetMonthlyUsage(context.Background(), st.Settings())
 	if used != 40 {
 		t.Fatalf("expected 40 tokens recorded in monthly usage, got %d", used)
+	}
+}
+
+func TestRecordMonthlyUsage_Concurrent(t *testing.T) {
+	st := openRuntimeStore(t)
+	var wg sync.WaitGroup
+	workers := 10
+	tokensPerWorker := 100
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			RecordMonthlyUsage(context.Background(), st.Settings(), tokensPerWorker/2, tokensPerWorker/2)
+		}()
+	}
+	wg.Wait()
+
+	used := GetMonthlyUsage(context.Background(), st.Settings())
+	expected := int64(workers * tokensPerWorker)
+	if used != expected {
+		t.Fatalf("expected %d tokens after concurrent recording, got %d", expected, used)
 	}
 }

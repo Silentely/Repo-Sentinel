@@ -13,8 +13,11 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-// ErrBudgetExceeded 当月已消耗 Token 达到或超过配置的月度上限时拒绝继续发起请求。
-var ErrBudgetExceeded = errors.New("ai: monthly token budget exceeded")
+var (
+	// ErrBudgetExceeded 当月已消耗 Token 达到或超过配置的月度上限时拒绝继续发起请求。
+	ErrBudgetExceeded = errors.New("ai: monthly token budget exceeded")
+	monthlyUsageMu    sync.Mutex
+)
 
 func currentMonthKey() string {
 	return "ai.usage." + time.Now().UTC().Format("2006-01")
@@ -46,6 +49,9 @@ func RecordMonthlyUsage(ctx context.Context, s store.SettingsStore, promptTokens
 	if total <= 0 {
 		return
 	}
+	monthlyUsageMu.Lock()
+	defer monthlyUsageMu.Unlock()
+
 	key := currentMonthKey()
 	setting, err := s.Get(ctx, key)
 	var prev int64
