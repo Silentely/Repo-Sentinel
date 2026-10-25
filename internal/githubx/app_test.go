@@ -511,3 +511,57 @@ func TestProbeRateLimitUsesInstallationToken(t *testing.T) {
 		})
 	}
 }
+
+// TestInstallationToken_FirstCallerCancelDoesNotBreakOthers 验证首个发起的调用者被提前取消时，
+// 后续等待该 inflight 的其他调用者不受级联影响，仍能成功拿到有效 token。
+func TestInstallationToken_FirstCallerCancelDoesNotBreakOthers(t *testing.T) {
+	expires := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"token":"tok-resilient","expires_at":%q}`, expires)
+	}))
+	defer srv.Close()
+
+	c := NewAppClient(12345, "")
+	c.HTTP = srv.Client()
+	c.BaseURL = srv.URL
+	key, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	c.Configure(12345, "", string(pemBytes))
+
+	var wg sync.WaitGroup
+	ctxCancel, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	var firstErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, firstErr = c.InstallationToken(ctxCancel, 9999)
+	}()
+
+	var secondToken string
+	var secondErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(10 * time.Millisecond)
+		secondToken, secondErr = c.InstallationToken(context.Background(), 9999)
+	}()
+
+	wg.Wait()
+
+	if firstErr == nil {
+		t.Fatalf("first caller with 20ms timeout should have failed, got nil")
+	}
+	if secondErr != nil {
+		t.Fatalf("second caller should not be broken by first caller cancellation, got err: %v", secondErr)
+	}
+	if secondToken != "tok-resilient" {
+		t.Errorf("expected tok-resilient, got %s", secondToken)
+	}
+}

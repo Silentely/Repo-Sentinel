@@ -215,17 +215,27 @@ func (c *AppClient) InstallationToken(ctx context.Context, installationID int64)
 	c.inflight[installationID] = call
 	c.mu.Unlock()
 
-	token, expiresAt, err := c.fetchInstallationToken(ctx, installationID)
+	go func() {
+		fetchCtx, fetchCancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer fetchCancel()
+		token, expiresAt, err := c.fetchInstallationToken(fetchCtx, installationID)
 
-	c.mu.Lock()
-	if err == nil && c.cache != nil {
-		c.cache[installationID] = cachedToken{Token: token, ExpiresAt: expiresAt}
+		c.mu.Lock()
+		if err == nil && c.cache != nil {
+			c.cache[installationID] = cachedToken{Token: token, ExpiresAt: expiresAt}
+		}
+		call.token, call.err = token, err
+		close(call.done)
+		delete(c.inflight, installationID)
+		c.mu.Unlock()
+	}()
+
+	select {
+	case <-call.done:
+		return call.token, call.err
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
-	call.token, call.err = token, err
-	close(call.done)
-	delete(c.inflight, installationID)
-	c.mu.Unlock()
-	return token, err
 }
 
 // fetchInstallationToken 执行实际的 token 签发请求（须在锁外调用）。
