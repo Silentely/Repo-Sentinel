@@ -156,6 +156,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	aggregator.AI = aiClient
 	aggregator.Logger = logger
 	aggregator.GitHub = ghClient
+	reconciler.Evaluator = aggregator
 
 	// Jev 运行时：env 基线 + 数据库补缺（管理台可编辑）。
 	jevRuntime := jev.RuntimeFromEnv(cfg.Jev)

@@ -25,6 +25,13 @@ import (
 // 避免双轮对账同时打 GitHub API 并争抢数据库连接。
 var ErrReconcileInProgress = errors.New("reconcile_in_progress")
 
+// Evaluator 补偿性通知评估器（对账发现漏发事件时触发通知评估）。
+type Evaluator interface {
+	Evaluate(ctx context.Context, res normalizer.Result, repoFullName string) error
+}
+
+const maxCompensatoryNotificationsPerRound = 10
+
 // Reconciler 自有仓库 API 对账与首次基线。
 type Reconciler struct {
 	Store  store.Store
@@ -34,6 +41,8 @@ type Reconciler struct {
 	MaxPages int
 	// OnRun 可选：每次对账执行回调（指标等）。
 	OnRun func()
+	// Evaluator 可选：对账自愈发现漏发事件时的补偿性通知评估器。
+	Evaluator Evaluator
 
 	// reconcileAllBusy 全量对账互斥（跨调度器与 HTTP 触发共享）：防重入。
 	reconcileAllBusy atomic.Bool
@@ -266,6 +275,7 @@ const prEnrichBudgetPerRound = 25
 // 调用方据此标记仓库部分失败且不推进 issues 游标（下轮重拉补齐）。
 func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Repository, since *time.Time, baseline, wantIssues, wantPRs bool) (softFailed bool, err error) {
 	enrichBudget := prEnrichBudgetPerRound
+	compensatoryCount := 0
 
 	// PR Check/Status 上下文改用 GraphQL 单批拉取（仅需 PR、且非基线时每仓一次）：
 	// 权限缺失时按计划跳过本轮 enrich（严禁回退 REST）；网络/5xx 时回退既有 REST enrich。
@@ -400,16 +410,32 @@ func (r *Reconciler) syncIssues(ctx context.Context, token string, repo store.Re
 			}
 			num := int64(saved.Number)
 			src := saved.SourceUpdatedAt
-			if _, err := r.Store.Events().Create(ctx, store.Event{
+			created, err := r.Store.Events().Create(ctx, store.Event{
 				ID: ulid.Make().String(), Source: "reconcile", Kind: kind, Action: "updated",
 				RepositoryID: &repo.ID, SubjectNumber: &num, Title: saved.Title, Actor: saved.Author,
 				SenderIsBot: saved.AuthorIsBot,
 				OccurredAt:  saved.SourceUpdatedAt, SourceUpdatedAt: &src, HTMLURL: saved.HTMLURL,
 				SuppressNotification: false, DedupeFingerprint: fp, StateHash: hash,
 				PayloadSummary: map[string]any{"state": saved.State},
-			}); err != nil && r.Logger != nil {
-				// 事件落库失败意味着通知丢失，必须留痕。
-				r.Logger.Warn("reconcile event create failed", "repo", repo.FullName, "kind", kind, "error_code", "event_create_failed", "error", err.Error())
+			})
+			if err != nil {
+				if r.Logger != nil {
+					// 事件落库失败意味着通知丢失，必须留痕。
+					r.Logger.Warn("reconcile event create failed", "repo", repo.FullName, "kind", kind, "error_code", "event_create_failed", "error", err.Error())
+				}
+			} else if r.Evaluator != nil {
+				if compensatoryCount < maxCompensatoryNotificationsPerRound {
+					compensatoryCount++
+					if evalErr := r.Evaluator.Evaluate(ctx, normalizer.Result{
+						Event:      &created,
+						Repository: &repo,
+						Updated:    true,
+					}, repo.FullName); evalErr != nil && r.Logger != nil {
+						r.Logger.Warn("compensatory notification evaluation failed", "repo", repo.FullName, "error_code", "compensatory_eval_failed", "error", evalErr.Error())
+					}
+				} else if r.Logger != nil {
+					r.Logger.Warn("compensatory notification burst limit reached", "repo", repo.FullName, "limit", maxCompensatoryNotificationsPerRound)
+				}
 			}
 		}
 		if len(items) < 100 {

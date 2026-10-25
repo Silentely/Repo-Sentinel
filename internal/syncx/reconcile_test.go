@@ -2,6 +2,8 @@ package syncx
 
 import (
 	"bytes"
+	"sync"
+	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -1397,5 +1399,82 @@ func TestReconcileGraphQLPermissionDeniedNoFallback(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "graphql_permission_denied") {
 		t.Fatalf("应记录 graphql_permission_denied 日志，got: %s", buf.String())
+	}
+}
+
+type mockReconcileEvaluator struct {
+	mu     sync.Mutex
+	events []normalizer.Result
+}
+
+func (m *mockReconcileEvaluator) Evaluate(ctx context.Context, res normalizer.Result, repoName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.events = append(m.events, res)
+	return nil
+}
+
+func TestReconciler_CompensatoryNotificationDispatched(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	updated := time.Now().UTC().Truncate(time.Second)
+
+	fake.issuesFn = func(page int) any {
+		return []map[string]any{
+			{
+				"number": 42, "state": "open", "title": "Missed Webhook Bug",
+				"html_url":   "https://github.com/acme/demo/issues/42",
+				"updated_at": updated.Format(time.RFC3339),
+				"user":       map[string]any{"login": "alice"},
+				"labels":     []any{}, "assignees": []any{},
+			},
+		}
+	}
+
+	eval := &mockReconcileEvaluator{}
+	r := &Reconciler{Store: data, GitHub: fake.client, Evaluator: eval}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+
+	eval.mu.Lock()
+	defer eval.mu.Unlock()
+	if len(eval.events) != 1 {
+		t.Fatalf("expected 1 compensatory notification, got %d", len(eval.events))
+	}
+	if eval.events[0].Event == nil || eval.events[0].Event.Title != "Missed Webhook Bug" {
+		t.Errorf("unexpected event: %+v", eval.events[0].Event)
+	}
+}
+
+func TestReconciler_CompensatoryNotificationRateLimit(t *testing.T) {
+	data, fake, repo := newReconcileFixture(t)
+	ctx := t.Context()
+	updated := time.Now().UTC().Truncate(time.Second)
+
+	fake.issuesFn = func(page int) any {
+		var list []map[string]any
+		for i := 1; i <= 15; i++ {
+			list = append(list, map[string]any{
+				"number": 100 + i, "state": "open", "title": fmt.Sprintf("Missed Issue %d", i),
+				"html_url":   fmt.Sprintf("https://github.com/acme/demo/issues/%d", 100+i),
+				"updated_at": updated.Format(time.RFC3339),
+				"user":       map[string]any{"login": "alice"},
+				"labels":     []any{}, "assignees": []any{},
+			})
+		}
+		return list
+	}
+
+	eval := &mockReconcileEvaluator{}
+	r := &Reconciler{Store: data, GitHub: fake.client, Evaluator: eval}
+	if err := r.ReconcileRepository(ctx, repo); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+
+	eval.mu.Lock()
+	defer eval.mu.Unlock()
+	if len(eval.events) != maxCompensatoryNotificationsPerRound {
+		t.Fatalf("expected rate-limited %d notifications, got %d", maxCompensatoryNotificationsPerRound, len(eval.events))
 	}
 }
