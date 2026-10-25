@@ -29,6 +29,14 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 | 免打扰时段 | 渠道级静默时段（HH:MM 起止 + IANA 时区，默认 22:00–08:00 UTC），静默期内常规事件延迟到恢复时刻投递；Secret Scanning、Critical/High 级 Code Scanning 与 Dependabot 告警固定穿透即时送达 |
 | 全局功能模块 | Issues / PR / Actions / 安全告警 / Star / Watch / Star Release：关闭后停止采集、对账与实时/摘要通知；Issues/PR/Actions/安全告警关闭同时隐藏侧栏入口，Star 关闭同时隐藏仪表盘 Star 增长面板；仓库级开关在全局关闭时禁用 |
 | Star Release 追踪 | 匿名枚举指定用户公开 star 仓库（自动排除 fork/archived），ETag 条件请求轮询各仓最新 Release；新版本实时通知，可配 AI 中文总结；500 追踪上限、双周期可配置、unstar 自动停用、独立 `/starred-releases` 管理页 |
+| 仓库重命名与转移自愈 | GitHub 仓库发生重命名（`repository.renamed`）或转移时，自动基于全局不可变 Repo ID 匹配并更新 `full_name` 与元数据，绝不丢失历史数据或产生孤儿记录 |
+| 自有仓 Release 实时捕获 | 支持自有监控仓的 `release.published` Webhook 实时采集与状态指纹去重（过滤草稿），与 Star Release 形成互补 |
+| 对账补偿通知管道 | 6h 周期对账或手动触发发现漏捕事件时，受控出站重走聚合器（60s 窗口合并与降级，单轮限额 10 条），阻断静默丢事件 |
+| Installation Token 单飞解耦 | 后台 Token 刷新与首个并发调用者的请求上下文取消安全解耦，彻底避免级联打崩后续并发请求 |
+| 保护分支直推与强制推送守卫 | 实时监控 push 事件，高危识别直接向保护/默认分支的直推（direct push）与强制推送（force push），秒级报警 |
+| AI 遥测与月度预算熔断 | 持久化按月累计 Token 消耗与费用遥测，触发设定预算硬上限时自动熔断降级为基础模板，坚决防止账单意外爆炸 |
+| 原生 Web 与多渠道 ChatOps | Web 前端与 Telegram/飞书多渠道提供统一的受控运维动作闭环（采纳首响应、一键标记垃圾并关闭 Issue），带防重放与确认守卫 |
+| GitHub App 60秒极速配置向导 | Manifest Flow 自动生成预填清单并跳转 GitHub，完成授权后自动换取并加密持久化 App ID、Secret 与私钥，免去手动配置 |
 | 管理后台 | 仪表盘（含 Star 增长曲线）、仓库管理、Issues/PR/Actions（含 CI 效能与耗时洞察）/安全告警、Webhook 检查与历史回放、Star Release 追踪、渠道配置、主题 |
 | 离线可用 | 管理后台注册 Service Worker：导航请求网络优先、断网回退应用外壳，静态资源本地缓存，弱网/断网仍可打开页面 |
 | 运维 CLI | `doctor` / `backup` / `restore`、配置校验、密码重置 |
@@ -52,7 +60,6 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 
 下列能力可继续加深，**不阻塞**当前部署：
 
-- 自有仓 GitHub API 周期对账与 Installation Token 刷新策略的完善
 - 外部公开仓 Issues API 增量轮询与配额自适应
 - 通知滑动窗口聚合与每日摘要调度的面板化配置
 
@@ -62,7 +69,6 @@ RepoSentinel 面向**单用户私有部署**，集中值守 GitHub 仓库：
 
 - GitHub 个人通知收件箱同步
 - 多用户注册、团队、RBAC 或多租户
-- 在 Telegram 中写回 GitHub（关 Issue、合并 PR、处置告警等）
 - 外部仓库的安全告警读取
 - 超过 20 个外部公开仓库的大规模分布式轮询
 - GitHub Enterprise Server 或自定义 GitHub Base URL
