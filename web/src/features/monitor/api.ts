@@ -1094,3 +1094,24 @@ export const jevConfigQueryOptions = queryOptions({
   staleTime: 60_000,
   refetchInterval: 60_000,
 });
+
+export interface ChatOpsWebActionRequest {
+  action: string;
+  repo_id: string;
+  issue_number?: number;
+  run_id?: string;
+  payload?: string;
+}
+
+export interface ChatOpsWebActionResult {
+  status: string;
+  message: string;
+  action: string;
+}
+
+export async function executeChatOpsWebAction(req: ChatOpsWebActionRequest): Promise<ChatOpsWebActionResult> {
+  return await apiRequest<ChatOpsWebActionResult>("/api/v1/chatops/web-action", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}

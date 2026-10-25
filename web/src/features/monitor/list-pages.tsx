@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link } from "@tanstack/react-router";
 
 import { ConfirmDialog } from "../../components/confirm-dialog";
+import { ChatOpsActionBar } from "./components/chatops-action-bar";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorAlert } from "../../components/error-alert";
 import { QueryGate, type QueryGateQuery } from "../../components/query-gate";
@@ -1228,6 +1229,14 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                     >
                       {activeReplyText}
                     </pre>
+                  )}
+                  {item?.repository_id && item?.number && (
+                    <ChatOpsActionBar
+                      repoId={item.repository_id}
+                      issueNumber={item.number}
+                      suggestedReply={activeReplyText}
+                      isPR={item.kind === "pull_request"}
+                    />
                   )}
                 </div>
               )}

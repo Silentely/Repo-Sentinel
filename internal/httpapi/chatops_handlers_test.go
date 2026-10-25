@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/config"
+	"github.com/Silentely/Repo-Sentinel/internal/chatops"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
@@ -1398,5 +1399,69 @@ func TestChatOps_HTTP_GuardrailFeedback(t *testing.T) {
 				t.Fatalf("Executor should not be called when guardrail blocks, got %d calls", exec.calls)
 			}
 		})
+	}
+}
+
+func TestChatOpsWebAction_RequiresAdminAuthAndExecutes(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	unauth := fixture.request(t, http.MethodPost, "/api/v1/chatops/web-action", `{}`, "127.0.0.1:45001", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	body := `{"action":"invalid_action","repo_id":"test-repo-id"}`
+	resp := fixture.request(
+		t, http.MethodPost, "/api/v1/chatops/web-action",
+		body, "127.0.0.1:45002", cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	if resp.Code == http.StatusNotFound {
+		t.Fatalf("expected route /api/v1/chatops/web-action to exist, got 404")
+	}
+}
+
+type mockWebChatOpsExecutor struct {
+	lastAction chatops.ActionData
+	outcome    *chatops.Outcome
+	err        error
+}
+
+func (m *mockWebChatOpsExecutor) Execute(ctx context.Context, data chatops.ActionData) error {
+	m.lastAction = data
+	return m.err
+}
+
+func (m *mockWebChatOpsExecutor) ExecuteWithOutcome(ctx context.Context, data chatops.ActionData) (*chatops.Outcome, error) {
+	m.lastAction = data
+	return m.outcome, m.err
+}
+
+func TestChatOpsWebAction_ExecuteSuccess(t *testing.T) {
+	mockExec := &mockWebChatOpsExecutor{
+		outcome: &chatops.Outcome{
+			Status:  chatops.StatusExecuted,
+			Action:  "issue_reply_draft",
+			Message: "已成功回复草稿",
+		},
+	}
+	fixture := newHTTPTestFixture(t, httpTestOptions{chatOpsExecutor: mockExec})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	body := `{"action":"issue_reply_draft","repo_id":"repo-1","issue_number":42,"payload":"thanks for the PR"}`
+	resp := fixture.request(
+		t, http.MethodPost, "/api/v1/chatops/web-action",
+		body, "127.0.0.1:45003", cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if mockExec.lastAction.Action != "issue_reply_draft" || mockExec.lastAction.IssueNumber != 42 {
+		t.Errorf("unexpected action data executed: %+v", mockExec.lastAction)
 	}
 }

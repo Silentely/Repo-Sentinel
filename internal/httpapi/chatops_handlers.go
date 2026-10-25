@@ -19,6 +19,7 @@ import (
 
 	"github.com/Silentely/Repo-Sentinel/internal/chatops"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
 
 // 类型别名与包级变量，确保现有测试与调用方 100% 平滑兼容。
@@ -527,5 +528,68 @@ func (s *server) handleSlackChatOpsCallback(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{
 		"response_type": "ephemeral",
 		"text":          "✅ 操作已执行",
+	})
+}
+
+type chatOpsWebActionRequest struct {
+	Action      string `json:"action"`
+	RepoID      string `json:"repo_id"`
+	IssueNumber int    `json:"issue_number,omitempty"`
+	RunID       string `json:"run_id,omitempty"`
+	Payload     string `json:"payload,omitempty"`
+}
+
+func (s *server) handleChatOpsWebAction(w http.ResponseWriter, r *http.Request) {
+	var req chatOpsWebActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": "请求体格式错误"})
+		return
+	}
+	if strings.TrimSpace(req.Action) == "" || strings.TrimSpace(req.RepoID) == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": "缺少必要参数 action 或 repo_id"})
+		return
+	}
+	if s.chatOpsExecutor == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, "chatops_unavailable", map[string]any{"message": "ChatOps 服务未就绪"})
+		return
+	}
+
+	actionData := chatops.ActionData{
+		ID:          ulid.Make().String(),
+		Action:      strings.TrimSpace(req.Action),
+		RepoID:      strings.TrimSpace(req.RepoID),
+		IssueNumber: req.IssueNumber,
+		RunID:       strings.TrimSpace(req.RunID),
+		Payload:     req.Payload,
+		ActorID:     "web_admin",
+		ExpiresAt:   time.Now().Add(5 * time.Minute),
+	}
+
+	var outcome *chatops.Outcome
+	var err error
+	if oe, ok := s.chatOpsExecutor.(chatops.OutcomeExecutor); ok {
+		outcome, err = oe.ExecuteWithOutcome(r.Context(), actionData)
+	} else {
+		err = s.chatOpsExecutor.Execute(r.Context(), actionData)
+		if err == nil {
+			outcome = &chatops.Outcome{Status: chatops.StatusExecuted, Action: actionData.Action}
+		}
+	}
+
+	if err != nil || (outcome != nil && outcome.Err != nil) {
+		msg := "执行 ChatOps 动作失败"
+		if outcome != nil && outcome.Message != "" {
+			msg = outcome.Message
+		} else if err != nil {
+			msg = err.Error()
+		}
+		s.writeAPIError(w, r, http.StatusInternalServerError, "chatops_execution_failed", map[string]any{"message": msg})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":  string(outcome.Status),
+		"message": outcome.Message,
+		"action":  outcome.Action,
 	})
 }

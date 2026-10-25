@@ -448,6 +448,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/starred-releases/sync", s.handleSyncStarredReleases)
 				mutating.Post("/starred-releases/trackers/{id}/state", s.handleSetStarredTrackerState)
 				mutating.Post("/github/sync-repositories", s.handleSyncInstallationRepositories)
+				mutating.Post("/chatops/web-action", s.handleChatOpsWebAction)
 				mutating.Post("/system/version/check", s.handleVersionCheck)
 				mutating.Post("/webhook-deliveries/{id}/replay", s.handleReplayWebhookDelivery)
 			})
