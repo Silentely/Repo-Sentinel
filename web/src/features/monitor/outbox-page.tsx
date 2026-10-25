@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 
@@ -313,6 +313,11 @@ export function OutboxPage() {
 function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () => void }) {
   // 抽屉生命周期（滚动锁/Escape/焦点循环/焦点归还）统一由 useModalLayer 承担。
   const panelRef = useModalLayer<HTMLElement>({ open: true, onClose });
+
+  // 切换条目时重置抽屉滚动位置到顶部，避免上一条目的滚动偏移泄露
+  useEffect(() => {
+    if (panelRef.current) panelRef.current.scrollTop = 0;
+  }, [item.id, panelRef]);
   // 复制投递 ID：排查时便于粘贴到日志/工单；失败给出短暂反馈，不打断使用。
   const { isCopied: copiedId, copy: copyText } = useCopyFeedback();
   const copyId = () => void copyText("id", item.id);
@@ -331,8 +336,8 @@ function OutboxDetailDrawer({ item, onClose }: { item: OutboxItem; onClose: () =
       >
         <div className="drawer-panel__header">
           <h2>投递详情</h2>
-          <button className="quiet-button" type="button" onClick={onClose} aria-label="关闭">
-            <X size={18} aria-hidden="true" />
+          <button className="quiet-button quiet-button--icon" type="button" onClick={onClose} aria-label="关闭">
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
         <dl className="drawer-panel__body">

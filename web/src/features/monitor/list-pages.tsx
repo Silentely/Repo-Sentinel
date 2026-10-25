@@ -1,4 +1,17 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  ExternalLink,
+  Pencil,
+  Rocket,
+  RotateCcw,
+  RotateCw,
+  Zap,
+} from "lucide-react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
@@ -187,7 +200,7 @@ function ItemActions({
   return (
     <div className="item-actions">
       {htmlUrl ? (
-        <a className="quiet-button" href={htmlUrl} target="_blank" rel="noopener noreferrer" title="在新窗口打开">
+        <a className="quiet-button quiet-button--compact" href={htmlUrl} target="_blank" rel="noopener noreferrer" title="在新窗口打开">
           在 GitHub 查看
         </a>
       ) : null}
@@ -575,9 +588,12 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
           className="quiet-button quiet-button--compact"
           onClick={toggle}
           aria-expanded={open}
+          aria-label="AI 代码审查报告"
           style={{ fontSize: "0.8rem" }}
         >
-          🤖 AI 代码审查报告 {loading ? "…" : open ? "▲" : "▼"}
+          <Bot size={14} aria-hidden="true" />
+          <span>AI 代码审查报告</span>
+          {loading ? "…" : open ? <ChevronUp size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
         </button>
         {review && review.review_status !== "skipped" && (
           <span
@@ -606,9 +622,11 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                 className="quiet-button quiet-button--compact"
                 onClick={() => handleTrigger(false)}
                 disabled={triggering}
+                aria-label="🔄 重新审查"
                 style={{ alignSelf: "flex-start" }}
               >
-                {triggering ? "正在发起审查…" : "🔄 重新审查"}
+                <RotateCw size={13} className={triggering ? "spin-icon" : undefined} aria-hidden="true" />
+                <span>{triggering ? "正在发起审查…" : "重新审查"}</span>
               </button>
             </div>
           ) : !review ? (
@@ -623,9 +641,11 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                 className="quiet-button quiet-button--compact quiet-button--primary-ghost"
                 onClick={() => handleTrigger(false)}
                 disabled={triggering}
+                aria-label="🚀 立即发起 AI 审查"
                 style={{ alignSelf: "flex-start" }}
               >
-                {triggering ? "正在审查…" : "🚀 立即发起 AI 审查"}
+                <Rocket size={13} aria-hidden="true" />
+                <span>{triggering ? "正在审查…" : "立即发起审查"}</span>
               </button>
             </div>
           ) : review.review_status === "skipped" ? (
@@ -661,9 +681,11 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                     className="quiet-button quiet-button--compact"
                     onClick={() => handleTrigger(true)}
                     disabled={triggering}
+                    aria-label="⚡ 强制深度审查"
                     style={{ fontSize: "0.75rem" }}
                   >
-                    {triggering ? "正在发起深度审查…" : "⚡ 强制深度审查"}
+                    <Zap size={13} aria-hidden="true" />
+                    <span>{triggering ? "正在发起深度审查…" : "强制深度审查"}</span>
                   </button>
                 </div>
               </div>
@@ -796,7 +818,8 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                       className="quiet-button quiet-button--compact"
                       style={{ fontSize: "0.75rem", textDecoration: "none" }}
                     >
-                      ↗ 打开 PR
+                      <ExternalLink size={13} aria-hidden="true" />
+                      <span>打开 PR</span>
                     </a>
                   )}
                   {review.head_sha && (
@@ -810,18 +833,22 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                     type="button"
                     className="quiet-button quiet-button--compact"
                     onClick={handleCopy}
+                    aria-label={copied ? "已复制" : "复制报告"}
                     style={{ fontSize: "0.75rem" }}
                   >
-                    {copied ? "✓ 已复制" : "📋 复制报告"}
+                    {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+                    <span>{copied ? "已复制" : "复制报告"}</span>
                   </button>
                   <button
                     type="button"
                     className="quiet-button quiet-button--compact"
                     onClick={() => handleTrigger(false)}
                     disabled={triggering}
+                    aria-label="🔄 重新审查"
                     style={{ fontSize: "0.75rem" }}
                   >
-                    {triggering ? "正在审查…" : "🔄 重新审查"}
+                    <RotateCw size={13} className={triggering ? "spin-icon" : undefined} aria-hidden="true" />
+                    <span>{triggering ? "正在审查…" : "重新审查"}</span>
                   </button>
                 </div>
               </div>
@@ -852,9 +879,11 @@ export const AIReviewCard = memo(function AIReviewCard({ workItemId, item }: { w
                         // 剪贴板异常静默降级
                       }
                     }}
+                    aria-label={copiedCmd ? "已复制 CLI" : "复制 CLI"}
                     style={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}
                   >
-                    {copiedCmd ? "✓ 已复制 CLI" : "📋 复制 CLI"}
+                    {copiedCmd ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+                    <span>{copiedCmd ? "已复制" : "复制 CLI"}</span>
                   </button>
                 </div>
               )}
@@ -1023,8 +1052,11 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
           className="quiet-button quiet-button--compact"
           onClick={toggle}
           aria-expanded={open}
+          aria-label="AI Issue 分诊与首响应"
         >
-          🤖 AI Issue 分诊与首响应 {loading ? "…" : open ? "▲" : "▼"}
+          <Bot size={14} aria-hidden="true" />
+          <span>AI Issue 分诊与首响应</span>
+          {loading ? "…" : open ? <ChevronUp size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
         </button>
         {triage && (
           <>
@@ -1074,9 +1106,11 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                 className="quiet-button quiet-button--compact"
                 onClick={handleTrigger}
                 disabled={triggering}
+                aria-label="立即分诊"
                 style={{ fontSize: "0.75rem" }}
               >
-                {triggering ? "正在分诊…" : "🚀 立即分诊"}
+                <Rocket size={13} aria-hidden="true" />
+                <span>{triggering ? "正在分诊…" : "立即分诊"}</span>
               </button>
             </div>
           )}
@@ -1096,18 +1130,22 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                     type="button"
                     className="quiet-button quiet-button--compact"
                     onClick={handleCopyReply}
+                    aria-label={copied ? "✓ 已复制回复" : "📋 复制建议首响应"}
                     style={{ fontSize: "0.75rem" }}
                   >
-                    {copied ? "✓ 已复制回复" : "📋 复制建议首响应"}
+                    {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+                    <span>{copied ? "已复制" : "复制回复"}</span>
                   </button>
                   <button
                     type="button"
                     className="quiet-button quiet-button--compact"
                     onClick={handleTrigger}
                     disabled={triggering}
+                    aria-label="重新分诊"
                     style={{ fontSize: "0.75rem" }}
                   >
-                    {triggering ? "正在分诊…" : "🔄 重新分诊"}
+                    <RotateCw size={13} className={triggering ? "spin-icon" : undefined} aria-hidden="true" />
+                    <span>{triggering ? "正在分诊…" : "重新分诊"}</span>
                   </button>
                   {item?.html_url && (
                     <a
@@ -1119,7 +1157,8 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                       title="点击自动复制建议首响应草稿并跳转到 GitHub Issue"
                       style={{ fontSize: "0.75rem", textDecoration: "none", display: "inline-flex", alignItems: "center" }}
                     >
-                      ↗ 前往回复
+                      <ExternalLink size={13} aria-hidden="true" />
+                      <span>前往回复</span>
                     </a>
                   )}
                 </div>
@@ -1187,9 +1226,11 @@ export const IssueTriageCard = memo(function IssueTriageCard({ workItemId, item 
                         }
                         setIsEditingDraft(!isEditingDraft);
                       }}
+                      aria-label={isEditingDraft ? "✓ 完成编辑" : "✏️ 编辑草稿"}
                       style={{ fontSize: "0.72rem", padding: "0.1rem 0.4rem" }}
                     >
-                      {isEditingDraft ? "✓ 完成编辑" : "✏️ 编辑草稿"}
+                      {isEditingDraft ? <Check size={13} aria-hidden="true" /> : <Pencil size={13} aria-hidden="true" />}
+                      <span>{isEditingDraft ? "完成" : "编辑草稿"}</span>
                     </button>
                   </div>
                   {isEditingDraft ? (
@@ -1593,6 +1634,7 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
         total={displayedTotal}
         emptyState={
           <EmptyState
+            illustration={filtersActive ? "clearing" : ignoredMode === "ignored" ? "clearing" : "mailbox"}
             title={
               filtersActive
                 ? "没有符合筛选条件的项目"
@@ -2229,6 +2271,7 @@ function ActionsList() {
         total={total}
         emptyState={
           <EmptyState
+            illustration={filtersActive ? "clearing" : ignoredMode === "ignored" ? "clearing" : "watchtower"}
             title={
               filtersActive
                 ? "没有符合筛选条件的运行"
@@ -2366,6 +2409,7 @@ function SecurityList() {
         total={total}
         emptyState={
           <EmptyState
+            illustration={filtersActive ? "clearing" : "shield"}
             title={
               filtersActive
                 ? "没有符合筛选条件的告警"
@@ -2462,8 +2506,9 @@ function ListFooter({
         已显示 {shown} / 共 {total} 条
       </span>
       {loadError != null && hasNextPage ? (
-        <button className="quiet-button quiet-button--danger" type="button" onClick={onLoadMore}>
-          加载失败，点击重试
+        <button className="quiet-button quiet-button--danger" type="button" onClick={onLoadMore} aria-label="加载失败，点击重试">
+          <RotateCcw size={14} aria-hidden="true" />
+          <span>加载失败，重试</span>
         </button>
       ) : hasNextPage ? (
         <button

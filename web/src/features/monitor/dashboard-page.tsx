@@ -789,6 +789,7 @@ export function DashboardPage() {
           isEmpty={eventItems.length === 0}
           emptyState={
             <EmptyState
+              illustration="watchtower"
               title="还没有事件"
               description="配置 GitHub Webhook 后，Issue / PR / Actions / 安全告警会出现在这里。"
             />
@@ -882,7 +883,7 @@ export function DashboardPage() {
           errorTitle="无法加载投递记录"
           isEmpty={outboxItems.length === 0}
           emptyState={
-            <EmptyState title="还没有投递记录" description="配置 Telegram 或 HTTP Webhook 渠道后，实时通知会进入 Outbox。" />
+            <EmptyState illustration="mailbox" title="还没有投递记录" description="配置 Telegram 或 HTTP Webhook 渠道后，实时通知会进入 Outbox。" />
           }
         >
           <ul className="feed-list">

@@ -24,6 +24,9 @@ describe("EmptyState 组件", () => {
     const { container: towerC } = render(<EmptyState title="守望中" description="" illustration="watchtower" />);
     expect(towerC.querySelector(".empty-state__illustration svg")).not.toBeNull();
 
+    const { container: shieldC } = render(<EmptyState title="安全无虞" description="" illustration="shield" />);
+    expect(shieldC.querySelector(".empty-state__illustration svg")).not.toBeNull();
+
     const { container: noneC } = render(<EmptyState title="纯文本" description="" illustration="none" />);
     expect(noneC.querySelector(".empty-state__illustration")).toBeNull();
   });

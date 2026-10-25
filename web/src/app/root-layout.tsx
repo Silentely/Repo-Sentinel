@@ -14,7 +14,6 @@ import {
   Send,
   Settings,
   Shield,
-  ShieldCheck,
   Workflow,
   X,
 } from "lucide-react";
@@ -89,12 +88,30 @@ export function RootLayout({ session }: RootLayoutProps) {
     initialFocusSelector: ".app-sidebar__close",
     restoreRef: menuButtonRef,
   });
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const mainRef = useRef<HTMLDivElement>(null);
+  const location = useRouterState({ select: (state) => state.location });
+  const pathname = location.pathname;
+  const hash = location.hash;
 
   // 浏览器标签页标题随路由更新：多标签场景下能直接看出当前页面。
   useEffect(() => {
     document.title = pageTitleFor(pathname);
   }, [pathname]);
+
+  // 路由切换时重置滚动位置，避免上一页的下滚距离泄露到新页面导致视觉跳跃
+  useEffect(() => {
+    if (hash) {
+      const el = document.getElementById(hash);
+      if (el) {
+        el.scrollIntoView();
+        return;
+      }
+    }
+    if (mainRef.current) {
+      mainRef.current.scrollTop = 0;
+    }
+    window.scrollTo(0, 0);
+  }, [pathname, hash]);
 
   // 离开当前路由（含浏览器前进/后退）后收起抽屉，避免遮挡新页面。
   const previousPathname = useRef(pathname);
@@ -131,7 +148,7 @@ export function RootLayout({ session }: RootLayoutProps) {
       : "ready";
   const healthLabel = healthState === "ready" ? "服务正常" : healthState === "warning" ? "检查中" : "需要关注";
 
-  // 功能模块开关：关闭后侧栏隐藏对应入口（与 FeatureGuard / 采集门禁一致）。
+  // 功能模块开关：关闭后侧边栏隐藏对应入口（与 FeatureGuard / 采集门禁一致）。
   const featureIssues = settings.data?.["feature.issues"] !== false;
   const featurePRs = settings.data?.["feature.pull_requests"] !== false;
   const featureActions = settings.data?.["feature.actions"] !== false;
@@ -166,36 +183,40 @@ export function RootLayout({ session }: RootLayoutProps) {
         id="app-sidebar"
         ref={sidebarRef}
         className={`app-sidebar${navOpen ? " is-open" : ""}`}
-        // 移动端打开时声明模态语义，读屏用户可感知抽屉为对话框；桌面端为常驻侧栏不加。
+        // 移动端打开时声明模态语义，读屏用户可感知抽屉为对话框；桌面端为常驻侧边栏不加。
         role={navOpen ? "dialog" : undefined}
-        aria-modal={navOpen ? "true" : undefined}
-        aria-label={navOpen ? "导航菜单" : undefined}
+        aria-modal={navOpen ? true : undefined}
+        aria-label={navOpen ? "导航抽屉" : undefined}
+        tabIndex={navOpen ? -1 : undefined}
+        onClick={handleNavClick}
       >
-        <div className="app-brand">
-          <span className="app-brand__mark" aria-hidden="true">
-            <ShieldCheck size={18} strokeWidth={1.8} />
-          </span>
-          <span>RepoSentinel</span>
+        <div className="app-sidebar__header">
+          <div className="app-brand">
+            <span className="app-brand__mark">RS</span>
+            <span>RepoSentinel</span>
+          </div>
+          {navOpen && (
+            <button
+              type="button"
+              className="app-sidebar__close"
+              aria-label="收起导航菜单"
+              onClick={closeNav}
+            >
+              <X aria-hidden="true" size={18} />
+            </button>
+          )}
         </div>
-        <button
-          type="button"
-          className="app-sidebar__close"
-          aria-label="收起导航菜单"
-          onClick={closeNav}
-        >
-          <X aria-hidden="true" size={18} strokeWidth={1.8} />
-        </button>
-        <nav className="app-nav" aria-label="主导航" onClick={handleNavClick}>
+        <nav className="app-nav" aria-label="主要页面">
           <span className="app-nav__label">概览</span>
-          <Link to="/" activeProps={{ "aria-current": "page" }}>
+          <Link to="/" activeProps={{ "aria-current": "page" }} activeOptions={{ exact: true }}>
             <Activity aria-hidden="true" size={17} />
             <span>仪表盘</span>
           </Link>
-          <span className="app-nav__label">仓库</span>
           <Link to="/repos" activeProps={{ "aria-current": "page" }}>
             <Archive aria-hidden="true" size={17} />
             <span>仓库管理</span>
           </Link>
+          <span className="app-nav__label">工作区</span>
           {featureIssues ? (
             <Link to="/issues" activeProps={{ "aria-current": "page" }}>
               <ListTodo aria-hidden="true" size={17} />
@@ -266,7 +287,7 @@ export function RootLayout({ session }: RootLayoutProps) {
 
       {navOpen && <div className="app-scrim" aria-hidden="true" onClick={closeNav} />}
 
-      <div className="app-main">
+      <div className="app-main" ref={mainRef}>
         <header className="app-topbar">
           <div className="app-topbar__lead">
             <button

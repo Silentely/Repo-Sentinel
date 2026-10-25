@@ -5,7 +5,7 @@ import { useModalLayer } from "../lib/use-modal-layer";
 
 /**
  * 样式化确认对话框：替代原生 window.confirm，视觉与操作反馈与整体 UI 一致。
- * 行为与投递详情抽屉对齐：焦点循环、Escape / 点击遮罩取消、打开锁背景滚动、
+ * 行为与传递详情抽屉对齐：焦点循环、Escape / 点击遮罩取消、打开锁背景滚动、
  * 关闭后焦点归还触发元素（统一由 useModalLayer 承担）。danger 确认（删除类）用实色危险按钮。
  */
 export function ConfirmDialog({
@@ -50,8 +50,8 @@ export function ConfirmDialog({
       >
         <div className="confirm-dialog__header">
           <h2>{title}</h2>
-          <button className="quiet-button" type="button" onClick={onCancel} aria-label="取消">
-            <X size={18} aria-hidden="true" />
+          <button className="quiet-button quiet-button--icon" type="button" onClick={onCancel} aria-label="取消">
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
         <div className="confirm-dialog__body">{message}</div>

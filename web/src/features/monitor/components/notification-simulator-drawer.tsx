@@ -133,8 +133,8 @@ export function NotificationSimulatorDrawer({
               <p className="text-xs text-muted-foreground">纯内存沙盒评估，不产生真实发送与数据库记录</p>
             </div>
           </div>
-          <button className="quiet-button p-1 hover:text-foreground" type="button" onClick={onClose} aria-label="关闭">
-            <X size={18} aria-hidden="true" />
+          <button className="quiet-button quiet-button--icon" type="button" onClick={onClose} aria-label="关闭">
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
 
@@ -214,7 +214,7 @@ export function NotificationSimulatorDrawer({
               onClick={handleRun}
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>{dryRunMutation.isPending ? "正在评估..." : "运行模拟评估 (Dry-Run)"}</span>
+              <span>{dryRunMutation.isPending ? "正在评估…" : "运行模拟评估 (Dry-Run)"}</span>
             </button>
           </div>
 

@@ -93,6 +93,27 @@ function formFromSettings(data: SystemSettings | undefined): SettingsFormState {
   };
 }
 
+const REPOS_PANEL_STORAGE_KEY = "reposentinel-settings-repos-open";
+
+function readReposOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const raw = window.localStorage.getItem(REPOS_PANEL_STORAGE_KEY);
+    if (raw === null) return true;
+    return raw === "true";
+  } catch {
+    return true;
+  }
+}
+
+function writeReposOpen(open: boolean) {
+  try {
+    window.localStorage.setItem(REPOS_PANEL_STORAGE_KEY, String(open));
+  } catch {
+    // 隐私模式或配额满时静默忽略，不影响页面使用。
+  }
+}
+
 // 运行偏好区块提交负载：只含 prefs 键，避免覆盖另一区块字段。
 function prefsBody(form: SettingsFormState): SystemSettings {
   return {
@@ -342,8 +363,8 @@ export function SettingsPage() {
   // 行级忙碌与对账错误：只让当前操作的行转圈，失败时在对应区块内提示。
   const [reconcileBusyId, setReconcileBusyId] = useState<string | null>(null);
   const [reconcileError, setReconcileError] = useState<string | null>(null);
-  // 面板折叠状态：默认展开，方便直接看到对账入口与仓库列表。
-  const [reposOpen, setReposOpen] = useState(true);
+  // 面板折叠状态：默认展开，本地持久化，刷新后保持状态。
+  const [reposOpen, setReposOpen] = useState(readReposOpen);
 
   const invalidateReposAndDashboard = async () => {
     await Promise.all([
@@ -386,7 +407,13 @@ export function SettingsPage() {
         id="repos"
         title="仓库与基线对账"
         open={reposOpen}
-        onToggle={() => setReposOpen((prev) => !prev)}
+        onToggle={() => {
+          setReposOpen((prev) => {
+            const next = !prev;
+            writeReposOpen(next);
+            return next;
+          });
+        }}
         headerExtra={
           <button
             className="quiet-button quiet-button--compact"
@@ -400,7 +427,7 @@ export function SettingsPage() {
           </button>
         }
       >
-        <p className="field-hint">基线中的仓库抑制实时通知，对账成功会自动结束基线；也可单仓「立即放行」。仓库状态与开关在「仓库管理」维护。</p>
+        <p className="field-hint">基线同步期间暂不推送实时通知。完成对账或手动放行后即恢复实时监控；各仓库详细监控开关可在「仓库管理」中微调。</p>
         {reconcileError ? <ErrorAlert title="对账失败" message={reconcileError} /> : null}
         <QueryGate
           query={repos}
@@ -408,6 +435,7 @@ export function SettingsPage() {
           isEmpty={visibleRepos.length === 0}
           emptyState={
             <EmptyState
+              illustration="watchtower"
               title="还没有关注中的仓库"
               description="安装 GitHub App 并配置 Webhook 后，仓库会自动出现。已归档仓库请在「仓库管理」查看。"
               action={
@@ -488,7 +516,7 @@ export function SettingsPage() {
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-prefs-title">
         <h2 id="settings-prefs-title">运行偏好</h2>
-        <p className="field-hint">时区与摘要时间影响本地展示与摘要调度；聚合/超频窗口用于短时合并与突发降级。保存后立即写入数据库。</p>
+        <p className="field-hint">配置运维时区、简报推送时间及通知聚合窗口，用于合并短时事件并防范高频通知风暴。</p>
         {settings.isError ? <ApiErrorAlert error={settings.error} title="无法加载设置" /> : null}
         <div className="form-grid">
           <label className="field--plain">
@@ -529,7 +557,7 @@ export function SettingsPage() {
             <NumberField min={0} max={3650} integer value={form.retentionDeliveriesDays} onChange={(v) => set("retentionDeliveriesDays", v)} />
           </label>
         </div>
-        <p className="field-hint">超频：在超频窗口内通知条数达到阈值时合并为摘要，避免刷屏。Closed/Dismissed 列表默认只显示最近指定数量条目。保留天数 0 表示禁用该类清理。</p>
+        <p className="field-hint">防刷屏保护：短时事件数超阈值时自动聚合并降级为简报。保留天数设为 0 表示永久保存历史。</p>
         <label className="check-row"><input type="checkbox" checked={form.digestEmpty} onChange={(e) => set("digestEmpty", e.target.checked)} /><span>无事件时仍发送空摘要</span></label>
         <label className="check-row"><input type="checkbox" checked={form.aiAutoLabel} onChange={(e) => set("aiAutoLabel", e.target.checked)} /><span>Issue AI 智能白名单打标（分诊有效时自动同步 GitHub 标签）</span></label>
         <div className="report-schedule">
@@ -551,7 +579,7 @@ export function SettingsPage() {
               </label>
             </div>
           ) : null}
-          <p className="field-hint">周报/月报与每日简报共用渠道的「接收定期汇总」开关；发送时刻沿用每日简报本地时间。正文在配置智能值守后由模型生成，否则使用分组模板。</p>
+          <p className="field-hint">定期汇总沿用每日简报时间推送；启用智能值守后由 AI 提炼重点动态，未开启时采用结构化模板。</p>
         </div>
         <div>
           <button className="primary-button primary-button--inline" type="button" disabled={saveSettings.isPending || settings.isLoading} onClick={() => submitSettings("prefs")}>
@@ -564,7 +592,7 @@ export function SettingsPage() {
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-features-title">
         <h2 id="settings-features-title">功能模块开关</h2>
-        <p className="field-hint">关闭后：侧边栏隐藏对应入口、列表页显示已禁用；并停止该类型 Webhook 采集、对账与实时/摘要通知。仓库页对应开关会显示为关且不可改（仓级配置保留，重新开启全局后恢复）。渠道订阅勾选在全局关闭时也会灰显。</p>
+        <p className="field-hint">全局功能总开关。停用模块将收起对应导航并暂停事件采集与告警推送；各仓库的已有配置仍将完整保留。</p>
         <label className="check-row"><input type="checkbox" checked={form.featureIssues} onChange={(e) => set("featureIssues", e.target.checked)} /><span>Issues</span></label>
         <label className="check-row"><input type="checkbox" checked={form.featurePRs} onChange={(e) => set("featurePRs", e.target.checked)} /><span>Pull Requests</span></label>
         <label className="check-row"><input type="checkbox" checked={form.featureActions} onChange={(e) => set("featureActions", e.target.checked)} /><span>Actions</span></label>
@@ -583,9 +611,8 @@ export function SettingsPage() {
       <section className="onboarding-card channel-form" aria-labelledby="settings-ai-title">
         <h2 id="settings-ai-title">智能值守</h2>
         <p className="field-hint">
-          可选能力：每日/周/月报告正文由模型总结，新安全告警附带影响分析与处理建议。
-          网络波动瞬时失败（超时/5xx 等）按「重试次数」自动重试，0 表示不重试。
-          环境变量（<code>REPOSENTINEL_AI_*</code>）已设置的字段在此锁定；API Key 加密存储，不回显明文。
+          可选增强：由大模型自动提炼定期质量报告，并在安全告警中生成潜在影响与处置建议。
+          API Key 安全加密存储；环境变量（<code>REPOSENTINEL_AI_*</code>）优先于界面配置。
         </p>
         {aiConfig.isError ? <ApiErrorAlert error={aiConfig.error} title="无法加载智能值守配置" /> : null}
         <label className="check-row">
@@ -665,7 +692,7 @@ export function SettingsPage() {
 
       <section className="onboarding-card channel-form" aria-labelledby="settings-password-title">
         <h2 id="settings-password-title">修改管理员密码</h2>
-        <p className="field-hint">修改成功后其它会话会失效。若已遗失当前密码，请在服务器上运行 <code>reposentinel admin reset-password --password-stdin</code>。</p>
+        <p className="field-hint">密码更新后其他已登录会话将自动失效。若遗失密码，可登录服务器执行 <code>reposentinel admin reset-password --password-stdin</code> 快速重置。</p>
         <label className="field--plain">
           <span>当前密码</span>
           <input size={24} type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />

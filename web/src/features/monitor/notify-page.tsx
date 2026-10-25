@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { Bell, Sparkles } from "lucide-react";
 import { NotificationSimulatorDrawer } from "./components/notification-simulator-drawer";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -417,9 +417,11 @@ function ChannelForm({
               className="secondary-button"
               type="button"
               disabled={testPending}
+              aria-label={testPending ? "发送中…" : "🔔 发送测试通知"}
               onClick={() => onTest(testScenario)}
             >
-              {testPending ? "发送中…" : "🔔 发送测试通知"}
+              <Bell size={14} aria-hidden="true" />
+              <span>{testPending ? "发送中…" : "发送测试通知"}</span>
             </button>
           </div>
         )}
@@ -536,10 +538,8 @@ export function NotifyPage() {
       <section className="onboarding-card" aria-labelledby="notify-digest-title">
         <h2 id="notify-digest-title">定期汇总调度</h2>
         <p className="field-hint">
-          当前汇总时刻：<strong>{digestTime}</strong>（时区 <code>{digestTz}</code>）。
-          渠道勾选「接收定期汇总」后，每日到点合并过去 24 小时事件发送，周报/月报在「设置 → 运行偏好」启用。
-          修改时刻请到{" "}
-          <Link to="/settings">设置 → 运行偏好</Link>。
+          每日简报将于 <strong>{digestTime}</strong>（时区 <code>{digestTz}</code>）统一合并发送；勾选下方渠道中的「接收定期汇总」即可生效，修改时刻请前往{" "}
+          <Link to="/settings">系统设置 → 运行偏好</Link>。
         </p>
       </section>
 
@@ -574,7 +574,7 @@ export function NotifyPage() {
                 <span className="muted">{subscriptionSummary(ch.event_kinds, ch.digest_enabled)}</span>
                 <div className="channel-actions">
                   <button
-                    className="quiet-button"
+                    className="quiet-button quiet-button--compact"
                     type="button"
                     onClick={() =>
                       toggleMut.mutate({ type: ch.channel_type, enabled: !ch.enabled })
@@ -584,7 +584,7 @@ export function NotifyPage() {
                     {ch.enabled ? "禁用" : "启用"}
                   </button>
                   <button
-                    className="quiet-button"
+                    className="quiet-button quiet-button--compact"
                     type="button"
                     onClick={() => testMut.mutate({ type: ch.channel_type, scenario: "default" })}
                     disabled={testingType === ch.channel_type || !ch.enabled}
@@ -592,7 +592,7 @@ export function NotifyPage() {
                     {testingType === ch.channel_type ? "发送中…" : "测试"}
                   </button>
                   <button
-                    className="quiet-button quiet-button--danger"
+                    className="quiet-button quiet-button--compact quiet-button--danger"
                     type="button"
                     onClick={() => handleDelete(ch.channel_type)}
                     disabled={deleteMut.isPending && deleteMut.variables === ch.channel_type}
@@ -640,12 +640,11 @@ export function NotifyPage() {
         hint={
           <>
             <p className="field-hint">
-              这是<strong>出站通知</strong>：RepoSentinel 把告警 POST 到你的 HTTPS 地址。签名 Secret 可选，配置后会在请求头附带{" "}
-              <code>X-GitHub-Monitor-Signature-256</code>，供接收端校验。
+              <strong>出站通知</strong>：向指定的 HTTPS 端点推送实时告警负载。可选配置签名密钥，将在请求头附带{" "}
+              <code>X-GitHub-Monitor-Signature-256</code> 用于接收端验签。
             </p>
             <p className="field-hint">
-              与 <code>REPOSENTINEL_GITHUB_WEBHOOK_SECRET</code> <strong>不是同一个</strong>：后者是 GitHub → 本服务的入站 Webhook
-              校验；本页 Secret 对应 <code>REPOSENTINEL_HTTP_WEBHOOK_SECRET</code>（启动时种子）或此处手填。
+              提示：本页密钥为出站通知 Secret（环境变量 <code>REPOSENTINEL_HTTP_WEBHOOK_SECRET</code>），与接收 GitHub Webhook 的入站密钥分属不同方向。
             </p>
           </>
         }

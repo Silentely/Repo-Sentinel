@@ -719,3 +719,45 @@ export const PixelAuthFlanks: FC = () => {
     </div>
   );
 };
+
+/**
+ * PixelShield: 像素守护盾牌，象征安全防线与零告警安澜。
+ */
+export const PixelShield: FC<{ className?: string }> = ({ className }) => (
+  <svg
+    viewBox="0 0 32 36"
+    width="32"
+    height="36"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    shapeRendering="crispEdges"
+    className={className}
+    aria-hidden="true"
+  >
+    {/* Outline */}
+    <rect x="4" y="2" width="24" height="4" fill="var(--pixel-ink, #17140f)" />
+    <rect x="2" y="6" width="28" height="14" fill="var(--pixel-ink, #17140f)" />
+    <rect x="4" y="20" width="24" height="6" fill="var(--pixel-ink, #17140f)" />
+    <rect x="8" y="26" width="16" height="4" fill="var(--pixel-ink, #17140f)" />
+    <rect x="12" y="30" width="8" height="4" fill="var(--pixel-ink, #17140f)" />
+    <rect x="14" y="34" width="4" height="2" fill="var(--pixel-ink, #17140f)" />
+
+    {/* Green Base Fill */}
+    <rect x="6" y="4" width="20" height="2" fill="#2e7d32" />
+    <rect x="4" y="6" width="24" height="13" fill="#388e3c" />
+    <rect x="6" y="19" width="20" height="6" fill="#2e7d32" />
+    <rect x="10" y="25" width="12" height="4" fill="#1b5e20" />
+    <rect x="14" y="29" width="4" height="4" fill="#1b5e20" />
+
+    {/* Light Highlight (Left Crest) */}
+    <rect x="6" y="6" width="8" height="12" fill="#4caf50" />
+    <rect x="6" y="4" width="10" height="2" fill="#81c784" />
+
+    {/* Golden Emblem / Check in center */}
+    <rect x="14" y="10" width="4" height="4" fill="#ffd54f" />
+    <rect x="12" y="13" width="8" height="3" fill="#ffca28" />
+    <rect x="10" y="14" width="3" height="4" fill="#ffd54f" />
+    <rect x="19" y="14" width="3" height="4" fill="#ffd54f" />
+    <rect x="15" y="16" width="2" height="5" fill="#f57f17" />
+  </svg>
+);

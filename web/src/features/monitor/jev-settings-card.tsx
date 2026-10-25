@@ -268,7 +268,7 @@ export function JevSettingsCard() {
     <section className="onboarding-card card channel-form" aria-labelledby="settings-jev-title">
       <h2 id="settings-jev-title">判别式决策引擎 (TypeSafe AI)</h2>
       <p className="field-hint">
-        为通知降噪、PR 级联审查门控与 ChatOps 提供轻量判别式决策（YES/NO/CHOICE/SCORE），不生成自由文本。
+        为通知智能降噪、PR 变更放行门控与 ChatOps 护栏提供轻量级判别决策，保障核心交付流低延迟运行。
       </p>
 
       {jevQuery.isError && (
@@ -376,7 +376,7 @@ export function JevSettingsCard() {
           <span>
             允许私有仓库脱敏元数据外发
             <small className="block text-muted">
-              需管理员核实第三方服务数据协议与保留条款（系统不宣称具备 ZDR/DPA 资质）。
+              开启后私有仓事件将按脱敏白名单发送至判别引擎，请确保符合团队数据安全规范。
             </small>
           </span>
         </label>
@@ -446,7 +446,7 @@ export function JevSettingsCard() {
         {/* 提交动作 */}
         <div className="channel-form__buttons grid__span-2">
           <button type="submit" className="primary-button primary-button--inline" disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? "正在保存..." : "保存 Jev 设置"}
+            {updateMutation.isPending ? "正在保存…" : "保存 Jev 设置"}
           </button>
           <button
             type="button"
@@ -454,7 +454,7 @@ export function JevSettingsCard() {
             onClick={handleTest}
             disabled={testMutation.isPending || (!apiKey && !currentConfig?.has_api_key)}
           >
-            {testMutation.isPending ? "正在测试..." : "测试连通性"}
+            {testMutation.isPending ? "正在测试…" : "测试连通性"}
           </button>
         </div>
 

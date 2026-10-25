@@ -25,7 +25,7 @@ describe("ChatOpsActionBar", () => {
       />
     );
 
-    const replyBtn = screen.getByText("🚀 采纳发送首响应");
+    const replyBtn = screen.getByRole("button", { name: "采纳发送首响应" });
     expect(replyBtn).toBeDefined();
 
     fireEvent.click(replyBtn);
@@ -39,7 +39,7 @@ describe("ChatOpsActionBar", () => {
         payload: "Thanks for reporting!",
       });
       expect(onSuccess).toHaveBeenCalled();
-      expect(screen.getByText("✓ 已回复草稿")).toBeDefined();
+      expect(screen.getByText("已回复草稿")).toBeDefined();
     });
   });
 
@@ -52,7 +52,7 @@ describe("ChatOpsActionBar", () => {
 
     render(<ChatOpsActionBar repoId="repo-123" issueNumber={10} isPR={true} />);
 
-    const approveBtn = screen.getByText("👍 快速通过审批");
+    const approveBtn = screen.getByRole("button", { name: "快速通过审批" });
     fireEvent.click(approveBtn);
 
     await waitFor(() => {
@@ -73,10 +73,10 @@ describe("ChatOpsActionBar", () => {
       />
     );
 
-    fireEvent.click(screen.getByText("🚀 采纳发送首响应"));
+    fireEvent.click(screen.getByRole("button", { name: "采纳发送首响应" }));
 
     await waitFor(() => {
-      expect(screen.getByText("⚠ 网络超时")).toBeDefined();
+      expect(screen.getByText("网络超时")).toBeDefined();
     });
   });
 
@@ -89,7 +89,7 @@ describe("ChatOpsActionBar", () => {
 
     render(<ChatOpsActionBar repoId="repo-123" issueNumber={99} isPR={false} />);
 
-    const spamBtn = screen.getByText("🚫 判定垃圾并关闭");
+    const spamBtn = screen.getByRole("button", { name: "判定垃圾并关闭" });
     fireEvent.click(spamBtn);
 
     expect(mockExecute).not.toHaveBeenCalled();

@@ -194,14 +194,14 @@ export function WebhookDeliveriesPage() {
                   <div className="channel-actions">
                     <button
                       type="button"
-                      className="quiet-button"
+                      className="quiet-button quiet-button--compact"
                       onClick={() => setSelectedId(d.id)}
                     >
                       <Eye size={14} /> 检查
                     </button>
                     <button
                       type="button"
-                      className="quiet-button quiet-button--primary-ghost"
+                      className="quiet-button quiet-button--compact quiet-button--primary-ghost"
                       onClick={() => replayMut.mutate(d.id)}
                       disabled={replayMut.isPending && replayMut.variables === d.id}
                       title="重放此 Webhook 触发规则评估"
@@ -244,47 +244,25 @@ export function WebhookDeliveriesPage() {
       {/* 检查详情弹窗 / Inspector */}
       {selectedId ? (
         <div
+          className="modal-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="inspector-title"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            zIndex: 1000,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            padding: "20px",
-          }}
           onClick={() => setSelectedId(null)}
         >
           <div
             ref={inspectorRef}
             tabIndex={-1}
-            style={{
-              backgroundColor: "var(--color-surface, #fff)",
-              borderRadius: "8px",
-              maxWidth: "800px",
-              width: "100%",
-              maxHeight: "90vh",
-              display: "flex",
-              flexDirection: "column",
-              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
-              padding: "24px",
-            }}
+            className="inspector-dialog"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h2 id="inspector-title" style={{ margin: 0, fontSize: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 id="inspector-title" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 750, color: "var(--text-primary)" }}>
                 Webhook 载荷检查 (Inspector)
               </h2>
               <button
                 type="button"
-                className="quiet-button"
+                className="quiet-button quiet-button--compact"
                 onClick={() => setSelectedId(null)}
               >
                 ✕ 关闭

@@ -121,7 +121,7 @@ export function TwoFactorCard() {
       </div>
 
       <p className="field-hint">
-        基于 RFC 6238 标准的 TOTP 动态口令保护。开启后，登录时不仅需要密码，还需提供验证器 App（如 Google Authenticator、1Password、Bitwarden）生成的 6 位实时验证码。
+        使用 TOTP 动态口令保护管理员账号。开启后，登录除密码外还需输入身份验证器（如 Google Authenticator、1Password、Bitwarden）生成的 6 位动态验证码。
       </p>
 
       {statusQuery.isError ? (

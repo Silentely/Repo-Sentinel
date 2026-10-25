@@ -164,6 +164,7 @@ export const router = createRouter({
   routeTree,
   context: { queryClient },
   defaultPreload: "intent",
+  scrollRestoration: true,
   defaultErrorComponent: RouteErrorFallback,
   defaultNotFoundComponent: RouteNotFoundFallback,
   defaultPendingComponent: RoutePendingFallback,

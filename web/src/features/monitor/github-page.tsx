@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Circle, Copy, ExternalLink } from "lucide-react";
+import { CheckCircle2, Circle, Copy, ExternalLink, Rocket, Zap } from "lucide-react";
 
 import { EmptyState } from "../../components/empty-state";
 import { ApiErrorAlert } from "../../components/error-alert";
@@ -214,13 +214,16 @@ export function GitHubPage() {
           <h2 id="gh-config-title">运行时配置</h2>
           <span className="muted">{cfg ? `${readyCount} / ${checklist.length} 项就绪` : "加载中…"}</span>
         </div>
-        <p className="field-hint">{cfg?.note || "环境变量优先；未用环境变量设置的字段可在此保存。"}</p>
+        <p className="field-hint">{cfg?.note || "支持通过环境变量或下方表单配置 GitHub App 凭据，保存后安全加密入库。"}</p>
         {configMessage ? <p className="success-banner" role="status">{configMessage}</p> : null}
 
         <div style={{ padding: "0.75rem 1rem", background: "var(--bg-panel-warm-light, #f8fafc)", border: "1px solid var(--border-subtle, #e2e8f0)", borderRadius: "6px", marginBottom: "1rem" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" }}>
             <div>
-              <strong style={{ fontSize: "0.875rem", color: "var(--text-primary)" }}>⚡ 60 秒免手填配置向导 (Manifest Flow)</strong>
+              <strong style={{ fontSize: "0.875rem", color: "var(--text-primary)", display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                <Zap size={15} style={{ color: "var(--warning)" }} aria-hidden="true" />
+                <span>60 秒免手填配置向导 (Manifest Flow)</span>
+              </strong>
               <p style={{ margin: "0.25rem 0 0", fontSize: "0.78rem", color: "var(--text-secondary)" }}>
                 一键向 GitHub 预填全部 Webhook URL、权限与事件清单，在 GitHub 确认后自动换取并加密保存凭据。
               </p>
@@ -230,9 +233,11 @@ export function GitHubPage() {
               className="primary-button primary-button--inline"
               onClick={handleManifestLaunch}
               disabled={manifestLoading || cfg?.can_edit_in_ui === false}
+              aria-label="🚀 启动 GitHub 官方向导"
               style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem" }}
             >
-              {manifestLoading ? "正在启动 GitHub 向导…" : "🚀 启动 GitHub 官方向导"}
+              <Rocket size={14} aria-hidden="true" />
+              <span>{manifestLoading ? "正在启动 GitHub 向导…" : "启动 GitHub 官方向导"}</span>
             </button>
           </div>
           {manifestError ? <p style={{ margin: "0.4rem 0 0", fontSize: "0.75rem", color: "var(--danger-fg, #ef4444)" }}>{manifestError}</p> : null}
@@ -265,8 +270,8 @@ export function GitHubPage() {
           <input size={26} value={privateKeyPath} disabled={cfg?.private_key_locked || Boolean(privateKeyPEM.trim())} onChange={(e) => setPrivateKeyPath(e.target.value)} placeholder="/secrets/github-app.pem" autoComplete="off" />
         </label>
         <p className="field-hint">
-          推荐直接粘贴 PEM（加密入库，容器无需挂载文件）。External PAT 仅支持环境变量。
-          {privateKeyPEM.trim() && !cfg?.private_key_locked ? " 已粘贴 PEM，路径输入暂不可用，清空 PEM 后可改回路径方式。" : null}
+          推荐直接粘贴私钥内容（安全加密存储，无需挂载宿主文件）。
+          {privateKeyPEM.trim() && !cfg?.private_key_locked ? " 已输入私钥文本，若需改用文件路径请先清空文本框。" : null}
         </p>
         <button className="primary-button primary-button--inline" type="button" disabled={saveConfig.isPending || cfg?.can_edit_in_ui === false} onClick={() => { setConfigMessage(""); saveConfig.mutate(); }}>
           {saveConfig.isPending ? "保存中…" : "保存 GitHub 配置"}
@@ -337,9 +342,9 @@ export function GitHubPage() {
 
       <section className="onboarding-card" aria-labelledby="gh-install-action-title">
         <h2 id="gh-install-action-title">安装到仓库</h2>
-        <p className="field-hint">保存凭据后，须到 GitHub 点 Install。仪表盘仓库为空？点「从 GitHub 同步仓库」补拉。</p>
+        <p className="field-hint">保存凭据后前往 GitHub 完成 App 安装；若列表中未显示，可点击「从 GitHub 同步仓库」更新授权仓库。</p>
         <div className="link-row">
-          <a className="primary-button primary-button--inline" href={GITHUB_INSTALLATIONS} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><ExternalLink size={15} aria-hidden="true" /> 去 GitHub 安装 / 管理 App</a>
+          <a className="primary-button primary-button--inline" href={GITHUB_INSTALLATIONS} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 去 GitHub 安装 / 管理 App</a>
           <a className="quiet-button" href={GITHUB_APPS_SETTINGS} target="_blank" rel="noopener noreferrer" title="在新窗口打开"><ExternalLink size={14} aria-hidden="true" /> 我的 GitHub Apps</a>
           <button className="quiet-button" type="button" disabled={syncRepos.isPending || !cfg?.app_id_configured || !cfg?.private_key_configured} onClick={() => { setSyncMessage(""); syncRepos.mutate(); }}>
             {syncRepos.isPending ? "同步中…" : "从 GitHub 同步仓库"}

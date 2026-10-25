@@ -816,6 +816,30 @@ a.primary-button {
   box-shadow: 0.5px 0.5px 0 var(--shadow-neo);
 }
 
+/* 纯图标按钮（关闭、单图标操作等）：正圆/正方 32x32px 居中对齐，消除扁平胶囊变形 */
+.quiet-button--icon {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.quiet-button--icon:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 2.5px 2.5px 0 var(--shadow-neo);
+}
+
+.quiet-button--icon:active:not(:disabled) {
+  transform: translate(1.5px, 1.5px);
+  box-shadow: 0.5px 0.5px 0 var(--shadow-neo);
+}
+
 .quiet-select {
   display: inline-flex;
   gap: 7px;
@@ -1186,9 +1210,13 @@ a.status-item--link:focus-visible {
   margin-top: 18px;
 }
 
-.onboarding-card h2 {
+.onboarding-card h2,
+.collapsible-panel__title {
   margin: 0 0 5px;
   font-size: 1.05rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
 }
 
 .onboarding-card__header {
@@ -1246,15 +1274,6 @@ a.status-item--link:focus-visible {
 
 .collapsible-panel__title {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 800;
-}
-
-.collapsible-panel__title::before {
-  content: "·· ";
-  font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
-  font-weight: 800;
-  color: var(--text-muted);
 }
 
 .collapsible-panel__chevron {
@@ -1511,10 +1530,12 @@ a.status-item--link:focus-visible {
 }
 
 .empty-state {
-  padding: 34px;
-  border: 1px dashed var(--border-subtle);
+  padding: 36px 24px;
+  border: 2px dashed var(--border-subtle);
   border-radius: var(--radius-card);
   text-align: center;
+  background: var(--bg-surface);
+  box-shadow: 2px 2px 0 var(--shadow-neo);
 }
 
 .empty-state h2 {
@@ -1880,6 +1901,9 @@ a.status-item--link:focus-visible {
 
 /* 列表全部加载的终点提示：弱化呈现，避免与「加载更多」按钮抢视觉。 */
 .list-footer__end {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   color: var(--text-muted);
 }
 
@@ -2046,6 +2070,23 @@ a.status-item--link:focus-visible {
   padding-top: 0.4rem;
 }
 
+.channel-form__buttons .primary-button {
+  min-height: 42px;
+  margin-top: 0;
+}
+
+.channel-form__buttons .secondary-button {
+  min-height: 42px;
+}
+
+.channel-form__buttons .quiet-select {
+  min-height: 42px;
+}
+
+.channel-form__buttons .quiet-button {
+  min-height: 42px;
+}
+
 /* 渠道订阅类型勾选 */
 .channel-kinds {
   display: flex;
@@ -2129,11 +2170,14 @@ a.status-item--link:focus-visible {
 .secondary-button {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.5rem 1.15rem;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 18px;
   border-radius: 9999px;
-  font-size: 0.86rem;
+  font-size: 0.88rem;
   font-weight: 700;
+  line-height: 1.2;
   border: 2px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--text-primary);
@@ -2698,6 +2742,18 @@ a.status-item--link:focus-visible {
 
 .filter-bar--wrap {
   row-gap: 0.65rem;
+}
+
+.filter-bar .quiet-button:not(.quiet-button--compact) {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 0.82rem;
+}
+
+.filter-bar .quiet-button--compact {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 0.82rem;
 }
 
 /* 筛选/切换按钮选中态已统一由 .quiet-button.active 顶层胶囊规则接管 */
@@ -3808,6 +3864,7 @@ a.status-item--link:focus-visible {
   display: flex;
   justify-content: center;
   align-items: center;
+  min-height: 48px;
   margin-bottom: 14px;
   opacity: 0.95;
   user-select: none;
@@ -4427,6 +4484,84 @@ a.status-item--link:focus-visible {
 .ai-tag--info {
   background: var(--info-bg);
   color: var(--info-fg);
+}
+
+/* AI 审查 / 分诊面板内部工具栏与微排版 */
+.ai-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px dashed var(--border-subtle);
+  padding-bottom: 0.5rem;
+}
+
+.ai-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ai-panel__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+}
+
+.ai-panel__tip {
+  margin: 0.35rem 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg-panel-warm-light);
+  border-left: 3px solid var(--warning);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.ai-panel__cmd {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.35rem 0.6rem;
+  background: var(--bg-muted);
+  border: 1px dashed var(--border-subtle);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.chatops-action-bar {
+  margin-top: 0.5rem;
+}
+
+.chatops-action-bar__buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.chatops-action-bar__feedback {
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chatops-action-bar__feedback--success {
+  color: var(--success);
+}
+
+.chatops-action-bar__feedback--error {
+  color: var(--danger);
 }
 
 .auth-card__back-button {

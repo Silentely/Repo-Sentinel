@@ -582,4 +582,28 @@ describe("设置页", () => {
 
     await waitFor(() => expect(reconcileRepositoryMock.mock.calls[0]?.[0]).toBe("repo-1"));
   });
+
+  it("仓库与基线对账面板折叠状态持久化到 localStorage 并能在重新挂载时恢复", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    const { unmount } = renderPage();
+
+    const reposSection = await screen.findByRole("region", { name: "仓库与基线对账" });
+    await within(reposSection).findByText("owner/repo-a");
+
+    // 收起面板并验证写入 localStorage
+    await user.click(within(reposSection).getByRole("button", { name: "仓库与基线对账" }));
+    await waitFor(() => {
+      expect(screen.queryByText("owner/repo-a")).toBeNull();
+    });
+    expect(window.localStorage.getItem("reposentinel-settings-repos-open")).toBe("false");
+
+    // 卸载并重新挂载，验证依然保持折叠状态
+    unmount();
+    renderPage();
+    expect(screen.queryByText("owner/repo-a")).toBeNull();
+
+    // 清理 localStorage
+    window.localStorage.clear();
+  });
 });
