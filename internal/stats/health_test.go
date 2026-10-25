@@ -22,7 +22,21 @@ type mockWorkItemStore struct {
 }
 
 func (m *mockWorkItemStore) List(ctx context.Context, f store.ListFilter) ([]store.WorkItem, store.PageResult, error) {
-	return m.items, store.PageResult{Total: len(m.items)}, nil
+	if f.PerPage <= 0 {
+		f.PerPage = 100
+	}
+	if f.Page <= 0 {
+		f.Page = 1
+	}
+	start := (f.Page - 1) * f.PerPage
+	if start >= len(m.items) {
+		return nil, store.PageResult{Total: len(m.items)}, nil
+	}
+	end := start + f.PerPage
+	if end > len(m.items) {
+		end = len(m.items)
+	}
+	return m.items[start:end], store.PageResult{Total: len(m.items)}, nil
 }
 
 type mockWorkflowRunStore struct {
@@ -112,5 +126,35 @@ func TestCalculateHealthScorecard_Scenarios(t *testing.T) {
 	}
 	if !strings.Contains(reportD.Summary, "高危安全告警") {
 		t.Errorf("expected summary to mention critical alert, got %s", reportD.Summary)
+	}
+}
+
+func TestCalculateHealthScorecard_PaginationOver100(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+
+	// 构造 150 条 open 工单，其中第 120 条是停滞工单（跨越第 1 页）
+	items := make([]store.WorkItem, 150)
+	for i := 0; i < 150; i++ {
+		items[i] = store.WorkItem{
+			Number:    i + 1,
+			Kind:      store.WorkItemKindIssue,
+			State:     "open",
+			UpdatedAt: now.Add(-1 * time.Hour), // active
+		}
+	}
+	items[120].UpdatedAt = now.Add(-30 * 24 * time.Hour) // stagnant on page 2
+
+	st := &mockStatsStore{workItems: items}
+	report, err := CalculateHealthScorecard(ctx, st, "repo-page", now)
+	if err != nil {
+		t.Fatalf("CalculateHealthScorecard failed: %v", err)
+	}
+
+	if len(report.StagnantItems) != 1 {
+		t.Fatalf("expected 1 stagnant item from page 2, got %d", len(report.StagnantItems))
+	}
+	if report.StagnantItems[0].Number != 121 {
+		t.Errorf("expected item #121, got #%d", report.StagnantItems[0].Number)
 	}
 }

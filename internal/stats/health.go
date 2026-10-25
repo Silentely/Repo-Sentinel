@@ -49,32 +49,52 @@ func CalculateHealthScorecard(
 		now = time.Now().UTC()
 	}
 
-	filter := store.ListFilter{
-		Page:         1,
-		PerPage:      100,
-		RepositoryID: repoID,
-	}
-
-	// 1. 抓取未关闭的活动工单
-	wiFilter := filter
-	wiFilter.State = "open"
-	workItems, _, err := st.WorkItems().List(ctx, wiFilter)
-	if err != nil {
-		return HealthReport{}, err
+	// 1. 抓取未关闭的活动工单（支持分页获取全量，上限 1000 条）
+	var workItems []store.WorkItem
+	for page := 1; ; page++ {
+		wiFilter := store.ListFilter{
+			Page:         page,
+			PerPage:      100,
+			RepositoryID: repoID,
+			State:        "open",
+		}
+		batch, pageRes, err := st.WorkItems().List(ctx, wiFilter)
+		if err != nil {
+			return HealthReport{}, err
+		}
+		workItems = append(workItems, batch...)
+		if len(batch) < 100 || len(workItems) >= pageRes.Total || len(workItems) >= 1000 {
+			break
+		}
 	}
 
 	// 2. 抓取最近 Workflow Runs
-	workflowRuns, _, err := st.WorkflowRuns().List(ctx, filter)
+	workflowRuns, _, err := st.WorkflowRuns().List(ctx, store.ListFilter{
+		Page:         1,
+		PerPage:      100,
+		RepositoryID: repoID,
+	})
 	if err != nil {
 		return HealthReport{}, err
 	}
 
-	// 3. 抓取未解决的安全告警
-	alertFilter := filter
-	alertFilter.State = "open"
-	alerts, _, err := st.SecurityAlerts().List(ctx, alertFilter)
-	if err != nil {
-		return HealthReport{}, err
+	// 3. 抓取未解决的安全告警（支持分页获取全量，上限 1000 条）
+	var alerts []store.SecurityAlert
+	for page := 1; ; page++ {
+		alertFilter := store.ListFilter{
+			Page:         page,
+			PerPage:      100,
+			RepositoryID: repoID,
+			State:        "open",
+		}
+		batch, pageRes, err := st.SecurityAlerts().List(ctx, alertFilter)
+		if err != nil {
+			return HealthReport{}, err
+		}
+		alerts = append(alerts, batch...)
+		if len(batch) < 100 || len(alerts) >= pageRes.Total || len(alerts) >= 1000 {
+			break
+		}
 	}
 
 	stagnantThreshold := now.Add(-7 * 24 * time.Hour)
@@ -82,7 +102,7 @@ func CalculateHealthScorecard(
 	var openIssues, activeOpenIssues int
 	var openPRs int
 	var prStagnantDaysSum float64
-	var stagnantItems []StagnantItem
+	stagnantItems := make([]StagnantItem, 0)
 
 	for _, item := range workItems {
 		if item.Ignored || item.State != "open" {
@@ -92,6 +112,12 @@ func CalculateHealthScorecard(
 		activityTime := item.SourceUpdatedAt
 		if activityTime.IsZero() {
 			activityTime = item.UpdatedAt
+		}
+		if activityTime.IsZero() {
+			activityTime = item.CreatedAt
+		}
+		if activityTime.IsZero() {
+			activityTime = now
 		}
 		isStagnant := activityTime.Before(stagnantThreshold)
 		days := int(math.Max(0, now.Sub(activityTime).Hours()/24))
@@ -202,11 +228,14 @@ func CalculateHealthScorecard(
 	}
 
 	summary := "仓库健康状况极佳，各项指标流转健康。"
-	if len(stagnantItems) > 0 {
-		summary = "存在停滞工单待处理，建议跟进已超期未活动的 Issue 与 PR。"
-	}
 	if criticalOrHighAlerts > 0 {
 		summary = "存在未解决的高危安全告警，需优先排查漏洞修复！"
+	} else if len(stagnantItems) > 0 {
+		summary = "存在停滞工单待处理，建议跟进已超期未活动的 Issue 与 PR。"
+	} else if ciScore < 10.0 {
+		summary = "CI 成功率偏低，存在较多失败运行，建议排查流水线稳定性。"
+	} else if total < 75 {
+		summary = "仓库多项指标处于亚健康状态，建议关注工单周转与流水线稳定性。"
 	}
 
 	return HealthReport{

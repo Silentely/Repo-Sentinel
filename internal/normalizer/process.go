@@ -770,8 +770,8 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 		},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
 	}
-	if store.IsFailureConclusion(*run.Conclusion) {
-		attr := githubx.ClassifyCIFailure(*run.Conclusion, in.WorkflowName)
+	if store.IsFailureConclusion(*run.Conclusion) && *run.Conclusion != "cancelled" {
+		attr := githubx.ClassifyCIFailure(*run.Conclusion, "")
 		ev.PayloadSummary["failure_attribution"] = attr
 		if attr.CanRetry {
 			ev.PayloadSummary["can_retry"] = true

@@ -1504,12 +1504,12 @@ func TestChatOpsWebAction_SecurityAndValidation(t *testing.T) {
 	}
 
 	_, _ = fixture.store.Repositories().Upsert(t.Context(), store.Repository{
-		ID:             "unmonitored-repo",
-		Owner:          "acme",
-		Name:           "unmonitored-repo",
-		FullName:       "acme/unmonitored-repo",
-		DefaultBranch:  "main",
-		IsArchived:     true,
+		ID:            "unmonitored-repo",
+		Owner:         "acme",
+		Name:          "unmonitored-repo",
+		FullName:      "acme/unmonitored-repo",
+		DefaultBranch: "main",
+		IsArchived:    true,
 	})
 
 	// 1. 未登录访问 -> 401 Unauthorized

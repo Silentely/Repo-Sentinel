@@ -607,13 +607,13 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "starred_releases", Kind: store.ReleaseKind, Action: "published",
 		Title: title, SubjectNumber: &num, Actor: strings.TrimSpace(rel.Author.Login),
-		Severity: impact.SuggestedSeverity,
+		Severity:   impact.SuggestedSeverity,
 		OccurredAt: rel.PublishedAt, SourceUpdatedAt: &src, HTMLURL: strings.TrimSpace(rel.HTMLURL),
 		DedupeFingerprint: fp, StateHash: stateHash,
 		PayloadSummary: map[string]any{
 			"tag_name": tagName, "prerelease": rel.Prerelease, "notes": notes,
-			"repository": fullName,
-			"release_impact": impact,
+			"repository":           fullName,
+			"release_impact":       impact,
 			"has_breaking_changes": impact.HasBreakingChanges,
 		},
 	}

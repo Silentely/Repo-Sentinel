@@ -65,8 +65,8 @@ func (a *App) Run(ctx context.Context) error {
 			KeyRing:        a.keyRing,
 			Logger:         a.logger,
 			FailoverRouter: failoverRouter,
-			OnSent:  httpapi.MetricsIncOutboxSent,
-			OnDead:  httpapi.MetricsIncOutboxDead,
+			OnSent:         httpapi.MetricsIncOutboxSent,
+			OnDead:         httpapi.MetricsIncOutboxDead,
 			OnStateChange: func(id, status string) {
 				if a.sseHub != nil {
 					a.sseHub.Broadcast(httpapi.SSEEvent{

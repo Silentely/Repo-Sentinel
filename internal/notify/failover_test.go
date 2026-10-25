@@ -123,3 +123,55 @@ func TestFailoverRouter_Lifecycle(t *testing.T) {
 		t.Errorf("expected disabled config to never engage, got engaged=%v, id=%s", engaged, res.ID)
 	}
 }
+
+func TestFailoverRouter_MultiHop(t *testing.T) {
+	ctx := context.Background()
+	mockChs := &mockChannelStore{
+		channels: map[string]store.NotificationChannel{
+			"tg-1": {
+				ID:          "tg-1",
+				ChannelType: store.ChannelTelegram,
+				Enabled:     true,
+			},
+			"feishu-1": {
+				ID:          "feishu-1",
+				ChannelType: store.ChannelFeishu,
+				Enabled:     true,
+			},
+			"wecom-1": {
+				ID:          "wecom-1",
+				ChannelType: store.ChannelWeCom,
+				Enabled:     true,
+			},
+		},
+	}
+	mockSt := &mockStoreForFailover{chStore: mockChs}
+	tracker := NewChannelHealthTracker()
+	router := NewFailoverRouter(mockSt, FailoverConfig{
+		Enabled:     true,
+		MaxFailures: 3,
+		RouteMap: map[string]string{
+			store.ChannelTelegram: store.ChannelFeishu,
+			store.ChannelFeishu:   store.ChannelWeCom,
+		},
+	}, tracker, nil)
+
+	primary := mockChs.channels["tg-1"]
+	// 1. tg fails 3 times -> routes to feishu
+	tracker.RecordFailure("tg-1", "err")
+	tracker.RecordFailure("tg-1", "err")
+	tracker.RecordFailure("tg-1", "err")
+	res, engaged, err := router.ResolveChannel(ctx, primary)
+	if err != nil || !engaged || res.ID != "feishu-1" {
+		t.Fatalf("expected failover to feishu-1, got engaged=%v, id=%s, err=%v", engaged, res.ID, err)
+	}
+
+	// 2. feishu also fails 3 times -> multi-hop routes to wecom
+	tracker.RecordFailure("feishu-1", "err")
+	tracker.RecordFailure("feishu-1", "err")
+	tracker.RecordFailure("feishu-1", "err")
+	res, engaged, err = router.ResolveChannel(ctx, primary)
+	if err != nil || !engaged || res.ID != "wecom-1" {
+		t.Fatalf("expected multi-hop failover to wecom-1, got engaged=%v, id=%s, err=%v", engaged, res.ID, err)
+	}
+}

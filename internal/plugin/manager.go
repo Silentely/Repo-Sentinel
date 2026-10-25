@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -36,14 +37,22 @@ func (m *Manager) Register(ctx context.Context, p Provider) error {
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if _, exists := m.providers[name]; exists {
+		m.mu.Unlock()
 		return fmt.Errorf("plugin: provider %q already registered", name)
 	}
+	m.mu.Unlock()
 
+	// 锁外调用外部插件 Start，避免持锁阻塞网络或死锁
 	if err := p.Start(ctx); err != nil {
 		return fmt.Errorf("plugin %q start failed: %w", name, err)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.providers[name]; exists {
+		_ = p.Stop(ctx)
+		return fmt.Errorf("plugin: provider %q already registered", name)
 	}
 
 	m.providers[name] = p
@@ -56,23 +65,45 @@ func (m *Manager) Register(ctx context.Context, p Provider) error {
 // List 返回所有已注册插件的元数据与最新健康状态。
 func (m *Manager) List(ctx context.Context) []PluginInfo {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	list := make([]PluginInfo, 0, len(m.providers))
+	providers := make([]Provider, 0, len(m.providers))
 	for _, p := range m.providers {
-		health, err := p.Health(ctx)
-		if err != nil {
-			health = PluginHealth{
-				Status:    HealthDown,
-				Message:   err.Error(),
-				CheckedAt: time.Now().UTC(),
-			}
-		}
-		list = append(list, PluginInfo{
-			Manifest: p.Manifest(),
-			Health:   health,
-		})
+		providers = append(providers, p)
 	}
+	m.mu.RUnlock()
+
+	list := make([]PluginInfo, 0, len(providers))
+	for _, p := range providers {
+		info := PluginInfo{
+			Manifest: p.Manifest(),
+		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					info.Health = PluginHealth{
+						Status:    HealthDown,
+						Message:   fmt.Sprintf("plugin health check panicked: %v", r),
+						CheckedAt: time.Now().UTC(),
+					}
+				}
+			}()
+			healthCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			health, err := p.Health(healthCtx)
+			if err != nil {
+				health = PluginHealth{
+					Status:    HealthDown,
+					Message:   err.Error(),
+					CheckedAt: time.Now().UTC(),
+				}
+			}
+			info.Health = health
+		}()
+		list = append(list, info)
+	}
+
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].Manifest.Name < list[j].Manifest.Name
+	})
 	return list
 }
 
@@ -112,19 +143,34 @@ func (m *Manager) DispatchEvent(ctx context.Context, ev store.Event) error {
 // Shutdown 优雅关闭所有插件。
 func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	var firstErr error
-	for name, p := range m.providers {
-		if err := p.Stop(ctx); err != nil {
-			if m.logger != nil {
-				m.logger.Error("plugin stop error", "plugin", name, "error", err)
-			}
-			if firstErr == nil {
-				firstErr = err
-			}
-		}
+	providers := make([]Provider, 0, len(m.providers))
+	for _, p := range m.providers {
+		providers = append(providers, p)
 	}
 	m.providers = make(map[string]Provider)
+	m.mu.Unlock()
+
+	var firstErr error
+	for _, p := range providers {
+		func(prov Provider) {
+			defer func() {
+				if r := recover(); r != nil {
+					if m.logger != nil {
+						m.logger.Error("plugin panic during stop", "plugin", prov.Name(), "panic", r)
+					}
+				}
+			}()
+			stopCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			if err := prov.Stop(stopCtx); err != nil {
+				if m.logger != nil {
+					m.logger.Error("plugin stop error", "plugin", prov.Name(), "error", err)
+				}
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+		}(p)
+	}
 	return firstErr
 }

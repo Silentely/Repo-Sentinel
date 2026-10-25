@@ -21,6 +21,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/httpapi"
 	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/notify"
+	"github.com/Silentely/Repo-Sentinel/internal/plugin"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
@@ -184,6 +185,20 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		// Engine 直连实时通知决策（不聚合：release 低频单条，立即投递）。
 		Engine: &rules.Engine{Store: data, AI: aiClient, Logger: logger, GitHub: ghClient, JevRuntime: jevRuntime},
 		Logger: logger,
+		DependenciesProvider: func(ctx context.Context) map[string][]syncx.Dependency {
+			res := make(map[string][]syncx.Dependency)
+			repos, _, err := data.Repositories().List(ctx, store.ListFilter{PerPage: 100})
+			if err == nil {
+				for _, r := range repos {
+					if r.FullName != "" {
+						res[r.FullName] = []syncx.Dependency{
+							{Name: r.FullName, Ecosystem: "go"},
+						}
+					}
+				}
+			}
+			return res
+		},
 	}
 	// 用户名初始值：settings 优先，配置（env/yaml）兜底并写入 settings 供设置页回显。
 	if syncx.StarredUsername(ctx, data.Settings()) == "" && strings.TrimSpace(cfg.GitHub.StarredUsername) != "" {
@@ -235,8 +250,11 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 			})
 		},
 	}
+	pluginMgr := plugin.NewManager(logger)
+
 	handler := httpapi.New(httpapi.Dependencies{
 		Config:         cfg,
+		PluginManager:  pluginMgr,
 		Store:          data,
 		AdminStore:     data.Admins(),
 		AdminService:   adminService,
@@ -267,6 +285,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	}
 	built := &App{
 		data:            data,
+		pluginManager:   pluginMgr,
 		keyRing:         keyRing,
 		workerCancel:    workerCancel,
 		workerCtx:       workerCtx,

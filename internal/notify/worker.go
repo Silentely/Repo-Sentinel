@@ -208,13 +208,14 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 		// 每次投递尝试注入 TraceID：与入库侧的 delivery_id 一起把「一次投递的完整链路」
 		// 串起来，失败与成功日志携带同一个 trace_id，跨渠道排障时可直接按 ID 过滤。
 		itemCtx, traceID := EnsureDeliveryTraceID(ctx)
-		channelType, err := w.deliver(itemCtx, item, channelMap, secrets)
+		channelType, effectiveChannelID, err := w.deliver(itemCtx, item, channelMap, secrets)
 		if err != nil {
 			if w.Logger != nil {
 				w.Logger.Warn(
 					"notification delivery failed",
 					"outbox_id", item.ID,
 					"channel_id", item.ChannelID,
+					"effective_channel_id", effectiveChannelID,
 					"channel_type", channelType,
 					"attempt", item.AttemptCount,
 					"trace_id", traceID,
@@ -223,7 +224,7 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 					"error", logSafeDeliveryError(err),
 				)
 			}
-			w.handleFailure(itemCtx, item, err)
+			w.handleFailure(itemCtx, item, effectiveChannelID, err)
 			continue
 		}
 		token := ""
@@ -278,7 +279,11 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 				"title", truncateLogTitle(item.Title),
 			)
 		}
-		DefaultHealthTracker.RecordSuccess(item.ChannelID)
+		if effectiveChannelID == item.ChannelID {
+			DefaultHealthTracker.RecordSuccess(item.ChannelID)
+		} else {
+			DefaultHealthTracker.RecordSuccess(effectiveChannelID)
+		}
 		if w.OnSent != nil {
 			w.OnSent()
 		}
@@ -289,7 +294,7 @@ func (w *Worker) deliverChannelItems(ctx context.Context, channelID string, item
 }
 
 // secrets 为本批内的渠道密钥明文缓存（channelID → 明文），命中时免于重复解密。
-func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, channelMap map[string]store.NotificationChannel, secrets map[string]string) (string, error) {
+func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, channelMap map[string]store.NotificationChannel, secrets map[string]string) (string, string, error) {
 	ch, ok := channelMap[item.ChannelID]
 	if !ok {
 		// 映射加载失败时降级单查（与映射命中保持同一语义）。
@@ -297,17 +302,29 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 		ch, err = w.Store.Channels().Get(ctx, item.ChannelID)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
-				return "", fmt.Errorf("channel_not_found: %w", err)
+				return "", item.ChannelID, fmt.Errorf("channel_not_found: %w", err)
 			}
-			return "", err
+			return "", item.ChannelID, err
 		}
 	}
 	effectiveCh := ch
 	effectiveItem := item
 	if w.FailoverRouter != nil {
 		if fallback, engaged, err := w.FailoverRouter.ResolveChannel(ctx, ch); err == nil && engaged {
-			effectiveCh = fallback
-			effectiveItem.Title = "[应急转投 · " + ch.ChannelType + "故障] " + item.Title
+			eventKind, _ := item.BodyJSON["event_kind"].(string)
+			if eventKind == "" || fallback.AcceptsKind(eventKind) {
+				effectiveCh = fallback
+				effectiveItem.Title = "[应急转投 · " + ch.ChannelType + "故障] " + item.Title
+				if len(item.BodyJSON) > 0 {
+					sanitized := make(map[string]any, len(item.BodyJSON))
+					for k, v := range item.BodyJSON {
+						if k != "chatops_token" && k != "chatops_actions" {
+							sanitized[k] = v
+						}
+					}
+					effectiveItem.BodyJSON = sanitized
+				}
+			}
 		}
 	}
 
@@ -316,7 +333,7 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 		var err error
 		secret, err = w.decryptSecret(ctx, effectiveCh.SecretEnvelope)
 		if err != nil {
-			return effectiveCh.ChannelType, fmt.Errorf("decrypt_secret: %w", err)
+			return effectiveCh.ChannelType, effectiveCh.ID, fmt.Errorf("decrypt_secret: %w", err)
 		}
 		secrets[effectiveCh.ID] = secret
 	}
@@ -327,25 +344,25 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 		token, _ := effectiveItem.BodyJSON["chatops_token"].(string)
 		extraRows := extractTelegramChatOpsActionRows(effectiveItem.BodyJSON)
 		if len(extraRows) > 0 {
-			return effectiveCh.ChannelType, w.sendTelegramWithActions(ctx, effectiveCh.Target, secret, effectiveItem.BodyText, effectiveItem.HTMLURL, effectiveItem.ParseMode, token, extraRows...)
+			return effectiveCh.ChannelType, effectiveCh.ID, w.sendTelegramWithActions(ctx, effectiveCh.Target, secret, effectiveItem.BodyText, effectiveItem.HTMLURL, effectiveItem.ParseMode, token, extraRows...)
 		}
-		return effectiveCh.ChannelType, w.sendTelegram(ctx, effectiveCh.Target, secret, effectiveItem.BodyText, effectiveItem.HTMLURL, effectiveItem.ParseMode, token)
+		return effectiveCh.ChannelType, effectiveCh.ID, w.sendTelegram(ctx, effectiveCh.Target, secret, effectiveItem.BodyText, effectiveItem.HTMLURL, effectiveItem.ParseMode, token)
 	case store.ChannelHTTPWebhook:
-		return effectiveCh.ChannelType, w.sendHTTP(ctx, effectiveCh, secret, effectiveItem)
+		return effectiveCh.ChannelType, effectiveCh.ID, w.sendHTTP(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelFeishu:
-		return effectiveCh.ChannelType, w.sendFeishu(ctx, effectiveCh, secret, effectiveItem)
+		return effectiveCh.ChannelType, effectiveCh.ID, w.sendFeishu(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelWeCom:
-		return effectiveCh.ChannelType, w.sendWeCom(ctx, effectiveCh, secret, effectiveItem)
+		return effectiveCh.ChannelType, effectiveCh.ID, w.sendWeCom(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelDingTalk:
-		return effectiveCh.ChannelType, w.sendDingTalk(ctx, effectiveCh, secret, effectiveItem)
+		return effectiveCh.ChannelType, effectiveCh.ID, w.sendDingTalk(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelDiscord:
-		return effectiveCh.ChannelType, w.sendDiscord(ctx, effectiveCh, secret, effectiveItem)
+		return effectiveCh.ChannelType, effectiveCh.ID, w.sendDiscord(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelBark:
-		return effectiveCh.ChannelType, w.sendBark(ctx, effectiveCh, secret, effectiveItem)
+		return effectiveCh.ChannelType, effectiveCh.ID, w.sendBark(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelSlack:
-		return effectiveCh.ChannelType, w.sendSlack(ctx, effectiveCh, secret, effectiveItem)
+		return effectiveCh.ChannelType, effectiveCh.ID, w.sendSlack(ctx, effectiveCh, secret, effectiveItem)
 	default:
-		return effectiveCh.ChannelType, fmt.Errorf("unknown_channel")
+		return effectiveCh.ChannelType, effectiveCh.ID, fmt.Errorf("unknown_channel")
 	}
 }
 
@@ -754,9 +771,13 @@ func (w *Worker) sendHTTP(ctx context.Context, ch store.NotificationChannel, sec
 	return nil
 }
 
-func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbox, err error) {
+func (w *Worker) handleFailure(ctx context.Context, item store.NotificationOutbox, effectiveChannelID string, err error) {
 	code := deliveryErrorCode(err)
-	DefaultHealthTracker.RecordFailure(item.ChannelID, code)
+	targetChannelID := item.ChannelID
+	if effectiveChannelID != "" {
+		targetChannelID = effectiveChannelID
+	}
+	DefaultHealthTracker.RecordFailure(targetChannelID, code)
 	var token string
 	if item.ClaimToken != nil {
 		token = *item.ClaimToken

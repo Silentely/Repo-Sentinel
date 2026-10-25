@@ -2150,7 +2150,8 @@ func (s *channelStore) Get(ctx context.Context, id string) (NotificationChannel,
 func (s *channelStore) GetEnabledByType(ctx context.Context, channelType string) (NotificationChannel, error) {
 	entity, err := s.client.NotificationChannel.Query().
 		Where(notificationchannel.ChannelTypeEQ(channelType), notificationchannel.EnabledEQ(true)).
-		Only(ctx)
+		Order(entclient.Desc(notificationchannel.FieldUpdatedAt)).
+		First(ctx)
 	if err != nil {
 		return NotificationChannel{}, mapStoreError(err)
 	}

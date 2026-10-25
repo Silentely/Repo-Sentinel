@@ -19,14 +19,16 @@ require (
 require github.com/stretchr/testify v1.8.4
 `
 	goDeps := ParseGoMod(goModSample)
-	if len(goDeps) < 2 {
-		t.Fatalf("expected at least 2 deps from go.mod, got %d", len(goDeps))
+	if len(goDeps) != 2 {
+		t.Fatalf("expected exactly 2 direct deps from go.mod (excluding indirect), got %d", len(goDeps))
 	}
 	foundGin := false
 	for _, d := range goDeps {
+		if d.Name == "github.com/oklog/ulid/v2" {
+			t.Errorf("indirect dependency github.com/oklog/ulid/v2 should not be parsed as direct")
+		}
 		if d.Name == "github.com/gin-gonic/gin" && d.Version == "v1.9.1" {
 			foundGin = true
-			break
 		}
 	}
 	if !foundGin {
@@ -96,5 +98,16 @@ Fixed CVE-2026-12345 in buffer parser
 	}
 	if impact2.SuggestedSeverity != "medium" {
 		t.Errorf("expected medium severity for unimpacted CVE release, got %s", impact2.SuggestedSeverity)
+	}
+
+	// 场景 3: 仅同名短名或无关仓库发布，不应发生错误匹配
+	unrelatedShortRelease := `
+## v1.0.0
+### Breaking Changes
+- Some break
+`
+	impact3 := EvaluateReleaseImpact("other-org/gin", unrelatedShortRelease, monitoredDeps)
+	if len(impact3.ImpactedRepoNames) != 0 {
+		t.Errorf("expected other-org/gin NOT to match github.com/gin-gonic/gin, got %+v", impact3.ImpactedRepoNames)
 	}
 }

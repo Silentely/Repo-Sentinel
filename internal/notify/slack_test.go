@@ -178,7 +178,7 @@ func TestSendSlack_DeliverRouter(t *testing.T) {
 		_, _ = rw.Write([]byte("ok"))
 	})
 
-	channelType, err := w.deliver(t.Context(), item, map[string]store.NotificationChannel{ch.ID: ch}, make(map[string]string))
+	channelType, _, err := w.deliver(t.Context(), item, map[string]store.NotificationChannel{ch.ID: ch}, make(map[string]string))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

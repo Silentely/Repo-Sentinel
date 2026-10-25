@@ -46,6 +46,12 @@ type ActionsInsightsResponse struct {
 // handleActionsInsights 提供 Actions 效能与 CI 稳定性/耗时分析。
 func (s *server) handleActionsInsights(w http.ResponseWriter, r *http.Request) {
 	repoID := strings.TrimSpace(r.URL.Query().Get("repository_id"))
+	if repoID != "" {
+		if _, err := s.dependencies.Store.Repositories().Get(r.Context(), repoID); err != nil {
+			s.writeMappedError(w, r, err)
+			return
+		}
+	}
 
 	// 分析窗口取最近 actionsInsightsSampleSize 条运行：成功率/耗时分位数/失败 Top 都依赖样本量，
 	// 窗口过小会让高频仓库的统计只剩几个小时、噪声掩盖真实趋势。
@@ -115,10 +121,10 @@ func calculateActionsInsights(runs []store.WorkflowRun) ActionsInsightsResponse 
 
 		if conclusion == "success" {
 			success++
-		} else if store.IsFailureConclusion(conclusion) {
-			failed++
 		} else if conclusion == "cancelled" {
 			cancelled++
+		} else if store.IsFailureConclusion(conclusion) {
+			failed++
 		}
 
 		wfName := run.WorkflowName
@@ -129,7 +135,7 @@ func calculateActionsInsights(runs []store.WorkflowRun) ActionsInsightsResponse 
 			wfMap[wfName] = &wfAcc{}
 		}
 		wfMap[wfName].total++
-		if store.IsFailureConclusion(conclusion) {
+		if store.IsFailureConclusion(conclusion) && conclusion != "cancelled" {
 			wfMap[wfName].failed++
 		}
 
@@ -211,8 +217,8 @@ func calculateActionsInsights(runs []store.WorkflowRun) ActionsInsightsResponse 
 		if run.Conclusion != nil {
 			conclusion = *run.Conclusion
 		}
-		if store.IsFailureConclusion(conclusion) {
-			attr := githubx.ClassifyCIFailure(conclusion, run.WorkflowName)
+		if store.IsFailureConclusion(conclusion) && conclusion != "cancelled" {
+			attr := githubx.ClassifyCIFailure(conclusion, "")
 			stat, ok := clusterMap[attr.Category]
 			if !ok {
 				stat = &FailureClusterStat{

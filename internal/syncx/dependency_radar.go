@@ -3,6 +3,7 @@ package syncx
 import (
 	"encoding/json"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -44,6 +45,9 @@ func ParseGoMod(content string) []Dependency {
 		}
 
 		if inRequireBlock || strings.HasPrefix(trimmed, "require ") {
+			if strings.Contains(trimmed, "// indirect") {
+				continue
+			}
 			fields := strings.Fields(trimmed)
 			if strings.HasPrefix(trimmed, "require ") {
 				fields = fields[1:]
@@ -83,8 +87,7 @@ func ParsePackageJSON(content string) []Dependency {
 }
 
 var (
-	breakingHeadingRe = regexp.MustCompile(`(?i)(?:^|\n)#{1,4}\s*.*(?:breaking|破坏性|break).*`)
-	cveRe             = regexp.MustCompile(`(?i)(?:CVE-\d{4}-\d+|GHSA-[a-z0-9-]+)`)
+	cveRe = regexp.MustCompile(`(?i)(?:CVE-\d{4}-\d+|GHSA-[a-z0-9-]+)`)
 )
 
 // EvaluateReleaseImpact 分析 Release Notes 中的破坏性变更与安全修复，并比对本地项目依赖。
@@ -106,17 +109,18 @@ func EvaluateReleaseImpact(
 		}
 		lower := strings.ToLower(trimmed)
 
-		// 检查标题是否进入破坏性变更段
-		if strings.HasPrefix(trimmed, "#") {
-			isBreakingSection = strings.Contains(lower, "breaking") ||
+		// 检查标题是否进入破坏性变更段（支持 Markdown 标题或粗体行）
+		if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "**") {
+			isBreakingSection = (strings.Contains(lower, "breaking") ||
 				strings.Contains(lower, "破坏性") ||
-				strings.Contains(lower, "migration")
+				strings.Contains(lower, "migration")) && !strings.Contains(lower, "no breaking")
 			continue
 		}
 
 		if isBreakingSection && (strings.HasPrefix(trimmed, "-") || strings.HasPrefix(trimmed, "*")) {
-			breakingItems = append(breakingItems, strings.TrimPrefix(strings.TrimPrefix(trimmed, "-"), "*"))
-		} else if strings.Contains(lower, "breaking change:") || strings.Contains(lower, "break:") {
+			itemText := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(trimmed, "-"), "*"))
+			breakingItems = append(breakingItems, itemText)
+		} else if strings.Contains(lower, "breaking change:") || strings.Contains(lower, "breaking changes:") || strings.Contains(lower, "break:") {
 			breakingItems = append(breakingItems, trimmed)
 		}
 
@@ -132,22 +136,20 @@ func EvaluateReleaseImpact(
 	// 匹配是否有本地监控项目依赖了此发布仓库
 	var impacted []string
 	relRepoLower := strings.ToLower(releaseRepo)
-	baseName := relRepoLower
-	if parts := strings.Split(relRepoLower, "/"); len(parts) == 2 {
-		baseName = parts[1]
-	}
+	ghFull := "github.com/" + relRepoLower
 
 	for repoName, deps := range monitoredRepoDeps {
 		for _, d := range deps {
 			dLower := strings.ToLower(d.Name)
-			if dLower == relRepoLower || strings.HasSuffix(dLower, "/"+baseName) || dLower == baseName {
+			if dLower == relRepoLower || dLower == ghFull || strings.HasPrefix(dLower, ghFull+"/") {
 				impacted = append(impacted, repoName)
 				break
 			}
 		}
 	}
+	sort.Strings(impacted)
 
-	severity := "low"
+	severity := ""
 	var guidance string
 	if len(impacted) > 0 {
 		if hasSec {

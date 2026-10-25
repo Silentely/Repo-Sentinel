@@ -13,7 +13,7 @@ import (
 type FailoverConfig struct {
 	Enabled     bool              `json:"enabled"`
 	MaxFailures int               `json:"max_failures"` // 触发故障转移的连续失败阈值，默认 3
-	RouteMap    map[string]string `json:"route_map"`   // primaryChannelType -> secondaryChannelType (例如 "telegram" -> "feishu")
+	RouteMap    map[string]string `json:"route_map"`    // primaryChannelType -> secondaryChannelType (例如 "telegram" -> "feishu")
 }
 
 // Threshold 获取有效的失败阈值。
@@ -24,7 +24,7 @@ func (c FailoverConfig) Threshold() int {
 	return c.MaxFailures
 }
 
-// FailoverRouter 负责监测渠道健康并在主渠道熔断时调度至备用渠道。
+// FailoverRouter 负责监测渠道健康度并在主渠道熔断时调度至备用渠道。
 type FailoverRouter struct {
 	mu            sync.RWMutex
 	cfg           FailoverConfig
@@ -54,6 +54,7 @@ func (r *FailoverRouter) UpdateConfig(cfg FailoverConfig) {
 }
 
 // ResolveChannel 评估主渠道健康度；若达到连续失败阈值且配置了备用渠道，则返回备用渠道与 engaged=true。
+// 支持带环检测的多级故障自动转移（最多 3 跳）。
 func (r *FailoverRouter) ResolveChannel(ctx context.Context, primary store.NotificationChannel) (store.NotificationChannel, bool, error) {
 	r.mu.RLock()
 	cfg := r.cfg
@@ -63,40 +64,65 @@ func (r *FailoverRouter) ResolveChannel(ctx context.Context, primary store.Notif
 		return primary, false, nil
 	}
 
-	failures, _, _ := r.healthTracker.GetHealth(primary.ID)
-	if failures < cfg.Threshold() {
-		return primary, false, nil
-	}
+	curr := primary
+	visited := map[string]bool{primary.ID: true}
+	var lastEngaged *store.NotificationChannel
 
-	fallbackType, ok := cfg.RouteMap[primary.ChannelType]
-	if !ok || fallbackType == "" || fallbackType == primary.ChannelType {
-		return primary, false, nil
-	}
-
-	fallback, err := r.store.Channels().GetEnabledByType(ctx, fallbackType)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			if r.logger != nil {
-				r.logger.Warn("failover channel not found or disabled", "primary_type", primary.ChannelType, "fallback_type", fallbackType)
+	for hop := 0; hop < 3; hop++ {
+		failures, _, _ := r.healthTracker.GetHealth(curr.ID)
+		if failures < cfg.Threshold() {
+			if lastEngaged != nil {
+				if r.logger != nil {
+					r.logger.Warn(
+						"notification channel failover engaged",
+						"primary_channel_id", primary.ID,
+						"primary_type", primary.ChannelType,
+						"fallback_channel_id", curr.ID,
+						"fallback_type", curr.ChannelType,
+						"hops", hop,
+					)
+				}
+				return curr, true, nil
 			}
 			return primary, false, nil
 		}
-		return primary, false, err
-	}
-	if fallback.ID == primary.ID {
-		return primary, false, nil
+
+		fallbackType, ok := cfg.RouteMap[curr.ChannelType]
+		if !ok || fallbackType == "" || fallbackType == curr.ChannelType {
+			break
+		}
+
+		fallback, err := r.store.Channels().GetEnabledByType(ctx, fallbackType)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				if r.logger != nil {
+					r.logger.Warn("failover channel not found or disabled", "from_type", curr.ChannelType, "fallback_type", fallbackType)
+				}
+				break
+			}
+			return primary, false, err
+		}
+
+		if visited[fallback.ID] {
+			break // 避免自环或循环路由
+		}
+		visited[fallback.ID] = true
+		curr = fallback
+		lastEngaged = &fallback
 	}
 
-	if r.logger != nil {
-		r.logger.Warn(
-			"notification channel failover engaged",
-			"primary_channel_id", primary.ID,
-			"primary_type", primary.ChannelType,
-			"fallback_channel_id", fallback.ID,
-			"fallback_type", fallback.ChannelType,
-			"failures", failures,
-		)
+	if lastEngaged != nil {
+		if r.logger != nil {
+			r.logger.Warn(
+				"notification channel failover engaged",
+				"primary_channel_id", primary.ID,
+				"primary_type", primary.ChannelType,
+				"fallback_channel_id", curr.ID,
+				"fallback_type", curr.ChannelType,
+			)
+		}
+		return curr, true, nil
 	}
 
-	return fallback, true, nil
+	return primary, false, nil
 }

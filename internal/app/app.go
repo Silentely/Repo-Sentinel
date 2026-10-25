@@ -13,6 +13,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/httpapi"
+	"github.com/Silentely/Repo-Sentinel/internal/plugin"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/Silentely/Repo-Sentinel/internal/webhooksvc"
@@ -61,6 +62,7 @@ type App struct {
 	scheduler       *syncx.Scheduler
 	webhookService  *webhooksvc.Service
 	sseHub          *httpapi.SSEHub
+	pluginManager   *plugin.Manager
 	// 就绪日志与监听地址/驱动：Build 记录，Run 在监听成功后才输出 ready。
 	httpAddr       string
 	databaseDriver string
@@ -92,6 +94,11 @@ func (a *App) Close() error {
 			if err := a.webhookService.WaitReviews(waitCtx); err != nil && a.logger != nil {
 				a.logger.Warn("ai code review drain incomplete", "error_code", "ai_review_shutdown_timeout", "error", err.Error())
 			}
+			cancel()
+		}
+		if a.pluginManager != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			_ = a.pluginManager.Shutdown(shutdownCtx)
 			cancel()
 		}
 		if a.data != nil {

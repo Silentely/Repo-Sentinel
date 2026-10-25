@@ -91,7 +91,7 @@ func TestHandleFailureRateLimitedExceedsMaxAttemptsGoesDead(t *testing.T) {
 
 	deadFired := false
 	w := &Worker{Store: st, OnDead: func() { deadFired = true }}
-	w.handleFailure(t.Context(), item, &retryAfterError{seconds: 45, code: "telegram_rate_limited"})
+	w.handleFailure(t.Context(), item, item.ChannelID, &retryAfterError{seconds: 45, code: "telegram_rate_limited"})
 
 	if n, _ := st.Outbox().CountByStatus(t.Context(), store.OutboxDead); n != 1 {
 		t.Fatalf("期望 1 条死信，实际 %d", n)
@@ -111,7 +111,7 @@ func TestHandleFailureRateLimitedWithinBudgetRetries(t *testing.T) {
 
 	w := &Worker{Store: st, OnDead: func() { t.Fatal("不应触发死信") }}
 	before := time.Now().UTC()
-	w.handleFailure(t.Context(), item, &retryAfterError{seconds: 45, code: "telegram_rate_limited"})
+	w.handleFailure(t.Context(), item, item.ChannelID, &retryAfterError{seconds: 45, code: "telegram_rate_limited"})
 
 	items, _, err := st.Outbox().List(t.Context(), store.ListFilter{Status: store.OutboxPending})
 	if err != nil {
@@ -135,7 +135,7 @@ func TestHandleFailureGenericExceedsMaxAttemptsGoesDead(t *testing.T) {
 	item := createPendingOutbox(t, st, "o-gen-dead", maxAttempts)
 
 	w := &Worker{Store: st}
-	w.handleFailure(t.Context(), item, errTestGeneric{})
+	w.handleFailure(t.Context(), item, item.ChannelID, errTestGeneric{})
 
 	if n, _ := st.Outbox().CountByStatus(t.Context(), store.OutboxDead); n != 1 {
 		t.Fatalf("期望 1 条死信，实际 %d", n)

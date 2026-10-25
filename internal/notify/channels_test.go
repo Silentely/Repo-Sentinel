@@ -44,7 +44,7 @@ func TestSendFeishu(t *testing.T) {
 			_, _ = rw.Write([]byte(`{"code":0,"msg":"success"}`))
 		})
 
-		_, err := w.deliver(t.Context(), item, map[string]store.NotificationChannel{ch.ID: ch}, make(map[string]string))
+		_, _, err := w.deliver(t.Context(), item, map[string]store.NotificationChannel{ch.ID: ch}, make(map[string]string))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
