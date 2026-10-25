@@ -83,6 +83,9 @@ func (r *FailoverRouter) ResolveChannel(ctx context.Context, primary store.Notif
 		}
 		return primary, false, err
 	}
+	if fallback.ID == primary.ID {
+		return primary, false, nil
+	}
 
 	if r.logger != nil {
 		r.logger.Warn(

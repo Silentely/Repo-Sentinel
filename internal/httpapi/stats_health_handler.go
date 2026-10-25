@@ -15,6 +15,13 @@ func (s *server) handleRepositoryHealth(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if repoID != "" {
+		if _, err := s.dependencies.Store.Repositories().Get(r.Context(), repoID); err != nil {
+			s.writeMappedError(w, r, err)
+			return
+		}
+	}
+
 	report, err := stats.CalculateHealthScorecard(r.Context(), s.dependencies.Store, repoID, time.Now().UTC())
 	if err != nil {
 		s.writeMappedError(w, r, err)

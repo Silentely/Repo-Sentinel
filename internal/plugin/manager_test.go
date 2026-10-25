@@ -111,3 +111,30 @@ func TestPluginManager_LifecycleAndDispatch(t *testing.T) {
 		t.Errorf("expected providers to be stopped")
 	}
 }
+
+type panickingProvider struct {
+	mockProvider
+}
+
+func (p *panickingProvider) DispatchEvent(ctx context.Context, ev store.Event) error {
+	panic("unexpected plugin boom")
+}
+
+func TestPluginManager_PanicRecovery(t *testing.T) {
+	ctx := context.Background()
+	mgr := NewManager(nil)
+
+	panicker := &panickingProvider{
+		mockProvider: mockProvider{
+			name:         "panicking-plugin",
+			capabilities: []Capability{CapNotification},
+		},
+	}
+	_ = mgr.Register(ctx, panicker)
+
+	// 不得 panic 导致进程崩溃
+	err := mgr.DispatchEvent(ctx, store.Event{ID: "ev-1"})
+	if err != nil {
+		t.Errorf("expected no error returned despite panic, got %v", err)
+	}
+}

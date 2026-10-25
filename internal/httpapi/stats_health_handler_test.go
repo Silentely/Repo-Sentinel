@@ -18,7 +18,11 @@ func TestStatsHealthHandler(t *testing.T) {
 	unauth := fixture.request(t, http.MethodGet, "/api/v1/stats/health", "", "127.0.0.1:45001", nil, nil)
 	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
 
-	// 2. 正常查询 -> 200 OK 且包含完整字段
+	// 2. 查询不存在的 repository_id -> 404
+	missingResp := fixture.request(t, http.MethodGet, "/api/v1/stats/health?repository_id=no-such-repo-id", "", "127.0.0.1:45003", cookies, nil)
+	assertAPIError(t, missingResp, http.StatusNotFound, errorCodeNotFound)
+
+	// 3. 正常查询 -> 200 OK 且包含完整字段
 	now := time.Now().UTC()
 	_, err := fixture.store.Repositories().Upsert(t.Context(), store.Repository{
 		ID:             "health-repo-1",

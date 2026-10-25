@@ -91,11 +91,20 @@ func (m *Manager) DispatchEvent(ctx context.Context, ev store.Event) error {
 	m.mu.RUnlock()
 
 	for _, p := range providers {
-		if err := p.DispatchEvent(ctx, ev); err != nil {
-			if m.logger != nil {
-				m.logger.Warn("plugin dispatch event failed", "plugin", p.Name(), "error", err)
+		func(prov Provider) {
+			defer func() {
+				if r := recover(); r != nil {
+					if m.logger != nil {
+						m.logger.Error("plugin panic recovered in DispatchEvent", "plugin", prov.Name(), "panic", r)
+					}
+				}
+			}()
+			if err := prov.DispatchEvent(ctx, ev); err != nil {
+				if m.logger != nil {
+					m.logger.Warn("plugin dispatch event failed", "plugin", prov.Name(), "error", err)
+				}
 			}
-		}
+		}(p)
 	}
 	return nil
 }

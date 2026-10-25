@@ -55,8 +55,10 @@ func CalculateHealthScorecard(
 		RepositoryID: repoID,
 	}
 
-	// 1. 抓取工单
-	workItems, _, err := st.WorkItems().List(ctx, filter)
+	// 1. 抓取未关闭的活动工单
+	wiFilter := filter
+	wiFilter.State = "open"
+	workItems, _, err := st.WorkItems().List(ctx, wiFilter)
 	if err != nil {
 		return HealthReport{}, err
 	}
@@ -67,8 +69,10 @@ func CalculateHealthScorecard(
 		return HealthReport{}, err
 	}
 
-	// 3. 抓取安全告警
-	alerts, _, err := st.SecurityAlerts().List(ctx, filter)
+	// 3. 抓取未解决的安全告警
+	alertFilter := filter
+	alertFilter.State = "open"
+	alerts, _, err := st.SecurityAlerts().List(ctx, alertFilter)
 	if err != nil {
 		return HealthReport{}, err
 	}
