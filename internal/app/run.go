@@ -48,10 +48,23 @@ func (a *App) Run(ctx context.Context) error {
 	notifyDone := make(chan struct{})
 	go func() {
 		defer close(notifyDone)
+		failoverRouter := notify.NewFailoverRouter(a.data, notify.FailoverConfig{
+			Enabled:     true,
+			MaxFailures: 3,
+			RouteMap: map[string]string{
+				store.ChannelTelegram:    store.ChannelFeishu,
+				store.ChannelWeCom:       store.ChannelFeishu,
+				store.ChannelDingTalk:    store.ChannelFeishu,
+				store.ChannelDiscord:     store.ChannelSlack,
+				store.ChannelHTTPWebhook: store.ChannelFeishu,
+			},
+		}, notify.DefaultHealthTracker, a.logger)
+
 		(&notify.Worker{
-			Store:   a.data,
-			KeyRing: a.keyRing,
-			Logger:  a.logger,
+			Store:          a.data,
+			KeyRing:        a.keyRing,
+			Logger:         a.logger,
+			FailoverRouter: failoverRouter,
 			OnSent:  httpapi.MetricsIncOutboxSent,
 			OnDead:  httpapi.MetricsIncOutboxDead,
 			OnStateChange: func(id, status string) {

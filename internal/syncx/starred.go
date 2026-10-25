@@ -57,8 +57,9 @@ type StarredReleasePoller struct {
 	GitHub *githubx.AppClient
 	Public *githubx.PublicClient
 	// Engine 可选；注入后新 release 事件经实时通知决策写入 Outbox（不聚合、立即）。
-	Engine *rules.Engine
-	Logger *slog.Logger
+	Engine               *rules.Engine
+	Logger               *slog.Logger
+	DependenciesProvider func(ctx context.Context) map[string][]Dependency
 
 	// mu 串行化 SyncStars/PollReleases：Scheduler 节拍与 HTTP「立即同步」可能并发触发，
 	// 无锁会导致 lastStarSync/lastReleasePoll 数据竞争与双重枚举/轮询。
@@ -597,17 +598,30 @@ func (p *StarredReleasePoller) createReleaseEvent(ctx context.Context, fullName 
 		title = "Release " + strconv.FormatInt(rel.ID, 10)
 	}
 	notes := textutil.TruncateUTF8Bytes(rel.Body, maxReleaseNotesStored)
-	// 外部 star 仓不建 Repository 行（tracker 独立表），事件无法挂 RepositoryID；
-	// 仓库名写入 PayloadSummary，供每日摘要预览与 AI 总结回退引用，避免 release 事件丢失归属。
+	var monitoredDeps map[string][]Dependency
+	if p.DependenciesProvider != nil {
+		monitoredDeps = p.DependenciesProvider(ctx)
+	}
+	impact := EvaluateReleaseImpact(fullName, rel.Body, monitoredDeps)
+
 	ev := store.Event{
 		ID: ulid.Make().String(), Source: "starred_releases", Kind: store.ReleaseKind, Action: "published",
 		Title: title, SubjectNumber: &num, Actor: strings.TrimSpace(rel.Author.Login),
+		Severity: impact.SuggestedSeverity,
 		OccurredAt: rel.PublishedAt, SourceUpdatedAt: &src, HTMLURL: strings.TrimSpace(rel.HTMLURL),
 		DedupeFingerprint: fp, StateHash: stateHash,
 		PayloadSummary: map[string]any{
 			"tag_name": tagName, "prerelease": rel.Prerelease, "notes": notes,
 			"repository": fullName,
+			"release_impact": impact,
+			"has_breaking_changes": impact.HasBreakingChanges,
 		},
+	}
+	if len(impact.ImpactedRepoNames) > 0 {
+		ev.PayloadSummary["impacted_repos"] = impact.ImpactedRepoNames
+	}
+	if impact.UpgradeGuidance != "" {
+		ev.PayloadSummary["upgrade_guidance"] = impact.UpgradeGuidance
 	}
 	if _, err := p.Store.Events().Create(ctx, ev); err != nil {
 		return false, err

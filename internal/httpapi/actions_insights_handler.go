@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
@@ -20,16 +21,26 @@ type WorkflowStat struct {
 }
 
 // ActionsInsightsResponse Actions 效能洞察响应结构。
+// FailureClusterStat 故障分类聚类统计。
+type FailureClusterStat struct {
+	Category   string  `json:"category"`
+	Label      string  `json:"label"`
+	Count      int     `json:"count"`
+	Percentage float64 `json:"percentage"`
+	CanRetry   bool    `json:"can_retry"`
+}
+
 type ActionsInsightsResponse struct {
-	TotalRuns          int            `json:"total_runs"`
-	SuccessRuns        int            `json:"success_runs"`
-	FailedRuns         int            `json:"failed_runs"`
-	CancelledRuns      int            `json:"cancelled_runs"`
-	SuccessRate        float64        `json:"success_rate"`
-	AvgDurationSecs    float64        `json:"avg_duration_seconds"`
-	MedianDurationSecs float64        `json:"median_duration_seconds"`
-	P95DurationSecs    float64        `json:"p95_duration_seconds"`
-	TopFailing         []WorkflowStat `json:"top_failing_workflows"`
+	TotalRuns          int                  `json:"total_runs"`
+	SuccessRuns        int                  `json:"success_runs"`
+	FailedRuns         int                  `json:"failed_runs"`
+	CancelledRuns      int                  `json:"cancelled_runs"`
+	SuccessRate        float64              `json:"success_rate"`
+	AvgDurationSecs    float64              `json:"avg_duration_seconds"`
+	MedianDurationSecs float64              `json:"median_duration_seconds"`
+	P95DurationSecs    float64              `json:"p95_duration_seconds"`
+	TopFailing         []WorkflowStat       `json:"top_failing_workflows"`
+	FailureClusters    []FailureClusterStat `json:"failure_clusters"`
 }
 
 // handleActionsInsights 提供 Actions 效能与 CI 稳定性/耗时分析。
@@ -80,7 +91,8 @@ func (s *server) listRecentWorkflowRuns(ctx context.Context, repoID string) ([]s
 func calculateActionsInsights(runs []store.WorkflowRun) ActionsInsightsResponse {
 	if len(runs) == 0 {
 		return ActionsInsightsResponse{
-			TopFailing: []WorkflowStat{},
+			TopFailing:      []WorkflowStat{},
+			FailureClusters: []FailureClusterStat{},
 		}
 	}
 
@@ -193,6 +205,37 @@ func calculateActionsInsights(runs []store.WorkflowRun) ActionsInsightsResponse 
 		topFailing = topFailing[:5]
 	}
 
+	clusterMap := make(map[githubx.FailureCategory]*FailureClusterStat)
+	for _, run := range runs {
+		conclusion := ""
+		if run.Conclusion != nil {
+			conclusion = *run.Conclusion
+		}
+		if store.IsFailureConclusion(conclusion) {
+			attr := githubx.ClassifyCIFailure(conclusion, run.WorkflowName)
+			stat, ok := clusterMap[attr.Category]
+			if !ok {
+				stat = &FailureClusterStat{
+					Category: string(attr.Category),
+					Label:    attr.Label,
+					CanRetry: attr.CanRetry,
+				}
+				clusterMap[attr.Category] = stat
+			}
+			stat.Count++
+		}
+	}
+	clusters := make([]FailureClusterStat, 0, len(clusterMap))
+	for _, stat := range clusterMap {
+		if failed > 0 {
+			stat.Percentage = math.Round((float64(stat.Count)/float64(failed))*1000) / 10
+		}
+		clusters = append(clusters, *stat)
+	}
+	sort.Slice(clusters, func(i, j int) bool {
+		return clusters[i].Count > clusters[j].Count
+	})
+
 	return ActionsInsightsResponse{
 		TotalRuns:          total,
 		SuccessRuns:        success,
@@ -203,5 +246,6 @@ func calculateActionsInsights(runs []store.WorkflowRun) ActionsInsightsResponse 
 		MedianDurationSecs: medianDur,
 		P95DurationSecs:    p95Dur,
 		TopFailing:         topFailing,
+		FailureClusters:    clusters,
 	}
 }

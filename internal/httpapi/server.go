@@ -23,6 +23,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/jev"
+	"github.com/Silentely/Repo-Sentinel/internal/plugin"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
@@ -98,6 +99,7 @@ type Dependencies struct {
 	SSEHub          *SSEHub
 	ChatOpsExecutor ChatOpsActionExecutor
 	ChatOpsService  chatops.Service
+	PluginManager   *plugin.Manager
 }
 
 type server struct {
@@ -118,6 +120,7 @@ type server struct {
 	sseHub          *SSEHub
 	chatOpsExecutor ChatOpsActionExecutor
 	chatOpsService  chatops.Service
+	pluginManager   *plugin.Manager
 	startedAt       time.Time
 	workerID        string
 	ghProbeMu       sync.Mutex
@@ -310,6 +313,7 @@ func New(dependencies Dependencies) http.Handler {
 		s.chatOpsExecutor = &GitHubChatOpsExecutor{Store: dependencies.Store, Client: dependencies.GitHubRuntime.Client}
 	}
 	s.chatOpsService = dependencies.ChatOpsService
+	s.pluginManager = dependencies.PluginManager
 	if s.chatOpsService == nil {
 		s.chatOpsService = chatops.NewService(chatops.Dependencies{
 			Store:      dependencies.Store,
@@ -406,6 +410,8 @@ func New(dependencies Dependencies) http.Handler {
 			protected.Get("/webhook-deliveries", s.handleListWebhookDeliveries)
 			protected.Get("/webhook-deliveries/{id}", s.handleGetWebhookDelivery)
 			protected.Get("/stats/actions-insights", s.handleActionsInsights)
+			protected.Get("/stats/health", s.handleRepositoryHealth)
+			protected.Get("/system/plugins", s.handleListPlugins)
 			protected.Group(func(mutating chi.Router) {
 				mutating.Use(s.csrfMiddleware)
 				// Agent 令牌的能力边界在作用域层收口：read 令牌即使通过认证也不能进入写路由。

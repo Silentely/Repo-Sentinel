@@ -83,11 +83,12 @@ func isAllowPrivate(ctx context.Context) bool {
 
 // Worker 投递 Outbox。
 type Worker struct {
-	Store   store.Store
-	KeyRing *cryptox.KeyRing
-	Client  *http.Client
-	Logger  *slog.Logger
-	AAD     string
+	Store          store.Store
+	KeyRing        *cryptox.KeyRing
+	Client         *http.Client
+	Logger         *slog.Logger
+	AAD            string
+	FailoverRouter *FailoverRouter
 	// OnSent / OnDead 可选指标回调，避免 notify 包依赖 httpapi。
 	OnSent func()
 	OnDead func()
@@ -301,41 +302,50 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 			return "", err
 		}
 	}
-	secret, cached := secrets[item.ChannelID]
+	effectiveCh := ch
+	effectiveItem := item
+	if w.FailoverRouter != nil {
+		if fallback, engaged, err := w.FailoverRouter.ResolveChannel(ctx, ch); err == nil && engaged {
+			effectiveCh = fallback
+			effectiveItem.Title = "[应急转投 · " + ch.ChannelType + "故障] " + item.Title
+		}
+	}
+
+	secret, cached := secrets[effectiveCh.ID]
 	if !cached {
 		var err error
-		secret, err = w.decryptSecret(ctx, ch.SecretEnvelope)
+		secret, err = w.decryptSecret(ctx, effectiveCh.SecretEnvelope)
 		if err != nil {
-			return ch.ChannelType, fmt.Errorf("decrypt_secret: %w", err)
+			return effectiveCh.ChannelType, fmt.Errorf("decrypt_secret: %w", err)
 		}
-		secrets[item.ChannelID] = secret
+		secrets[effectiveCh.ID] = secret
 	}
-	item.Title = RedactSensitiveSecrets(item.Title)
-	item.BodyText = RedactSensitiveSecrets(item.BodyText)
-	switch ch.ChannelType {
+	effectiveItem.Title = RedactSensitiveSecrets(effectiveItem.Title)
+	effectiveItem.BodyText = RedactSensitiveSecrets(effectiveItem.BodyText)
+	switch effectiveCh.ChannelType {
 	case store.ChannelTelegram:
-		token, _ := item.BodyJSON["chatops_token"].(string)
-		extraRows := extractTelegramChatOpsActionRows(item.BodyJSON)
+		token, _ := effectiveItem.BodyJSON["chatops_token"].(string)
+		extraRows := extractTelegramChatOpsActionRows(effectiveItem.BodyJSON)
 		if len(extraRows) > 0 {
-			return ch.ChannelType, w.sendTelegramWithActions(ctx, ch.Target, secret, item.BodyText, item.HTMLURL, item.ParseMode, token, extraRows...)
+			return effectiveCh.ChannelType, w.sendTelegramWithActions(ctx, effectiveCh.Target, secret, effectiveItem.BodyText, effectiveItem.HTMLURL, effectiveItem.ParseMode, token, extraRows...)
 		}
-		return ch.ChannelType, w.sendTelegram(ctx, ch.Target, secret, item.BodyText, item.HTMLURL, item.ParseMode, token)
+		return effectiveCh.ChannelType, w.sendTelegram(ctx, effectiveCh.Target, secret, effectiveItem.BodyText, effectiveItem.HTMLURL, effectiveItem.ParseMode, token)
 	case store.ChannelHTTPWebhook:
-		return ch.ChannelType, w.sendHTTP(ctx, ch, secret, item)
+		return effectiveCh.ChannelType, w.sendHTTP(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelFeishu:
-		return ch.ChannelType, w.sendFeishu(ctx, ch, secret, item)
+		return effectiveCh.ChannelType, w.sendFeishu(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelWeCom:
-		return ch.ChannelType, w.sendWeCom(ctx, ch, secret, item)
+		return effectiveCh.ChannelType, w.sendWeCom(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelDingTalk:
-		return ch.ChannelType, w.sendDingTalk(ctx, ch, secret, item)
+		return effectiveCh.ChannelType, w.sendDingTalk(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelDiscord:
-		return ch.ChannelType, w.sendDiscord(ctx, ch, secret, item)
+		return effectiveCh.ChannelType, w.sendDiscord(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelBark:
-		return ch.ChannelType, w.sendBark(ctx, ch, secret, item)
+		return effectiveCh.ChannelType, w.sendBark(ctx, effectiveCh, secret, effectiveItem)
 	case store.ChannelSlack:
-		return ch.ChannelType, w.sendSlack(ctx, ch, secret, item)
+		return effectiveCh.ChannelType, w.sendSlack(ctx, effectiveCh, secret, effectiveItem)
 	default:
-		return ch.ChannelType, fmt.Errorf("unknown_channel")
+		return effectiveCh.ChannelType, fmt.Errorf("unknown_channel")
 	}
 }
 

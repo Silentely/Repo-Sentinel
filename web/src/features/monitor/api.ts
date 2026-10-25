@@ -108,6 +108,14 @@ export interface WorkflowStat {
   avg_duration_seconds: number;
 }
 
+export interface FailureClusterStat {
+  category: string;
+  label: string;
+  count: number;
+  percentage: number;
+  can_retry: boolean;
+}
+
 export interface ActionsInsights {
   total_runs: number;
   success_runs: number;
@@ -118,6 +126,30 @@ export interface ActionsInsights {
   median_duration_seconds: number;
   p95_duration_seconds: number;
   top_failing_workflows: WorkflowStat[];
+  failure_clusters?: FailureClusterStat[];
+}
+
+export interface StagnantItem {
+  id: string;
+  number: number;
+  title: string;
+  kind: string;
+  days_stagnant: number;
+  html_url: string;
+  updated_at: string;
+}
+
+export interface HealthReport {
+  score: number;
+  grade: "A" | "B" | "C" | "D" | string;
+  summary: string;
+  dimensions: {
+    issue_responsiveness: number;
+    pr_velocity: number;
+    ci_health: number;
+    security_posture: number;
+  };
+  stagnant_items: StagnantItem[];
 }
 
 export interface NotificationChannelRow {
@@ -811,6 +843,15 @@ export function actionsInsightsQueryOptions(repositoryID = "") {
   return queryOptions({
     queryKey: ["actions-insights", repositoryID] as const,
     queryFn: () => apiRequest<ActionsInsights>(`/api/v1/stats/actions-insights${q}`),
+    staleTime: 30_000,
+  });
+}
+
+export function repositoryHealthQueryOptions(repositoryID = "") {
+  const q = repositoryID ? `?repository_id=${encodeURIComponent(repositoryID)}` : "";
+  return queryOptions({
+    queryKey: ["repository-health", repositoryID] as const,
+    queryFn: () => apiRequest<HealthReport>(`/api/v1/stats/health${q}`),
     staleTime: 30_000,
   });
 }

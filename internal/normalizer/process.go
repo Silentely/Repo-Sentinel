@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/botutil"
+	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/textutil"
 	"github.com/oklog/ulid/v2"
@@ -768,6 +769,14 @@ func (p *Processor) processWorkflowRun(ctx context.Context, env envelope) (Resul
 			"head_sha": shortSHA(run.HeadSHA), "status": run.Status, "conclusion": *run.Conclusion, "attempt": run.RunAttempt,
 		},
 		SuppressNotification: suppress, DedupeFingerprint: fp, StateHash: hash,
+	}
+	if store.IsFailureConclusion(*run.Conclusion) {
+		attr := githubx.ClassifyCIFailure(*run.Conclusion, in.WorkflowName)
+		ev.PayloadSummary["failure_attribution"] = attr
+		if attr.CanRetry {
+			ev.PayloadSummary["can_retry"] = true
+			ev.PayloadSummary["retry_advice"] = attr.Advice
+		}
 	}
 	// 恢复检测：上一次 completed 运行为失败结论时，本次成功视为恢复。
 	if prevRun != nil && prevRun.GitHubRunID != run.ID && prevRun.Conclusion != nil && store.IsFailureConclusion(*prevRun.Conclusion) {

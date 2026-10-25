@@ -79,6 +79,9 @@ func TestActionsInsightsAnalyzesFullSampleWindow(t *testing.T) {
 	if insights.SuccessRuns+insights.FailedRuns+insights.CancelledRuns != 250 {
 		t.Fatalf("结论分类应覆盖全部样本: %+v", insights)
 	}
+	if insights.FailedRuns > 0 && len(insights.FailureClusters) == 0 {
+		t.Fatalf("expected failure_clusters to be populated when failed_runs > 0")
+	}
 }
 
 // TestActionsInsightsSampleWindowCappedAtLimit 守护：样本量超过窗口上限时截断到上限，

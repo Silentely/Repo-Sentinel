@@ -23,6 +23,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
 	"github.com/Silentely/Repo-Sentinel/internal/jev"
+	"github.com/Silentely/Repo-Sentinel/internal/plugin"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/Silentely/Repo-Sentinel/internal/syncx"
 	"github.com/Silentely/Repo-Sentinel/internal/updatecheck"
@@ -191,6 +192,7 @@ type httpTestOptions struct {
 	// starPoller 装配到 Dependencies.StarredPoller，供 star release 追踪 API 测试。
 	starPoller      *syncx.StarredReleasePoller
 	chatOpsExecutor ChatOpsActionExecutor
+	pluginManager   *plugin.Manager
 }
 
 type httpTestFixture struct {
@@ -302,6 +304,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		JevHTTPClient:   options.jevHTTPClient,
 		StarredPoller:   options.starPoller,
 		ChatOpsExecutor: options.chatOpsExecutor,
+		PluginManager:   options.pluginManager,
 	}
 	return &httpTestFixture{
 		handler:        New(dependencies),
