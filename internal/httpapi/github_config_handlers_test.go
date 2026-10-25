@@ -201,3 +201,29 @@ func TestGitHubConfigBlankSecretsAreNoop(t *testing.T) {
 		t.Fatalf("空白 private_key_pem 不应清除已有路径配置: %+v", after)
 	}
 }
+
+func TestGitHubManifest_Generate(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+
+	unauth := fixture.request(t, http.MethodGet, "/api/v1/github/manifest", "", "127.0.0.1:45001", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	resp := fixture.request(t, http.MethodGet, "/api/v1/github/manifest", "", "127.0.0.1:45002", cookies, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", resp.Code, resp.Body.String())
+	}
+
+	var manifest map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &manifest); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+	if manifest["name"] != "Repo-Sentinel" {
+		t.Errorf("expected name Repo-Sentinel, got %v", manifest["name"])
+	}
+	perms, ok := manifest["default_permissions"].(map[string]any)
+	if !ok || perms["issues"] != "write" {
+		t.Errorf("expected issues: write permission, got %v", perms)
+	}
+}

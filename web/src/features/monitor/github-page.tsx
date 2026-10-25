@@ -13,6 +13,7 @@ import {
   saveGitHubConfig,
   syncInstallationRepositories,
   versionQueryOptions,
+  fetchGitHubManifest,
 } from "./api";
 
 const DOCS_GITHUB_APP =
@@ -33,6 +34,32 @@ export function GitHubPage() {
     await copyText("webhook", webhookURL);
   }
   const [formMessage, setFormMessage] = useAutoDismiss();
+  const [manifestLoading, setManifestLoading] = useState(false);
+  const [manifestError, setManifestError] = useState<string | null>(null);
+
+  const handleManifestLaunch = async () => {
+    setManifestLoading(true);
+    setManifestError(null);
+    try {
+      const manifest = await fetchGitHubManifest();
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = "https://github.com/settings/apps/new";
+      form.target = "_blank";
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "manifest";
+      input.value = JSON.stringify(manifest);
+      form.appendChild(input);
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
+    } catch (err) {
+      setManifestError(err instanceof Error ? err.message : "获取 GitHub App Manifest 失败");
+    } finally {
+      setManifestLoading(false);
+    }
+  };
   const [syncMessage, setSyncMessage] = useAutoDismiss();
   const [configMessage, setConfigMessage] = useAutoDismiss();
   const [appID, setAppID] = useState("");
@@ -164,6 +191,28 @@ export function GitHubPage() {
         </div>
         <p className="field-hint">{cfg?.note || "环境变量优先；未用环境变量设置的字段可在此保存。"}</p>
         {configMessage ? <p className="success-banner" role="status">{configMessage}</p> : null}
+
+        <div style={{ padding: "0.75rem 1rem", background: "var(--bg-panel-warm-light, #f8fafc)", border: "1px solid var(--border-subtle, #e2e8f0)", borderRadius: "6px", marginBottom: "1rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" }}>
+            <div>
+              <strong style={{ fontSize: "0.875rem", color: "var(--text-primary)" }}>⚡ 60 秒免手填配置向导 (Manifest Flow)</strong>
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.78rem", color: "var(--text-secondary)" }}>
+                一键向 GitHub 预填全部 Webhook URL、权限与事件清单，在 GitHub 确认后自动换取并加密保存凭据。
+              </p>
+            </div>
+            <button
+              type="button"
+              className="primary-button primary-button--inline"
+              onClick={handleManifestLaunch}
+              disabled={manifestLoading || cfg?.can_edit_in_ui === false}
+              style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem" }}
+            >
+              {manifestLoading ? "正在启动 GitHub 向导…" : "🚀 启动 GitHub 官方向导"}
+            </button>
+          </div>
+          {manifestError ? <p style={{ margin: "0.4rem 0 0", fontSize: "0.75rem", color: "var(--danger-fg, #ef4444)" }}>{manifestError}</p> : null}
+        </div>
+
         <div className="form-grid">
           <label className="field--plain">
             <span>App ID {cfg?.app_id_locked ? <em className="field-lock">环境变量锁定</em> : null}</span>

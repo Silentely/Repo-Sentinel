@@ -1115,3 +1115,7 @@ export async function executeChatOpsWebAction(req: ChatOpsWebActionRequest): Pro
     body: JSON.stringify(req),
   });
 }
+
+export async function fetchGitHubManifest(): Promise<Record<string, unknown>> {
+  return await apiRequest<Record<string, unknown>>("/api/v1/github/manifest");
+}

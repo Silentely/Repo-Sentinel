@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -304,4 +307,140 @@ func validOptionalPublicBaseURL(value string) bool {
 	default:
 		return false
 	}
+}
+
+func (s *server) handleGetGitHubManifest(w http.ResponseWriter, r *http.Request) {
+	baseURL := ""
+	if s.dependencies.GitHubRuntime != nil {
+		snap := s.dependencies.GitHubRuntime.Snapshot()
+		baseURL = strings.TrimRight(snap.PublicBaseURL, "/")
+	}
+	if baseURL == "" {
+		host := r.Host
+		scheme := "https"
+		if r.TLS == nil && !strings.HasPrefix(host, "localhost") && !strings.HasPrefix(host, "127.0.0.1") {
+			scheme = "http"
+		}
+		baseURL = fmt.Sprintf("%s://%s", scheme, host)
+	}
+
+	manifest := map[string]any{
+		"name": "Repo-Sentinel",
+		"url":  baseURL,
+		"hook_attributes": map[string]any{
+			"url": fmt.Sprintf("%s/webhooks/github", baseURL),
+		},
+		"redirect_url": fmt.Sprintf("%s/github/manifest-callback", baseURL),
+		"public":       false,
+		"default_permissions": map[string]string{
+			"issues":               "write",
+			"pull_requests":        "write",			"contents":             "read",
+			"actions":              "read",
+			"metadata":             "read",
+			"security_events":      "read",
+			"vulnerability_alerts": "read",
+		},
+		"default_events": []string{
+			"issues", "pull_request", "workflow_run", "release", "push",
+			"dependabot_alert", "code_scanning_alert", "secret_scanning_alert",
+		},
+	}
+	writeJSON(w, http.StatusOK, manifest)
+}
+
+type gitHubManifestExchangeRequest struct {
+	Code string `json:"code"`
+}
+
+func (s *server) handleExchangeGitHubManifest(w http.ResponseWriter, r *http.Request) {
+	var req gitHubManifestExchangeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Code) == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "code"})
+		return
+	}
+	if s.dependencies.GitHubRuntime == nil || s.dependencies.Store == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
+		return
+	}
+	if s.dependencies.KeyRing == nil {
+		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
+		return
+	}
+
+	convURL := "https://api.github.com/app-manifests/" + url.PathEscape(strings.TrimSpace(req.Code)) + "/conversions"
+	ghReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, convURL, nil)
+	if err != nil {
+		s.writeAPIError(w, r, http.StatusInternalServerError, "github_manifest_failed", map[string]any{"message": err.Error()})
+		return
+	}
+	ghReq.Header.Set("Accept", "application/vnd.github+json")
+	ghReq.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := http.DefaultClient.Do(ghReq)
+	if err != nil {
+		s.writeAPIError(w, r, http.StatusBadGateway, "github_manifest_failed", map[string]any{"message": "连接 GitHub 兑换端点失败: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+		s.writeAPIError(w, r, http.StatusBadGateway, "github_manifest_failed", map[string]any{
+			"message": fmt.Sprintf("GitHub 拒绝代码兑换 (HTTP %d): %s", resp.StatusCode, string(raw)),
+		})
+		return
+	}
+
+	var converted struct {
+		ID            int64  `json:"id"`
+		ClientID      string `json:"client_id"`
+		WebhookSecret string `json:"webhook_secret"`
+		PEM           string `json:"pem"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&converted); err != nil {
+		s.writeAPIError(w, r, http.StatusBadGateway, "github_manifest_failed", map[string]any{"message": "解析 GitHub 兑换凭据失败"})
+		return
+	}
+
+	stored, err := githubx.LoadStoredRuntime(r.Context(), s.dependencies.Store)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+
+	if converted.ID > 0 {
+		stored.AppID = converted.ID
+	}
+	if converted.ClientID != "" {
+		stored.ClientID = converted.ClientID
+	}
+	if converted.WebhookSecret != "" {
+		secEnv, err := githubx.EncryptSecret(r.Context(), s.dependencies.KeyRing, converted.WebhookSecret)
+		if err != nil {
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
+			return
+		}
+		stored.WebhookSecretEnvelope = secEnv
+	}
+	if converted.PEM != "" {
+		pemEnv, err := githubx.EncryptSecret(r.Context(), s.dependencies.KeyRing, converted.PEM)
+		if err != nil {
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeEncryptionUnavailable, nil)
+			return
+		}
+		stored.PrivateKeyPEMEnvelope = pemEnv
+	}
+
+	if err := githubx.SaveStoredRuntime(r.Context(), s.dependencies.Store, stored); err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+
+	_ = githubx.MergeFromStore(r.Context(), s.dependencies.Store, s.dependencies.KeyRing, s.dependencies.GitHubRuntime)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success":   true,
+		"app_id":    converted.ID,
+		"client_id": converted.ClientID,
+	})
 }
