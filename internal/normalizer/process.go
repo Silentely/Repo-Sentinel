@@ -50,6 +50,8 @@ type envelope struct {
 	WorkflowRun *ghWorkflowRun `json:"workflow_run"`
 	// Alerts
 	Alert *ghAlert `json:"alert"`
+	// Release
+	Release *ghRelease `json:"release"`
 }
 
 type ghRepository struct {
@@ -168,6 +170,18 @@ type ghAlert struct {
 	SecretTypeDisplayName string `json:"secret_type_display_name"`
 }
 
+type ghRelease struct {
+	ID          int64     `json:"id"`
+	TagName     string    `json:"tag_name"`
+	Name        string    `json:"name"`
+	Body        string    `json:"body"`
+	HTMLURL     string    `json:"html_url"`
+	Draft       bool      `json:"draft"`
+	Prerelease  bool      `json:"prerelease"`
+	PublishedAt time.Time `json:"published_at"`
+	Author      ghUser    `json:"author"`
+}
+
 // Process 处理已验签的 Webhook。
 func (p *Processor) Process(ctx context.Context, eventType, deliveryID string, payload []byte) (Result, error) {
 	if len(payload) == 0 {
@@ -199,6 +213,8 @@ func (p *Processor) Process(ctx context.Context, eventType, deliveryID string, p
 		return p.processSecurityAlert(ctx, store.AlertKindCodeScanning, env)
 	case "secret_scanning_alert":
 		return p.processSecurityAlert(ctx, store.AlertKindSecretScanning, env)
+	case store.ReleaseKind:
+		return p.processRelease(ctx, env)
 	default:
 		return Result{UnhandledAction: true}, nil
 	}
@@ -985,4 +1001,97 @@ func milestoneTitle(m *ghMilestone) string {
 		return ""
 	}
 	return m.Title
+}
+
+const maxReleaseNotesStored = 8000
+
+func (p *Processor) processRelease(ctx context.Context, env envelope) (Result, error) {
+	if env.Repository == nil {
+		return Result{}, fmt.Errorf("missing repository")
+	}
+	if env.Release == nil {
+		return Result{UnhandledAction: true}, nil
+	}
+	repo, err := p.ensureRepository(ctx, env.Repository, p.resolveInstallation(ctx, env))
+	if err != nil {
+		return Result{}, err
+	}
+	if ok, reason := p.ingestGate(ctx, repo, store.ReleaseKind); !ok {
+		p.logSkip(repo, store.ReleaseKind, reason)
+		return Result{Repository: &repo, SuppressNotify: true}, nil
+	}
+
+	rel := env.Release
+	if rel.Draft {
+		return Result{Repository: &repo, SuppressNotify: true}, nil
+	}
+
+	actor := strings.TrimSpace(rel.Author.Login)
+	if actor == "" {
+		actor = strings.TrimSpace(env.Sender.Login)
+	}
+	if actor == "" {
+		actor = "unknown"
+	}
+	action := normalizeAction(env.Action)
+	occurredAt := rel.PublishedAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+
+	stateHash := "id:" + strconv.FormatInt(rel.ID, 10)
+	fp := Fingerprint(
+		"webhook", repo.FullName, store.ReleaseKind,
+		ResourceIdentity(store.ReleaseKind, rel.ID, 0),
+		action, occurredAt, stateHash,
+	)
+
+	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
+	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		p.eventDuplicate(repo, store.ReleaseKind, action)
+		return Result{Repository: &repo, Updated: false, SuppressNotify: suppress}, nil
+	}
+
+	title := strings.TrimSpace(rel.Name)
+	tagName := strings.TrimSpace(rel.TagName)
+	if title == "" {
+		title = tagName
+	}
+	if title == "" {
+		title = "Release " + strconv.FormatInt(rel.ID, 10)
+	}
+
+	notes := textutil.TruncateUTF8Bytes(rel.Body, maxReleaseNotesStored)
+	num := rel.ID
+	src := occurredAt
+
+	ev := store.Event{
+		ID:                   ulid.Make().String(),
+		Source:               "webhook",
+		Kind:                 store.ReleaseKind,
+		Action:               action,
+		RepositoryID:         &repo.ID,
+		Title:                title,
+		SubjectNumber:        &num,
+		Actor:                actor,
+		SenderIsBot:          botutil.IsBotUser(actor, ""),
+		OccurredAt:           occurredAt,
+		SourceUpdatedAt:      &src,
+		HTMLURL:              strings.TrimSpace(rel.HTMLURL),
+		SuppressNotification: suppress,
+		DedupeFingerprint:    fp,
+		StateHash:            stateHash,
+		PayloadSummary: map[string]any{
+			"tag_name":   tagName,
+			"prerelease": rel.Prerelease,
+			"notes":      notes,
+			"repository": repo.FullName,
+		},
+	}
+
+	created, err := p.Store.Events().Create(ctx, ev)
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{Repository: &repo, Event: &created, Updated: true, SuppressNotify: suppress}, nil
 }

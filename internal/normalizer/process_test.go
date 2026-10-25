@@ -1410,3 +1410,118 @@ func TestGuardedAutoUnarchive(t *testing.T) {
 		t.Fatalf("真人重要动作 (review_requested) 必须受控唤醒工作项，实际 ignored=%v", item.Ignored)
 	}
 }
+
+func TestProcessor_ProcessRelease_PublishedCreatesEvent(t *testing.T) {
+	ctx := context.Background()
+	st := openProcessStore(t)
+	ghID := int64(12345)
+	_, _ = st.Repositories().Upsert(ctx, store.Repository{
+		GitHubRepoID:   &ghID,
+		FullName:       "my-org/my-repo",
+		Owner:          "my-org",
+		Name:           "my-repo",
+		SyncStatus:     store.SyncStatusActive,
+		MonitorEnabled: true,
+	})
+	proc := &normalizer.Processor{Store: st}
+
+	payload := []byte(`{
+		"action": "published",
+		"release": {
+			"id": 998877,
+			"tag_name": "v1.5.0",
+			"name": "Release 1.5.0",
+			"body": "### Features\n- New awesome feature",
+			"html_url": "https://github.com/my-org/my-repo/releases/tag/v1.5.0",
+			"draft": false,
+			"prerelease": false,
+			"published_at": "2026-10-25T10:00:00Z",
+			"author": {"login": "octocat"}
+		},
+		"repository": {
+			"id": 12345,
+			"name": "my-repo",
+			"full_name": "my-org/my-repo",
+			"owner": {"login": "my-org"}
+		}
+	}`)
+
+	res, err := proc.Process(ctx, "release", "delivery-rel-1", payload)
+	if err != nil {
+		t.Fatalf("process release failed: %v", err)
+	}
+	if res.Event == nil {
+		t.Fatalf("expected Event to be created for published release, got nil")
+	}
+	if res.Event.Kind != store.ReleaseKind || res.Event.Action != "published" {
+		t.Errorf("unexpected event kind/action: %s/%s", res.Event.Kind, res.Event.Action)
+	}
+	if res.SuppressNotify {
+		t.Errorf("expected SuppressNotify to be false for release event")
+	}
+	if res.Event.PayloadSummary["tag_name"] != "v1.5.0" {
+		t.Errorf("expected tag_name v1.5.0, got %v", res.Event.PayloadSummary["tag_name"])
+	}
+}
+
+func TestProcessor_ProcessRelease_DraftAndDuplicate(t *testing.T) {
+	ctx := context.Background()
+	st := openProcessStore(t)
+	ghID := int64(12345)
+	_, _ = st.Repositories().Upsert(ctx, store.Repository{
+		GitHubRepoID:   &ghID,
+		FullName:       "my-org/my-repo",
+		Owner:          "my-org",
+		Name:           "my-repo",
+		SyncStatus:     store.SyncStatusActive,
+		MonitorEnabled: true,
+	})
+	proc := &normalizer.Processor{Store: st}
+
+	draftPayload := []byte(`{
+		"action": "published",
+		"release": {
+			"id": 998878,
+			"tag_name": "v1.6.0-draft",
+			"draft": true,
+			"published_at": "2026-10-25T10:00:00Z"
+		},
+		"repository": {
+			"id": 12345,
+			"full_name": "my-org/my-repo"
+		}
+	}`)
+	resDraft, err := proc.Process(ctx, "release", "delivery-rel-draft", draftPayload)
+	if err != nil {
+		t.Fatalf("draft release failed: %v", err)
+	}
+	if resDraft.Event != nil {
+		t.Errorf("expected no event for draft release")
+	}
+
+	pubPayload := []byte(`{
+		"action": "published",
+		"release": {
+			"id": 998879,
+			"tag_name": "v1.6.0",
+			"draft": false,
+			"published_at": "2026-10-25T10:00:00Z"
+		},
+		"repository": {
+			"id": 12345,
+			"full_name": "my-org/my-repo"
+		}
+	}`)
+	resPub, err := proc.Process(ctx, "release", "delivery-rel-pub-1", pubPayload)
+	if err != nil || resPub.Event == nil {
+		t.Fatalf("first publish failed: %v", err)
+	}
+
+	resDup, err := proc.Process(ctx, "release", "delivery-rel-pub-2", pubPayload)
+	if err != nil {
+		t.Fatalf("second publish failed: %v", err)
+	}
+	if resDup.Updated {
+		t.Errorf("expected duplicate release to have Updated=false")
+	}
+}
