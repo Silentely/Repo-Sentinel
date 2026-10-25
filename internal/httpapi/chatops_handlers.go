@@ -532,39 +532,71 @@ func (s *server) handleSlackChatOpsCallback(w http.ResponseWriter, r *http.Reque
 }
 
 type chatOpsWebActionRequest struct {
-	Action      string `json:"action"`
-	RepoID      string `json:"repo_id"`
-	IssueNumber int    `json:"issue_number,omitempty"`
-	RunID       string `json:"run_id,omitempty"`
-	Payload     string `json:"payload,omitempty"`
+	Action         string `json:"action"`
+	RepoID         string `json:"repo_id"`
+	IssueNumber    int    `json:"issue_number,omitempty"`
+	RunID          string `json:"run_id,omitempty"`
+	Payload        string `json:"payload,omitempty"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 func (s *server) handleChatOpsWebAction(w http.ResponseWriter, r *http.Request) {
+	session, ok := sessionFromContext(r.Context())
+	if !ok || session.AdminID == "" {
+		s.writeAPIError(w, r, http.StatusForbidden, "forbidden", map[string]any{"message": "仅管理员会话允许执行 Web ChatOps 动作"})
+		return
+	}
+	actorID := session.AdminID
+
 	var req chatOpsWebActionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": "请求体格式错误"})
 		return
 	}
-	if strings.TrimSpace(req.Action) == "" || strings.TrimSpace(req.RepoID) == "" {
+	actionName := strings.TrimSpace(req.Action)
+	repoID := strings.TrimSpace(req.RepoID)
+	if actionName == "" || repoID == "" {
 		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": "缺少必要参数 action 或 repo_id"})
 		return
 	}
-	if s.chatOpsExecutor == nil {
+	if _, ok := chatops.ActionRisk(actionName); !ok {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": "不支持或未知的 ChatOps 动作: " + actionName})
+		return
+	}
+
+	if s.dependencies.Store != nil {
+		repo, err := s.dependencies.Store.Repositories().Get(r.Context(), repoID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, map[string]any{"message": "目标仓库不存在"})
+				return
+			}
+			s.writeAPIError(w, r, http.StatusInternalServerError, "store_error", map[string]any{"message": "查询仓库失败"})
+			return
+		}
+		if repo.IsArchived || !repo.MonitorEnabled {
+			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"message": "目标仓库已归档或未启用监控"})
+			return
+		}
+	}
+
+	if s.chatOpsService == nil && s.chatOpsExecutor == nil {
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, "chatops_unavailable", map[string]any{"message": "ChatOps 服务未就绪"})
 		return
 	}
 
-	actorID := "web_admin"
-	if session, ok := sessionFromContext(r.Context()); ok && session.AdminID != "" {
-		actorID = session.AdminID
-	} else if clientID, ok := agentClientIDFromContext(r.Context()); ok && clientID != "" {
-		actorID = clientID
+	idempotencyKey := strings.TrimSpace(req.IdempotencyKey)
+	if idempotencyKey == "" {
+		idempotencyKey = strings.TrimSpace(r.Header.Get("X-Idempotency-Key"))
+	}
+	if idempotencyKey == "" {
+		idempotencyKey = ulid.Make().String()
 	}
 
 	actionData := chatops.ActionData{
-		ID:          ulid.Make().String(),
-		Action:      strings.TrimSpace(req.Action),
-		RepoID:      strings.TrimSpace(req.RepoID),
+		ID:          idempotencyKey,
+		Action:      actionName,
+		RepoID:      repoID,
 		IssueNumber: req.IssueNumber,
 		RunID:       strings.TrimSpace(req.RunID),
 		Payload:     req.Payload,
@@ -574,13 +606,24 @@ func (s *server) handleChatOpsWebAction(w http.ResponseWriter, r *http.Request) 
 
 	var outcome *chatops.Outcome
 	var err error
-	if oe, ok := s.chatOpsExecutor.(chatops.OutcomeExecutor); ok {
+	if s.chatOpsService != nil {
+		outcome, err = s.chatOpsService.HandleWeb(r.Context(), actionData)
+	} else if oe, ok := s.chatOpsExecutor.(chatops.OutcomeExecutor); ok {
 		outcome, err = oe.ExecuteWithOutcome(r.Context(), actionData)
 	} else {
 		err = s.chatOpsExecutor.Execute(r.Context(), actionData)
 		if err == nil {
 			outcome = &chatops.Outcome{Status: chatops.StatusExecuted, Action: actionData.Action}
 		}
+	}
+
+	if outcome != nil && outcome.Status == chatops.StatusGuardrailDenied {
+		msg := "操作被安全护栏拒绝"
+		if outcome.Message != "" {
+			msg = outcome.Message
+		}
+		s.writeAPIError(w, r, http.StatusForbidden, "chatops_guardrail_denied", map[string]any{"message": msg, "action": actionName})
+		return
 	}
 
 	if err != nil || (outcome != nil && outcome.Err != nil) {
@@ -595,10 +638,11 @@ func (s *server) handleChatOpsWebAction(w http.ResponseWriter, r *http.Request) 
 	}
 
 	metaJSON, _ := json.Marshal(map[string]any{
-		"action":       req.Action,
-		"issue_number": req.IssueNumber,
-		"run_id":       req.RunID,
-		"outcome":      string(outcome.Status),
+		"action":          actionName,
+		"issue_number":    req.IssueNumber,
+		"run_id":          req.RunID,
+		"outcome":         string(outcome.Status),
+		"idempotency_key": idempotencyKey,
 	})
 	s.appendAudit(r.Context(), store.AuditLog{
 		ID:           ulid.Make().String(),
@@ -606,7 +650,7 @@ func (s *server) handleChatOpsWebAction(w http.ResponseWriter, r *http.Request) 
 		ActorType:    "admin",
 		ActorID:      actorID,
 		TargetType:   "repository",
-		TargetID:     req.RepoID,
+		TargetID:     repoID,
 		MetadataJSON: metaJSON,
 		IPAddress:    remoteIPFromContext(r.Context()),
 		CreatedAt:    time.Now().UTC(),

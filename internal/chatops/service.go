@@ -48,6 +48,7 @@ type Service interface {
 	HandleTelegram(ctx context.Context, in TelegramCallbackRequest) (*Outcome, error)
 	HandleFeishu(ctx context.Context, in FeishuCallbackRequest) (*Outcome, error)
 	HandleSlack(ctx context.Context, in SlackCallbackRequest) (*Outcome, error)
+	HandleWeb(ctx context.Context, action ActionData) (*Outcome, error)
 	CreateToken(ctx context.Context, data ActionData, ttl time.Duration) (string, error)
 }
 
@@ -97,6 +98,13 @@ func NewService(deps Dependencies) Service {
 		safeGo:     sg,
 		jevRuntime: deps.JevRuntime,
 	}
+}
+
+func (s *service) HandleWeb(ctx context.Context, action ActionData) (*Outcome, error) {
+	if outcome, err := s.checkGuardrail(ctx, action, ""); err != nil || outcome != nil {
+		return outcome, err
+	}
+	return s.dispatchExecutor(ctx, action)
 }
 
 func (s *service) CreateToken(ctx context.Context, data ActionData, ttl time.Duration) (string, error) {

@@ -322,7 +322,9 @@ func (s *server) handleGetGitHubManifest(w http.ResponseWriter, r *http.Request)
 	if baseURL == "" {
 		host := r.Host
 		scheme := "https"
-		if r.TLS == nil && !strings.HasPrefix(host, "localhost") && !strings.HasPrefix(host, "127.0.0.1") {
+		if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+			scheme = proto
+		} else if r.TLS == nil && !strings.HasPrefix(host, "localhost") && !strings.HasPrefix(host, "127.0.0.1") {
 			scheme = "http"
 		}
 		baseURL = fmt.Sprintf("%s://%s", scheme, host)
@@ -340,7 +342,7 @@ func (s *server) handleGetGitHubManifest(w http.ResponseWriter, r *http.Request)
 			"issues":               "write",
 			"pull_requests":        "write",
 			"contents":             "read",
-			"actions":              "read",
+			"actions":              "write",
 			"metadata":             "read",
 			"security_events":      "read",
 			"vulnerability_alerts": "read",

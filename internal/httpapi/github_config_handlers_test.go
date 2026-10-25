@@ -226,6 +226,22 @@ func TestGitHubManifest_Generate(t *testing.T) {
 	if !ok || perms["issues"] != "write" {
 		t.Errorf("expected issues: write permission, got %v", perms)
 	}
+	if perms["actions"] != "write" {
+		t.Errorf("expected actions: write permission, got %v", perms["actions"])
+	}
+
+	respProxy := fixture.request(
+		t, http.MethodGet, "/api/v1/github/manifest", "", "127.0.0.1:45003", cookies,
+		map[string]string{"X-Forwarded-Proto": "https"},
+	)
+	if respProxy.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", respProxy.Code)
+	}
+	var manifestProxy map[string]any
+	_ = json.Unmarshal(respProxy.Body.Bytes(), &manifestProxy)
+	if url, ok := manifestProxy["url"].(string); !ok || !strings.HasPrefix(url, "https://") {
+		t.Errorf("expected url to use https behind reverse proxy, got %v", manifestProxy["url"])
+	}
 }
 
 func TestGitHubManifest_Exchange_Validation(t *testing.T) {

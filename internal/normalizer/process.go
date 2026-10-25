@@ -63,9 +63,10 @@ type envelope struct {
 }
 
 type ghCommit struct {
-	ID      string `json:"id"`
-	Message string `json:"message"`
-	Author  struct {
+	ID        string    `json:"id"`
+	Message   string    `json:"message"`
+	Timestamp time.Time `json:"timestamp"`
+	Author    struct {
 		Name  string `json:"name"`
 		Email string `json:"email"`
 	} `json:"author"`
@@ -1120,6 +1121,47 @@ func (p *Processor) processRelease(ctx context.Context, env envelope) (Result, e
 	return Result{Repository: &repo, Event: &created, Updated: true, SuppressNotify: suppress}, nil
 }
 
+func isPRMergeCommit(msg string) bool {
+	msg = strings.TrimSpace(msg)
+	if strings.HasPrefix(msg, "Merge pull request #") {
+		return true
+	}
+	if strings.HasPrefix(msg, "Merge branch '") || strings.HasPrefix(msg, "Merge branch \"") {
+		return true
+	}
+	firstLine := msg
+	if idx := strings.IndexByte(msg, '\n'); idx != -1 {
+		firstLine = strings.TrimSpace(msg[:idx])
+	}
+	if idx := strings.LastIndex(firstLine, "(#"); idx != -1 && strings.HasSuffix(firstLine, ")") {
+		numStr := firstLine[idx+2 : len(firstLine)-1]
+		if _, err := strconv.Atoi(numStr); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func isDirectPushCandidate(env envelope) bool {
+	if env.Forced {
+		return true
+	}
+	if strings.Trim(env.Before, "0") == "" {
+		return false
+	}
+	if len(env.Commits) == 0 {
+		return false
+	}
+	allPRMerges := true
+	for _, c := range env.Commits {
+		if !isPRMergeCommit(c.Message) {
+			allPRMerges = false
+			break
+		}
+	}
+	return !allPRMerges
+}
+
 func (p *Processor) processPush(ctx context.Context, env envelope) (Result, error) {
 	if env.Repository == nil {
 		return Result{UnhandledAction: true}, nil
@@ -1147,6 +1189,11 @@ func (p *Processor) processPush(ctx context.Context, env envelope) (Result, erro
 		return Result{Repository: &repo, SuppressNotify: true}, nil
 	}
 
+	// 过滤 PR 合并（含 Squash Merge 与常规 Merge Commit）及分支初始化
+	if !isDirectPushCandidate(env) {
+		return Result{Repository: &repo, SuppressNotify: true}, nil
+	}
+
 	actor := ""
 	if env.Pusher != nil && strings.TrimSpace(env.Pusher.Name) != "" {
 		actor = strings.TrimSpace(env.Pusher.Name)
@@ -1156,9 +1203,12 @@ func (p *Processor) processPush(ctx context.Context, env envelope) (Result, erro
 		actor = "unknown"
 	}
 
-	now := time.Now().UTC()
+	var srcTime time.Time
+	if len(env.Commits) > 0 && !env.Commits[len(env.Commits)-1].Timestamp.IsZero() {
+		srcTime = env.Commits[len(env.Commits)-1].Timestamp.UTC()
+	}
 	hash := StateHash("push", env.After, actor, strconv.FormatBool(env.Forced))
-	fp := Fingerprint("webhook", repo.FullName, store.PushKind, env.After, "direct_push", now, hash)
+	fp := Fingerprint("webhook", repo.FullName, store.PushKind, env.After, "direct_push", srcTime, hash)
 
 	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
 		p.eventDuplicate(repo, store.PushKind, "direct_push")
@@ -1172,6 +1222,11 @@ func (p *Processor) processPush(ctx context.Context, env envelope) (Result, erro
 
 	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
 
+	occurredAt := time.Now().UTC()
+	if !srcTime.IsZero() {
+		occurredAt = srcTime
+	}
+
 	ev := store.Event{
 		ID:                   ulid.Make().String(),
 		Source:               "webhook",
@@ -1182,8 +1237,8 @@ func (p *Processor) processPush(ctx context.Context, env envelope) (Result, erro
 		Actor:                actor,
 		Severity:             "high",
 		SenderIsBot:          botutil.IsBotUser(actor, ""),
-		OccurredAt:           now,
-		SourceUpdatedAt:      &now,
+		OccurredAt:           occurredAt,
+		SourceUpdatedAt:      &occurredAt,
 		HTMLURL:              env.Compare,
 		SuppressNotification: suppress,
 		DedupeFingerprint:    fp,

@@ -1624,3 +1624,104 @@ func TestProcessor_ProcessPush_FeatureBranchIgnoredAndForcePushDetected(t *testi
 		t.Errorf("expected title to highlight FORCE PUSH, got %s", resForce.Event.Title)
 	}
 }
+
+func TestProcessor_ProcessPush_PRMergesAndDeduplication(t *testing.T) {
+	ctx := context.Background()
+	st := openProcessStore(t)
+	ghID := int64(98765)
+	_, _ = st.Repositories().Upsert(ctx, store.Repository{
+		GitHubRepoID:   &ghID,
+		FullName:       "my-org/sentinel-repo",
+		Owner:          "my-org",
+		Name:           "sentinel-repo",
+		DefaultBranch:  "main",
+		SyncStatus:     store.SyncStatusActive,
+		MonitorEnabled: true,
+	})
+	proc := &normalizer.Processor{Store: st}
+
+	// 1. Regular PR merge commit: should be suppressed
+	prMergePayload := []byte(`{
+		"ref": "refs/heads/main",
+		"before": "11112222",
+		"after": "33334444",
+		"forced": false,
+		"commits": [{"id": "33334444", "message": "Merge pull request #42 from dev/fix-bug\n\nfix bug"}],
+		"pusher": {"name": "gh-merger"},
+		"repository": {"id": 98765, "full_name": "my-org/sentinel-repo", "default_branch": "main"}
+	}`)
+	resMerge, err := proc.Process(ctx, "push", "del-merge-1", prMergePayload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resMerge.Event != nil {
+		t.Errorf("expected no event for PR merge commit, got %+v", resMerge.Event)
+	}
+
+	// 2. Squash merge commit: should be suppressed
+	squashPayload := []byte(`{
+		"ref": "refs/heads/main",
+		"before": "33334444",
+		"after": "55556666",
+		"forced": false,
+		"commits": [{"id": "55556666", "message": "feat: add user login flow (#43)\n\nDetailed description"}],
+		"pusher": {"name": "gh-merger"},
+		"repository": {"id": 98765, "full_name": "my-org/sentinel-repo", "default_branch": "main"}
+	}`)
+	resSquash, err := proc.Process(ctx, "push", "del-squash-1", squashPayload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resSquash.Event != nil {
+		t.Errorf("expected no event for squash merge commit, got %+v", resSquash.Event)
+	}
+
+	// 3. Initial branch creation (before all zeros): should be suppressed
+	initPayload := []byte(`{
+		"ref": "refs/heads/main",
+		"before": "0000000000000000000000000000000000000000",
+		"after": "77778888",
+		"forced": false,
+		"commits": [{"id": "77778888", "message": "initial commit"}],
+		"pusher": {"name": "repo-creator"},
+		"repository": {"id": 98765, "full_name": "my-org/sentinel-repo", "default_branch": "main"}
+	}`)
+	resInit, err := proc.Process(ctx, "push", "del-init-1", initPayload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resInit.Event != nil {
+		t.Errorf("expected no event for branch init, got %+v", resInit.Event)
+	}
+
+	// 4. Genuine direct push: should create high severity event
+	directPayload := []byte(`{
+		"ref": "refs/heads/main",
+		"before": "55556666",
+		"after": "99990000",
+		"forced": false,
+		"commits": [{"id": "99990000", "message": "direct rogue commit to main", "timestamp": "2026-10-25T12:00:00Z"}],
+		"pusher": {"name": "direct-committer"},
+		"repository": {"id": 98765, "full_name": "my-org/sentinel-repo", "default_branch": "main"}
+	}`)
+	resDirect1, err := proc.Process(ctx, "push", "del-direct-1", directPayload)
+	if err != nil || resDirect1.Event == nil {
+		t.Fatalf("failed to process direct push: %v", err)
+	}
+	if !resDirect1.Updated || resDirect1.SuppressNotify {
+		t.Errorf("expected direct push to trigger notification, got updated=%v suppress=%v", resDirect1.Updated, resDirect1.SuppressNotify)
+	}
+
+	time.Sleep(1100 * time.Millisecond)
+	// 5. Duplicate delivery replay of the exact same direct push: should deduplicate idempotently
+	resDirect2, err := proc.Process(ctx, "push", "del-direct-1-replay", directPayload)
+	if err != nil {
+		t.Fatalf("unexpected error on replay: %v", err)
+	}
+	if resDirect2.Updated {
+		t.Errorf("expected Updated=false on duplicate push delivery replay, got true")
+	}
+	if !resDirect2.SuppressNotify {
+		t.Errorf("expected SuppressNotify=true on duplicate push delivery replay")
+	}
+}

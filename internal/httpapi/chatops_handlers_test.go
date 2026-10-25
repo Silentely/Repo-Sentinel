@@ -1451,6 +1451,18 @@ func TestChatOpsWebAction_ExecuteSuccess(t *testing.T) {
 	cookies := fixture.login(t, httpTestPassword)
 	csrf := cookieByName(t, cookies, CSRFCookieName)
 
+	_, err := fixture.store.Repositories().Upsert(t.Context(), store.Repository{
+		ID:             "repo-1",
+		Owner:          "org",
+		Name:           "repo-1",
+		FullName:       "org/repo-1",
+		DefaultBranch:  "main",
+		MonitorEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+
 	body := `{"action":"issue_reply_draft","repo_id":"repo-1","issue_number":42,"payload":"thanks for the PR"}`
 	resp := fixture.request(
 		t, http.MethodPost, "/api/v1/chatops/web-action",
@@ -1463,5 +1475,82 @@ func TestChatOpsWebAction_ExecuteSuccess(t *testing.T) {
 	}
 	if mockExec.lastAction.Action != "issue_reply_draft" || mockExec.lastAction.IssueNumber != 42 {
 		t.Errorf("unexpected action data executed: %+v", mockExec.lastAction)
+	}
+}
+
+func TestChatOpsWebAction_SecurityAndValidation(t *testing.T) {
+	mockExec := &mockWebChatOpsExecutor{
+		outcome: &chatops.Outcome{
+			Status:  chatops.StatusExecuted,
+			Action:  "workflow_rerun",
+			Message: "ok",
+		},
+	}
+	fixture := newHTTPTestFixture(t, httpTestOptions{chatOpsExecutor: mockExec})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+
+	_, err := fixture.store.Repositories().Upsert(t.Context(), store.Repository{
+		ID:             "monitored-repo",
+		Owner:          "acme",
+		Name:           "monitored-repo",
+		FullName:       "acme/monitored-repo",
+		DefaultBranch:  "main",
+		MonitorEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+
+	_, _ = fixture.store.Repositories().Upsert(t.Context(), store.Repository{
+		ID:             "unmonitored-repo",
+		Owner:          "acme",
+		Name:           "unmonitored-repo",
+		FullName:       "acme/unmonitored-repo",
+		DefaultBranch:  "main",
+		IsArchived:     true,
+	})
+
+	// 1. 未登录访问 -> 401 Unauthorized
+	unauth := fixture.request(t, http.MethodPost, "/api/v1/chatops/web-action", `{"action":"workflow_rerun","repo_id":"monitored-repo"}`, "127.0.0.1:45001", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	// 2. 未知 Action -> 400 ValidationFailed
+	badAction := fixture.request(
+		t, http.MethodPost, "/api/v1/chatops/web-action",
+		`{"action":"unknown_destructive_action","repo_id":"monitored-repo"}`, "127.0.0.1:45002", cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	assertAPIError(t, badAction, http.StatusBadRequest, errorCodeValidationFailed)
+
+	// 3. 不存在的 RepoID -> 404 NotFound
+	missingRepo := fixture.request(
+		t, http.MethodPost, "/api/v1/chatops/web-action",
+		`{"action":"workflow_rerun","repo_id":"no-such-repo"}`, "127.0.0.1:45003", cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	assertAPIError(t, missingRepo, http.StatusNotFound, errorCodeNotFound)
+
+	// 4. 未监控的 RepoID -> 400 ValidationFailed
+	unmonitored := fixture.request(
+		t, http.MethodPost, "/api/v1/chatops/web-action",
+		`{"action":"workflow_rerun","repo_id":"unmonitored-repo"}`, "127.0.0.1:45004", cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	assertAPIError(t, unmonitored, http.StatusBadRequest, errorCodeValidationFailed)
+
+	// 5. 带有 IdempotencyKey -> 校验传递至 ActionData.ID
+	idempotentKey := "custom-idempotency-key-12345"
+	resp := fixture.request(
+		t, http.MethodPost, "/api/v1/chatops/web-action",
+		fmt.Sprintf(`{"action":"workflow_rerun","repo_id":"monitored-repo","idempotency_key":"%s"}`, idempotentKey), "127.0.0.1:45005", cookies,
+		map[string]string{CSRFHeaderName: csrf.Value},
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if mockExec.lastAction.ID != idempotentKey {
+		t.Errorf("expected ActionData.ID to match idempotency key %s, got %s", idempotentKey, mockExec.lastAction.ID)
 	}
 }
