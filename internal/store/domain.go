@@ -29,6 +29,9 @@ const (
 	// ReleaseKind star 仓库的 GitHub Release 发布事件类型。
 	ReleaseKind = "release"
 
+	// PushKind 仓库直接推送（绕过 PR 审核）事件类型。
+	PushKind = "push"
+
 	// MetricStargazers 快照指标名（与 normalizer 包 starCountMetric 常量字符串一致，
 	// 两处固定为 "stargazers"；store 聚合、syncx 对账与 normalizer 写入共用该值）。
 	MetricStargazers = "stargazers"
@@ -172,6 +175,8 @@ func KindDisplayName(kind string) string {
 		return "Watch"
 	case ReleaseKind:
 		return "Release"
+	case PushKind:
+		return "直接推送"
 	default:
 		return kind
 	}
@@ -455,6 +460,7 @@ var subscribableKinds = map[string]struct{}{
 	StarKind:                {},
 	WatchKind:               {},
 	ReleaseKind:             {},
+	PushKind:                {},
 }
 
 // IsSubscribableKind 判定 kind 是否在订阅白名单内。

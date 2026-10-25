@@ -52,6 +52,28 @@ type envelope struct {
 	Alert *ghAlert `json:"alert"`
 	// Release
 	Release *ghRelease `json:"release"`
+	// Push
+	Ref     string     `json:"ref"`
+	Before  string     `json:"before"`
+	After   string     `json:"after"`
+	Forced  bool       `json:"forced"`
+	Compare string     `json:"compare"`
+	Commits []ghCommit `json:"commits"`
+	Pusher  *ghPusher  `json:"pusher"`
+}
+
+type ghCommit struct {
+	ID      string `json:"id"`
+	Message string `json:"message"`
+	Author  struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	} `json:"author"`
+}
+
+type ghPusher struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 type ghRepository struct {
@@ -215,6 +237,8 @@ func (p *Processor) Process(ctx context.Context, eventType, deliveryID string, p
 		return p.processSecurityAlert(ctx, store.AlertKindSecretScanning, env)
 	case store.ReleaseKind:
 		return p.processRelease(ctx, env)
+	case store.PushKind:
+		return p.processPush(ctx, env)
 	default:
 		return Result{UnhandledAction: true}, nil
 	}
@@ -1085,6 +1109,90 @@ func (p *Processor) processRelease(ctx context.Context, env envelope) (Result, e
 			"tag_name":   tagName,
 			"prerelease": rel.Prerelease,
 			"notes":      notes,
+			"repository": repo.FullName,
+		},
+	}
+
+	created, err := p.Store.Events().Create(ctx, ev)
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{Repository: &repo, Event: &created, Updated: true, SuppressNotify: suppress}, nil
+}
+
+func (p *Processor) processPush(ctx context.Context, env envelope) (Result, error) {
+	if env.Repository == nil {
+		return Result{}, fmt.Errorf("missing repository")
+	}
+	repo, err := p.ensureRepository(ctx, env.Repository, p.resolveInstallation(ctx, env))
+	if err != nil {
+		return Result{}, err
+	}
+	if ok, reason := p.ingestGate(ctx, repo, store.PushKind); !ok {
+		p.logSkip(repo, store.PushKind, reason)
+		return Result{Repository: &repo, SuppressNotify: true}, nil
+	}
+
+	targetBranch := strings.TrimPrefix(env.Ref, "refs/heads/")
+	defaultBranch := repo.DefaultBranch
+	if defaultBranch == "" && env.Repository.DefaultBranch != "" {
+		defaultBranch = env.Repository.DefaultBranch
+	}
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
+
+	// 仅监控默认保护分支上的直接提交（非默认分支或无提交的静默放行）
+	if targetBranch != defaultBranch || len(env.Commits) == 0 {
+		return Result{Repository: &repo, SuppressNotify: true}, nil
+	}
+
+	actor := ""
+	if env.Pusher != nil && strings.TrimSpace(env.Pusher.Name) != "" {
+		actor = strings.TrimSpace(env.Pusher.Name)
+	} else if strings.TrimSpace(env.Sender.Login) != "" {
+		actor = strings.TrimSpace(env.Sender.Login)
+	} else {
+		actor = "unknown"
+	}
+
+	now := time.Now().UTC()
+	hash := StateHash("push", env.After, actor, strconv.FormatBool(env.Forced))
+	fp := Fingerprint("webhook", repo.FullName, store.PushKind, env.After, "direct_push", now, hash)
+
+	if _, err := p.Store.Events().GetByFingerprint(ctx, fp); err == nil {
+		p.eventDuplicate(repo, store.PushKind, "direct_push")
+		return Result{Repository: &repo, Updated: false, SuppressNotify: true}, nil
+	}
+
+	summary := fmt.Sprintf("直接向 %s 分支提交了 %d 个 Commit", targetBranch, len(env.Commits))
+	if env.Forced {
+		summary = "⚠️ [强制推送 FORCE PUSH] " + summary
+	}
+
+	suppress := repo.SyncStatus == store.SyncStatusBaseline || repo.SyncStatus == store.SyncStatusArchived
+
+	ev := store.Event{
+		ID:                   ulid.Make().String(),
+		Source:               "webhook",
+		Kind:                 store.PushKind,
+		Action:               "direct_push",
+		RepositoryID:         &repo.ID,
+		Title:                summary,
+		Actor:                actor,
+		Severity:             "high",
+		SenderIsBot:          botutil.IsBotUser(actor, ""),
+		OccurredAt:           now,
+		SourceUpdatedAt:      &now,
+		HTMLURL:              env.Compare,
+		SuppressNotification: suppress,
+		DedupeFingerprint:    fp,
+		StateHash:            hash,
+		PayloadSummary: map[string]any{
+			"branch":     targetBranch,
+			"commit_cnt": len(env.Commits),
+			"forced":     env.Forced,
+			"compare":    env.Compare,
 			"repository": repo.FullName,
 		},
 	}

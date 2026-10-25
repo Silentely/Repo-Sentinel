@@ -1525,3 +1525,102 @@ func TestProcessor_ProcessRelease_DraftAndDuplicate(t *testing.T) {
 		t.Errorf("expected duplicate release to have Updated=false")
 	}
 }
+
+func TestProcessor_ProcessPush_DirectPushToDefaultBranchEmitsEvent(t *testing.T) {
+	ctx := context.Background()
+	st := openProcessStore(t)
+	ghID := int64(12345)
+	_, _ = st.Repositories().Upsert(ctx, store.Repository{
+		GitHubRepoID:   &ghID,
+		FullName:       "my-org/my-repo",
+		Owner:          "my-org",
+		Name:           "my-repo",
+		DefaultBranch:  "main",
+		SyncStatus:     store.SyncStatusActive,
+		MonitorEnabled: true,
+	})
+	proc := &normalizer.Processor{Store: st}
+
+	payload := []byte(`{
+		"ref": "refs/heads/main",
+		"before": "0000000000000000000000000000000000000001",
+		"after": "0000000000000000000000000000000000000002",
+		"forced": false,
+		"compare": "https://github.com/my-org/my-repo/compare/0001...0002",
+		"commits": [
+			{"id": "0002", "message": "hotfix directly on main", "author": {"name": "evil-actor"}}
+		],
+		"pusher": {"name": "evil-actor"},
+		"repository": {
+			"id": 12345,
+			"name": "my-repo",
+			"full_name": "my-org/my-repo",
+			"default_branch": "main",
+			"owner": {"login": "my-org"}
+		}
+	}`)
+
+	res, err := proc.Process(ctx, "push", "del-push-1", payload)
+	if err != nil {
+		t.Fatalf("process push failed: %v", err)
+	}
+	if res.Event == nil {
+		t.Fatalf("expected Event for direct push, got nil")
+	}
+	if res.Event.Kind != "push" || res.Event.Action != "direct_push" {
+		t.Errorf("unexpected event: %s/%s", res.Event.Kind, res.Event.Action)
+	}
+	if res.Event.Severity != "high" {
+		t.Errorf("expected high severity, got %s", res.Event.Severity)
+	}
+	if res.SuppressNotify {
+		t.Errorf("expected SuppressNotify to be false for direct push event")
+	}
+}
+
+func TestProcessor_ProcessPush_FeatureBranchIgnoredAndForcePushDetected(t *testing.T) {
+	ctx := context.Background()
+	st := openProcessStore(t)
+	ghID := int64(12345)
+	_, _ = st.Repositories().Upsert(ctx, store.Repository{
+		GitHubRepoID:   &ghID,
+		FullName:       "my-org/my-repo",
+		Owner:          "my-org",
+		Name:           "my-repo",
+		DefaultBranch:  "main",
+		SyncStatus:     store.SyncStatusActive,
+		MonitorEnabled: true,
+	})
+	proc := &normalizer.Processor{Store: st}
+
+	// 1. Feature branch push - should not emit event
+	featPayload := []byte(`{
+		"ref": "refs/heads/feature/awesome",
+		"commits": [{"id": "0001", "message": "feat"}],
+		"repository": {"id": 12345, "full_name": "my-org/my-repo", "default_branch": "main"}
+	}`)
+	resFeat, err := proc.Process(ctx, "push", "del-feat", featPayload)
+	if err != nil {
+		t.Fatalf("process feature branch push failed: %v", err)
+	}
+	if resFeat.Event != nil {
+		t.Errorf("expected no event for feature branch push")
+	}
+
+	// 2. Force push to main - should emit high-severity warning event
+	forcePayload := []byte(`{
+		"ref": "refs/heads/main",
+		"after": "ffff0000",
+		"forced": true,
+		"commits": [{"id": "ffff", "message": "force rewrite history"}],
+		"pusher": {"name": "admin-user"},
+		"repository": {"id": 12345, "full_name": "my-org/my-repo", "default_branch": "main"}
+	}`)
+	resForce, err := proc.Process(ctx, "push", "del-force", forcePayload)
+	if err != nil || resForce.Event == nil {
+		t.Fatalf("process force push failed: %v", err)
+	}
+	if !strings.Contains(resForce.Event.Title, "FORCE PUSH") {
+		t.Errorf("expected title to highlight FORCE PUSH, got %s", resForce.Event.Title)
+	}
+}

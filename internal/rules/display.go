@@ -89,6 +89,10 @@ func statusDisplay(ev *store.Event) (emoji, label string) {
 		if ev.Action == "published" {
 			return "🚀", "新版本发布"
 		}
+	case store.PushKind:
+		if ev.Action == "direct_push" {
+			return "🚨", "直接推送"
+		}
 	}
 
 	// 通用回退：按 action 语义猜测
@@ -229,6 +233,8 @@ func KindEmoji(kind string) string {
 		return "👀"
 	case store.ReleaseKind:
 		return "🚀"
+	case store.PushKind:
+		return "🚨"
 	default:
 		return "📋"
 	}
@@ -237,6 +243,8 @@ func KindEmoji(kind string) string {
 // eventEmoji 根据事件类型和状态返回对应的 emoji。
 func eventEmoji(ev *store.Event) string {
 	switch {
+	case ev.Kind == store.PushKind:
+		return "🚨"
 	// 安全告警 — 按严重度区分
 	case ev.Kind == store.AlertKindSecretScanning:
 		return "🔑"

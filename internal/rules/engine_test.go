@@ -71,6 +71,16 @@ func TestShouldNotifyRealtimeRelease(t *testing.T) {
 	}
 }
 
+// TestShouldNotifyRealtimePush 守护 push 事件实时通知判定。
+func TestShouldNotifyRealtimePush(t *testing.T) {
+	if !shouldNotifyRealtime(&store.Event{Kind: store.PushKind, Action: "direct_push"}) {
+		t.Fatal("push direct_push 应实时通知")
+	}
+	if shouldNotifyRealtime(&store.Event{Kind: store.PushKind, Action: "branch_push"}) {
+		t.Fatal("push branch_push 不应通知")
+	}
+}
+
 // TestReleaseAnalysis 覆盖成功、未启用、无渠道、AI 失败各分支。
 func TestReleaseAnalysis(t *testing.T) {
 	ev := &store.Event{

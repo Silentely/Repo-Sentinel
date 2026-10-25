@@ -530,6 +530,9 @@ func shouldNotifyRealtime(ev *store.Event) bool {
 	case store.ReleaseKind:
 		// release 发布事件实时通知；其余 action 不通知。
 		return ev.Action == "published"
+	case store.PushKind:
+		// 直接 push 到保护默认分支属于紧急安全/审计告警，一律实时通知。
+		return ev.Action == "direct_push"
 	}
 	return false
 }
