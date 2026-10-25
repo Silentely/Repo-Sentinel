@@ -333,8 +333,8 @@ func (s *server) handleGetGitHubManifest(w http.ResponseWriter, r *http.Request)
 		"redirect_url": fmt.Sprintf("%s/github/manifest-callback", baseURL),
 		"public":       false,
 		"default_permissions": map[string]string{
-			"issues":               "write",
-			"pull_requests":        "write",			"contents":             "read",
+			"issues":        "write",
+			"pull_requests": "write", "contents": "read",
 			"actions":              "read",
 			"metadata":             "read",
 			"security_events":      "read",

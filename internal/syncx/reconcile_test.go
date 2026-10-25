@@ -2,8 +2,6 @@ package syncx
 
 import (
 	"bytes"
-	"sync"
-	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -12,12 +10,14 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/Silentely/Repo-Sentinel/internal/normalizer"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
