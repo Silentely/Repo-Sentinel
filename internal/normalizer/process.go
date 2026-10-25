@@ -1122,7 +1122,7 @@ func (p *Processor) processRelease(ctx context.Context, env envelope) (Result, e
 
 func (p *Processor) processPush(ctx context.Context, env envelope) (Result, error) {
 	if env.Repository == nil {
-		return Result{}, fmt.Errorf("missing repository")
+		return Result{UnhandledAction: true}, nil
 	}
 	repo, err := p.ensureRepository(ctx, env.Repository, p.resolveInstallation(ctx, env))
 	if err != nil {
