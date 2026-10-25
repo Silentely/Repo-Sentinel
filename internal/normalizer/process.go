@@ -354,6 +354,10 @@ func (p *Processor) processRepositoryEvent(ctx context.Context, env envelope) (R
 		}
 		repo.SyncStatus = store.SyncStatusActive
 		repo.IsArchived = false
+	case "renamed":
+		if p.Logger != nil {
+			p.Logger.Info("repository renamed lifecycle event handled", "repo", repo.FullName)
+		}
 	case "deleted":
 		// 仓库已在 GitHub 删除：本地历史数据失去上游来源，级联删除仓库与全部关联数据，
 		// 确保已打开的 PR/Issue、事件、告警、快照与待投递通知不残留。

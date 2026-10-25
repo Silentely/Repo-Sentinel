@@ -73,9 +73,20 @@ func NormalizeRepository(ctx context.Context, s store.Store, gh repoSource, inst
 		DefaultBranch:  gh.GetDefaultBranch(),
 	}
 
-	existing, err := s.Repositories().GetByFullName(ctx, gh.GetFullName())
+	var existing store.Repository
+	var err error
+	if repoID > 0 {
+		existing, err = s.Repositories().GetByGitHubRepoID(ctx, repoID)
+	}
+	if err != nil || repoID <= 0 {
+		existing, err = s.Repositories().GetByFullName(ctx, gh.GetFullName())
+	}
 	if err == nil {
 		in.ID = existing.ID
+		if existing.FullName != gh.GetFullName() && logger != nil {
+			logger.Info("repository renamed or transferred, self-healing metadata",
+				"old_name", existing.FullName, "new_name", gh.GetFullName(), "repo_id", existing.ID)
+		}
 		in.SyncStatus = existing.SyncStatus
 		if existing.SyncStatus == "" {
 			in.SyncStatus = store.SyncStatusBaseline
