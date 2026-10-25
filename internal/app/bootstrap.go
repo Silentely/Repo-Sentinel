@@ -153,6 +153,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 	}
 	aiClient := aiRuntime.Client()
 	aiClient.Logger = logger
+	aiClient.Settings = data.Settings()
 	aggregator.AI = aiClient
 	aggregator.Logger = logger
 	aggregator.GitHub = ghClient

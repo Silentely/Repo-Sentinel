@@ -1,11 +1,81 @@
 package ai
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Silentely/Repo-Sentinel/internal/store"
+	"github.com/oklog/ulid/v2"
 )
+
+// ErrBudgetExceeded 当月已消耗 Token 达到或超过配置的月度上限时拒绝继续发起请求。
+var ErrBudgetExceeded = errors.New("ai: monthly token budget exceeded")
+
+func currentMonthKey() string {
+	return "ai.usage." + time.Now().UTC().Format("2006-01")
+}
+
+// CheckMonthlyBudget 检查当前月份是否已超出 Token 预算上限。limitTokens <= 0 时不限制。
+func CheckMonthlyBudget(ctx context.Context, s store.SettingsStore, limitTokens int64) error {
+	if s == nil || limitTokens <= 0 {
+		return nil
+	}
+	setting, err := s.Get(ctx, currentMonthKey())
+	if err != nil {
+		return nil
+	}
+	var used int64
+	_ = json.Unmarshal(setting.ValueJSON, &used)
+	if used >= limitTokens {
+		return ErrBudgetExceeded
+	}
+	return nil
+}
+
+// RecordMonthlyUsage 将实际消耗的 Prompt 与 Completion Tokens 累加至持久化月度记录中。
+func RecordMonthlyUsage(ctx context.Context, s store.SettingsStore, promptTokens, completionTokens int) {
+	if s == nil {
+		return
+	}
+	total := int64(promptTokens + completionTokens)
+	if total <= 0 {
+		return
+	}
+	key := currentMonthKey()
+	setting, err := s.Get(ctx, key)
+	var prev int64
+	if err == nil {
+		_ = json.Unmarshal(setting.ValueJSON, &prev)
+	}
+	raw, _ := json.Marshal(prev + total)
+	now := time.Now().UTC()
+	_, _ = s.Upsert(ctx, store.SystemSetting{
+		ID:        ulid.Make().String(),
+		Key:       key,
+		ValueJSON: raw,
+		UpdatedAt: now,
+		UpdatedBy: "ai_telemetry",
+	})
+}
+
+// GetMonthlyUsage 读取当月累计消耗的 Token 数量。
+func GetMonthlyUsage(ctx context.Context, s store.SettingsStore) int64 {
+	if s == nil {
+		return 0
+	}
+	setting, err := s.Get(ctx, currentMonthKey())
+	if err != nil {
+		return 0
+	}
+	var used int64
+	_ = json.Unmarshal(setting.ValueJSON, &used)
+	return used
+}
 
 // 进程内 AI 调用指标（单实例 Prometheus 文本暴露；多副本各自独立）。
 // 计数在 Complete 出口统一进行，与日志留痕同源，保证成功/失败口径一致；

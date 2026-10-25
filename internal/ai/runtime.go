@@ -39,6 +39,7 @@ type StoredConfig struct {
 	CodeReviewCommentOnPR  *bool             `json:"code_review_comment_on_pr,omitempty"`
 	FailureAnalysisEnabled *bool             `json:"failure_analysis_enabled,omitempty"`
 	TriageLabelMappings    map[string]string `json:"triage_label_mappings,omitempty"`
+	MonthlyBudgetTokens    *int64            `json:"monthly_budget_tokens,omitempty"`
 }
 
 // RuntimeConfig 持有进程内可热更新的 AI 配置。
@@ -60,6 +61,7 @@ type RuntimeConfig struct {
 	CodeReviewCommentOnPR  bool
 	FailureAnalysisEnabled bool
 	TriageLabelMappings    map[string]string
+	MonthlyBudgetTokens    int64
 
 	// 字段来源：env | database | unset（仅状态展示，不回显密钥）。
 	EnabledSource                string
@@ -76,6 +78,7 @@ type RuntimeConfig struct {
 	CodeReviewCommentOnPRSource  string
 	FailureAnalysisEnabledSource string
 	TriageLabelMappingsSource    string
+	MonthlyBudgetTokensSource    string
 }
 
 // RuntimeFromEnv 从环境变量配置构建运行时基线并标记来源。
@@ -135,6 +138,7 @@ func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 		CodeReviewCommentOnPR:        r.CodeReviewCommentOnPR,
 		FailureAnalysisEnabled:       r.FailureAnalysisEnabled,
 		TriageLabelMappings:          cloneTriageMappings(r.TriageLabelMappings),
+		MonthlyBudgetTokens:          r.MonthlyBudgetTokens,
 		EnabledSource:                r.EnabledSource,
 		BaseURLSource:                r.BaseURLSource,
 		ModelSource:                  r.ModelSource,
@@ -149,6 +153,7 @@ func (r *RuntimeConfig) Snapshot() RuntimeConfig {
 		CodeReviewCommentOnPRSource:  r.CodeReviewCommentOnPRSource,
 		FailureAnalysisEnabledSource: r.FailureAnalysisEnabledSource,
 		TriageLabelMappingsSource:    r.TriageLabelMappingsSource,
+		MonthlyBudgetTokensSource:    r.MonthlyBudgetTokensSource,
 	}
 }
 
@@ -173,6 +178,7 @@ func (r *RuntimeConfig) Replace(next *RuntimeConfig) {
 	r.CodeReviewCommentOnPR = next.CodeReviewCommentOnPR
 	r.FailureAnalysisEnabled = next.FailureAnalysisEnabled
 	r.TriageLabelMappings = cloneTriageMappings(next.TriageLabelMappings)
+	r.MonthlyBudgetTokens = next.MonthlyBudgetTokens
 	r.EnabledSource = next.EnabledSource
 	r.BaseURLSource = next.BaseURLSource
 	r.ModelSource = next.ModelSource
@@ -207,6 +213,7 @@ func (r *RuntimeConfig) Client() *Client {
 		CodeReviewCommentOnPR:  snap.CodeReviewCommentOnPR,
 		FailureAnalysisEnabled: snap.FailureAnalysisEnabled,
 		TriageLabelMappings:    snap.TriageLabelMappings,
+		MonthlyBudgetTokens:    snap.MonthlyBudgetTokens,
 	}
 }
 
@@ -343,6 +350,10 @@ func MergeFromStore(ctx context.Context, data store.Store, keyRing *cryptox.KeyR
 		snap.FailureAnalysisEnabled = *stored.FailureAnalysisEnabled
 		snap.FailureAnalysisEnabledSource = "database"
 	}
+	if stored.MonthlyBudgetTokens != nil {
+		snap.MonthlyBudgetTokens = *stored.MonthlyBudgetTokens
+		snap.MonthlyBudgetTokensSource = "database"
+	}
 	if len(stored.TriageLabelMappings) > 0 {
 		snap.TriageLabelMappings = stored.TriageLabelMappings
 		snap.TriageLabelMappingsSource = "database"
@@ -374,5 +385,6 @@ func (s StoredConfig) isEmpty() bool {
 		s.CodeReviewEnabled == nil &&
 		s.CodeReviewCommentOnPR == nil &&
 		s.FailureAnalysisEnabled == nil &&
-		len(s.TriageLabelMappings) == 0
+		len(s.TriageLabelMappings) == 0 &&
+		s.MonthlyBudgetTokens == nil
 }

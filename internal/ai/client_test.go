@@ -1059,3 +1059,47 @@ func TestCompleteOnlyThinkingTagsTreatedAsEmpty(t *testing.T) {
 		t.Fatalf("期望 empty response 错误，实际: %v", err)
 	}
 }
+
+func TestClient_Complete_ExceedsMonthlyBudget_ReturnsErrBudgetExceeded(t *testing.T) {
+	st := openRuntimeStore(t)
+	RecordMonthlyUsage(context.Background(), st.Settings(), 600000, 500000)
+
+	client := &Client{
+		Enabled:             true,
+		APIKey:              "test-key",
+		MonthlyBudgetTokens: 1000000,
+		Settings:            st.Settings(),
+	}
+
+	_, err := client.Complete(context.Background(), "sys", "hello")
+	if !errors.Is(err, ErrBudgetExceeded) {
+		t.Fatalf("expected ErrBudgetExceeded, got %v", err)
+	}
+}
+
+func TestClient_Complete_RecordsMonthlyUsageWhenSuccessful(t *testing.T) {
+	st := openRuntimeStore(t)
+	srv := captureServer(t, 200, `{"choices":[{"message":{"content":"ok answer"}}],"usage":{"prompt_tokens":15,"completion_tokens":25,"total_tokens":40}}`, nil)
+	defer srv.Close()
+
+	client := &Client{
+		Enabled:             true,
+		APIKey:              "test-key",
+		BaseURL:             srv.URL,
+		MonthlyBudgetTokens: 1000000,
+		Settings:            st.Settings(),
+	}
+
+	content, err := client.Complete(context.Background(), "sys", "hello")
+	if err != nil {
+		t.Fatalf("complete failed: %v", err)
+	}
+	if content != "ok answer" {
+		t.Errorf("expected 'ok answer', got %s", content)
+	}
+
+	used := GetMonthlyUsage(context.Background(), st.Settings())
+	if used != 40 {
+		t.Fatalf("expected 40 tokens recorded in monthly usage, got %d", used)
+	}
+}

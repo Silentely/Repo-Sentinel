@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
+	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
 // ErrNotConfigured 表示未配置 API Key；调用方应视为功能不可用并降级，不视为故障。
@@ -81,6 +82,10 @@ type Client struct {
 	HTTP *http.Client
 	// Logger 可选；AI 降级时记录原因，不影响主链路。
 	Logger *slog.Logger
+	// Settings 可选：用于持久化月度 Token 消耗与配额判定。
+	Settings store.SettingsStore
+	// MonthlyBudgetTokens 月度 Token 预算上限；<= 0 表示不限制。
+	MonthlyBudgetTokens int64
 
 	// sem 为调用并发预算（#8）：digest 多周期与分诊可能并发打 AI，
 	// 超出上限时排队（受 ctx 预算约束）。非配置字段，经 Replace 热更新不受影响；
@@ -142,6 +147,8 @@ func (c *Client) Snapshot() Client {
 		TriageLabelMappings:    cloneTriageMappings(c.TriageLabelMappings),
 		HTTP:                   c.HTTP,
 		Logger:                 c.Logger,
+		Settings:               c.Settings,
+		MonthlyBudgetTokens:    c.MonthlyBudgetTokens,
 	}
 }
 
@@ -175,6 +182,10 @@ func (c *Client) Replace(next *Client) {
 	if next.Logger != nil {
 		c.Logger = next.Logger
 	}
+	if next.Settings != nil {
+		c.Settings = next.Settings
+	}
+	c.MonthlyBudgetTokens = next.MonthlyBudgetTokens
 }
 
 // IsEnabled 判定 AI 总开关是否打开且已配置 API Key。
@@ -491,6 +502,10 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 	if !s.Enabled || s.APIKey == "" {
 		return "", ErrNotConfigured
 	}
+	if err := CheckMonthlyBudget(ctx, s.Settings, s.MonthlyBudgetTokens); err != nil {
+		metricsIncResult(true, "budget_exceeded", 0, 0, 0)
+		return "", err
+	}
 	logger := s.Logger
 	model := s.RouteModelForTask(TaskTypeFromContext(ctx))
 	reqID := RequestIDFromContext(ctx)
@@ -512,6 +527,9 @@ func (c *Client) Complete(ctx context.Context, system, user string) (content str
 			return
 		}
 		metricsIncResult(false, "", time.Since(start), promptTok, completionTok)
+		if s.Settings != nil {
+			RecordMonthlyUsage(context.Background(), s.Settings, promptTok, completionTok)
+		}
 		if logger != nil {
 			logger.Info("ai request ok",
 				"req_id", reqID, "model", model, "duration_ms", time.Since(start).Milliseconds(),
