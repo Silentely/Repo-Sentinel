@@ -566,8 +566,9 @@ func TestLoginSemReleasedBeforeRateLimitDelay(t *testing.T) {
 		}(ip)
 	}
 
-	// 等待 150ms：Argon2id 认证计算约需数十毫秒，150ms 确保 3 个 goroutine 均已完成密码哈希校验并进入 2 秒的 delay 睡眠（剩余睡眠时间 > 1.8 秒）
-	time.Sleep(150 * time.Millisecond)
+	// 等待 1s：在 -race 与完整套件负载下，Argon2id 认证可能明显慢于本地空载；
+	// 该等待仍短于失败惩罚的 2s，旧实现若跨越惩罚延迟持有信号量仍会返回 429。
+	time.Sleep(time.Second)
 
 	// 并发发送合法登录请求（来自第 4 个独立 IP），此时 3 个失败请求均处于 2 秒延时睡眠中：
 	// 若信号量在 Authenticate 完成后已及时释放，该请求应立即成功返回 200；
