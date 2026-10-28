@@ -184,6 +184,18 @@ func waitForReviewSetting(t *testing.T, data store.Store, itemID string, wantSta
 	return ai.CodeReviewResult{}
 }
 
+func waitForCounter(t *testing.T, counter *atomic.Int64, want int64) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if counter.Load() >= want {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for counter to reach %d; got %d", want, counter.Load())
+}
+
 func TestPRReviewGate_LocalDocsOnly(t *testing.T) {
 	// 纯文档变更：本地门禁判定 skip -> 0 Jev, 0 LLM, 评论0, 高危0, 广播1次
 	pureDocsDiff := `diff --git a/docs/guide.md b/docs/guide.md
@@ -355,6 +367,7 @@ index 1111111..2222222 100644
 	if res.ReviewStatus != "reviewed" {
 		t.Fatalf("expected ReviewStatus=reviewed on fallback, got %s", res.ReviewStatus)
 	}
+	waitForCounter(t, commentCalls, 1)
 	if commentCalls.Load() != 1 {
 		t.Fatalf("expected 1 comment for full review, got %d", commentCalls.Load())
 	}
@@ -487,6 +500,7 @@ index 1111111..2222222 100644
 	if res.ReviewStatus != "reviewed" {
 		t.Fatalf("expected ReviewStatus=reviewed in shadow mode, got %s", res.ReviewStatus)
 	}
+	waitForCounter(t, commentCalls, 1)
 	if commentCalls.Load() != 1 {
 		t.Fatalf("expected 1 comment in shadow mode, got %d", commentCalls.Load())
 	}
