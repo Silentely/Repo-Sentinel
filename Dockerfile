@@ -1,7 +1,7 @@
 # RepoSentinel 多阶段生产镜像
 # syntax=docker/dockerfile:1.7
 
-FROM node:24-bookworm AS frontend
+FROM node:26-bookworm AS frontend
 WORKDIR /src/web
 COPY web/package.json web/pnpm-lock.yaml ./
 RUN corepack enable && corepack prepare pnpm@10.34.5 --activate \

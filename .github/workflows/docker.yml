@@ -109,7 +109,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26"
           # pnpm 依赖缓存：避免每次 CI 全量下载（前端依赖体积大、安装慢）。
           cache: "pnpm"
           cache-dependency-path: web/pnpm-lock.yaml
