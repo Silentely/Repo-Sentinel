@@ -132,7 +132,7 @@ jobs:
         run: go build -tags production -ldflags "-X github.com/Silentely/Repo-Sentinel/internal/buildinfo.buildChannel=e2e" -o web/reposentinel-e2e ./cmd/reposentinel
 
       - name: Cache Playwright Chromium
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('web/package.json') }}
