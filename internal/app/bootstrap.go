@@ -175,7 +175,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		logger.Warn("bootstrap: load jev metrics from store failed", "error", err)
 	}
 
-	digestGen := &digest.Generator{Store: data, AI: aiClient, Logger: logger}
+	digestGen := &digest.Generator{Store: data, AI: aiClient, Logger: logger, JevRuntime: jevRuntime}
 
 	starred := &syncx.StarredReleasePoller{
 		Store:  data,

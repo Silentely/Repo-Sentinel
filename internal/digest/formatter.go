@@ -20,10 +20,38 @@ var (
 	reResolvedStatus    = regexp.MustCompile(`\[(已修复|已关闭|已解决|已恢复|已合并)\]`)
 )
 
-// buildDigestMetricsCard 基于实际事件集生成紧凑的指标统计速览卡，区分已修复/已关闭与未解决项目。
-func buildDigestMetricsCard(events []store.Event, period string) string {
+// JevExecutionSummary 定期报告中展示的 Jev 判别式决策引擎执行与健康度汇总。
+type JevExecutionSummary struct {
+	Enabled            bool
+	Mode               string // "active", "shadow", "disabled"
+	Model              string
+	CircuitState       string // "closed", "half_open", "open"
+	TotalRequests      uint64
+	SuccessRate        float64
+	LatencyP50Ms       float64
+	LatencyP95Ms       float64
+	CacheHitRate       float64
+	// 时段内实际拦截与跳过详情
+	PeriodSuppressed   int
+	SuppressedItems    []string
+	PeriodSkippedPRs   int
+	SkippedPRItems     []string
+	// 历史累计指标
+	TotalSuppressed    uint64
+	TotalSkipped       uint64
+	TotalWouldSuppress uint64
+	TotalWouldSkip     uint64
+}
+
+// buildDigestMetricsCard 基于实际事件集生成紧凑的指标统计速览卡，区分已修复/已关闭与未解决项目，支持感知 Jev 引擎执行态势。
+func buildDigestMetricsCard(events []store.Event, period string, jev ...*JevExecutionSummary) string {
 	if len(events) == 0 {
 		return ""
+	}
+
+	var jevSum *JevExecutionSummary
+	if len(jev) > 0 && jev[0] != nil && jev[0].Enabled {
+		jevSum = jev[0]
 	}
 
 	type entityKey struct {
@@ -158,8 +186,12 @@ func buildDigestMetricsCard(events []store.Event, period string) string {
 	}
 
 	var pulseBadge string
-	if highAlertsOpen > 0 || ciFailsOpen >= 3 {
-		pulseBadge = " · 🚨 <b>[需紧急介入]</b>"
+	if highAlertsOpen > 0 || ciFailsOpen >= 3 || (jevSum != nil && jevSum.CircuitState == "open") {
+		if jevSum != nil && jevSum.CircuitState == "open" && highAlertsOpen == 0 && ciFailsOpen < 3 {
+			pulseBadge = " · 🚨 <b>[Jev熔断告警]</b>"
+		} else {
+			pulseBadge = " · 🚨 <b>[需紧急介入]</b>"
+		}
 	} else if alertsOpen > 0 || ciFailsOpen > 0 || issuesOpen >= 5 {
 		pulseBadge = " · ⚠️ <b>[需重点关注]</b>"
 	} else {
@@ -221,6 +253,16 @@ func buildDigestMetricsCard(events []store.Event, period string) string {
 	}
 	if depUpdates > 0 {
 		parts = append(parts, "📦 依赖更新: "+strconv.Itoa(depUpdates))
+	}
+
+	if jevSum != nil && jevSum.Mode == "active" {
+		if jevSum.PeriodSuppressed > 0 && jevSum.PeriodSkippedPRs > 0 {
+			parts = append(parts, fmt.Sprintf("🤖 Jev接管: 拦截 %d条 | 跳过 %d次", jevSum.PeriodSuppressed, jevSum.PeriodSkippedPRs))
+		} else if jevSum.PeriodSuppressed > 0 {
+			parts = append(parts, fmt.Sprintf("🤖 Jev降噪: %d条", jevSum.PeriodSuppressed))
+		} else if jevSum.PeriodSkippedPRs > 0 {
+			parts = append(parts, fmt.Sprintf("🤖 Jev门控跳过: %d次", jevSum.PeriodSkippedPRs))
+		}
 	}
 
 	if len(parts) > 0 {
@@ -460,4 +502,74 @@ func emphasizePrefix(text string) string {
 		}
 	}
 	return text
+}
+
+// buildDigestJevSection 构建 Jev 决策引擎在定期报告中的结构化展示块（Telegram 原生折叠）。
+func buildDigestJevSection(s *JevExecutionSummary) string {
+	if s == nil || !s.Enabled {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("<blockquote expandable>\n")
+
+	modeLabel := "生产模式接管中"
+	if s.Mode == "shadow" {
+		modeLabel = "影子观察模式"
+	}
+
+	sb.WriteString("<b>🤖 Jev 决策引擎运行态势（")
+	sb.WriteString(modeLabel)
+	sb.WriteString("）</b>\n")
+
+	// 1. 运行态势 & 核心指标
+	stateStr := "正常闭合"
+	if s.CircuitState == "open" {
+		stateStr = "🚨 熔断降级"
+	} else if s.CircuitState == "half_open" {
+		stateStr = "⚠️ 探测自愈"
+	}
+
+	if s.TotalRequests > 0 {
+		sb.WriteString(fmt.Sprintf("• 运行指标：总判定 %d 次 · 成功率 %.1f%% · 延迟 P95 %.0fms · 熔断器 %s\n",
+			s.TotalRequests, s.SuccessRate*100, s.LatencyP95Ms, stateStr))
+	} else {
+		sb.WriteString(fmt.Sprintf("• 运行指标：熔断器 %s · 暂无远程判定调用\n", stateStr))
+	}
+
+	// 2. 通知降噪面
+	if s.Mode == "active" {
+		if s.PeriodSuppressed > 0 {
+			sb.WriteString(fmt.Sprintf("• 通知降噪：时段内拦截 %d 条（历史累计 %d 条）\n", s.PeriodSuppressed, s.TotalSuppressed))
+			for _, item := range s.SuppressedItems {
+				sb.WriteString(fmt.Sprintf("  - [已拦截] %s\n", htmlpkg.EscapeString(item)))
+			}
+		} else {
+			sb.WriteString(fmt.Sprintf("• 通知降噪：时段内无拦截（历史累计 %d 条）\n", s.TotalSuppressed))
+		}
+	} else {
+		sb.WriteString(fmt.Sprintf("• 通知降噪：影子观察（历史累计拟拦截 %d 条）\n", s.TotalWouldSuppress))
+	}
+
+	// 3. 审查门控面
+	if s.Mode == "active" {
+		if s.PeriodSkippedPRs > 0 {
+			sb.WriteString(fmt.Sprintf("• 审查门控：时段内跳过 %d 个纯文档/琐碎 PR 深度审查（历史累计 %d 次）\n", s.PeriodSkippedPRs, s.TotalSkipped))
+			for _, item := range s.SkippedPRItems {
+				sb.WriteString(fmt.Sprintf("  - [门控跳过] %s\n", htmlpkg.EscapeString(item)))
+			}
+		} else {
+			sb.WriteString(fmt.Sprintf("• 审查门控：时段内无跳过（历史累计 %d 次）\n", s.TotalSkipped))
+		}
+	} else {
+		sb.WriteString(fmt.Sprintf("• 审查门控：影子观察（历史累计拟跳过 %d 次）\n", s.TotalWouldSkip))
+	}
+
+	// 4. 性能优化
+	if s.CacheHitRate > 0 {
+		sb.WriteString(fmt.Sprintf("• 性能优化：缓存命中率 %.1f%%\n", s.CacheHitRate))
+	}
+
+	sb.WriteString("</blockquote>")
+	return sb.String()
 }

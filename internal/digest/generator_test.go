@@ -15,6 +15,7 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
@@ -1154,5 +1155,185 @@ func TestEnrichEventStates(t *testing.T) {
 	}
 	if enriched[2].Action != "fixed" {
 		t.Fatalf("事件 3 应根据同批次内的修复事件收敛为 fixed，实际: %s", enriched[2].Action)
+	}
+}
+
+func TestCollectJevSummary_ActiveAndReportBody(t *testing.T) {
+	ctx := t.Context()
+	data := openDigestStore(t)
+	seedTelegram(t, data)
+
+	now := time.Date(2026, 11, 1, 9, 30, 0, 0, time.UTC)
+	since := now.Add(-24 * time.Hour)
+
+	// 1. 种子仓库
+	repo, err := data.Repositories().Upsert(ctx, store.Repository{
+		ID:       "repo-jev-1",
+		FullName: "acme/jev-demo",
+		Owner:    "acme",
+		Name:     "jev-demo",
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+
+	// 2. 写入一条 Jev 降噪审计日志 (时段内)
+	metaJSON, _ := json.Marshal(map[string]any{
+		"event_id": "ev-suppressed-1",
+		"repo":     repo.FullName,
+		"title":    "Dependabot: bump actions/checkout",
+		"plane":    "notification",
+		"mode":     "active",
+		"reason":   "jev_noise",
+	})
+	_, err = data.Audits().Append(ctx, store.AuditLog{
+		ID:           ulid.Make().String(),
+		Action:       "jev.notification.suppressed",
+		ActorType:    "system",
+		ActorID:      "jev",
+		TargetType:   "event",
+		TargetID:     "ev-suppressed-1",
+		MetadataJSON: metaJSON,
+		CreatedAt:    now.Add(-2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("append audit: %v", err)
+	}
+
+	// 3. 写入一条 Jev 门控跳过的 PR
+	prNum := int64(103)
+	wi, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID:           "wi-pr-103",
+		RepositoryID: repo.ID,
+		Kind:         store.WorkItemKindPR,
+		Number:       int(prNum),
+		Title:        "docs: update architecture guide",
+		State:        "open",
+	}, nil)
+	if err != nil {
+		t.Fatalf("upsert work item: %v", err)
+	}
+	reviewJSON, _ := json.Marshal(ai.CodeReviewResult{
+		ReviewStatus:  "skipped",
+		SkipReason:    "jev_documentation_only",
+		DecisionModel: "jev",
+		Score:         100,
+	})
+	_, err = data.Settings().Upsert(ctx, store.SystemSetting{
+		ID:        ulid.Make().String(),
+		Key:       "ai.pr_review." + wi.ID,
+		ValueJSON: reviewJSON,
+		UpdatedBy: "system",
+	})
+	if err != nil {
+		t.Fatalf("upsert pr review setting: %v", err)
+	}
+
+	// 4. PR 事件
+	events := []store.Event{
+		{
+			ID:            "ev-pr-103",
+			Kind:          store.WorkItemKindPR,
+			Action:        "opened",
+			RepositoryID:  &repo.ID,
+			SubjectNumber: &prNum,
+			Title:         "docs: update architecture guide",
+			OccurredAt:    now.Add(-1 * time.Hour),
+		},
+	}
+
+	// 5. 初始化 JevRuntime (Active 模式)
+	jevCfg := config.JevConfig{
+		Enabled:            true,
+		Mode:               "active",
+		Model:              "jev-1.14.0",
+		NoiseFilterEnabled: true,
+		CascadeGateEnabled: true,
+	}
+	rt := jev.RuntimeFromEnv(jevCfg)
+	jev.GlobalMetrics().RecordCall("notification")
+	jev.GlobalMetrics().RecordSuccess("notification")
+
+	g := &Generator{
+		Store:      data,
+		JevRuntime: rt,
+	}
+
+	// 6. 验证 collectJevSummary
+	names := map[string]string{repo.ID: repo.FullName}
+	sum := g.collectJevSummary(ctx, since, events, names)
+	if sum == nil {
+		t.Fatal("collectJevSummary 应返回有效摘要")
+	}
+	if sum.Mode != "active" {
+		t.Fatalf("期望 active 模式，实际: %s", sum.Mode)
+	}
+	if sum.PeriodSuppressed != 1 {
+		t.Fatalf("期望拦截 1 条通知，实际: %d", sum.PeriodSuppressed)
+	}
+	if len(sum.SuppressedItems) != 1 || !strings.Contains(sum.SuppressedItems[0], "Dependabot") {
+		t.Fatalf("期望包含拦截条目详情，实际: %+v", sum.SuppressedItems)
+	}
+	if sum.PeriodSkippedPRs != 1 {
+		t.Fatalf("期望门控跳过 1 个 PR，实际: %d", sum.PeriodSkippedPRs)
+	}
+	if len(sum.SkippedPRItems) != 1 || !strings.Contains(sum.SkippedPRItems[0], "#103") {
+		t.Fatalf("期望包含 PR #103 跳过详情，实际: %+v", sum.SkippedPRItems)
+	}
+
+	// 7. 验证模板回退报文包含 Jev 报告块
+	body, aiUsed := g.reportBody(ctx, "📊 每日摘要 2026-11-01", events, "过去 24 小时", now)
+	if aiUsed {
+		t.Fatal("未配置 AI 客户端应走模板")
+	}
+	if !strings.Contains(body, "🤖 Jev 决策引擎运行态势（生产模式接管中）") {
+		t.Fatalf("报文应包含 Jev 生产接管块，实际:\n%s", body)
+	}
+	if !strings.Contains(body, "时段内拦截 1 条") || !strings.Contains(body, "时段内跳过 1 个") {
+		t.Fatalf("报文应包含时段内拦截与跳过详情，实际:\n%s", body)
+	}
+
+	// 8. 验证 AI 总结报文同样追加 Jev 报告块
+	gAI := &Generator{
+		Store:      data,
+		JevRuntime: rt,
+		AI: aiStub(t, `{"choices":[{"message":{"content":"今日共 1 条事件：- acme/jev-demo #103 更新文档"}}]}`),
+	}
+	bodyAI, aiUsedAI := gAI.reportBody(ctx, "📊 每日摘要 2026-11-01", events, "过去 24 小时", now)
+	if !aiUsedAI {
+		t.Fatal("AI 客户端正常应标记使用 AI")
+	}
+	if !strings.Contains(bodyAI, "🤖 Jev 决策引擎运行态势（生产模式接管中）") {
+		t.Fatalf("AI 报文应追加 Jev 运行概览折叠块，实际:\n%s", bodyAI)
+	}
+	if !strings.Contains(bodyAI, "🤖 Jev接管: 拦截 1条 | 跳过 1次") {
+		t.Fatalf("顶部指标卡应呈现 Jev 速览，实际:\n%s", bodyAI)
+	}
+}
+
+func TestCollectJevSummary_Disabled(t *testing.T) {
+	ctx := t.Context()
+	data := openDigestStore(t)
+	now := time.Date(2026, 11, 1, 9, 30, 0, 0, time.UTC)
+	since := now.Add(-24 * time.Hour)
+
+	jevCfg := config.JevConfig{
+		Enabled: false,
+	}
+	rt := jev.RuntimeFromEnv(jevCfg)
+
+	g := &Generator{
+		Store:      data,
+		JevRuntime: rt,
+	}
+
+	sum := g.collectJevSummary(ctx, since, nil, nil)
+	if sum != nil {
+		t.Fatalf("Jev 未启用时应返回 nil，实际: %+v", sum)
+	}
+
+	body, _ := g.reportBody(ctx, "📊 每日摘要 2026-11-01", nil, "过去 24 小时", now)
+	if strings.Contains(body, "Jev") {
+		t.Fatalf("未启用 Jev 时报告不得包含任何 Jev 块，实际:\n%s", body)
 	}
 }

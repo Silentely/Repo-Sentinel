@@ -269,6 +269,7 @@ func suppressNotificationInTx(
 	metaJSON, _ := json.Marshal(map[string]any{
 		"event_id":   ev.ID,
 		"repo":       repoFullName,
+		"title":      ev.Title,
 		"plane":      "notification",
 		"mode":       "active",
 		"reason":     "jev_noise",

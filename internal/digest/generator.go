@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
+	"github.com/Silentely/Repo-Sentinel/internal/jev"
 	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
@@ -60,6 +61,8 @@ type Generator struct {
 	AI *ai.Client
 	// Logger 可选；记账等尽力而为操作的失败留痕。
 	Logger *slog.Logger
+	// JevRuntime 可选；判别式决策引擎运行时配置与客户端。
+	JevRuntime *jev.RuntimeConfig
 }
 
 // RunOnce 每日摘要：到达管理员本地发送时刻且当日未发送时生成。
@@ -211,7 +214,10 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 	events = g.enrichEventStates(ctx, events)
 	// 仓库名映射一次批量拉取，模板预览与 AI 总结共用，避免两处各自查询造成 N+1。
 	names := g.repoNames(ctx, events)
-	template := buildReportBody(title, events, period, names, now)
+	since := periodToSince(period, now)
+	jevSummary := g.collectJevSummary(ctx, since, events, names)
+	jevSection := buildDigestJevSection(jevSummary)
+	template := buildReportBody(title, events, period, names, now, jevSection)
 	if g.AI == nil || !g.AI.IsDigestEnabled() || len(events) == 0 {
 		if g.Logger != nil {
 			reason := "ai_not_enabled"
@@ -255,23 +261,26 @@ func (g *Generator) reportBody(ctx context.Context, title string, events []store
 		g.Logger.Info("digest ai used", "req_id", reqID, "title", title, "events", len(events), "duration_ms", duration.Milliseconds())
 	}
 	var b strings.Builder
-	b.Grow(len(title) + len(summary) + 256)
+	b.Grow(len(title) + len(summary) + 512)
 	b.WriteString("<b>")
 	b.WriteString(htmlpkg.EscapeString(title))
 	b.WriteString("</b>\n")
 	b.WriteString("────────────────\n")
 	// 顶部生成紧凑的数据速览看板（高危告警、缺陷、发布、依赖），0.5 秒感知全局健康度
-	if card := buildDigestMetricsCard(events, period); card != "" {
+	if card := buildDigestMetricsCard(events, period, jevSummary); card != "" {
 		b.WriteString(card)
 	}
 	// 将 AI 总结格式化为视觉分层且支持 Telegram 原生折叠块（<blockquote expandable>）的高级富文本
 	b.WriteString(formatDigestSummaryHTML(summary))
+	if jevSection != "" {
+		b.WriteString("\n\n")
+		b.WriteString(jevSection)
+	}
 	return b.String(), true
 }
 
 // repoNames 解析事件涉及的仓库 ID → full_name 映射（供 AI 总结引用仓库名）。
-// 一次 List 批量拉取（仓库超 100 时翻页），避免对每个仓库单独 Get 造成 N+1 查询。
-// 查询失败或仓库不存在时跳过，不阻断总结。
+// 一次 List 批量拉取（仓库超 100 时翻页），避免对每个仓库单独 Get 造成 N+1 查询。\n// 查询失败或仓库不存在时跳过，不阻断总结。
 func (g *Generator) repoNames(ctx context.Context, events []store.Event) map[string]string {
 	need := make(map[string]struct{})
 	for _, ev := range events {
@@ -422,7 +431,8 @@ func (g *Generator) enqueue(
 // 一眼区分事件归属；映射缺失时回退原格式（不带仓库前缀）。
 // generatedAt 为报告生成时刻：页脚标注生成时间（UTC，与规则通知时间格式一致），
 // 让用户能判断报告新鲜度，避免把旧报告误认为当前时刻。
-func buildReportBody(title string, events []store.Event, period string, repoNames map[string]string, generatedAt time.Time) string {
+// extraSections 支持附加额外结构化信息（如 Jev 运行概况），附于活动预览之后、页脚之前。
+func buildReportBody(title string, events []store.Event, period string, repoNames map[string]string, generatedAt time.Time, extraSections ...string) string {
 	var b strings.Builder
 	b.Grow(1024)
 	b.WriteString("<b>")
@@ -436,6 +446,13 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 		b.WriteString(period)
 		b.WriteString("无新事件\n")
 		b.WriteString("<blockquote expandable>\n<b>🛡️ 值守状态说明</b>\n受监控仓库未发生新的安全告警、CI 异常中断或阻塞性问题，代码资产运行处于健康状态。\n</blockquote>\n")
+		for _, sec := range extraSections {
+			if strings.TrimSpace(sec) != "" {
+				b.WriteString("────────────────\n")
+				b.WriteString(sec)
+				b.WriteString("\n")
+			}
+		}
 		appendReportFooter(&b, generatedAt)
 		return b.String()
 	}
@@ -545,6 +562,14 @@ func buildReportBody(title string, events []store.Event, period string, repoName
 		line.WriteString(htmlpkg.EscapeString(ev.Title))
 		b.WriteString(line.String())
 		b.WriteString("\n")
+	}
+
+	for _, sec := range extraSections {
+		if strings.TrimSpace(sec) != "" {
+			b.WriteString("────────────────\n")
+			b.WriteString(sec)
+			b.WriteString("\n")
+		}
 	}
 
 	appendReportFooter(&b, generatedAt)
@@ -685,4 +710,203 @@ func (g *Generator) enrichEventStates(ctx context.Context, events []store.Event)
 		}
 	}
 	return out
+}
+
+func periodToSince(period string, now time.Time) time.Time {
+	switch period {
+	case "过去 24 小时":
+		return now.Add(-24 * time.Hour)
+	case "过去 7 天":
+		return now.AddDate(0, 0, -7)
+	case "过去 30 天":
+		return now.AddDate(0, 0, -30)
+	default:
+		return now.Add(-24 * time.Hour)
+	}
+}
+
+func (g *Generator) resolveJevConfig(ctx context.Context) (enabled bool, mode, model string, circuitState string) {
+	if g.JevRuntime != nil {
+		snap := g.JevRuntime.Snapshot()
+		circuit := "closed"
+		for _, bs := range g.JevRuntime.BreakerStats() {
+			if bs.State == "open" {
+				circuit = "open"
+				break
+			} else if bs.State == "half_open" && circuit != "open" {
+				circuit = "half_open"
+			}
+		}
+		return snap.Enabled, snap.Mode, snap.Model, circuit
+	}
+	if g.Store != nil {
+		cfg, err := jev.LoadStoredConfig(ctx, g.Store)
+		if err == nil && cfg.Enabled != nil && *cfg.Enabled {
+			mode := cfg.Mode
+			if mode == "" {
+				mode = "shadow"
+			}
+			return true, mode, cfg.Model, "closed"
+		}
+	}
+	return false, "", "", "closed"
+}
+
+func (g *Generator) collectJevSummary(ctx context.Context, since time.Time, events []store.Event, names map[string]string) *JevExecutionSummary {
+	enabled, mode, model, circuitState := g.resolveJevConfig(ctx)
+	if !enabled {
+		return nil
+	}
+
+	mSnap := jev.GlobalMetrics().Snapshot()
+	var totalCalls, totalSuccesses, totalHits, totalMisses uint64
+	var maxP50, maxP95 float64
+	for _, c := range mSnap.Calls {
+		totalCalls += c
+	}
+	for _, s := range mSnap.Successes {
+		totalSuccesses += s
+	}
+	for _, h := range mSnap.CacheHits {
+		totalHits += h
+	}
+	for _, m := range mSnap.CacheMisses {
+		totalMisses += m
+	}
+	for _, p := range mSnap.LatencyP50 {
+		if p > maxP50 {
+			maxP50 = p
+		}
+	}
+	for _, p := range mSnap.LatencyP95 {
+		if p > maxP95 {
+			maxP95 = p
+		}
+	}
+
+	successRate := 1.0
+	if totalCalls > 0 {
+		successRate = float64(totalSuccesses) / float64(totalCalls)
+	}
+	cacheHitRate := 0.0
+	if totalHits+totalMisses > 0 {
+		cacheHitRate = float64(totalHits) / float64(totalHits+totalMisses) * 100
+	}
+
+	sum := &JevExecutionSummary{
+		Enabled:            true,
+		Mode:               mode,
+		Model:              model,
+		CircuitState:       circuitState,
+		TotalRequests:      totalCalls,
+		SuccessRate:        successRate,
+		LatencyP50Ms:       maxP50,
+		LatencyP95Ms:       maxP95,
+		CacheHitRate:       cacheHitRate,
+		TotalSuppressed:    mSnap.Suppressed,
+		TotalSkipped:       mSnap.Skipped,
+		TotalWouldSuppress: mSnap.WouldSuppress,
+		TotalWouldSkip:     mSnap.WouldSkip,
+	}
+
+	// 1. 查询时段内通知降噪拦截记录 (Audits)
+	if g.Store != nil {
+		var curTime time.Time
+		var curID string
+		for {
+			logs, err := g.Store.Audits().ListCursor(ctx, curTime, curID, 50)
+			if err != nil || len(logs) == 0 {
+				break
+			}
+			reachedEnd := false
+			for _, log := range logs {
+				if log.CreatedAt.Before(since) {
+					reachedEnd = true
+					break
+				}
+				if log.Action == "jev.notification.suppressed" {
+					sum.PeriodSuppressed++
+					if len(sum.SuppressedItems) < 5 {
+						var meta struct {
+							Repo  string `json:"repo"`
+							Title string `json:"title"`
+						}
+						_ = json.Unmarshal(log.MetadataJSON, &meta)
+						itemDesc := meta.Repo
+						if meta.Title != "" {
+							if itemDesc != "" {
+								itemDesc += ": " + meta.Title
+							} else {
+								itemDesc = meta.Title
+							}
+						} else {
+							for _, ev := range events {
+								if ev.ID == log.TargetID && ev.Title != "" {
+									if itemDesc != "" {
+										itemDesc += ": " + ev.Title
+									} else {
+										itemDesc = ev.Title
+									}
+									break
+								}
+							}
+						}
+						if itemDesc == "" {
+							itemDesc = log.TargetID
+						}
+						sum.SuppressedItems = append(sum.SuppressedItems, itemDesc)
+					}
+				}
+			}
+			if reachedEnd || len(logs) < 50 {
+				break
+			}
+			curTime = logs[len(logs)-1].CreatedAt
+			curID = logs[len(logs)-1].ID
+		}
+	}
+
+	// 2. 查询时段内 PR 审查门控跳过记录 (WorkItems & Settings)
+	if g.Store != nil && len(events) > 0 {
+		seenPRs := make(map[string]bool)
+		for _, ev := range events {
+			if ev.Kind != store.WorkItemKindPR || ev.RepositoryID == nil || ev.SubjectNumber == nil {
+				continue
+			}
+			prKey := fmt.Sprintf("%s#%d", *ev.RepositoryID, *ev.SubjectNumber)
+			if seenPRs[prKey] {
+				continue
+			}
+			seenPRs[prKey] = true
+
+			wi, err := g.Store.WorkItems().GetByRepoNumber(ctx, *ev.RepositoryID, int(*ev.SubjectNumber))
+			if err != nil || wi.ID == "" {
+				continue
+			}
+			setting, err := g.Store.Settings().Get(ctx, "ai.pr_review."+wi.ID)
+			if err != nil {
+				continue
+			}
+			var review ai.CodeReviewResult
+			if err := json.Unmarshal(setting.ValueJSON, &review); err != nil {
+				continue
+			}
+			if review.ReviewStatus == "skipped" && (review.DecisionModel == "jev" || review.SkipReason == "jev_documentation_only") {
+				sum.PeriodSkippedPRs++
+				if len(sum.SkippedPRItems) < 5 {
+					repoName := names[*ev.RepositoryID]
+					if repoName == "" {
+						repoName = *ev.RepositoryID
+					}
+					itemDesc := fmt.Sprintf("%s #%d", repoName, *ev.SubjectNumber)
+					if ev.Title != "" {
+						itemDesc += ": " + ev.Title
+					}
+					sum.SkippedPRItems = append(sum.SkippedPRItems, itemDesc)
+				}
+			}
+		}
+	}
+
+	return sum
 }

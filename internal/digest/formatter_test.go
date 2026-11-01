@@ -168,3 +168,99 @@ func TestBuildDigestMetricsCard_PartiallyFixed(t *testing.T) {
 		t.Fatalf("应体现高危告警剩余 1 (已修复 1)，实际:\n%s", card)
 	}
 }
+
+func TestBuildDigestJevSection_Active(t *testing.T) {
+	sum := &JevExecutionSummary{
+		Enabled:          true,
+		Mode:             "active",
+		Model:            "jev-1.14.0",
+		CircuitState:     "closed",
+		TotalRequests:    45,
+		SuccessRate:      1.0,
+		LatencyP95Ms:     120,
+		CacheHitRate:     65.5,
+		PeriodSuppressed: 2,
+		SuppressedItems:  []string{"Silentely/web: bump actions/checkout", "Silentely/api: trivial refresh"},
+		PeriodSkippedPRs: 1,
+		SkippedPRItems:   []string{"Silentely/web #42: update docs"},
+		TotalSuppressed:  15,
+		TotalSkipped:     8,
+	}
+
+	section := buildDigestJevSection(sum)
+	if !strings.Contains(section, "<blockquote expandable>") || !strings.Contains(section, "</blockquote>") {
+		t.Fatalf("Jev 报告块应使用 <blockquote expandable> 折叠，实际:\n%s", section)
+	}
+	if !strings.Contains(section, "生产模式接管中") {
+		t.Fatalf("应显示生产模式接管中，实际:\n%s", section)
+	}
+	if !strings.Contains(section, "时段内拦截 2 条（历史累计 15 条）") {
+		t.Fatalf("应包含时段内拦截数与累计数，实际:\n%s", section)
+	}
+	if !strings.Contains(section, "[已拦截] Silentely/web: bump actions/checkout") {
+		t.Fatalf("应包含拦截明细条目，实际:\n%s", section)
+	}
+	if !strings.Contains(section, "时段内跳过 1 个纯文档/琐碎 PR 深度审查（历史累计 8 次）") {
+		t.Fatalf("应包含门控跳过数，实际:\n%s", section)
+	}
+	if !strings.Contains(section, "[门控跳过] Silentely/web #42: update docs") {
+		t.Fatalf("应包含门控跳过明细条目，实际:\n%s", section)
+	}
+	if !strings.Contains(section, "缓存命中率 65.5%") {
+		t.Fatalf("应包含缓存命中率，实际:\n%s", section)
+	}
+}
+
+func TestBuildDigestJevSection_ShadowAndCircuit(t *testing.T) {
+	sum := &JevExecutionSummary{
+		Enabled:            true,
+		Mode:               "shadow",
+		Model:              "jev-1.14.0",
+		CircuitState:       "open",
+		TotalRequests:      10,
+		SuccessRate:        0.7,
+		LatencyP95Ms:       250,
+		TotalWouldSuppress: 5,
+		TotalWouldSkip:     3,
+	}
+
+	section := buildDigestJevSection(sum)
+	if !strings.Contains(section, "影子观察模式") {
+		t.Fatalf("应显示影子观察模式，实际:\n%s", section)
+	}
+	if !strings.Contains(section, "🚨 熔断降级") {
+		t.Fatalf("断路器 open 应提示熔断降级，实际:\n%s", section)
+	}
+	if !strings.Contains(section, "历史累计拟拦截 5 条") || !strings.Contains(section, "历史累计拟跳过 3 次") {
+		t.Fatalf("影子模式应体现拟拦截/拟跳过，实际:\n%s", section)
+	}
+}
+
+func TestBuildDigestMetricsCard_WithJev(t *testing.T) {
+	events := []store.Event{
+		{Kind: store.ReleaseKind, Title: "v1.0.0"},
+	}
+	sum := &JevExecutionSummary{
+		Enabled:          true,
+		Mode:             "active",
+		CircuitState:     "closed",
+		PeriodSuppressed: 3,
+		PeriodSkippedPRs: 2,
+	}
+
+	card := buildDigestMetricsCard(events, "过去 24 小时", sum)
+	if !strings.Contains(card, "🤖 Jev接管: 拦截 3条 | 跳过 2次") {
+		t.Fatalf("指标卡应包含 Jev 拦截与跳过速览，实际:\n%s", card)
+	}
+
+	// 验证熔断告警提示
+	sumBroken := &JevExecutionSummary{
+		Enabled:      true,
+		Mode:         "active",
+		CircuitState: "open",
+	}
+	cardBroken := buildDigestMetricsCard(events, "过去 24 小时", sumBroken)
+	if !strings.Contains(cardBroken, "🚨 <b>[Jev熔断告警]</b>") {
+		t.Fatalf("Jev 熔断时应在指标卡头部突出告警，实际:\n%s", cardBroken)
+	}
+}
