@@ -55,6 +55,10 @@ git_show_head*.txt
 
 # agent
 .claude
+.agents
+.codex
+.gemini
+skills/
 .omx
 .omc
 .ace-tool/
