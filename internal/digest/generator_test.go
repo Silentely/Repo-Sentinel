@@ -14,8 +14,8 @@ import (
 
 	"github.com/Silentely/Repo-Sentinel/internal/ai"
 	"github.com/Silentely/Repo-Sentinel/internal/config"
-	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/jev"
+	"github.com/Silentely/Repo-Sentinel/internal/rules"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 	"github.com/oklog/ulid/v2"
 )
@@ -1297,7 +1297,7 @@ func TestCollectJevSummary_ActiveAndReportBody(t *testing.T) {
 	gAI := &Generator{
 		Store:      data,
 		JevRuntime: rt,
-		AI: aiStub(t, `{"choices":[{"message":{"content":"今日共 1 条事件：- acme/jev-demo #103 更新文档"}}]}`),
+		AI:         aiStub(t, `{"choices":[{"message":{"content":"今日共 1 条事件：- acme/jev-demo #103 更新文档"}}]}`),
 	}
 	bodyAI, aiUsedAI := gAI.reportBody(ctx, "📊 每日摘要 2026-11-01", events, "过去 24 小时", now)
 	if !aiUsedAI {

@@ -22,20 +22,20 @@ var (
 
 // JevExecutionSummary 定期报告中展示的 Jev 判别式决策引擎执行与健康度汇总。
 type JevExecutionSummary struct {
-	Enabled            bool
-	Mode               string // "active", "shadow", "disabled"
-	Model              string
-	CircuitState       string // "closed", "half_open", "open"
-	TotalRequests      uint64
-	SuccessRate        float64
-	LatencyP50Ms       float64
-	LatencyP95Ms       float64
-	CacheHitRate       float64
+	Enabled       bool
+	Mode          string // "active", "shadow", "disabled"
+	Model         string
+	CircuitState  string // "closed", "half_open", "open"
+	TotalRequests uint64
+	SuccessRate   float64
+	LatencyP50Ms  float64
+	LatencyP95Ms  float64
+	CacheHitRate  float64
 	// 时段内实际拦截与跳过详情
-	PeriodSuppressed   int
-	SuppressedItems    []string
-	PeriodSkippedPRs   int
-	SkippedPRItems     []string
+	PeriodSuppressed int
+	SuppressedItems  []string
+	PeriodSkippedPRs int
+	SkippedPRItems   []string
 	// 历史累计指标
 	TotalSuppressed    uint64
 	TotalSkipped       uint64
