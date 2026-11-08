@@ -251,7 +251,6 @@ func TestChannelIncidentTags(t *testing.T) {
 	}
 }
 
-
 func TestChannelHandlers_TelegramUpdateInvalidatesResolveBotTokenCacheImmediately(t *testing.T) {
 	ring := testHTTPKeyRing(t)
 	fixture := newHTTPTestFixture(t, httpTestOptions{keyRing: ring})
