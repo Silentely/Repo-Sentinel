@@ -513,6 +513,9 @@ export interface SystemSettings {
   "report.weekly_day"?: string;
   "report.monthly_enabled"?: boolean;
   "report.monthly_day"?: number;
+  "chatops.telegram.allowed_user_ids"?: string;
+  "chatops.feishu.allowed_user_ids"?: string;
+  "chatops.slack.allowed_user_ids"?: string;
 }
 
 export interface Installation {

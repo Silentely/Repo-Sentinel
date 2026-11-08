@@ -53,7 +53,6 @@ interface SettingsFormState {
   featureStars: boolean;
   featureWatches: boolean;
   aiAutoLabel: boolean;
-  telegramAllowedUserIDs: string;
 }
 
 // 定期报告发送日枚举（与后端 report.weekly_day 一致）。
@@ -91,7 +90,6 @@ function formFromSettings(data: SystemSettings | undefined): SettingsFormState {
     featureStars: data?.["feature.stars"] !== false,
     featureWatches: data?.["feature.watches"] !== false,
     aiAutoLabel: Boolean(data?.["ai.auto_label_enabled"]),
-    telegramAllowedUserIDs: String(data?.["chatops.telegram.allowed_user_ids"] ?? ""),
   };
 }
 
@@ -134,7 +132,6 @@ function prefsBody(form: SettingsFormState): SystemSettings {
     "retention.outbox_days": form.retentionOutboxDays,
     "retention.webhook_deliveries_days": form.retentionDeliveriesDays,
     "ai.auto_label_enabled": form.aiAutoLabel,
-    "chatops.telegram.allowed_user_ids": form.telegramAllowedUserIDs.trim(),
   };
 }
 
@@ -558,15 +555,6 @@ export function SettingsPage() {
           <label className="field--plain">
             <span>Webhook Delivery 保留天数</span>
             <NumberField min={0} max={3650} integer value={form.retentionDeliveriesDays} onChange={(v) => set("retentionDeliveriesDays", v)} />
-          </label>
-          <label className="field--plain field--wide">
-            <span>Telegram 操作者白名单（User ID）</span>
-            <input
-              size={32}
-              value={form.telegramAllowedUserIDs}
-              onChange={(e) => set("telegramAllowedUserIDs", e.target.value)}
-              placeholder="例如：245715998, 123456789（多个以逗号分隔）"
-            />
           </label>
         </div>
         <p className="field-hint">防刷屏保护：短时事件数超阈值时自动聚合并降级为简报。保留天数设为 0 表示永久保存历史。</p>
