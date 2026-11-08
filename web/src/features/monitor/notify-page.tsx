@@ -308,15 +308,17 @@ function ChannelForm({
         </label>
       ) : null}
       {type === "telegram" ? (
-        <label className="field--plain">
-          <span>Telegram 操作者 User ID 白名单（Mini App & ChatOps）</span>
-          <input
-            size={32}
-            value={allowedUserIDs}
-            onChange={(e) => setAllowedUserIDs(e.target.value)}
-            placeholder="例如：245715998, 123456789（多个用逗号分隔）"
-          />
-          <span className="field-hint">
+        <>
+          <label className="field--plain">
+            <span>Telegram 操作者 User ID 白名单（Mini App & ChatOps）</span>
+            <input
+              size={32}
+              value={allowedUserIDs}
+              onChange={(e) => setAllowedUserIDs(e.target.value)}
+              placeholder="例如：245715998, 123456789（多个用逗号分隔）"
+            />
+          </label>
+          <p className="field-hint">
             用于 Telegram Mini App 看板与 ChatOps 处置授权。留空默认拒绝所有访客；私聊时您的 Chat ID 即为个人 User ID。
             {(() => {
               const currentChatID = (target.trim() || channel?.target || "").trim();
@@ -339,8 +341,8 @@ function ChannelForm({
               }
               return null;
             })()}
-          </span>
-        </label>
+          </p>
+        </>
       ) : null}
       <fieldset className="field--plain">
         <legend>订阅通知类型</legend>
