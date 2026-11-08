@@ -289,14 +289,14 @@ describe("NotifyPage", () => {
     (fixtures.settings as Record<string, unknown>)["chatops.telegram.allowed_user_ids"] = "245715998";
     renderPage();
 
-    const whitelistSection = screen.getByRole("heading", { name: "Telegram 操作者白名单（Mini App & ChatOps）" }).closest("section") as HTMLElement;
-    const input = within(whitelistSection).getByLabelText(/^操作者 User ID/);
+    const telegramSection = screen.getByRole("heading", { name: "Telegram" }).closest("section") as HTMLElement;
+    const input = within(telegramSection).getByLabelText(/^Telegram 操作者 User ID 白名单/);
     await waitFor(() => {
       expect(input).toHaveValue("245715998");
     });
 
     fireEvent.change(input, { target: { value: "245715998, 987654" } });
-    fireEvent.click(within(whitelistSection).getByRole("button", { name: "保存白名单" }));
+    fireEvent.click(within(telegramSection).getByRole("button", { name: "保存 Telegram" }));
 
     await waitFor(() => {
       const call = fixtures.apiRequest.mock.calls.find(
