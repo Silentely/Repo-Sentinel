@@ -273,6 +273,9 @@ func (s *server) handleUpsertChannel(w http.ResponseWriter, r *http.Request) {
 				"channel_type", channelType, "kept_channel_id", saved.ID, "error_code", "channel_disable_failed", "error", err.Error())
 		}
 	}
+	if channelType == store.ChannelTelegram {
+		InvalidateResolvedBotTokenCache()
+	}
 	if session, ok := sessionFromContext(r.Context()); ok && s.dependencies.Store != nil {
 		s.appendAudit(r.Context(), store.AuditLog{
 			ID:           ulid.Make().String(),
@@ -440,6 +443,9 @@ func (s *server) handleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 		s.writeMappedError(w, r, err)
 		return
 	}
+	if channelType == store.ChannelTelegram {
+		InvalidateResolvedBotTokenCache()
+	}
 	if session, ok := sessionFromContext(r.Context()); ok && s.dependencies.Store != nil {
 		s.appendAudit(r.Context(), store.AuditLog{
 			ID:           ulid.Make().String(),
@@ -476,6 +482,9 @@ func (s *server) handleToggleChannel(w http.ResponseWriter, r *http.Request) {
 	if err := s.dependencies.Store.Channels().ToggleEnabled(r.Context(), ch.ID, body.Enabled); err != nil {
 		s.writeMappedError(w, r, err)
 		return
+	}
+	if channelType == store.ChannelTelegram {
+		InvalidateResolvedBotTokenCache()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":       "ok",

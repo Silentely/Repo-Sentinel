@@ -25,6 +25,10 @@ import (
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
+// ErrTMABotTokenUnavailable 是 Bot Token 解析/解密失败时的统一哨兵错误，
+// 确保底层解密错误文本和密钥材料绝不泄露到错误链或日志中。
+var ErrTMABotTokenUnavailable = errors.New("telegram bot token unavailable")
+
 // TelegramUser 描述从 initData 解析出的 Telegram 用户信息。
 type TelegramUser struct {
 	ID              int64  `json:"id"`
@@ -175,8 +179,10 @@ func cacheResolvedBotToken(token string) {
 }
 
 // ResolveBotToken 按三级优先级解析 Bot Token：
-//  1. 数据库启用的 Telegram 渠道 (st.Channels().GetEnabledByType(..., ChannelTelegram))，若 SecretEnvelope 存在则解密；
-//     若解密失败，严格 fail-closed 记录 Error 日志并返回错误，绝不静默降级！
+//  1. 数据库启用的 Telegram 渠道 (st.Channels().GetEnabledByType(..., ChannelTelegram))：
+//     已启用 DB 渠道为唯一真源！
+//     - 若 SecretEnvelope 为空，显式 fail-closed 记录错误并返回 ErrTMABotTokenUnavailable，绝不静默回退！
+//     - 若 SecretEnvelope 解密失败，显式 fail-closed 只记录 channel_id 与稳定错误码，绝不打印/包装原始错误，返回 ErrTMABotTokenUnavailable！
 //  2. 若渠道未找到 (store.ErrNotFound)，调用 chatops.ResolveTelegramBotToken(ctx, st)；
 //  3. 静态配置 Token (cfgToken)；
 //
@@ -193,24 +199,41 @@ func ResolveBotToken(ctx context.Context, st store.Store, kr cryptox.KeyRing, cf
 	if st != nil && st.Channels() != nil {
 		ch, err := st.Channels().GetEnabledByType(ctx, store.ChannelTelegram)
 		if err == nil {
-			if ch.SecretEnvelope != "" {
-				res, decErr := kr.Decrypt(ctx, ch.SecretEnvelope, []byte(notify.AAD))
-				if decErr != nil {
-					slog.Default().Error(
-						fmt.Sprintf("telegram bot token decrypt failed: channel_id=%s, error=%v", ch.ID, decErr),
-						"channel_id", ch.ID,
-						"error", decErr,
-					)
-					return "", fmt.Errorf("telegram bot token decrypt failed: channel_id=%s, error=%w", ch.ID, decErr)
-				}
-				token := string(res.Plaintext)
-				if token != "" {
-					cacheResolvedBotToken(token)
-					return token, nil
-				}
+			if ch.SecretEnvelope == "" {
+				slog.Default().Error(
+					"telegram bot token missing: channel enabled without secret envelope",
+					"error_code", "telegram_channel_secret_missing",
+					"channel_id", ch.ID,
+				)
+				return "", ErrTMABotTokenUnavailable
 			}
+			res, decErr := kr.Decrypt(ctx, ch.SecretEnvelope, []byte(notify.AAD))
+			if decErr != nil {
+				// 严格安全边界：只记 channel_id 与稳定错误码，绝对不记录 decErr，返回哨兵错误
+				slog.Default().Error(
+					"telegram bot token decrypt failed",
+					"error_code", "telegram_bot_token_decrypt_failed",
+					"channel_id", ch.ID,
+				)
+				return "", ErrTMABotTokenUnavailable
+			}
+			token := string(res.Plaintext)
+			if token == "" {
+				slog.Default().Error(
+					"telegram bot token empty after decryption",
+					"error_code", "telegram_bot_token_empty",
+					"channel_id", ch.ID,
+				)
+				return "", ErrTMABotTokenUnavailable
+			}
+			cacheResolvedBotToken(token)
+			return token, nil
 		} else if !errors.Is(err, store.ErrNotFound) {
-			return "", fmt.Errorf("failed to query telegram channel: %w", err)
+			slog.Default().Error(
+				"failed to query telegram channel",
+				"error_code", "telegram_channel_query_failed",
+			)
+			return "", ErrTMABotTokenUnavailable
 		}
 	}
 
@@ -230,23 +253,40 @@ func ResolveBotToken(ctx context.Context, st store.Store, kr cryptox.KeyRing, cf
 	return "", nil
 }
 
-func isTMAUserAllowed(ctx context.Context, st store.Store, allowedUserIDs []string, userID int64) bool {
+// isTMAUserAllowed 校验 Telegram 操作者白名单，单一真源：chatops.telegram.allowed_user_ids 系统设置。
+func isTMAUserAllowed(ctx context.Context, st store.Store, userID int64) bool {
+	if st == nil || st.Settings() == nil {
+		return false
+	}
+	settingStr, err := chatops.ReadSecureConfig(ctx, st.Settings(), "chatops.telegram.allowed_user_ids")
+	if err != nil || strings.TrimSpace(settingStr) == "" {
+		return false
+	}
 	userIDStr := strconv.FormatInt(userID, 10)
-	for _, id := range allowedUserIDs {
-		if strings.TrimSpace(id) == userIDStr {
-			return true
-		}
+	ok, err := chatops.VerifyOperatorWhitelist(ctx, st.Settings(), "chatops.telegram.allowed_user_ids", userIDStr)
+	return err == nil && ok
+}
+
+func tmaRemoteIP(r *http.Request) string {
+	if ip := remoteIPFromContext(r.Context()); ip != "" {
+		return ip
 	}
-	if st != nil && st.Settings() != nil {
-		settingStr, err := chatops.ReadSecureConfig(ctx, st.Settings(), "chatops.telegram.allowed_user_ids")
-		if err == nil && strings.TrimSpace(settingStr) != "" {
-			ok, err := chatops.VerifyOperatorWhitelist(ctx, st.Settings(), "chatops.telegram.allowed_user_ids", userIDStr)
-			if err == nil && ok {
-				return true
-			}
-		}
+	return clientIPFromRemoteAddr(r.RemoteAddr)
+}
+
+func tmaRequestID(r *http.Request) string {
+	if id := requestIDFromContext(r.Context()); id != "" {
+		return id
 	}
-	return false
+	return r.Header.Get("X-Request-ID")
+}
+
+func auditMetadataJSON(fields map[string]any) []byte {
+	b, err := json.Marshal(fields)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 func appendTMAAudit(ctx context.Context, st store.Store, logger *slog.Logger, entry store.AuditLog) {
@@ -276,13 +316,25 @@ func TMAAuthMiddleware(
 	st store.Store,
 	kr cryptox.KeyRing,
 	cfgToken string,
-	allowedUserIDs []string,
 	logger *slog.Logger,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reqID := tmaRequestID(r)
+			remIP := tmaRemoteIP(r)
+
 			initData := r.Header.Get("X-Telegram-Init-Data")
 			if strings.TrimSpace(initData) == "" {
+				appendTMAAudit(r.Context(), st, logger, store.AuditLog{
+					Action:    "tma.auth.denied",
+					ActorType: "telegram/tma",
+					MetadataJSON: auditMetadataJSON(map[string]any{
+						"reason":     "missing_init_data_header",
+						"error_code": errorCodeUnauthorized,
+						"request_id": reqID,
+						"remote_ip":  remIP,
+					}),
+				})
 				writeAPIErrorResponse(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
 				return
 			}
@@ -290,15 +342,35 @@ func TMAAuthMiddleware(
 			token, err := ResolveBotToken(r.Context(), st, kr, cfgToken)
 			if err != nil {
 				if logger != nil {
-					logger.Error("resolve bot token failed during tma auth", "error", err.Error())
+					logger.Error("resolve bot token failed during tma auth", "error_code", "tma_bot_token_unavailable")
 				}
+				appendTMAAudit(r.Context(), st, logger, store.AuditLog{
+					Action:    "tma.auth.denied",
+					ActorType: "telegram/tma",
+					MetadataJSON: auditMetadataJSON(map[string]any{
+						"reason":     "bot_token_unavailable",
+						"error_code": errorCodeServiceUnavailable,
+						"request_id": reqID,
+						"remote_ip":  remIP,
+					}),
+				})
 				writeAPIErrorResponse(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 				return
 			}
 			if token == "" {
 				if logger != nil {
-					logger.Error("bot token not configured for tma auth")
+					logger.Error("bot token not configured for tma auth", "error_code", "tma_bot_token_not_configured")
 				}
+				appendTMAAudit(r.Context(), st, logger, store.AuditLog{
+					Action:    "tma.auth.denied",
+					ActorType: "telegram/tma",
+					MetadataJSON: auditMetadataJSON(map[string]any{
+						"reason":     "bot_token_not_configured",
+						"error_code": errorCodeUnauthorized,
+						"request_id": reqID,
+						"remote_ip":  remIP,
+					}),
+				})
 				writeAPIErrorResponse(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
 				return
 			}
@@ -306,21 +378,33 @@ func TMAAuthMiddleware(
 			user, valErr := ValidateTelegramInitData(initData, token, 24*time.Hour)
 			if valErr != nil {
 				if logger != nil {
-					logger.Warn("tma auth validation failed", "error", valErr.Error())
+					logger.Warn("tma auth validation failed", "error_code", "signature_verification_failed")
 				}
 				appendTMAAudit(r.Context(), st, logger, store.AuditLog{
 					Action:    "tma.auth.denied",
 					ActorType: "telegram/tma",
+					MetadataJSON: auditMetadataJSON(map[string]any{
+						"reason":     "signature_verification_failed",
+						"error_code": errorCodeUnauthorized,
+						"request_id": reqID,
+						"remote_ip":  remIP,
+					}),
 				})
 				writeAPIErrorResponse(w, r, http.StatusUnauthorized, errorCodeUnauthorized, nil)
 				return
 			}
 
-			if !isTMAUserAllowed(r.Context(), st, allowedUserIDs, user.ID) {
+			if !isTMAUserAllowed(r.Context(), st, user.ID) {
 				appendTMAAudit(r.Context(), st, logger, store.AuditLog{
 					Action:    "tma.auth.denied",
 					ActorType: "telegram/tma",
 					ActorID:   strconv.FormatInt(user.ID, 10),
+					MetadataJSON: auditMetadataJSON(map[string]any{
+						"reason":     "whitelist_rejected",
+						"error_code": errorCodeForbidden,
+						"request_id": reqID,
+						"remote_ip":  remIP,
+					}),
 				})
 				writeAPIErrorResponse(w, r, http.StatusForbidden, errorCodeForbidden, nil)
 				return
@@ -341,7 +425,6 @@ func (s *server) tmaAuthMiddleware(next http.Handler) http.Handler {
 		s.dependencies.Store,
 		kr,
 		s.dependencies.Config.Notify.Telegram.Token.Reveal(),
-		nil,
 		s.dependencies.Logger,
 	)(next)
 }

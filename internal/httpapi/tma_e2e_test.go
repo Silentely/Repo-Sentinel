@@ -46,6 +46,7 @@ func setupTMAE2EFixture(t *testing.T, tmaEnabled bool, allowedUser TelegramUser,
 		},
 	}
 
+	testRing := setupTestKeyRing(t)
 	fixture := newHTTPTestFixture(t, httpTestOptions{
 		tmaEnabled:      tmaEnabled,
 		publicBaseURL:   "https://reposentinel.example",
@@ -53,6 +54,7 @@ func setupTMAE2EFixture(t *testing.T, tmaEnabled bool, allowedUser TelegramUser,
 		githubClient:    customGH,
 		logger:          log,
 		frontend:        frontendFS,
+		keyRing:         &testRing,
 	})
 
 	ctx := t.Context()
@@ -68,12 +70,14 @@ func setupTMAE2EFixture(t *testing.T, tmaEnabled bool, allowedUser TelegramUser,
 		t.Fatalf("初始化测试设置失败: err1=%v, err2=%v", err1, err2)
 	}
 
+	encToken, _ := testRing.Encrypt(ctx, []byte(testTMABotToken), []byte(notify.AAD))
 	_, _ = fixture.store.Channels().Upsert(ctx, store.NotificationChannel{
-		ID:          "ch-tg-fixture-default",
-		ChannelType: store.ChannelTelegram,
-		Name:        "telegram-fixture",
-		Target:      "123456",
-		Enabled:     true,
+		ID:             "ch-tg-fixture-default",
+		ChannelType:    store.ChannelTelegram,
+		Name:           "telegram-fixture",
+		Target:         "123456",
+		Enabled:        true,
+		SecretEnvelope: encToken,
 	})
 	InvalidateResolvedBotTokenCache()
 

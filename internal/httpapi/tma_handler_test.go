@@ -17,6 +17,7 @@ import (
 
 	"github.com/Silentely/Repo-Sentinel/internal/chatops"
 	"github.com/Silentely/Repo-Sentinel/internal/githubx"
+	"github.com/Silentely/Repo-Sentinel/internal/notify"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
 
@@ -28,12 +29,14 @@ func setupTMAServer(t *testing.T, tmaEnabled bool, allowedUser TelegramUser, cus
 	if len(customLogger) > 0 {
 		log = customLogger[0]
 	}
+	testRing := setupTestKeyRing(t)
 	fixture := newHTTPTestFixture(t, httpTestOptions{
 		tmaEnabled:      tmaEnabled,
 		publicBaseURL:   "https://reposentinel.example",
 		chatOpsExecutor: customExec,
 		githubClient:    customGH,
 		logger:          log,
+		keyRing:         &testRing,
 	})
 
 	ctx := t.Context()
@@ -848,11 +851,13 @@ func TestTMAHandler_QuietHoursToggle(t *testing.T) {
 	user := TelegramUser{ID: 88809, Username: "qh_tester"}
 	fixture, initData := setupTMAServer(t, true, user, nil, nil)
 
+	encTokenToggle, _ := setupTestKeyRing(t).Encrypt(ctx, []byte(testTMABotToken), []byte(notify.AAD))
 	ch, err := fixture.store.Channels().Upsert(ctx, store.NotificationChannel{
 		ID:                "ch-tg-toggle-1",
 		ChannelType:       store.ChannelTelegram,
 		Name:              "Telegram Alert",
 		Enabled:           true,
+		SecretEnvelope:    encTokenToggle,
 		QuietHoursEnabled: false,
 		QuietHoursStart:   "23:00",
 		QuietHoursEnd:     "08:00",
@@ -947,11 +952,13 @@ func TestTMAHandler_Dashboard(t *testing.T) {
 	})
 
 	// 写入 Telegram 渠道
+	encTokenDash, _ := setupTestKeyRing(t).Encrypt(ctx, []byte(testTMABotToken), []byte(notify.AAD))
 	_, _ = fixture.store.Channels().Upsert(ctx, store.NotificationChannel{
 		ID:                "ch-tg-dash",
 		ChannelType:       store.ChannelTelegram,
 		Name:              "Telegram Alerts",
 		Enabled:           true,
+		SecretEnvelope:    encTokenDash,
 		QuietHoursEnabled: true,
 		QuietHoursStart:   "22:00",
 		QuietHoursEnd:     "07:00",
@@ -1038,5 +1045,78 @@ func TestTMAHandler_ZeroSensitiveTokensInLogs(t *testing.T) {
 	}
 	if strings.Contains(allRespBodies, testTMABotToken) {
 		t.Fatalf("HTTP 响应体中泄漏了 Bot Token: %s", allRespBodies)
+	}
+}
+
+func TestTMA_A6_WriteActionFailureAndRejectionAudit(t *testing.T) {
+	// A6【P1】：TMA 写操作在失败与被拒绝（403/409/5xx）时也写审计，字段与 ChatOps 审计同源
+	ctx := t.Context()
+	user := TelegramUser{ID: 10001, Username: "operator_alex"}
+	mockExec := &mockTMAActionExecutor{}
+	fixture, initData := setupTMAServer(t, true, user, mockExec, nil)
+
+	// 1. 跨仓库/未监控仓库拒绝 403
+	unmonitoredRepo, errRepo := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID:       "repo-unmonitored-test",
+		Owner:    "test-org",
+		Name:     "repo-unmonitored",
+		FullName: "test-org/repo-unmonitored",
+	})
+	if errRepo != nil {
+		t.Fatalf("upsert repo error: %v", errRepo)
+	}
+	monitorDisabled := false
+	_ = fixture.store.Repositories().UpdateSettings(ctx, unmonitoredRepo.ID, store.RepositorySettings{
+		MonitorEnabled: &monitorDisabled,
+	})
+
+	runID := int64(12345)
+	evUnmonitored, errEv := fixture.store.Events().Create(ctx, store.Event{
+		ID:                "ev-unmonitored-1",
+		DedupeFingerprint: "fp-unmonitored-1",
+		RepositoryID:      &unmonitoredRepo.ID,
+		WorkflowRunID:     &runID,
+		Kind:              "workflow_run",
+		OccurredAt:        time.Now().UTC(),
+	})
+	if errEv != nil {
+		t.Fatalf("create event error: %v", errEv)
+	}
+
+	bodyJSON, _ := json.Marshal(map[string]any{
+		"action":   "workflow_rerun",
+		"event_id": evUnmonitored.ID,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tma/actions", bytes.NewReader(bodyJSON))
+	req.Header.Set("X-Telegram-Init-Data", initData)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("未监控仓库写操作期望 403 Forbidden，实际: %d", rec.Code)
+	}
+
+	audits, err := fixture.store.Audits().List(ctx, 10, 0)
+	if err != nil || len(audits) == 0 {
+		t.Fatalf("未查询到审计日志: %v", err)
+	}
+	var auditDenied store.AuditLog
+	for _, a := range audits {
+		if a.Action == "tma.action.workflow_rerun" {
+			auditDenied = a
+			break
+		}
+	}
+	if auditDenied.ID == "" {
+		t.Fatal("未记录 tma.action.workflow_rerun 拒绝审计")
+	}
+	if auditDenied.ActorType != "telegram/tma" || auditDenied.ActorID != "10001" {
+		t.Fatalf("审计主体信息不符: type=%s, id=%s", auditDenied.ActorType, auditDenied.ActorID)
+	}
+	var metaDenied map[string]any
+	_ = json.Unmarshal(auditDenied.MetadataJSON, &metaDenied)
+	if metaDenied["action_result"] != "denied" {
+		t.Fatalf("期望 action_result denied, 实际: %v", metaDenied["action_result"])
 	}
 }

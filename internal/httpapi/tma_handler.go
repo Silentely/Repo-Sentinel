@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -566,14 +567,52 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var actorID string
+	if user, ok := GetTelegramUser(r.Context()); ok && user != nil {
+		actorID = strconv.FormatInt(user.ID, 10)
+	}
+
+	var targetType string
+	var targetID string
+
+	recordAudit := func(result, reason, errMsg string) {
+		meta := map[string]any{
+			"action_result": result,
+			"action":        req.Action,
+			"event_id":      req.EventID,
+		}
+		if reason != "" {
+			meta["reason"] = reason
+		}
+		if errMsg != "" {
+			meta["error"] = errMsg
+		}
+		metaJSON, _ := json.Marshal(meta)
+		s.appendAudit(r.Context(), store.AuditLog{
+			Action:       "tma.action." + req.Action,
+			ActorType:    "telegram/tma",
+			ActorID:      actorID,
+			TargetType:   targetType,
+			TargetID:     targetID,
+			MetadataJSON: metaJSON,
+			IPAddress:    remoteIPFromContext(r.Context()),
+		})
+	}
+
 	// 严格通过 event_id 反查数据库纳管仓库，忽略客户端传入的任何外部标识 (断言 5 & 6)
 	if ev.RepositoryID == nil || *ev.RepositoryID == "" {
+		targetType = "repository"
+		recordAudit("denied", "missing_repository_id", "")
 		s.writeAPIError(w, r, http.StatusForbidden, errorCodeForbidden, nil)
 		return
 	}
 
+	targetType = "repository"
+	targetID = *ev.RepositoryID
+
 	repo, err := s.dependencies.Store.Repositories().Get(r.Context(), *ev.RepositoryID)
 	if err != nil || !repo.MonitorEnabled || repo.IsArchived {
+		recordAudit("denied", "unmonitored_or_archived_repo", "")
 		s.writeAPIError(w, r, http.StatusForbidden, errorCodeForbidden, nil)
 		return
 	}
@@ -581,12 +620,11 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 	var stableKey string
 	var runID string
 	var issueNum int
-	var targetType string
-	var targetID string
 
 	switch req.Action {
 	case "workflow_rerun":
 		if ev.WorkflowRunID == nil || *ev.WorkflowRunID <= 0 {
+			recordAudit("rejected", "event_has_no_workflow_run", "")
 			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"reason": "event_has_no_workflow_run"})
 			return
 		}
@@ -596,6 +634,7 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 		targetID = runID
 	case "pr_quick_approve":
 		if ev.SubjectNumber == nil || *ev.SubjectNumber <= 0 {
+			recordAudit("rejected", "event_has_no_pr", "")
 			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"reason": "event_has_no_pr"})
 			return
 		}
@@ -605,6 +644,7 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 		targetID = strconv.Itoa(issueNum)
 	case "pr_snooze":
 		if ev.SubjectNumber == nil || *ev.SubjectNumber <= 0 {
+			recordAudit("rejected", "event_has_no_pr", "")
 			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"reason": "event_has_no_pr"})
 			return
 		}
@@ -614,6 +654,7 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 		targetID = strconv.Itoa(issueNum)
 	case "pr_comment":
 		if ev.SubjectNumber == nil || *ev.SubjectNumber <= 0 {
+			recordAudit("rejected", "event_has_no_pr", "")
 			s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"reason": "event_has_no_pr"})
 			return
 		}
@@ -629,11 +670,6 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 		targetID = strconv.Itoa(issueNum)
 	}
 
-	var actorID string
-	if user, ok := GetTelegramUser(r.Context()); ok && user != nil {
-		actorID = strconv.FormatInt(user.ID, 10)
-	}
-
 	actionData := chatops.ActionData{
 		ID:          stableKey,
 		Action:      req.Action,
@@ -645,6 +681,7 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.chatOpsService == nil {
+		recordAudit("failed", "chatops_service_unavailable", "")
 		s.writeAPIError(w, r, http.StatusServiceUnavailable, errorCodeServiceUnavailable, nil)
 		return
 	}
@@ -652,13 +689,7 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 	outcome, execErr := s.chatOpsService.HandleWeb(r.Context(), actionData)
 
 	if outcome != nil && outcome.Status == chatops.StatusPending {
-		s.appendAudit(r.Context(), store.AuditLog{
-			Action:     "tma.action." + req.Action,
-			ActorType:  "telegram/tma",
-			ActorID:    actorID,
-			TargetType: targetType,
-			TargetID:   targetID,
-		})
+		recordAudit("conflict", "action_in_progress", "")
 		s.writeAPIError(w, r, http.StatusConflict, errorCodeConflict, map[string]any{
 			"reason": "action_in_progress",
 			"action": req.Action,
@@ -667,13 +698,7 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if outcome != nil && outcome.Status == chatops.StatusAlreadyDone {
-		s.appendAudit(r.Context(), store.AuditLog{
-			Action:     "tma.action." + req.Action,
-			ActorType:  "telegram/tma",
-			ActorID:    actorID,
-			TargetType: targetType,
-			TargetID:   targetID,
-		})
+		recordAudit("already_done", "", "")
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":      "already_done",
 			"message":     outcome.Message,
@@ -684,13 +709,7 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if outcome != nil && outcome.Status == chatops.StatusExecuted {
-		s.appendAudit(r.Context(), store.AuditLog{
-			Action:     "tma.action." + req.Action,
-			ActorType:  "telegram/tma",
-			ActorID:    actorID,
-			TargetType: targetType,
-			TargetID:   targetID,
-		})
+		recordAudit("success", "", "")
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":      "executed",
 			"message":     outcome.Message,
@@ -701,11 +720,13 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if outcome != nil && outcome.Status == chatops.StatusForbidden {
+		recordAudit("denied", "forbidden", "")
 		s.writeAPIError(w, r, http.StatusForbidden, errorCodeForbidden, nil)
 		return
 	}
 
 	if outcome != nil && outcome.Status == chatops.StatusGuardrailDenied {
+		recordAudit("denied", "guardrail_denied", outcome.Message)
 		s.writeAPIError(w, r, http.StatusForbidden, errorCodeForbidden, map[string]any{
 			"reason":  "guardrail_denied",
 			"message": outcome.Message,
@@ -714,6 +735,7 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if outcome != nil && outcome.Status == chatops.StatusIndeterminate {
+		recordAudit("failed", "indeterminate", outcome.Message)
 		s.writeAPIError(w, r, http.StatusGatewayTimeout, "gateway_timeout", map[string]any{
 			"reason":  "indeterminate",
 			"message": outcome.Message,
@@ -722,15 +744,18 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if execErr != nil {
+		recordAudit("failed", "execution_error", execErr.Error())
 		s.writeMappedError(w, r, execErr)
 		return
 	}
 
 	if outcome != nil && outcome.Err != nil {
+		recordAudit("failed", "outcome_error", outcome.Err.Error())
 		s.writeMappedError(w, r, outcome.Err)
 		return
 	}
 
+	recordAudit("success", "", "")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "ok",
 		"message": outcome.Message,
@@ -748,20 +773,37 @@ func (s *server) handleTMAToggleQuietHours(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	var actorID string
+	if user, ok := GetTelegramUser(r.Context()); ok && user != nil {
+		actorID = strconv.FormatInt(user.ID, 10)
+	}
+
 	ch, err := s.dependencies.Store.Channels().GetEnabledByType(r.Context(), store.ChannelTelegram)
 	if err != nil {
+		s.appendAudit(r.Context(), store.AuditLog{
+			Action:       "tma.quiet_hours.toggle",
+			ActorType:    "telegram/tma",
+			ActorID:      actorID,
+			TargetType:   "channel",
+			MetadataJSON: []byte(`{"action_result":"failed","reason":"telegram_channel_not_found"}`),
+			IPAddress:    remoteIPFromContext(r.Context()),
+		})
 		s.writeAPIError(w, r, http.StatusNotFound, errorCodeNotFound, map[string]any{"reason": "telegram_channel_not_found"})
 		return
 	}
 
 	if err := s.dependencies.Store.Channels().SetQuietHoursEnabled(r.Context(), ch.ID, req.Enabled); err != nil {
+		s.appendAudit(r.Context(), store.AuditLog{
+			Action:       "tma.quiet_hours.toggle",
+			ActorType:    "telegram/tma",
+			ActorID:      actorID,
+			TargetType:   "channel",
+			TargetID:     ch.ID,
+			MetadataJSON: []byte(`{"action_result":"failed","reason":"update_failed"}`),
+			IPAddress:    remoteIPFromContext(r.Context()),
+		})
 		s.writeMappedError(w, r, err)
 		return
-	}
-
-	var actorID string
-	if user, ok := GetTelegramUser(r.Context()); ok && user != nil {
-		actorID = strconv.FormatInt(user.ID, 10)
 	}
 
 	s.appendAudit(r.Context(), store.AuditLog{
@@ -770,7 +812,8 @@ func (s *server) handleTMAToggleQuietHours(w http.ResponseWriter, r *http.Reques
 		ActorID:      actorID,
 		TargetType:   "channel",
 		TargetID:     ch.ID,
-		MetadataJSON: []byte(fmt.Sprintf(`{"enabled":%t}`, req.Enabled)),
+		MetadataJSON: []byte(fmt.Sprintf(`{"action_result":"success","enabled":%t}`, req.Enabled)),
+		IPAddress:    remoteIPFromContext(r.Context()),
 	})
 
 	writeJSON(w, http.StatusOK, map[string]any{

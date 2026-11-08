@@ -8,6 +8,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -267,8 +269,8 @@ func TestTMAAuth_ResolveBotToken_PriorityAndFailClosed(t *testing.T) {
 		if err == nil {
 			t.Fatalf("损坏信封应当 fail-closed 报错, 实际未报错且返回 tok=%q", tok)
 		}
-		if !strings.Contains(err.Error(), "decrypt failed") {
-			t.Fatalf("期望包含 decrypt failed 错误信息, 实际: %v", err)
+		if !errors.Is(err, ErrTMABotTokenUnavailable) {
+			t.Fatalf("期望返回 ErrTMABotTokenUnavailable, 实际: %v", err)
 		}
 	})
 
@@ -358,9 +360,12 @@ func TestTMAAuth_Middleware(t *testing.T) {
 	unauthorizedUser := TelegramUser{ID: 20002, Username: "intruder_bob"}
 
 	// 配置白名单：允许 10001
-	allowedUserIDs := []string{"10001"}
+	_, _ = st.Settings().Upsert(ctx, store.SystemSetting{
+		Key:       "chatops.telegram.allowed_user_ids",
+		ValueJSON: []byte(`"10001"`),
+	})
 
-	mw := TMAAuthMiddleware(st, kr, botToken, allowedUserIDs, logger)
+	mw := TMAAuthMiddleware(st, kr, botToken, logger)
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, ok := GetTelegramUser(r.Context())
@@ -469,7 +474,7 @@ func TestTMAAuth_Middleware(t *testing.T) {
 			Key:       "chatops.telegram.allowed_user_ids",
 			ValueJSON: []byte(`"30003,40004"`),
 		})
-		dynamicMW := TMAAuthMiddleware(st, kr, botToken, nil, logger)
+		dynamicMW := TMAAuthMiddleware(st, kr, botToken, logger)
 		dynamicHandler := dynamicMW(nextHandler)
 
 		dynUser := TelegramUser{ID: 30003, Username: "charlie"}
@@ -504,7 +509,11 @@ func TestTMAAuth_ZeroSensitiveTokensInLogs(t *testing.T) {
 	})
 	InvalidateResolvedBotTokenCache()
 
-	mw := TMAAuthMiddleware(st, kr, secretBotToken, []string{"123"}, logger)
+	_, _ = st.Settings().Upsert(context.Background(), store.SystemSetting{
+		Key:       "chatops.telegram.allowed_user_ids",
+		ValueJSON: []byte(`"123"`),
+	})
+	mw := TMAAuthMiddleware(st, kr, secretBotToken, logger)
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
 	user := TelegramUser{ID: 123, Username: "alice"}
@@ -529,3 +538,233 @@ func TestTMAAuth_ZeroSensitiveTokensInLogs(t *testing.T) {
 
 // 确保标准输出与全局日志中也没有泄漏
 var _ io.Reader = (*bytes.Buffer)(nil)
+
+// ============================================================================
+// Group A 测试：安全与鉴权 (A1 - A6)
+// ============================================================================
+
+func TestTMAAuth_A1_DecryptErrorNeverLeaksUnderlyingErrorText(t *testing.T) {
+	// A1【P0】：底层解密失败（可能包含敏感材料或 KMS url.Error 泄漏），
+	// 断言：1. ResolveBotToken 统一返回哨兵错误 ErrTMABotTokenUnavailable
+	//       2. 日志中绝对不含底层 error 文本（0 命中），只记稳定错误码与 channel_id
+	//       3. HTTP 错误响应体中绝对不含底层 error 文本（0 命中）
+	const sensitiveLeak = "SUPER_SECRET_KEY_PLAINTEXT_SHOULD_NEVER_LEAK_12345"
+	st := setupTestStore(t)
+	kr := setupTestKeyRing(t)
+
+	ctx := context.Background()
+	// 在密文信封中塞入带有敏感测试标记的损坏信封
+	corruptEnvelopeWithSecret := fmt.Sprintf("v1.mockkey.%s", sensitiveLeak)
+	_, _ = st.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:             "ch-tg-leak-test",
+		ChannelType:    store.ChannelTelegram,
+		Name:           "tg-leak",
+		Enabled:        true,
+		SecretEnvelope: corruptEnvelopeWithSecret,
+	})
+	InvalidateResolvedBotTokenCache()
+
+	logBuf := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	// 1. 测试 ResolveBotToken 直接调用
+	_, err := ResolveBotToken(ctx, st, kr, "cfg-token-fallback")
+	if !errors.Is(err, ErrTMABotTokenUnavailable) {
+		t.Fatalf("期望返回 ErrTMABotTokenUnavailable 哨兵错误，实际: %v", err)
+	}
+	if strings.Contains(err.Error(), sensitiveLeak) {
+		t.Fatalf("返回的 error 链中泄露了敏感秘钥文本: %v", err)
+	}
+
+	// 2. 测试 TMA 中间件完整请求链路
+	mw := TMAAuthMiddleware(st, kr, "cfg-token-fallback", logger)
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	user := TelegramUser{ID: 10001, Username: "alex"}
+	initData := createTestInitData("some-token", user, time.Now().Unix(), false)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tma/dashboard", nil)
+	req.Header.Set("X-Telegram-Init-Data", initData)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("解密失败期望 503 Service Unavailable, 实际: %d", rec.Code)
+	}
+
+	logOutput := logBuf.String()
+	respOutput := rec.Body.String()
+
+	if strings.Contains(logOutput, sensitiveLeak) {
+		t.Fatalf("日志中泄露了底层敏感错误文本: %s", logOutput)
+	}
+	if strings.Contains(respOutput, sensitiveLeak) {
+		t.Fatalf("响应体中泄露了底层敏感错误文本: %s", respOutput)
+	}
+}
+
+func TestTMAAuth_A2_ChannelMutationInvalidatesTokenCacheImmediately(t *testing.T) {
+	// A2【P1】：通道修改/启用/禁用以及系统设置修改后，缓存立刻失效，无需等待 5 分钟
+	st := setupTestStore(t)
+	kr := setupTestKeyRing(t)
+	ctx := context.Background()
+
+	const oldToken = "11111:OLD_TOKEN_ABC"
+	const newToken = "22222:NEW_TOKEN_XYZ"
+
+	encOld, _ := kr.Encrypt(ctx, []byte(oldToken), []byte(notify.AAD))
+	encNew, _ := kr.Encrypt(ctx, []byte(newToken), []byte(notify.AAD))
+
+	ch, _ := st.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:             "ch-tg-rot",
+		ChannelType:    store.ChannelTelegram,
+		Name:           "tg-rotation",
+		Enabled:        true,
+		SecretEnvelope: encOld,
+	})
+	InvalidateResolvedBotTokenCache()
+
+	// 首次解析并进入缓存
+	got1, err := ResolveBotToken(ctx, st, kr, "")
+	if err != nil || got1 != oldToken {
+		t.Fatalf("首次解析期望 %s, 实际: %s, err: %v", oldToken, got1, err)
+	}
+
+	// 模拟生产路径：修改该渠道 Token 并调用 InvalidateResolvedBotTokenCache
+	ch.SecretEnvelope = encNew
+	_, _ = st.Channels().Upsert(ctx, ch)
+	InvalidateResolvedBotTokenCache() // 生产 upsert 路径会自动调用
+
+	// 下一次解析必须立刻得到新 Token，不靠 sleep
+	got2, err := ResolveBotToken(ctx, st, kr, "")
+	if err != nil || got2 != newToken {
+		t.Fatalf("更新渠道后期望立刻解析出新 Token %s, 实际: %s, err: %v", newToken, got2, err)
+	}
+}
+
+func TestTMAAuth_A3_EnabledChannelWithoutSecretEnvelopeFailsClosed(t *testing.T) {
+	// A3【P1】：启用的 Telegram 渠道 SecretEnvelope 为空时，显式 fail-closed，绝不静默回退
+	st := setupTestStore(t)
+	kr := setupTestKeyRing(t)
+	ctx := context.Background()
+
+	_, _ = st.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:             "ch-tg-empty-sec",
+		ChannelType:    store.ChannelTelegram,
+		Name:           "tg-empty-secret",
+		Enabled:        true,
+		SecretEnvelope: "", // 空密钥信封
+	})
+	// 在设置中配置第二级 Token，验证绝不回退
+	_, _ = st.Settings().Upsert(ctx, store.SystemSetting{
+		Key:       "chatops.telegram.bot_token",
+		ValueJSON: []byte(`"second-tier-token"`),
+	})
+	InvalidateResolvedBotTokenCache()
+
+	token, err := ResolveBotToken(ctx, st, kr, "third-tier-token")
+	if !errors.Is(err, ErrTMABotTokenUnavailable) {
+		t.Fatalf("启用渠道无密钥信封时必须严格 fail-closed 返回 ErrTMABotTokenUnavailable，实际: token=%s, err=%v", token, err)
+	}
+	if token != "" {
+		t.Fatalf("启用渠道无密钥信封时 token 必须为空，实际返回了回退 token: %s", token)
+	}
+}
+
+func TestTMAAuth_A4_SingleSourceOfTruthForWhitelistNoSecondPath(t *testing.T) {
+	// A4【P1】：断言白名单单一真源，仅通过 chatops.telegram.allowed_user_ids 配置
+	st := setupTestStore(t)
+	kr := setupTestKeyRing(t)
+	ctx := context.Background()
+	const botToken = "12345:TEST_TOKEN"
+
+	user := TelegramUser{ID: 88888, Username: "lucky_operator"}
+	initData := createTestInitData(botToken, user, time.Now().Unix(), false)
+
+	// 未在 settings 配置白名单时，必须 403
+	mw := TMAAuthMiddleware(st, kr, botToken, nil)
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tma/dashboard", nil)
+	req.Header.Set("X-Telegram-Init-Data", initData)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("未在设置中配置白名单期望 403 Forbidden，实际: %d", rec.Code)
+	}
+
+	// 在 settings 配置白名单后立刻允许
+	_, _ = st.Settings().Upsert(ctx, store.SystemSetting{
+		Key:       "chatops.telegram.allowed_user_ids",
+		ValueJSON: []byte(`"88888"`),
+	})
+
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("在设置中配置白名单后期望 200 OK，实际: %d", rec2.Code)
+	}
+}
+
+func TestTMAAuth_A5_AuditLogMetadataContainsStableReasonAndRequestInfo(t *testing.T) {
+	// A5【P1】：认证失败时，审计日志记录 stable error_code + reason + request_id + remote_ip
+	st := setupTestStore(t)
+	kr := setupTestKeyRing(t)
+	ctx := context.Background()
+	const botToken = "12345:TEST_TOKEN"
+
+	mw := TMAAuthMiddleware(st, kr, botToken, nil)
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	// 1. 缺少 Header
+	req1 := httptest.NewRequest(http.MethodGet, "/api/v1/tma/dashboard", nil)
+	req1.RemoteAddr = "192.0.2.1:1234"
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusUnauthorized {
+		t.Fatalf("缺失 header 期望 401, 实际: %d", rec1.Code)
+	}
+
+	audits, _ := st.Audits().List(ctx, 10, 0)
+	if len(audits) == 0 {
+		t.Fatal("未写入审计日志")
+	}
+	lastAudit := audits[0]
+	var meta map[string]any
+	_ = json.Unmarshal(lastAudit.MetadataJSON, &meta)
+	if meta["reason"] != "missing_init_data_header" {
+		t.Fatalf("期望 reason missing_init_data_header, 实际: %v", meta["reason"])
+	}
+	if meta["error_code"] != errorCodeUnauthorized {
+		t.Fatalf("期望 error_code %s, 实际: %v", errorCodeUnauthorized, meta["error_code"])
+	}
+	if meta["remote_ip"] != "192.0.2.1" {
+		t.Fatalf("期望 remote_ip 192.0.2.1, 实际: %v", meta["remote_ip"])
+	}
+
+	// 2. 白名单拒绝
+	user := TelegramUser{ID: 99999, Username: "intruder"}
+	initData := createTestInitData(botToken, user, time.Now().Unix(), false)
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/tma/dashboard", nil)
+	req2.Header.Set("X-Telegram-Init-Data", initData)
+	req2.RemoteAddr = "198.51.100.22:5678"
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusForbidden {
+		t.Fatalf("白名单拒绝期望 403, 实际: %d", rec2.Code)
+	}
+
+	audits2, _ := st.Audits().List(ctx, 10, 0)
+	lastAudit2 := audits2[0]
+	var meta2 map[string]any
+	_ = json.Unmarshal(lastAudit2.MetadataJSON, &meta2)
+	if meta2["reason"] != "whitelist_rejected" {
+		t.Fatalf("期望 reason whitelist_rejected, 实际: %v", meta2["reason"])
+	}
+	if lastAudit2.ActorID != "99999" {
+		t.Fatalf("期望 ActorID 99999, 实际: %s", lastAudit2.ActorID)
+	}
+}

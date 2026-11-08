@@ -120,6 +120,7 @@ func (s *server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			s.dependencies.Logger.Warn("aggregator reload failed", "error_code", "aggregator_reload_failed", "error", err.Error())
 		}
 	}
+	InvalidateResolvedBotTokenCache()
 	s.handleGetSettings(w, r)
 }
 
