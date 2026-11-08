@@ -1871,6 +1871,14 @@ type eventStore struct {
 	idsCache *ttlValueCache[cachedRepoIDs]
 }
 
+func (s *eventStore) Get(ctx context.Context, id string) (Event, error) {
+	entity, err := s.client.Event.Get(ctx, id)
+	if err != nil {
+		return Event{}, mapStoreError(err)
+	}
+	return eventFromEntity(entity), nil
+}
+
 func (s *eventStore) Create(ctx context.Context, in Event) (Event, error) {
 	if in.ID == "" {
 		in.ID = newID()

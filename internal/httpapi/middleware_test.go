@@ -193,6 +193,7 @@ type httpTestOptions struct {
 	starPoller      *syncx.StarredReleasePoller
 	chatOpsExecutor ChatOpsActionExecutor
 	pluginManager   *plugin.Manager
+	tmaEnabled      bool
 }
 
 type httpTestFixture struct {
@@ -246,7 +247,7 @@ func newHTTPTestFixture(t *testing.T, options httpTestOptions) *httpTestFixture 
 		Client:              options.githubClient,
 	}
 	cfg := config.Config{
-		HTTP:        config.HTTPConfig{PublicBaseURL: publicBaseURL},
+		HTTP:        config.HTTPConfig{PublicBaseURL: publicBaseURL, TMA: config.TMAConfig{Enabled: options.tmaEnabled}},
 		Database:    config.DatabaseConfig{Driver: "sqlite"},
 		Admin:       config.AdminBootstrapConfig{SessionTTL: time.Hour},
 		Setup:       config.SetupConfig{AllowRemote: options.allowRemote},

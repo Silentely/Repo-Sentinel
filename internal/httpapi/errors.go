@@ -121,7 +121,7 @@ func writeAPIErrorResponse(
 	details map[string]any,
 ) {
 	w.Header().Set("Cache-Control", "no-store")
-	if status == http.StatusTooManyRequests {
+	if status == http.StatusTooManyRequests && w.Header().Get("Retry-After") == "" {
 		w.Header().Set("Retry-After", loginRetryAfterSeconds)
 	}
 	// 内部错误与未装配错误都附 request_id，便于对照服务端日志定位。

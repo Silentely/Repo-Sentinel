@@ -119,6 +119,9 @@ func (s *settingsStore) Upsert(ctx context.Context, input SystemSetting) (System
 		return SystemSetting{}, mapStoreError(err)
 	}
 
+	if input.ID == "" {
+		input.ID = newID()
+	}
 	entity, err = s.client.SystemSetting.Create().
 		SetID(input.ID).
 		SetKey(input.Key).

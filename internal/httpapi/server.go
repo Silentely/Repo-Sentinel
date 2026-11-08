@@ -83,6 +83,7 @@ type Dependencies struct {
 	UpdateChecker *updatecheck.Checker
 	// GitHubRuntime 可选；管理台可编辑的 GitHub 配置（env 优先，DB 补缺）。
 	GitHubRuntime *githubx.RuntimeConfig
+	AppClient     *githubx.AppClient
 	// Background 用于 Webhook 异步规范化；关闭时由 App 取消。
 	Background context.Context
 	// AI 可选；默认 rules.Engine 的安全告警分诊客户端（webhooksvc 透传）。
@@ -127,6 +128,7 @@ type server struct {
 	ghProbeCache    *gitHubProbe
 	ghProbeAt       time.Time
 	ghProbeSF       singleflight.Group
+	tmaLimiter      *tmaRateLimiter
 }
 
 func (s *server) getWorkerID() string {
@@ -241,6 +243,9 @@ func New(dependencies Dependencies) http.Handler {
 	if dependencies.TOTPLimiter == nil {
 		dependencies.TOTPLimiter = auth.NewLoginLimiter(nil)
 	}
+	if dependencies.AppClient == nil && dependencies.GitHubRuntime != nil {
+		dependencies.AppClient = dependencies.GitHubRuntime.Client
+	}
 	if strings.TrimSpace(dependencies.SchemaVersion) == "" {
 		dependencies.SchemaVersion = "unknown"
 	}
@@ -305,6 +310,7 @@ func New(dependencies Dependencies) http.Handler {
 		chatOpsExecutor: dependencies.ChatOpsExecutor,
 		startedAt:       time.Now(),
 		workerID:        "worker-" + ulid.Make().String(),
+		tmaLimiter:      newTMARateLimiter(),
 	}
 	if s.dependencies.Background != nil && s.dependencies.Store != nil {
 		s.startOrphanRecoveryWorker(s.dependencies.Background)
@@ -363,6 +369,22 @@ func New(dependencies Dependencies) http.Handler {
 	router.Post("/oauth/authorize", s.handleOAuthAuthorize)
 	router.Post("/oauth/token", s.handleOAuthToken)
 	router.Post("/mcp", s.authenticationMiddleware(s.storeGuardMiddleware(http.HandlerFunc(s.handleMCP))).ServeHTTP)
+
+	router.Route("/api/v1/tma", func(tma chi.Router) {
+		tma.Use(s.tmaFeatureFlagMiddleware)
+		tma.Use(s.tmaOriginMiddleware)
+		tma.Use(s.storeGuardMiddleware)
+		tma.Use(s.tmaAuthMiddleware)
+		tma.Use(s.tmaRateLimitMiddleware)
+
+		tma.Get("/dashboard", s.handleTMADashboard)
+		tma.Get("/events/{id}", s.handleTMAGetEvent)
+		tma.Get("/events/{id}/diff", s.handleTMAGetEventDiff)
+		tma.Get("/events/{id}/logs", s.handleTMAGetEventLogs)
+		tma.Post("/actions", s.handleTMAAction)
+		tma.Post("/quiet-hours", s.handleTMAToggleQuietHours)
+	})
+
 	router.Route("/api/v1", func(api chi.Router) {
 		api.Use(chimiddleware.Compress(5))
 		api.Get("/setup/status", s.handleSetupStatus)

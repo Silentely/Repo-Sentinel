@@ -33,6 +33,13 @@ type dryRunEventStore struct {
 	store.EventStore
 }
 
+func (s *dryRunEventStore) Get(ctx context.Context, id string) (store.Event, error) {
+	if s.EventStore != nil {
+		return s.EventStore.Get(ctx, id)
+	}
+	return store.Event{}, store.ErrNotFound
+}
+
 func (s *dryRunEventStore) Create(ctx context.Context, ev store.Event) (store.Event, error) {
 	if ev.ID == "" {
 		ev.ID = "event-dryrun-" + ulid.Make().String()

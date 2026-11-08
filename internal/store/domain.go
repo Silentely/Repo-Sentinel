@@ -710,6 +710,7 @@ type SecurityAlertStore interface {
 
 // EventStore 业务事件。
 type EventStore interface {
+	Get(context.Context, string) (Event, error)
 	Create(context.Context, Event) (Event, error)
 	GetByFingerprint(context.Context, string) (Event, error)
 	List(context.Context, ListFilter) ([]Event, PageResult, error)
