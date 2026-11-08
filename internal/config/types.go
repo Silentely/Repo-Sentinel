@@ -101,7 +101,8 @@ type LoadOptions struct {
 
 // TMAConfig 描述 Telegram Web Mini App (TMA) 配置。
 type TMAConfig struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled bool   `yaml:"enabled"`
+	AppLink string `yaml:"app_link"`
 }
 
 // HTTPConfig 描述 HTTP 监听地址与对外访问地址。

@@ -863,3 +863,278 @@ func TestTelegramNotify_WithWebAppButton(t *testing.T) {
 		}
 	})
 }
+
+func TestWorker_D1_ChatTypeTMAButtonDispatch(t *testing.T) {
+	t.Run("私聊目标使用web_app按钮且发送成功", func(t *testing.T) {
+		data := openWorkerTestStore(t)
+		ring := newWorkerKeyRing(t)
+		ctx := t.Context()
+		env, err := ring.Encrypt(ctx, []byte("fake-token"), []byte("reposentinel:notify-secret:v1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = data.Channels().Upsert(ctx, store.NotificationChannel{
+			ID: "ch-tg-pvt", ChannelType: store.ChannelTelegram, Name: "tg-pvt", Enabled: true, AllowPrivate: true, Target: "98765", SecretEnvelope: env,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		eventID := "ev-webapp-private"
+		now := time.Now().UTC()
+		_, err = data.Outbox().Create(ctx, store.NotificationOutbox{
+			ID: "ob-tma-pvt", ChannelID: "ch-tg-pvt", IdempotencyKey: "idem-tma-pvt", EventID: &eventID,
+			Status: store.OutboxPending, NextAttemptAt: now.Add(-time.Second),
+			Title: "Private Alert", BodyText: "Private chat notification", HTMLURL: "https://github.com/org/repo/pull/1",
+			BodyJSON: map[string]any{"kind": "pull_request", "event_id": eventID},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var receivedBody map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &receivedBody)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		defer srv.Close()
+
+		w := &Worker{
+			Store:           data,
+			KeyRing:         ring,
+			AAD:             "reposentinel:notify-secret:v1",
+			Client:          srv.Client(),
+			TelegramAPIBase: srv.URL,
+			PublicBaseURL:   "https://sentinel.example.com",
+			TMAEnabled:      true,
+		}
+		w.tick(withAllowPrivate(ctx, true))
+
+		if n, _ := data.Outbox().CountByStatus(ctx, store.OutboxSent); n != 1 {
+			t.Fatalf("私聊推送期望状态 sent 数量为 1, got %d", n)
+		}
+
+		rm, ok := receivedBody["reply_markup"].(map[string]any)
+		if !ok {
+			t.Fatalf("期望 reply_markup 存在: %v", receivedBody)
+		}
+		kb, ok := rm["inline_keyboard"].([]any)
+		if !ok || len(kb) == 0 {
+			t.Fatalf("期望 inline_keyboard 存在: %v", rm)
+		}
+		var foundWebAppBtn map[string]any
+		for _, rowAny := range kb {
+			if row, ok := rowAny.([]any); ok {
+				for _, btnAny := range row {
+					if btn, ok := btnAny.(map[string]any); ok {
+						if _, hasWebApp := btn["web_app"]; hasWebApp {
+							foundWebAppBtn = btn
+							break
+						}
+					}
+				}
+			}
+		}
+		if foundWebAppBtn == nil {
+			t.Fatalf("私聊会话期望找到 web_app 按钮，实际未找到: %v", kb)
+		}
+		webAppObj, ok := foundWebAppBtn["web_app"].(map[string]any)
+		if !ok || webAppObj["url"] != "https://sentinel.example.com/tma/events/ev-webapp-private" {
+			t.Fatalf("web_app url 不符: %v", webAppObj)
+		}
+	})
+
+	t.Run("群组或频道目标降级为url按钮且不会因按钮类型导致发送失败", func(t *testing.T) {
+		data := openWorkerTestStore(t)
+		ring := newWorkerKeyRing(t)
+		ctx := t.Context()
+		env, err := ring.Encrypt(ctx, []byte("fake-token"), []byte("reposentinel:notify-secret:v1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Target 为负数群组 ID
+		_, err = data.Channels().Upsert(ctx, store.NotificationChannel{
+			ID: "ch-tg-grp", ChannelType: store.ChannelTelegram, Name: "tg-grp", Enabled: true, AllowPrivate: true, Target: "-1001234567890", SecretEnvelope: env,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		eventID := "ev-webapp-group"
+		now := time.Now().UTC()
+		_, err = data.Outbox().Create(ctx, store.NotificationOutbox{
+			ID: "ob-tma-grp", ChannelID: "ch-tg-grp", IdempotencyKey: "idem-tma-grp", EventID: &eventID,
+			Status: store.OutboxPending, NextAttemptAt: now.Add(-time.Second),
+			Title: "Group Alert", BodyText: "Group chat notification", HTMLURL: "https://github.com/org/repo/pull/2",
+			BodyJSON: map[string]any{"kind": "pull_request", "event_id": eventID},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var receivedBody map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &receivedBody)
+
+			// 模拟 Telegram API 真实行为：群组内包含 web_app 按钮时严格拒绝 400 Bad Request
+			if rm, ok := receivedBody["reply_markup"].(map[string]any); ok {
+				if kb, ok := rm["inline_keyboard"].([]any); ok {
+					for _, rowAny := range kb {
+						if row, ok := rowAny.([]any); ok {
+							for _, btnAny := range row {
+								if btn, ok := btnAny.(map[string]any); ok {
+									if _, hasWebApp := btn["web_app"]; hasWebApp {
+										w.WriteHeader(http.StatusBadRequest)
+										_, _ = w.Write([]byte(`{"ok":false,"error_code":400,"description":"Bad Request: BUTTON_TYPE_INVALID: web_app buttons are not supported in group chats"}`))
+										return
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		defer srv.Close()
+
+		w := &Worker{
+			Store:           data,
+			KeyRing:         ring,
+			AAD:             "reposentinel:notify-secret:v1",
+			Client:          srv.Client(),
+			TelegramAPIBase: srv.URL,
+			PublicBaseURL:   "https://sentinel.example.com",
+			TMAEnabled:      true,
+		}
+		w.tick(withAllowPrivate(ctx, true))
+
+		// 断言群组消息成功发送，不会因按钮类型导致失败重试/进入死信
+		if n, _ := data.Outbox().CountByStatus(ctx, store.OutboxSent); n != 1 {
+			t.Fatalf("群组推送期望状态 sent 数量为 1, got %d", n)
+		}
+
+		// 断言按钮降级为普通的 url 按钮，且不包含 web_app 字段
+		rm, ok := receivedBody["reply_markup"].(map[string]any)
+		if !ok {
+			t.Fatalf("期望 reply_markup 存在: %v", receivedBody)
+		}
+		kb, ok := rm["inline_keyboard"].([]any)
+		if !ok || len(kb) == 0 {
+			t.Fatalf("期望 inline_keyboard 存在: %v", rm)
+		}
+		var foundActionBtn map[string]any
+		for _, rowAny := range kb {
+			if row, ok := rowAny.([]any); ok {
+				for _, btnAny := range row {
+					if btn, ok := btnAny.(map[string]any); ok {
+						if btn["text"] == "⚡ 查看详情与处置" {
+							foundActionBtn = btn
+							break
+						}
+					}
+				}
+			}
+		}
+		if foundActionBtn == nil {
+			t.Fatalf("群组会话期望找到处置按钮，实际未找到: %v", kb)
+		}
+		if _, hasWebApp := foundActionBtn["web_app"]; hasWebApp {
+			t.Fatalf("群组会话绝不应包含 web_app 按钮属性: %v", foundActionBtn)
+		}
+		expectedURL := "https://sentinel.example.com/tma/events/ev-webapp-group"
+		if foundActionBtn["url"] != expectedURL {
+			t.Fatalf("群组会话按钮 url 期望 %s, got %v", expectedURL, foundActionBtn["url"])
+		}
+	})
+
+	t.Run("群组目标配置TMAAppLink时转换为t.me直达链接", func(t *testing.T) {
+		data := openWorkerTestStore(t)
+		ring := newWorkerKeyRing(t)
+		ctx := t.Context()
+		env, err := ring.Encrypt(ctx, []byte("fake-token"), []byte("reposentinel:notify-secret:v1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = data.Channels().Upsert(ctx, store.NotificationChannel{
+			ID: "ch-tg-grp-app", ChannelType: store.ChannelTelegram, Name: "tg-grp", Enabled: true, AllowPrivate: true, Target: "-100987654321", SecretEnvelope: env,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		eventID := "ev-webapp-link"
+		now := time.Now().UTC()
+		_, err = data.Outbox().Create(ctx, store.NotificationOutbox{
+			ID: "ob-tma-link", ChannelID: "ch-tg-grp-app", IdempotencyKey: "idem-tma-link", EventID: &eventID,
+			Status: store.OutboxPending, NextAttemptAt: now.Add(-time.Second),
+			Title: "Group Alert", BodyText: "Group chat notification with app link", HTMLURL: "https://github.com/org/repo/pull/3",
+			BodyJSON: map[string]any{"kind": "pull_request", "event_id": eventID},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var receivedBody map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &receivedBody)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		defer srv.Close()
+
+		w := &Worker{
+			Store:           data,
+			KeyRing:         ring,
+			AAD:             "reposentinel:notify-secret:v1",
+			Client:          srv.Client(),
+			TelegramAPIBase: srv.URL,
+			PublicBaseURL:   "https://sentinel.example.com",
+			TMAEnabled:      true,
+			TMAAppLink:      "https://t.me/sentinel_bot/app",
+		}
+		w.tick(withAllowPrivate(ctx, true))
+
+		if n, _ := data.Outbox().CountByStatus(ctx, store.OutboxSent); n != 1 {
+			t.Fatalf("群组推送期望状态 sent 数量为 1, got %d", n)
+		}
+
+		rm, ok := receivedBody["reply_markup"].(map[string]any)
+		if !ok {
+			t.Fatalf("期望 reply_markup 存在: %v", receivedBody)
+		}
+		kb, ok := rm["inline_keyboard"].([]any)
+		if !ok || len(kb) == 0 {
+			t.Fatalf("期望 inline_keyboard 存在: %v", rm)
+		}
+		var foundActionBtn map[string]any
+		for _, rowAny := range kb {
+			if row, ok := rowAny.([]any); ok {
+				for _, btnAny := range row {
+					if btn, ok := btnAny.(map[string]any); ok {
+						if btn["text"] == "⚡ 查看详情与处置" {
+							foundActionBtn = btn
+							break
+						}
+					}
+				}
+			}
+		}
+		if foundActionBtn == nil {
+			t.Fatalf("群组会话期望找到处置按钮: %v", kb)
+		}
+		if _, hasWebApp := foundActionBtn["web_app"]; hasWebApp {
+			t.Fatalf("群组会话绝不应包含 web_app: %v", foundActionBtn)
+		}
+		expectedURL := "https://t.me/sentinel_bot/app?startapp=ev-webapp-link"
+		if foundActionBtn["url"] != expectedURL {
+			t.Fatalf("群组会话按钮 url 期望 %s, got %v", expectedURL, foundActionBtn["url"])
+		}
+	})
+}

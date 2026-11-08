@@ -92,6 +92,7 @@ type Worker struct {
 	FailoverRouter  *FailoverRouter
 	PublicBaseURL   string
 	TMAEnabled      bool
+	TMAAppLink      string
 	Config          config.Config
 	TelegramAPIBase string
 	// OnSent / OnDead 可选指标回调，避免 notify 包依赖 httpapi。
@@ -108,13 +109,17 @@ func (w *Worker) telegramAPIBaseURL() string {
 	return "https://api.telegram.org"
 }
 
-func (w *Worker) tmaConfig() (bool, string) {
+func (w *Worker) tmaConfig() (bool, string, string) {
 	enabled := w.TMAEnabled || w.Config.HTTP.TMA.Enabled
 	baseURL := strings.TrimSpace(w.PublicBaseURL)
 	if baseURL == "" {
 		baseURL = strings.TrimSpace(w.Config.HTTP.PublicBaseURL)
 	}
-	return enabled, baseURL
+	appLink := strings.TrimSpace(w.TMAAppLink)
+	if appLink == "" {
+		appLink = strings.TrimSpace(w.Config.HTTP.TMA.AppLink)
+	}
+	return enabled, baseURL, appLink
 }
 
 func isActionableTMAKind(kind string) bool {
@@ -131,7 +136,7 @@ func isActionableTMAKind(kind string) bool {
 }
 
 func (w *Worker) resolveTMAEventURL(item store.NotificationOutbox) string {
-	enabled, baseURL := w.tmaConfig()
+	enabled, baseURL, _ := w.tmaConfig()
 	if !enabled {
 		return ""
 	}
@@ -679,7 +684,22 @@ func buildTelegramInlineKeyboard(htmlURL, opToken string, extraRows ...[]map[str
 	return buildTelegramInlineKeyboardWithWebApp(htmlURL, opToken, "", extraRows...)
 }
 
-func buildTelegramInlineKeyboardWithWebApp(htmlURL, opToken, webAppURL string, extraRows ...[]map[string]string) map[string]any {
+// isTelegramPrivateChat 判断 Telegram 目标是否为私聊用户 ID。
+// 规则：私聊目标必须为正整数数字 ID（如 12345678）；群组为负数（如 -100... 或 -...），频道通常为 -100... 或 @username。
+func isTelegramPrivateChat(target string) bool {
+	t := strings.TrimSpace(target)
+	if t == "" || strings.HasPrefix(t, "-") || strings.HasPrefix(t, "@") {
+		return false
+	}
+	if n, err := strconv.ParseInt(t, 10, 64); err == nil {
+		return n > 0
+	}
+	return false
+}
+
+// buildTelegramInlineKeyboardForChat 根据目标会话类型（私聊 vs 群组/频道）构建内联键盘。
+// D1: 私聊使用 web_app 按钮，群组/频道降级为常规 url 按钮 (t.me/<bot>/<app>)，避免 Telegram API 抛出 button_type_invalid 导致投递失败。
+func buildTelegramInlineKeyboardForChat(chatID, htmlURL, opToken, webAppURL, appLink string, extraRows ...[]map[string]string) map[string]any {
 	if webAppURL == "" {
 		var rows [][]map[string]string
 		var primaryRow []map[string]string
@@ -716,14 +736,38 @@ func buildTelegramInlineKeyboardWithWebApp(htmlURL, opToken, webAppURL string, e
 	if len(primaryRow) > 0 {
 		rows = append(rows, primaryRow)
 	}
-	rows = append(rows, []map[string]any{
-		{
+
+	var actionBtn map[string]any
+	if isTelegramPrivateChat(chatID) {
+		actionBtn = map[string]any{
 			"text": "⚡ 查看详情与处置",
 			"web_app": map[string]string{
 				"url": webAppURL,
 			},
-		},
-	})
+		}
+	} else {
+		targetURL := webAppURL
+		if appLink != "" {
+			parts := strings.Split(webAppURL, "/tma/events/")
+			if len(parts) == 2 && parts[1] != "" {
+				eventID := parts[1]
+				baseApp := strings.TrimRight(appLink, "/")
+				if strings.Contains(baseApp, "?") {
+					targetURL = fmt.Sprintf("%s&startapp=%s", baseApp, eventID)
+				} else {
+					targetURL = fmt.Sprintf("%s?startapp=%s", baseApp, eventID)
+				}
+			} else {
+				targetURL = appLink
+			}
+		}
+		actionBtn = map[string]any{
+			"text": "⚡ 查看详情与处置",
+			"url":  targetURL,
+		}
+	}
+	rows = append(rows, []map[string]any{actionBtn})
+
 	for _, row := range extraRows {
 		if len(row) > 0 {
 			anyRow := make([]map[string]any, 0, len(row))
@@ -740,6 +784,10 @@ func buildTelegramInlineKeyboardWithWebApp(htmlURL, opToken, webAppURL string, e
 	return map[string]any{
 		"inline_keyboard": rows,
 	}
+}
+
+func buildTelegramInlineKeyboardWithWebApp(htmlURL, opToken, webAppURL string, extraRows ...[]map[string]string) map[string]any {
+	return buildTelegramInlineKeyboardForChat("12345", htmlURL, opToken, webAppURL, "", extraRows...)
 }
 
 func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, text, htmlURL, parseMode string, chatOpsToken ...string) error {
@@ -769,7 +817,11 @@ func (w *Worker) sendTelegramDirectWithOptions(ctx context.Context, api, chatID,
 		"parse_mode":               parseMode,
 		"disable_web_page_preview": true,
 	}
-	if markup := buildTelegramInlineKeyboardWithWebApp(htmlURL, chatOpsToken, webAppURL, extraRows...); markup != nil {
+	var appLink string
+	if w != nil {
+		_, _, appLink = w.tmaConfig()
+	}
+	if markup := buildTelegramInlineKeyboardForChat(chatID, htmlURL, chatOpsToken, webAppURL, appLink, extraRows...); markup != nil {
 		payload["reply_markup"] = markup
 	}
 	body, _ := json.Marshal(payload)

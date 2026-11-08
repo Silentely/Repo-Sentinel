@@ -211,6 +211,9 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 		}
 		cfg.HTTP.TMA.Enabled = parsed
 	}
+	if value, ok := lookup("REPOSENTINEL_TMA_APP_LINK"); ok {
+		cfg.HTTP.TMA.AppLink = strings.TrimSpace(value)
+	}
 	if value, ok := lookup("REPOSENTINEL_DATABASE_DRIVER"); ok {
 		cfg.Database.Driver = value
 	}
