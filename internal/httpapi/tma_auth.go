@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+
 	"github.com/Silentely/Repo-Sentinel/internal/chatops"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/notify"
@@ -250,6 +252,9 @@ func isTMAUserAllowed(ctx context.Context, st store.Store, allowedUserIDs []stri
 func appendTMAAudit(ctx context.Context, st store.Store, logger *slog.Logger, entry store.AuditLog) {
 	if st == nil || st.Audits() == nil {
 		return
+	}
+	if strings.TrimSpace(entry.ID) == "" {
+		entry.ID = ulid.Make().String()
 	}
 	if len(entry.MetadataJSON) > 0 {
 		entry.MetadataJSON = []byte(notify.RedactSensitiveSecrets(string(entry.MetadataJSON)))

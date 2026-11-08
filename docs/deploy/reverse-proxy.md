@@ -69,6 +69,68 @@ labels:
 
 要让应用拿到访客 IP，还需按上一节配置 `REPOSENTINEL_HTTP_TRUSTED_PROXIES`；否则即使代理把请求头传对了，应用仍取直连 socket IP。
 
+## Telegram Web Mini App (TMA) 部署
+
+当启用 Telegram Web Mini App (`REPOSENTINEL_TMA_ENABLED=true`) 时，需注意以下反向代理配置：
+
+### 强制 HTTPS 要求
+
+Telegram 客户端强制要求所有 Mini App 必须运行在 HTTPS 环境下，否则 Telegram 客户端将拒绝加载页面并抛出安全警告：
+- `REPOSENTINEL_PUBLIC_BASE_URL` 必须配置为以 `https://` 开头的公开域名访问地址（例如 `https://monitor.example.com`）。若开启 TMA 且基础地址为非 HTTPS，应用启动校验将直接报错阻断。
+- 反向代理必须正确向后端透传 `X-Forwarded-Proto: https` 以及 `X-Forwarded-For`，以便后端能够正确完成跨站 Origin 校验及独立滑动窗口限流。
+
+### Nginx 配置示例（支持 /tma 与 /api/v1/tma）
+
+针对 `/tma`（SPA 路由）及 `/api/v1/tma`（后端接口），需要透传请求头并配置 WebSocket/流式响应（以适配实时日志查看与 SSE 推送）：
+
+```nginx
+# 顶层 http 块中配置 WebSocket 升级映射
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+server {
+  listen 443 ssl http2;
+  server_name monitor.example.com;
+
+  ssl_certificate /path/to/fullchain.pem;
+  ssl_certificate_key /path/to/privkey.pem;
+
+  # 全局与 TMA 路径反向代理
+  location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # WebSocket / SSE 流式长连接与升级透传
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+
+    # 关闭缓冲以支持流式日志实时输出
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 300s;
+  }
+}
+```
+
+### Caddy 配置示例
+
+Caddy 自带自动化 HTTPS 证书申请，针对 `/tma` 与 `/api/v1/tma` 的流式日志与 WebSocket，建议显式配置立即刷新：
+
+```text
+monitor.example.com {
+  reverse_proxy 127.0.0.1:8080 {
+    # 保持 WebSocket/SSE 流式连接，禁用缓冲
+    flush_interval -1
+  }
+}
+```
+
 ## 容器部署
 
 见 [Docker 部署](/deploy/docker)：单应用容器、`/health/ready`、数据卷与 Compose 安全基线。

@@ -187,6 +187,11 @@ func (w *Worker) Run(ctx context.Context, interval time.Duration) {
 	}
 }
 
+// Tick 手动触发一次 Outbox 领取与投递（主要用于测试与一次性调度）。
+func (w *Worker) Tick(ctx context.Context) {
+	w.tick(ctx)
+}
+
 func (w *Worker) tick(ctx context.Context) {
 	items := make([]store.NotificationOutbox, 0, claimBatchSize)
 	for len(items) < claimBatchSize {
