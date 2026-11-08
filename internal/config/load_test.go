@@ -160,6 +160,7 @@ func Test全部批准环境变量映射到配置(t *testing.T) {
 		"REPOSENTINEL_EXTERNAL_PAT":                   "external-pat-e153",
 		"REPOSENTINEL_TELEGRAM_TOKEN":                 "telegram-token-f264",
 		"REPOSENTINEL_TELEGRAM_CHAT_ID":               "-1001234567890",
+		"REPOSENTINEL_TELEGRAM_ALLOWED_USER_IDS":      "123456, 789012",
 		"REPOSENTINEL_HTTP_WEBHOOK_URL":               "https://hooks.example.com/reposentinel",
 		"REPOSENTINEL_HTTP_WEBHOOK_SECRET":            "http-webhook-secret-g375",
 		"REPOSENTINEL_HTTP_WEBHOOK_ALLOW_PRIVATE":     "true",
@@ -198,7 +199,7 @@ func Test全部批准环境变量映射到配置(t *testing.T) {
 		cfg.GitHub.ExternalPAT.Reveal() != env["REPOSENTINEL_EXTERNAL_PAT"] {
 		t.Fatal("GitHub Secret 环境变量未完整映射")
 	}
-	if cfg.Notify.Telegram.Token.Reveal() != env["REPOSENTINEL_TELEGRAM_TOKEN"] || cfg.Notify.Telegram.ChatID != "-1001234567890" {
+	if cfg.Notify.Telegram.Token.Reveal() != env["REPOSENTINEL_TELEGRAM_TOKEN"] || cfg.Notify.Telegram.ChatID != "-1001234567890" || cfg.Notify.Telegram.AllowedUserIDs != "123456, 789012" {
 		t.Fatal("Telegram 环境变量未完整映射")
 	}
 	if cfg.Notify.HTTPWebhook.URL != "https://hooks.example.com/reposentinel" ||

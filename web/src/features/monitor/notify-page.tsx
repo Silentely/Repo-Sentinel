@@ -15,6 +15,7 @@ import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import {
   channelsQueryOptions,
   settingsQueryOptions,
+  saveSystemSettings,
   jevConfigQueryOptions,
   upsertChannel,
   testChannel,
@@ -30,6 +31,71 @@ import { IncidentTagSelect } from "./incident-tag-select";
 
 function kindGloballyEnabled(settings: SystemSettings | undefined, featureKey: (typeof SUBSCRIBABLE_KINDS)[number]["featureKey"]) {
   return settings?.[featureKey] !== false;
+}
+
+// ---- TelegramWhitelistCard：Telegram 操作者白名单设置卡片 ----
+
+interface TelegramWhitelistCardProps {
+  settings?: SystemSettings;
+  onSaved: () => Promise<void>;
+  onNotice: (message: string) => void;
+  onFail: (message: string) => void;
+}
+
+function TelegramWhitelistCard({ settings, onSaved, onNotice, onFail }: TelegramWhitelistCardProps) {
+  const initialValue = String(settings?.["chatops.telegram.allowed_user_ids"] ?? "");
+  const [userIDs, setUserIDs] = useState(initialValue);
+  const prefilledRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (settings && prefilledRef.current !== initialValue) {
+      setUserIDs(initialValue);
+      prefilledRef.current = initialValue;
+    }
+  }, [settings, initialValue]);
+
+  const saveMut = useMutation({
+    mutationFn: (val: string) => saveSystemSettings({ "chatops.telegram.allowed_user_ids": val.trim() }),
+    onSuccess: async () => {
+      onNotice("Telegram 操作者白名单已保存。");
+      await onSaved();
+    },
+    onError: (err) => {
+      onFail(toApiError(err).message || "保存白名单失败");
+    },
+  });
+
+  return (
+    <section className="onboarding-card channel-form" aria-labelledby="telegram-whitelist-title">
+      <h2 id="telegram-whitelist-title">Telegram 操作者白名单（Mini App & ChatOps）</h2>
+      <p className="field-hint">
+        控制谁可以在 Telegram 客户端中打开 Mini App 仪表盘或触发 ChatOps 处置指令。
+        为保障仓库安全采用严格白名单（Fail-Closed）：未配置白名单时默认拒绝所有访客。
+      </p>
+      <label className="field--plain">
+        <span>操作者 User ID（白名单）</span>
+        <input
+          size={32}
+          value={userIDs}
+          onChange={(e) => setUserIDs(e.target.value)}
+          placeholder="例如：245715998, 123456789（多个以逗号分隔）"
+        />
+      </label>
+      <p className="field-hint">
+        💡 提示：纯数字用户 ID。若与 Bot 私聊，您的 Chat ID 即为个人 User ID；也可在 Telegram 私聊 <code>@userinfobot</code> 获取。
+      </p>
+      <div className="channel-actions">
+        <button
+          className="primary-button primary-button--inline"
+          type="button"
+          disabled={saveMut.isPending}
+          onClick={() => saveMut.mutate(userIDs)}
+        >
+          {saveMut.isPending ? "保存中…" : "保存白名单"}
+        </button>
+      </div>
+    </section>
+  );
 }
 
 // ---- ChannelForm：Telegram 与 HTTP Webhook 共用的渠道配置表单 ----
@@ -614,6 +680,7 @@ export function NotifyPage() {
           <p className="field-hint">
             1）与 Bot 私聊或把 Bot 拉进群；2）Chat ID 可用 <code>@userinfobot</code> 或群组 API 获取（群 ID 常为负数）；
             3）Token 也可通过环境变量 <code>REPOSENTINEL_TELEGRAM_TOKEN</code> 初始化。页面保存会加密入库。
+            4）如需使用 Telegram Mini App 或 ChatOps，请在下方「Telegram 操作者白名单」中添加您的纯数字 User ID。
           </p>
         }
         channel={telegramCh}
@@ -631,6 +698,14 @@ export function NotifyPage() {
         onNotice={(msg) => { setMessage(msg); setError(""); }}
         onFail={setError}
         onSaved={invalidateAll}
+      />
+
+      {/* Telegram 操作者白名单 */}
+      <TelegramWhitelistCard
+        settings={settings.data}
+        onSaved={invalidateAll}
+        onNotice={(msg) => { setMessage(msg); setError(""); }}
+        onFail={setError}
       />
 
       {/* HTTP Webhook 配置 */}

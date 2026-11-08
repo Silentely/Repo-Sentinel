@@ -284,4 +284,29 @@ describe("NotifyPage", () => {
       expect(body.incident_tags).toEqual(["ci"]);
     });
   });
+
+  it("支持在通知渠道页编辑并保存 Telegram 操作者白名单", async () => {
+    (fixtures.settings as Record<string, unknown>)["chatops.telegram.allowed_user_ids"] = "245715998";
+    renderPage();
+
+    const whitelistSection = screen.getByRole("heading", { name: "Telegram 操作者白名单（Mini App & ChatOps）" }).closest("section") as HTMLElement;
+    const input = within(whitelistSection).getByLabelText(/^操作者 User ID/);
+    await waitFor(() => {
+      expect(input).toHaveValue("245715998");
+    });
+
+    fireEvent.change(input, { target: { value: "245715998, 987654" } });
+    fireEvent.click(within(whitelistSection).getByRole("button", { name: "保存白名单" }));
+
+    await waitFor(() => {
+      const call = fixtures.apiRequest.mock.calls.find(
+        (args) =>
+          (args[0] as string).includes("/system/settings") &&
+          (args[1] as RequestInit | undefined)?.method === "PUT",
+      );
+      expect(call).toBeDefined();
+      const body = JSON.parse((call![1] as RequestInit).body as string) as Record<string, unknown>;
+      expect(body["chatops.telegram.allowed_user_ids"]).toBe("245715998, 987654");
+    });
+  });
 });

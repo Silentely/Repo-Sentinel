@@ -31,6 +31,7 @@ const settingsFixture = {
   "feature.security_alerts": true,
   "feature.stars": true,
   "feature.watches": true,
+  "chatops.telegram.allowed_user_ids": "12345,67890",
 };
 
 const { saveSystemSettingsMock, saveAIConfigMock, testAIConnectivityMock, activateRepositoryMock, reconcileAllMock, reconcileRepositoryMock } = vi.hoisted(() => ({

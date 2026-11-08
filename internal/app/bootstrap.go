@@ -426,5 +426,17 @@ func bootstrapNotifyChannels(ctx context.Context, logger *slog.Logger, data stor
 			}
 		}
 	}
+	if allowed := strings.TrimSpace(cfg.Notify.Telegram.AllowedUserIDs); allowed != "" {
+		setting, err := data.Settings().Get(ctx, "chatops.telegram.allowed_user_ids")
+		if errors.Is(err, store.ErrNotFound) || len(strings.TrimSpace(string(setting.ValueJSON))) == 0 || strings.TrimSpace(string(setting.ValueJSON)) == `""` || strings.TrimSpace(string(setting.ValueJSON)) == "null" {
+			valJSON, _ := json.Marshal(allowed)
+			if _, err := data.Settings().Upsert(ctx, store.SystemSetting{
+				Key:       "chatops.telegram.allowed_user_ids",
+				ValueJSON: valJSON,
+			}); err != nil && logger != nil {
+				logger.Warn("seed telegram allowed user ids failed", "error", err.Error())
+			}
+		}
+	}
 	return nil
 }

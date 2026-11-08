@@ -158,8 +158,9 @@ type NotifyConfig struct {
 
 // TelegramConfig 描述 Telegram 机器人通知目标。
 type TelegramConfig struct {
-	Token  Secret `yaml:"token"`
-	ChatID string `yaml:"chat_id"`
+	Token          Secret `yaml:"token"`
+	ChatID         string `yaml:"chat_id"`
+	AllowedUserIDs string `yaml:"allowed_user_ids"`
 }
 
 // HTTPWebhookConfig 描述通用 HTTP Webhook 发送目标。

@@ -293,6 +293,11 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 	if value, ok := lookup("REPOSENTINEL_TELEGRAM_CHAT_ID"); ok {
 		cfg.Notify.Telegram.ChatID = value
 	}
+	if value, ok := lookup("REPOSENTINEL_TELEGRAM_ALLOWED_USER_IDS"); ok {
+		cfg.Notify.Telegram.AllowedUserIDs = value
+	} else if value, ok := lookup("REPOSENTINEL_CHATOPS_TELEGRAM_ALLOWED_USER_IDS"); ok {
+		cfg.Notify.Telegram.AllowedUserIDs = value
+	}
 	if value, ok := lookup("REPOSENTINEL_HTTP_WEBHOOK_URL"); ok {
 		cfg.Notify.HTTPWebhook.URL = value
 	}
