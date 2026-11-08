@@ -284,6 +284,7 @@ func buildWithDependencies(ctx context.Context, cfg config.Config, dependencies 
 		return nil, err
 	}
 	built := &App{
+		config:          cfg,
 		data:            data,
 		pluginManager:   pluginMgr,
 		keyRing:         keyRing,

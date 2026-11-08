@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Silentely/Repo-Sentinel/internal/auth"
@@ -65,6 +67,9 @@ func (a *App) Run(ctx context.Context) error {
 			KeyRing:        a.keyRing,
 			Logger:         a.logger,
 			FailoverRouter: failoverRouter,
+			PublicBaseURL:  a.config.HTTP.PublicBaseURL,
+			TMAEnabled:     a.config.HTTP.TMA.Enabled,
+			Config:         a.config,
 			OnSent:         httpapi.MetricsIncOutboxSent,
 			OnDead:         httpapi.MetricsIncOutboxDead,
 			OnStateChange: func(id, status string) {
@@ -151,6 +156,43 @@ func (a *App) Run(ctx context.Context) error {
 		"schema_version", SupportedSchemaVersion,
 		"http_addr", a.httpAddr,
 	)
+	if a.config.HTTP.TMA.Enabled && strings.HasPrefix(strings.ToLower(strings.TrimSpace(a.config.HTTP.PublicBaseURL)), "https://") {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil && a.logger != nil {
+					a.logger.Warn("tma: setChatMenuButton failed", "error", fmt.Sprintf("panic: %v", r))
+				}
+			}()
+			baseURL := strings.TrimRight(strings.TrimSpace(a.config.HTTP.PublicBaseURL), "/")
+			menuURL := baseURL + "/tma/dashboard"
+			var kr cryptox.KeyRing
+			if a.keyRing != nil {
+				kr = *a.keyRing
+			}
+			botToken, err := httpapi.ResolveBotToken(workerCtx, a.data, kr, a.config.Notify.Telegram.Token.Reveal())
+			if err != nil {
+				if a.logger != nil {
+					a.logger.Warn("tma: setChatMenuButton failed", "error", err)
+				}
+				return
+			}
+			if botToken == "" {
+				if a.logger != nil {
+					a.logger.Warn("tma: setChatMenuButton failed", "error", "bot token not resolved")
+				}
+				return
+			}
+			if err := notify.SetBotMenuButton(workerCtx, botToken, menuURL); err != nil {
+				if a.logger != nil {
+					a.logger.Warn("tma: setChatMenuButton failed", "error", err)
+				}
+				return
+			}
+			if a.logger != nil {
+				a.logger.Info("tma: setChatMenuButton registered successfully", "menu_url", menuURL)
+			}
+		}()
+	}
 	go func() {
 		serverResult <- a.httpServer.Serve(ln)
 	}()

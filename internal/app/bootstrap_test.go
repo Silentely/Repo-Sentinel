@@ -266,7 +266,24 @@ func (s *closeTrackingStore) Sessions() store.SessionStore {
 	if s.sessions != nil {
 		return s.sessions
 	}
-	return s.Store.Sessions()
+	if s.Store != nil {
+		return s.Store.Sessions()
+	}
+	return nil
+}
+
+func (s *closeTrackingStore) Channels() store.ChannelStore {
+	if s.Store != nil {
+		return s.Store.Channels()
+	}
+	return nil
+}
+
+func (s *closeTrackingStore) Settings() store.SettingsStore {
+	if s.Store != nil {
+		return s.Store.Settings()
+	}
+	return nil
 }
 
 func (s *closeTrackingStore) Close() error {
@@ -336,5 +353,45 @@ func TestValidateEncryptionKey区分格式非法与不匹配(t *testing.T) {
 	cfg := config.EncryptionConfig{CurrentKey: config.NewSecret("not-a-valid-key!!!")}
 	if _, err := validateEncryptionKey(t.Context(), data, cfg); !errors.Is(err, cryptox.ErrInvalidEncryptionKey) {
 		t.Fatalf("格式非法应报 invalid_encryption_key: %v", err)
+	}
+}
+
+func TestRun_TMAEnabledStartupNonBlocking(t *testing.T) {
+	server := newFakeHTTPRuntime()
+	tracking := &closeTrackingStore{sessions: &cleanupSessionStore{}}
+	readiness := &readinessState{}
+	readiness.Set(true)
+	sessions := auth.NewSessionService(tracking, nil, nil, time.Hour)
+	var logBuf bytes.Buffer
+	cfg := config.Config{}
+	cfg.HTTP.TMA.Enabled = true
+	cfg.HTTP.PublicBaseURL = "https://sentinel.example.com"
+	built := &App{
+		config:          cfg,
+		data:            tracking,
+		httpServer:      server,
+		sessionService:  sessions,
+		readiness:       readiness,
+		logger:          slog.New(slog.NewJSONHandler(&logBuf, nil)),
+		cleanupInterval: time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	result := make(chan error, 1)
+	go func() {
+		result <- built.Run(ctx)
+	}()
+	select {
+	case <-server.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("HTTP runtime 未启动")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("取消后的 Run 错误=%v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("取消后 App 未及时完成优雅关闭")
 	}
 }

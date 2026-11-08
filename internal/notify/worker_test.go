@@ -3,7 +3,9 @@ package notify
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -581,4 +583,283 @@ func TestComputeBackoffWithJitter(t *testing.T) {
 	if got := computeBackoffWithJitter(0); got != 0 {
 		t.Errorf("zero base 应返回 0, got %v", got)
 	}
+}
+
+func TestTelegramNotify_WithWebAppButton(t *testing.T) {
+	t.Run("TMA启用且PublicBaseURL为HTTPS追加WebApp按钮", func(t *testing.T) {
+		var receivedBody map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &receivedBody)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		t.Cleanup(srv.Close)
+
+		data := openWorkerTestStore(t)
+		ring := newWorkerKeyRing(t)
+		ctx := t.Context()
+		env, err := ring.Encrypt(ctx, []byte("fake-token"), []byte("reposentinel:notify-secret:v1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = data.Channels().Upsert(ctx, store.NotificationChannel{
+			ID: "ch-tg-1", ChannelType: store.ChannelTelegram, Name: "tg", Enabled: true, AllowPrivate: true, Target: "12345", SecretEnvelope: env,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		eventID := "ev-webapp-123"
+		now := time.Now().UTC()
+		_, err = data.Outbox().Create(ctx, store.NotificationOutbox{
+			ID: "ob-tma-1", ChannelID: "ch-tg-1", IdempotencyKey: "idem-tma-1", EventID: &eventID,
+			Status: store.OutboxPending, NextAttemptAt: now.Add(-time.Second),
+			Title: "PR Alert", BodyText: "PR #1 Needs Review", HTMLURL: "https://github.com/org/repo/pull/1",
+			BodyJSON: map[string]any{"kind": "pull_request", "event_id": eventID},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		w := &Worker{
+			Store:           data,
+			KeyRing:         ring,
+			AAD:             "reposentinel:notify-secret:v1",
+			Client:          srv.Client(),
+			TelegramAPIBase: srv.URL,
+			PublicBaseURL:   "https://sentinel.example.com",
+			TMAEnabled:      true,
+		}
+		w.tick(withAllowPrivate(ctx, true))
+
+		rm, ok := receivedBody["reply_markup"].(map[string]any)
+		if !ok {
+			t.Fatalf("期望 reply_markup 存在: %v", receivedBody)
+		}
+		kb, ok := rm["inline_keyboard"].([]any)
+		if !ok || len(kb) == 0 {
+			t.Fatalf("期望 inline_keyboard 存在: %v", rm)
+		}
+		var foundWebAppBtn map[string]any
+		for _, rowAny := range kb {
+			if row, ok := rowAny.([]any); ok {
+				for _, btnAny := range row {
+					if btn, ok := btnAny.(map[string]any); ok {
+						if _, hasWebApp := btn["web_app"]; hasWebApp {
+							foundWebAppBtn = btn
+							break
+						}
+					}
+				}
+			}
+		}
+		if foundWebAppBtn == nil {
+			t.Fatalf("期望找到 web_app 按钮，未找到。keyboard: %v", kb)
+		}
+		if foundWebAppBtn["text"] != "⚡ 查看详情与处置" {
+			t.Fatalf("按钮文字不符: %v", foundWebAppBtn["text"])
+		}
+		webAppObj, ok := foundWebAppBtn["web_app"].(map[string]any)
+		if !ok {
+			t.Fatalf("web_app 对象格式不符: %v", foundWebAppBtn["web_app"])
+		}
+		expectedURL := "https://sentinel.example.com/tma/events/ev-webapp-123"
+		if webAppObj["url"] != expectedURL {
+			t.Fatalf("web_app url 不符，want %s, got %v", expectedURL, webAppObj["url"])
+		}
+	})
+
+	t.Run("TMA禁用时不追加WebApp按钮", func(t *testing.T) {
+		var receivedBody map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &receivedBody)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		t.Cleanup(srv.Close)
+
+		data := openWorkerTestStore(t)
+		ring := newWorkerKeyRing(t)
+		ctx := t.Context()
+		env, err := ring.Encrypt(ctx, []byte("fake-token"), []byte("reposentinel:notify-secret:v1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = data.Channels().Upsert(ctx, store.NotificationChannel{
+			ID: "ch-tg-2", ChannelType: store.ChannelTelegram, Name: "tg", Enabled: true, AllowPrivate: true, Target: "12345", SecretEnvelope: env,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		eventID := "ev-webapp-456"
+		now := time.Now().UTC()
+		_, err = data.Outbox().Create(ctx, store.NotificationOutbox{
+			ID: "ob-tma-2", ChannelID: "ch-tg-2", IdempotencyKey: "idem-tma-2", EventID: &eventID,
+			Status: store.OutboxPending, NextAttemptAt: now.Add(-time.Second),
+			Title: "PR Alert", BodyText: "PR #2 Needs Review", HTMLURL: "https://github.com/org/repo/pull/2",
+			BodyJSON: map[string]any{"kind": "pull_request", "event_id": eventID},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		w := &Worker{
+			Store:           data,
+			KeyRing:         ring,
+			AAD:             "reposentinel:notify-secret:v1",
+			Client:          srv.Client(),
+			TelegramAPIBase: srv.URL,
+			PublicBaseURL:   "https://sentinel.example.com",
+			TMAEnabled:      false,
+		}
+		w.tick(withAllowPrivate(ctx, true))
+
+		rm, ok := receivedBody["reply_markup"].(map[string]any)
+		if ok {
+			if kb, ok := rm["inline_keyboard"].([]any); ok {
+				for _, rowAny := range kb {
+					if row, ok := rowAny.([]any); ok {
+						for _, btnAny := range row {
+							if btn, ok := btnAny.(map[string]any); ok {
+								if _, hasWebApp := btn["web_app"]; hasWebApp {
+									t.Fatalf("TMA 禁用时不应包含 web_app 按钮: %v", btn)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("PublicBaseURL非HTTPS时不追加WebApp按钮", func(t *testing.T) {
+		var receivedBody map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &receivedBody)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		t.Cleanup(srv.Close)
+
+		data := openWorkerTestStore(t)
+		ring := newWorkerKeyRing(t)
+		ctx := t.Context()
+		env, err := ring.Encrypt(ctx, []byte("fake-token"), []byte("reposentinel:notify-secret:v1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = data.Channels().Upsert(ctx, store.NotificationChannel{
+			ID: "ch-tg-3", ChannelType: store.ChannelTelegram, Name: "tg", Enabled: true, AllowPrivate: true, Target: "12345", SecretEnvelope: env,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		eventID := "ev-webapp-789"
+		now := time.Now().UTC()
+		_, err = data.Outbox().Create(ctx, store.NotificationOutbox{
+			ID: "ob-tma-3", ChannelID: "ch-tg-3", IdempotencyKey: "idem-tma-3", EventID: &eventID,
+			Status: store.OutboxPending, NextAttemptAt: now.Add(-time.Second),
+			Title: "PR Alert", BodyText: "PR #3 Needs Review", HTMLURL: "https://github.com/org/repo/pull/3",
+			BodyJSON: map[string]any{"kind": "pull_request", "event_id": eventID},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		w := &Worker{
+			Store:           data,
+			KeyRing:         ring,
+			AAD:             "reposentinel:notify-secret:v1",
+			Client:          srv.Client(),
+			TelegramAPIBase: srv.URL,
+			PublicBaseURL:   "http://insecure.example.com",
+			TMAEnabled:      true,
+		}
+		w.tick(withAllowPrivate(ctx, true))
+
+		rm, ok := receivedBody["reply_markup"].(map[string]any)
+		if ok {
+			if kb, ok := rm["inline_keyboard"].([]any); ok {
+				for _, rowAny := range kb {
+					if row, ok := rowAny.([]any); ok {
+						for _, btnAny := range row {
+							if btn, ok := btnAny.(map[string]any); ok {
+								if _, hasWebApp := btn["web_app"]; hasWebApp {
+									t.Fatalf("非 HTTPS 时不应包含 web_app 按钮: %v", btn)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("EventID为空时不追加WebApp按钮", func(t *testing.T) {
+		var receivedBody map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &receivedBody)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		t.Cleanup(srv.Close)
+
+		data := openWorkerTestStore(t)
+		ring := newWorkerKeyRing(t)
+		ctx := t.Context()
+		env, err := ring.Encrypt(ctx, []byte("fake-token"), []byte("reposentinel:notify-secret:v1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = data.Channels().Upsert(ctx, store.NotificationChannel{
+			ID: "ch-tg-4", ChannelType: store.ChannelTelegram, Name: "tg", Enabled: true, AllowPrivate: true, Target: "12345", SecretEnvelope: env,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		now := time.Now().UTC()
+		_, err = data.Outbox().Create(ctx, store.NotificationOutbox{
+			ID: "ob-tma-4", ChannelID: "ch-tg-4", IdempotencyKey: "idem-tma-4", EventID: nil,
+			Status: store.OutboxPending, NextAttemptAt: now.Add(-time.Second),
+			Title: "Digest Alert", BodyText: "Daily Digest", HTMLURL: "https://github.com/org/repo",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		w := &Worker{
+			Store:           data,
+			KeyRing:         ring,
+			AAD:             "reposentinel:notify-secret:v1",
+			Client:          srv.Client(),
+			TelegramAPIBase: srv.URL,
+			PublicBaseURL:   "https://sentinel.example.com",
+			TMAEnabled:      true,
+		}
+		w.tick(withAllowPrivate(ctx, true))
+
+		rm, ok := receivedBody["reply_markup"].(map[string]any)
+		if ok {
+			if kb, ok := rm["inline_keyboard"].([]any); ok {
+				for _, rowAny := range kb {
+					if row, ok := rowAny.([]any); ok {
+						for _, btnAny := range row {
+							if btn, ok := btnAny.(map[string]any); ok {
+								if _, hasWebApp := btn["web_app"]; hasWebApp {
+									t.Fatalf("EventID 为空时不应包含 web_app 按钮: %v", btn)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	})
 }

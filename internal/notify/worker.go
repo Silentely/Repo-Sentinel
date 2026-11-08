@@ -25,6 +25,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Silentely/Repo-Sentinel/internal/buildinfo"
+	"github.com/Silentely/Repo-Sentinel/internal/config"
 	"github.com/Silentely/Repo-Sentinel/internal/cryptox"
 	"github.com/Silentely/Repo-Sentinel/internal/store"
 )
@@ -83,17 +84,84 @@ func isAllowPrivate(ctx context.Context) bool {
 
 // Worker 投递 Outbox。
 type Worker struct {
-	Store          store.Store
-	KeyRing        *cryptox.KeyRing
-	Client         *http.Client
-	Logger         *slog.Logger
-	AAD            string
-	FailoverRouter *FailoverRouter
+	Store           store.Store
+	KeyRing         *cryptox.KeyRing
+	Client          *http.Client
+	Logger          *slog.Logger
+	AAD             string
+	FailoverRouter  *FailoverRouter
+	PublicBaseURL   string
+	TMAEnabled      bool
+	Config          config.Config
+	TelegramAPIBase string
 	// OnSent / OnDead 可选指标回调，避免 notify 包依赖 httpapi。
 	OnSent func()
 	OnDead func()
 	// OnStateChange 可选状态迁移回调，用于实时推流 outbox.changed。
 	OnStateChange func(id, status string)
+}
+
+func (w *Worker) telegramAPIBaseURL() string {
+	if w.TelegramAPIBase != "" {
+		return strings.TrimRight(w.TelegramAPIBase, "/")
+	}
+	return "https://api.telegram.org"
+}
+
+func (w *Worker) tmaConfig() (bool, string) {
+	enabled := w.TMAEnabled || w.Config.HTTP.TMA.Enabled
+	baseURL := strings.TrimSpace(w.PublicBaseURL)
+	if baseURL == "" {
+		baseURL = strings.TrimSpace(w.Config.HTTP.PublicBaseURL)
+	}
+	return enabled, baseURL
+}
+
+func isActionableTMAKind(kind string) bool {
+	if kind == "" {
+		return true
+	}
+	k := strings.ToLower(strings.TrimSpace(kind))
+	switch k {
+	case "pull_request", "pr", "issue", "workflow_run", "workflow":
+		return true
+	default:
+		return false
+	}
+}
+
+func (w *Worker) resolveTMAEventURL(item store.NotificationOutbox) string {
+	enabled, baseURL := w.tmaConfig()
+	if !enabled {
+		return ""
+	}
+	if !strings.HasPrefix(strings.ToLower(baseURL), "https://") {
+		return ""
+	}
+	var eventID string
+	if item.EventID != nil {
+		eventID = strings.TrimSpace(*item.EventID)
+	}
+	if eventID == "" && item.BodyJSON != nil {
+		if eid, ok := item.BodyJSON["event_id"].(string); ok {
+			eventID = strings.TrimSpace(eid)
+		}
+	}
+	if eventID == "" {
+		return ""
+	}
+	if item.BodyJSON != nil {
+		var kind string
+		if k, ok := item.BodyJSON["kind"].(string); ok {
+			kind = k
+		} else if k, ok := item.BodyJSON["event_kind"].(string); ok {
+			kind = k
+		}
+		if kind != "" && !isActionableTMAKind(kind) {
+			return ""
+		}
+	}
+	return fmt.Sprintf("%s/tma/events/%s", strings.TrimRight(baseURL, "/"), eventID)
 }
 
 // Run 循环领取并发送。
@@ -343,8 +411,9 @@ func (w *Worker) deliver(ctx context.Context, item store.NotificationOutbox, cha
 	case store.ChannelTelegram:
 		token, _ := effectiveItem.BodyJSON["chatops_token"].(string)
 		extraRows := extractTelegramChatOpsActionRows(effectiveItem.BodyJSON)
-		if len(extraRows) > 0 {
-			return effectiveCh.ChannelType, effectiveCh.ID, w.sendTelegramWithActions(ctx, effectiveCh.Target, secret, effectiveItem.BodyText, effectiveItem.HTMLURL, effectiveItem.ParseMode, token, extraRows...)
+		webAppURL := w.resolveTMAEventURL(effectiveItem)
+		if len(extraRows) > 0 || webAppURL != "" {
+			return effectiveCh.ChannelType, effectiveCh.ID, w.sendTelegramWithOptions(ctx, effectiveCh.Target, secret, effectiveItem.BodyText, effectiveItem.HTMLURL, effectiveItem.ParseMode, token, webAppURL, extraRows...)
 		}
 		return effectiveCh.ChannelType, effectiveCh.ID, w.sendTelegram(ctx, effectiveCh.Target, secret, effectiveItem.BodyText, effectiveItem.HTMLURL, effectiveItem.ParseMode, token)
 	case store.ChannelHTTPWebhook:
@@ -381,19 +450,23 @@ func (w *Worker) decryptSecret(ctx context.Context, envelope string) (string, er
 }
 
 func (w *Worker) sendTelegram(ctx context.Context, chatID, token, text, htmlURL, parseMode string, chatOpsToken ...string) error {
-	if token == "" || chatID == "" {
-		return fmt.Errorf("telegram_not_configured")
+	var opToken string
+	if len(chatOpsToken) > 0 {
+		opToken = chatOpsToken[0]
 	}
-	api := "https://api.telegram.org/bot" + token + "/sendMessage"
-	return w.sendTelegramDirect(ctx, api, chatID, token, text, htmlURL, parseMode, chatOpsToken...)
+	return w.sendTelegramWithOptions(ctx, chatID, token, text, htmlURL, parseMode, opToken, "")
 }
 
 func (w *Worker) sendTelegramWithActions(ctx context.Context, chatID, token, text, htmlURL, parseMode, chatOpsToken string, extraRows ...[]map[string]string) error {
+	return w.sendTelegramWithOptions(ctx, chatID, token, text, htmlURL, parseMode, chatOpsToken, "", extraRows...)
+}
+
+func (w *Worker) sendTelegramWithOptions(ctx context.Context, chatID, token, text, htmlURL, parseMode, chatOpsToken, webAppURL string, extraRows ...[]map[string]string) error {
 	if token == "" || chatID == "" {
 		return fmt.Errorf("telegram_not_configured")
 	}
-	api := "https://api.telegram.org/bot" + token + "/sendMessage"
-	return w.sendTelegramDirectWithActions(ctx, api, chatID, token, text, htmlURL, parseMode, chatOpsToken, extraRows...)
+	api := fmt.Sprintf("%s/bot%s/sendMessage", w.telegramAPIBaseURL(), token)
+	return w.sendTelegramDirectWithOptions(ctx, api, chatID, token, text, htmlURL, parseMode, chatOpsToken, webAppURL, extraRows...)
 }
 
 // extractTelegramChatOpsActionRows 从 bodyJSON 中提取附加的 Telegram 快捷动作行。
@@ -598,24 +671,66 @@ func formatTelegramExpandableBlocks(text string, hasInlineURL ...bool) string {
 // buildTelegramInlineKeyboard 构建 Telegram 内联键盘标记。
 // 支持主操作（直达 GitHub、重试工作流）以及附加的快捷动作行（如一键确认、静音等）。
 func buildTelegramInlineKeyboard(htmlURL, opToken string, extraRows ...[]map[string]string) map[string]any {
-	var rows [][]map[string]string
-	var primaryRow []map[string]string
+	return buildTelegramInlineKeyboardWithWebApp(htmlURL, opToken, "", extraRows...)
+}
+
+func buildTelegramInlineKeyboardWithWebApp(htmlURL, opToken, webAppURL string, extraRows ...[]map[string]string) map[string]any {
+	if webAppURL == "" {
+		var rows [][]map[string]string
+		var primaryRow []map[string]string
+		if htmlURL != "" {
+			primaryRow = append(primaryRow, map[string]string{"text": store.GitHubViewLabel, "url": htmlURL})
+		}
+		if opToken != "" {
+			primaryRow = append(primaryRow, map[string]string{"text": "🔄 重试工作流", "callback_data": "rerun:" + opToken})
+		}
+		if len(primaryRow) > 0 {
+			rows = append(rows, primaryRow)
+		}
+		for _, row := range extraRows {
+			if len(row) > 0 {
+				rows = append(rows, row)
+			}
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		return map[string]any{
+			"inline_keyboard": rows,
+		}
+	}
+
+	var rows [][]map[string]any
+	var primaryRow []map[string]any
 	if htmlURL != "" {
-		primaryRow = append(primaryRow, map[string]string{"text": store.GitHubViewLabel, "url": htmlURL})
+		primaryRow = append(primaryRow, map[string]any{"text": store.GitHubViewLabel, "url": htmlURL})
 	}
 	if opToken != "" {
-		primaryRow = append(primaryRow, map[string]string{"text": "🔄 重试工作流", "callback_data": "rerun:" + opToken})
+		primaryRow = append(primaryRow, map[string]any{"text": "🔄 重试工作流", "callback_data": "rerun:" + opToken})
 	}
 	if len(primaryRow) > 0 {
 		rows = append(rows, primaryRow)
 	}
+	rows = append(rows, []map[string]any{
+		{
+			"text": "⚡ 查看详情与处置",
+			"web_app": map[string]string{
+				"url": webAppURL,
+			},
+		},
+	})
 	for _, row := range extraRows {
 		if len(row) > 0 {
-			rows = append(rows, row)
+			anyRow := make([]map[string]any, 0, len(row))
+			for _, btn := range row {
+				m := make(map[string]any, len(btn))
+				for k, v := range btn {
+					m[k] = v
+				}
+				anyRow = append(anyRow, m)
+			}
+			rows = append(rows, anyRow)
 		}
-	}
-	if len(rows) == 0 {
-		return nil
 	}
 	return map[string]any{
 		"inline_keyboard": rows,
@@ -627,10 +742,14 @@ func (w *Worker) sendTelegramDirect(ctx context.Context, api, chatID, token, tex
 	if len(chatOpsToken) > 0 {
 		opToken = chatOpsToken[0]
 	}
-	return w.sendTelegramDirectWithActions(ctx, api, chatID, token, text, htmlURL, parseMode, opToken)
+	return w.sendTelegramDirectWithOptions(ctx, api, chatID, token, text, htmlURL, parseMode, opToken, "")
 }
 
 func (w *Worker) sendTelegramDirectWithActions(ctx context.Context, api, chatID, token, text, htmlURL, parseMode, chatOpsToken string, extraRows ...[]map[string]string) error {
+	return w.sendTelegramDirectWithOptions(ctx, api, chatID, token, text, htmlURL, parseMode, chatOpsToken, "", extraRows...)
+}
+
+func (w *Worker) sendTelegramDirectWithOptions(ctx context.Context, api, chatID, token, text, htmlURL, parseMode, chatOpsToken, webAppURL string, extraRows ...[]map[string]string) error {
 	if parseMode == "" {
 		parseMode = "HTML"
 	}
@@ -645,7 +764,7 @@ func (w *Worker) sendTelegramDirectWithActions(ctx context.Context, api, chatID,
 		"parse_mode":               parseMode,
 		"disable_web_page_preview": true,
 	}
-	if markup := buildTelegramInlineKeyboard(htmlURL, chatOpsToken, extraRows...); markup != nil {
+	if markup := buildTelegramInlineKeyboardWithWebApp(htmlURL, chatOpsToken, webAppURL, extraRows...); markup != nil {
 		payload["reply_markup"] = markup
 	}
 	body, _ := json.Marshal(payload)
@@ -680,7 +799,7 @@ func (w *Worker) sendTelegramDirectWithActions(ctx context.Context, api, chatID,
 		if w.Logger != nil {
 			w.Logger.Warn("telegram html parse failed, auto falling back to plain text", "chat_id", chatID, "error", detail)
 		}
-		return w.sendTelegramDirectWithActions(ctx, api, chatID, token, htmlToPlainText(text), htmlURL, "", chatOpsToken, extraRows...)
+		return w.sendTelegramDirectWithOptions(ctx, api, chatID, token, htmlToPlainText(text), htmlURL, "", chatOpsToken, webAppURL, extraRows...)
 	}
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 		// 客户端禁跟随重定向（ErrUseLastResponse 防 SSRF）：3xx 说明消息未送达，
