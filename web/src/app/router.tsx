@@ -36,6 +36,11 @@ const SettingsPage = lazyRouteComponent(() => import("../features/monitor/settin
 const StarredReleasesPage = lazyRouteComponent(() => import("../features/monitor/starred-releases-page"), "StarredReleasesPage");
 const WebhookDeliveriesPage = lazyRouteComponent(() => import("../features/monitor/webhook-deliveries-page"), "WebhookDeliveriesPage");
 
+// TMA (Telegram Web Mini App) 独立移动端路由
+const TmaLayout = lazyRouteComponent(() => import("../features/tma/pages/TmaLayout"), "TmaLayout");
+const TmaDashboardPage = lazyRouteComponent(() => import("../features/tma/pages/TmaDashboardPage"), "TmaDashboardPage");
+const TmaEventDetailPage = lazyRouteComponent(() => import("../features/tma/pages/TmaEventDetailPage"), "TmaEventDetailPage");
+
 export interface RouterContext {
   queryClient: QueryClient;
 }
@@ -54,6 +59,31 @@ const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/setup",
   component: SetupRoute,
+});
+
+// TMA 专属根路由：直接脱离 desktop 的 authenticatedRoute 与 RootLayout
+export const tmaLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tma",
+  component: TmaLayout,
+});
+
+export const tmaIndexRoute = createRoute({
+  getParentRoute: () => tmaLayoutRoute,
+  path: "/",
+  component: () => <Navigate to="/tma/dashboard" replace />,
+});
+
+export const tmaDashboardRoute = createRoute({
+  getParentRoute: () => tmaLayoutRoute,
+  path: "/dashboard",
+  component: TmaDashboardPage,
+});
+
+export const tmaEventDetailRoute = createRoute({
+  getParentRoute: () => tmaLayoutRoute,
+  path: "/events/$id",
+  component: TmaEventDetailPage,
 });
 
 const authenticatedRoute = createRoute({
@@ -143,6 +173,11 @@ const webhookDeliveriesRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
+  tmaLayoutRoute.addChildren([
+    tmaIndexRoute,
+    tmaDashboardRoute,
+    tmaEventDetailRoute,
+  ]),
   authenticatedRoute.addChildren([
     indexRoute,
     notifyRoute,
