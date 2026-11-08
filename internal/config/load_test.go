@@ -787,3 +787,93 @@ jev:
 		t.Fatal("json.Marshal 泄露了密钥明文")
 	}
 }
+
+func TestConfig_TMALoadAndValidate(t *testing.T) {
+	t.Run("默认禁用TMA", func(t *testing.T) {
+		cfg, err := Load(context.Background(), LoadOptions{
+			LookupEnv: func(string) (string, bool) { return "", false },
+		})
+		if err != nil {
+			t.Fatalf("加载默认配置失败: %v", err)
+		}
+		if cfg.HTTP.TMA.Enabled {
+			t.Fatal("TMA 默认应当为 false")
+		}
+	})
+
+	t.Run("环境变量启用TMA且PublicBaseURL为HTTPS验证通过", func(t *testing.T) {
+		cfg, err := Load(context.Background(), LoadOptions{
+			LookupEnv: lookupFromMap(map[string]string{
+				"REPOSENTINEL_TMA_ENABLED":     "true",
+				"REPOSENTINEL_PUBLIC_BASE_URL": "https://sentinel.example.com",
+			}),
+		})
+		if err != nil {
+			t.Fatalf("加载配置失败: %v", err)
+		}
+		if !cfg.HTTP.TMA.Enabled {
+			t.Fatal("期望 TMA.Enabled 为 true")
+		}
+	})
+
+	t.Run("环境变量启用TMA但PublicBaseURL非HTTPS验证失败", func(t *testing.T) {
+		_, err := Load(context.Background(), LoadOptions{
+			LookupEnv: lookupFromMap(map[string]string{
+				"REPOSENTINEL_TMA_ENABLED":     "true",
+				"REPOSENTINEL_PUBLIC_BASE_URL": "http://localhost:8080",
+			}),
+		})
+		if err == nil {
+			t.Fatal("非 HTTPS 的 PublicBaseURL 在启用 TMA 时应校验失败")
+		}
+		if !strings.Contains(err.Error(), "http.public_base_url") {
+			t.Fatalf("期望 public_base_url 校验错误, 实际: %v", err)
+		}
+	})
+
+	t.Run("环境变量启用TMA但PublicBaseURL为空验证失败", func(t *testing.T) {
+		_, err := Load(context.Background(), LoadOptions{
+			LookupEnv: lookupFromMap(map[string]string{
+				"REPOSENTINEL_TMA_ENABLED": "true",
+			}),
+		})
+		if err == nil {
+			t.Fatal("空的 PublicBaseURL 在启用 TMA 时应校验失败")
+		}
+		if !strings.Contains(err.Error(), "http.public_base_url") {
+			t.Fatalf("期望 public_base_url 校验错误, 实际: %v", err)
+		}
+	})
+
+	t.Run("环境变量无效布尔值解析失败", func(t *testing.T) {
+		_, err := Load(context.Background(), LoadOptions{
+			LookupEnv: lookupFromMap(map[string]string{
+				"REPOSENTINEL_TMA_ENABLED": "not-a-bool",
+			}),
+		})
+		if err == nil {
+			t.Fatal("非法布尔环境变量应报错")
+		}
+		if !strings.Contains(err.Error(), "REPOSENTINEL_TMA_ENABLED") {
+			t.Fatalf("期望包含字段名, 实际: %v", err)
+		}
+	})
+
+	t.Run("YAML配置TMA并被环境变量覆盖", func(t *testing.T) {
+		cfg, err := Load(context.Background(), LoadOptions{
+			FileSystem: fstest.MapFS{
+				"config.yaml": {Data: []byte("http:\n  public_base_url: https://tma.example.com\n  tma:\n    enabled: false\n")},
+			},
+			ConfigPath: "config.yaml",
+			LookupEnv: lookupFromMap(map[string]string{
+				"REPOSENTINEL_TMA_ENABLED": "true",
+			}),
+		})
+		if err != nil {
+			t.Fatalf("加载失败: %v", err)
+		}
+		if !cfg.HTTP.TMA.Enabled {
+			t.Fatal("环境变量应覆盖 YAML 配置")
+		}
+	})
+}

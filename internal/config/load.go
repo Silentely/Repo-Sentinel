@@ -158,6 +158,7 @@ func validateYAMLTypedFields(root *yaml.Node) error {
 		{field: "github.app_id", path: []string{"github", "app_id"}, message: "must be an integer", validate: yamlInt64},
 		{field: "admin.session_ttl", path: []string{"admin", "session_ttl"}, message: "must be a duration", validate: yamlDuration},
 		{field: "setup.allow_remote", path: []string{"setup", "allow_remote"}, message: "must be a boolean", validate: yamlBool},
+		{field: "http.tma.enabled", path: []string{"http", "tma", "enabled"}, message: "must be a boolean", validate: yamlBool},
 		{field: "notify.http_webhook.allow_private", path: []string{"notify", "http_webhook", "allow_private"}, message: "must be a boolean", validate: yamlBool},
 	}
 	for _, check := range checks {
@@ -202,6 +203,13 @@ func applyEnvironment(cfg *Config, lookup func(string) (string, bool)) (poolExpl
 	}
 	if value, ok := lookup("REPOSENTINEL_HTTP_TRUSTED_PROXIES"); ok {
 		cfg.HTTP.TrustedProxies = parseStringSliceEnvironment(value)
+	}
+	if value, ok := lookup("REPOSENTINEL_TMA_ENABLED"); ok {
+		parsed, err := parseBoolEnvironment("REPOSENTINEL_TMA_ENABLED", value)
+		if err != nil {
+			return poolExplicitFlags{}, err
+		}
+		cfg.HTTP.TMA.Enabled = parsed
 	}
 	if value, ok := lookup("REPOSENTINEL_DATABASE_DRIVER"); ok {
 		cfg.Database.Driver = value

@@ -110,6 +110,16 @@ func (s *server) writeAPIError(
 	errorCode string,
 	details map[string]any,
 ) {
+	writeAPIErrorResponse(w, r, status, errorCode, details)
+}
+
+func writeAPIErrorResponse(
+	w http.ResponseWriter,
+	r *http.Request,
+	status int,
+	errorCode string,
+	details map[string]any,
+) {
 	w.Header().Set("Cache-Control", "no-store")
 	if status == http.StatusTooManyRequests {
 		w.Header().Set("Retry-After", loginRetryAfterSeconds)

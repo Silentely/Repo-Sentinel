@@ -68,6 +68,9 @@ func (cfg Config) Validate() error {
 	if !validPublicBaseURL(cfg.HTTP.PublicBaseURL) {
 		return newValidationError("http.public_base_url", "must use HTTPS except for localhost or loopback HTTP")
 	}
+	if cfg.HTTP.TMA.Enabled && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.HTTP.PublicBaseURL)), "https://") {
+		return newValidationError("http.public_base_url", "must start with https:// when TMA is enabled")
+	}
 	for _, proxy := range cfg.HTTP.TrustedProxies {
 		trimmed := strings.TrimSpace(proxy)
 		if trimmed == "" {

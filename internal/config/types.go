@@ -99,11 +99,17 @@ type LoadOptions struct {
 	LookupEnv  func(string) (string, bool)
 }
 
+// TMAConfig 描述 Telegram Web Mini App (TMA) 配置。
+type TMAConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
 // HTTPConfig 描述 HTTP 监听地址与对外访问地址。
 type HTTPConfig struct {
-	Addr           string   `yaml:"addr"`
-	PublicBaseURL  string   `yaml:"public_base_url"`
-	TrustedProxies []string `yaml:"trusted_proxies"`
+	Addr           string    `yaml:"addr"`
+	PublicBaseURL  string    `yaml:"public_base_url"`
+	TrustedProxies []string  `yaml:"trusted_proxies"`
+	TMA            TMAConfig `yaml:"tma"`
 }
 
 // DatabaseConfig 描述数据库驱动、连接地址和连接池上限。
