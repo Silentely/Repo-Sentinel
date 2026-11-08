@@ -597,10 +597,11 @@ func TestTMAHandler_ActionsConcurrencyAndIdempotency(t *testing.T) {
 		if keyA == keyB {
 			t.Fatalf("不同正文评论幂等键不应相同: keyA=%s, keyB=%s", keyA, keyB)
 		}
-		if !strings.HasPrefix(keyA, "tma:comment:"+repo.ID+":10:") {
+		expectedPrefix := fmt.Sprintf("tma:comment:%d:%s:10:", user.ID, repo.ID)
+		if !strings.HasPrefix(keyA, expectedPrefix) {
 			t.Fatalf("幂等键 A 格式不符: %s", keyA)
 		}
-		if !strings.HasPrefix(keyB, "tma:comment:"+repo.ID+":10:") {
+		if !strings.HasPrefix(keyB, expectedPrefix) {
 			t.Fatalf("幂等键 B 格式不符: %s", keyB)
 		}
 	})
@@ -1118,5 +1119,377 @@ func TestTMA_A6_WriteActionFailureAndRejectionAudit(t *testing.T) {
 	_ = json.Unmarshal(auditDenied.MetadataJSON, &metaDenied)
 	if metaDenied["action_result"] != "denied" {
 		t.Fatalf("期望 action_result denied, 实际: %v", metaDenied["action_result"])
+	}
+}
+
+// ============================================================================
+// Group B 测试：接口契约与日志 (B1 - B4)
+// ============================================================================
+
+func TestTMA_B1_NoFailedJobReturnsStatusWithoutDownloadingLogs(t *testing.T) {
+	// B1【P1】：当所有 Job 均成功时，返回 status="no_failed_job"，且绝不调用 DownloadWorkflowJobLogs
+	ctx := t.Context()
+	user := TelegramUser{ID: 10001, Username: "operator_alex"}
+
+	var downloadLogsCalled bool
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/jobs") {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jobs": []map[string]any{
+					{
+						"id":         101,
+						"name":       "build-success",
+						"conclusion": "success",
+						"steps": []map[string]any{
+							{"name": "checkout", "conclusion": "success"},
+							{"name": "build", "conclusion": "success"},
+						},
+					},
+					{
+						"id":         102,
+						"name":       "test-success",
+						"conclusion": "success",
+					},
+				},
+			})
+			return
+		}
+		if strings.Contains(r.URL.Path, "/logs") {
+			downloadLogsCalled = true
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("some logs"))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer mockServer.Close()
+
+	ghClient := &githubx.AppClient{
+		HTTP:    mockServer.Client(),
+		BaseURL: mockServer.URL,
+	}
+
+	fixture, initData := setupTMAServer(t, true, user, nil, ghClient)
+
+	repo, _ := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID:             "repo-b1-test",
+		Owner:          "sentinel-org",
+		Name:           "b1-repo",
+		FullName:       "sentinel-org/b1-repo",
+		MonitorEnabled: true,
+	})
+	runID := int64(123456)
+	ev, _ := fixture.store.Events().Create(ctx, store.Event{
+		ID:                "ev-b1-1",
+		DedupeFingerprint: "fp-b1-1",
+		RepositoryID:      &repo.ID,
+		WorkflowRunID:     &runID,
+		Kind:              "workflow_run",
+		Title:             "Successful Run",
+		OccurredAt:        time.Now().UTC(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/tma/events/%s/logs", ev.ID), nil)
+	req.Header.Set("X-Telegram-Init-Data", initData)
+	rec := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("期望状态码 200 OK，实际: %d, body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Logs      string `json:"logs"`
+		Status    string `json:"status"`
+		Truncated bool   `json:"truncated"`
+		JobID     int64  `json:"job_id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("反序列化失败: %v", err)
+	}
+
+	if resp.Status != "no_failed_job" {
+		t.Fatalf("期望 status 为 no_failed_job, 实际: %s", resp.Status)
+	}
+	if resp.Logs != "" {
+		t.Fatalf("期望 logs 为空，实际: %s", resp.Logs)
+	}
+	if downloadLogsCalled {
+		t.Fatal("全部成功时不应调用 DownloadWorkflowJobLogs，但外部 API 被调用了！")
+	}
+}
+
+func TestTMA_B2_LogStreamingExtremeCases_3MB_SingleLine_And_10K_Lines(t *testing.T) {
+	// B2【P1】：测试 3 MiB 超长单行与 1 万行小行极限流式读取，断言单行长度上限截断与 byte_truncated / line_truncated
+	ctx := t.Context()
+	user := TelegramUser{ID: 10001, Username: "operator_alex"}
+
+	var servedLogs []byte
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/logs") {
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write(servedLogs)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/jobs") {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jobs": []map[string]any{
+					{"id": 201, "name": "fail-job", "conclusion": "failure"},
+				},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer mockServer.Close()
+
+	ghClient := &githubx.AppClient{
+		HTTP:    mockServer.Client(),
+		BaseURL: mockServer.URL,
+	}
+
+	fixture, initData := setupTMAServer(t, true, user, nil, ghClient)
+
+	repo, _ := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID:             "repo-b2-test",
+		Owner:          "sentinel-org",
+		Name:           "b2-repo",
+		FullName:       "sentinel-org/b2-repo",
+		MonitorEnabled: true,
+	})
+	runID := int64(654321)
+	ev, _ := fixture.store.Events().Create(ctx, store.Event{
+		ID:                "ev-b2-1",
+		DedupeFingerprint: "fp-b2-1",
+		RepositoryID:      &repo.ID,
+		WorkflowRunID:     &runID,
+		Kind:              "workflow_run",
+		Title:             "Large Run",
+		OccurredAt:        time.Now().UTC(),
+	})
+
+	t.Run("极限1：3 MiB 超长单行流式安全截断", func(t *testing.T) {
+		// 构造无任何换行的 3 MiB 连续单行
+		servedLogs = bytes.Repeat([]byte("X"), 3*1024*1024)
+
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/tma/events/%s/logs", ev.ID), nil)
+		req.Header.Set("X-Telegram-Init-Data", initData)
+		rec := httptest.NewRecorder()
+		fixture.handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("期望状态码 200 OK，实际: %d", rec.Code)
+		}
+
+		var resp struct {
+			Logs          string `json:"logs"`
+			Truncated     bool   `json:"truncated"`
+			ByteTruncated bool   `json:"byte_truncated"`
+			LineTruncated bool   `json:"line_truncated"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("反序列化失败: %v", err)
+		}
+
+		if !resp.Truncated || !resp.ByteTruncated {
+			t.Fatalf("期望 Truncated=true 且 ByteTruncated=true, 实际: Truncated=%v, ByteTruncated=%v", resp.Truncated, resp.ByteTruncated)
+		}
+		// 单行暂存不超过 4096 字节
+		if len(resp.Logs) > 4096 {
+			t.Fatalf("单行长度未在内存中安全封顶 4096 字节，实际长度: %d", len(resp.Logs))
+		}
+	})
+
+	t.Run("极限2：10000 行短行流式读取保留最后 200 行", func(t *testing.T) {
+		var buf bytes.Buffer
+		for i := 1; i <= 10000; i++ {
+			buf.WriteString(fmt.Sprintf("line %05d\n", i))
+		}
+		servedLogs = buf.Bytes()
+
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/tma/events/%s/logs", ev.ID), nil)
+		req.Header.Set("X-Telegram-Init-Data", initData)
+		rec := httptest.NewRecorder()
+		fixture.handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("期望状态码 200 OK，实际: %d", rec.Code)
+		}
+
+		var resp struct {
+			Logs          string `json:"logs"`
+			Truncated     bool   `json:"truncated"`
+			LineTruncated bool   `json:"line_truncated"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("反序列化失败: %v", err)
+		}
+
+		if !resp.Truncated || !resp.LineTruncated {
+			t.Fatalf("期望 Truncated=true 且 LineTruncated=true, 实际: Truncated=%v, LineTruncated=%v", resp.Truncated, resp.LineTruncated)
+		}
+		lines := strings.Split(resp.Logs, "\n")
+		if len(lines) != 200 {
+			t.Fatalf("期望返回 200 行，实际: %d", len(lines))
+		}
+		if !strings.HasPrefix(lines[len(lines)-1], "line 10000") {
+			t.Fatalf("最后一行期望包含 line 10000, 实际: %s", lines[len(lines)-1])
+		}
+	})
+}
+
+func TestTMA_B3_Pending409DetailsContract(t *testing.T) {
+	// B3【P1】：409 Conflict 必须在 details 稳定包含 status:"pending" 和 reason:"action_in_progress"
+	ctx := t.Context()
+	user := TelegramUser{ID: 10001, Username: "operator_alex"}
+	mockExec := &mockTMAActionExecutor{
+		outcomeFunc: func(action chatops.ActionData) (*chatops.Outcome, error) {
+			return &chatops.Outcome{
+				Status:  chatops.StatusPending,
+				Action:  action.Action,
+				Message: "action in progress",
+			}, nil
+		},
+	}
+	fixture, initData := setupTMAServer(t, true, user, mockExec, nil)
+
+	repo, _ := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID:             "repo-b3-test",
+		Owner:          "sentinel-org",
+		Name:           "b3-repo",
+		FullName:       "sentinel-org/b3-repo",
+		MonitorEnabled: true,
+	})
+	prNum := int64(10)
+	ev, _ := fixture.store.Events().Create(ctx, store.Event{
+		ID:                "ev-b3-1",
+		DedupeFingerprint: "fp-b3-1",
+		RepositoryID:      &repo.ID,
+		SubjectNumber:     &prNum,
+		Kind:              "pull_request",
+		Title:             "PR 10",
+		OccurredAt:        time.Now().UTC(),
+	})
+
+	bodyJSON, _ := json.Marshal(map[string]any{
+		"action":   "pr_quick_approve",
+		"event_id": ev.ID,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tma/actions", bytes.NewReader(bodyJSON))
+	req.Header.Set("X-Telegram-Init-Data", initData)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("期望状态码 409 Conflict，实际: %d", rec.Code)
+	}
+
+	var errResp apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("反序列化 409 响应失败: %v", err)
+	}
+	if errResp.ErrorCode != "conflict" {
+		t.Fatalf("期望 error_code 为 conflict, 实际: %s", errResp.ErrorCode)
+	}
+	if errResp.Details["status"] != "pending" {
+		t.Fatalf("期望 details.status 为 pending，实际: %v", errResp.Details["status"])
+	}
+	if errResp.Details["reason"] != "action_in_progress" {
+		t.Fatalf("期望 details.reason 为 action_in_progress，实际: %v", errResp.Details["reason"])
+	}
+}
+
+func TestTMA_B4_CommentIdempotencyIsolatedByActorID(t *testing.T) {
+	// B4【P1】：不同白名单用户对同一 PR 提交相同评论内容，因 stableKey 包含 actorID，互不阻塞均能成功执行；
+	// 同一用户重复提交相同内容则被拦截
+	ctx := t.Context()
+	user1 := TelegramUser{ID: 10001, Username: "operator_alex"}
+	user2 := TelegramUser{ID: 20002, Username: "operator_bob"}
+
+	var executedKeys []string
+	var mu sync.Mutex
+	mockExec := &mockTMAActionExecutor{
+		outcomeFunc: func(action chatops.ActionData) (*chatops.Outcome, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			executedKeys = append(executedKeys, action.ID)
+			return &chatops.Outcome{
+				Status:     chatops.StatusExecuted,
+				Action:     action.Action,
+				ExternalID: "comment-1",
+				Message:    "Comment posted",
+			}, nil
+		},
+	}
+
+	fixture, initData1 := setupTMAServer(t, true, user1, mockExec, nil)
+	// 将 user2 也加入白名单
+	_, _ = fixture.store.Settings().Upsert(ctx, store.SystemSetting{
+		Key:       "chatops.telegram.allowed_user_ids",
+		ValueJSON: []byte(`"10001,20002"`),
+	})
+	initData2 := createTestInitData(testTMABotToken, user2, time.Now().Unix(), false)
+
+	repo, _ := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID:             "repo-b4-test",
+		Owner:          "sentinel-org",
+		Name:           "b4-repo",
+		FullName:       "sentinel-org/b4-repo",
+		MonitorEnabled: true,
+	})
+	prNum := int64(99)
+	ev, _ := fixture.store.Events().Create(ctx, store.Event{
+		ID:                "ev-b4-1",
+		DedupeFingerprint: "fp-b4-1",
+		RepositoryID:      &repo.ID,
+		SubjectNumber:     &prNum,
+		Kind:              "pull_request",
+		Title:             "PR 99",
+		OccurredAt:        time.Now().UTC(),
+	})
+
+	postComment := func(initData string, comment string) int {
+		body, _ := json.Marshal(map[string]any{
+			"action":       "pr_comment",
+			"event_id":     ev.ID,
+			"comment_body": comment,
+		})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tma/actions", bytes.NewReader(body))
+		req.Header.Set("X-Telegram-Init-Data", initData)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		fixture.handler.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	// 1. 用户 1 首次提交评论
+	code1 := postComment(initData1, "LGTM from review")
+	if code1 != http.StatusOK {
+		t.Fatalf("用户 1 首次提交评论期望 200 OK，实际: %d", code1)
+	}
+
+	// 2. 用户 2 提交相同评论内容 -> 期望同样成功 200 OK，不被用户 1 拦截
+	code2 := postComment(initData2, "LGTM from review")
+	if code2 != http.StatusOK {
+		t.Fatalf("用户 2 首次提交相同评论期望 200 OK，实际: %d", code2)
+	}
+
+	mu.Lock()
+	keysCount := len(executedKeys)
+	key1 := executedKeys[0]
+	key2 := executedKeys[1]
+	mu.Unlock()
+
+	if keysCount != 2 {
+		t.Fatalf("期望执行 2 次独立动作，实际执行了 %d 次", keysCount)
+	}
+	if !strings.Contains(key1, "10001") || !strings.Contains(key2, "20002") {
+		t.Fatalf("幂等键未包含 ActorID 导致隔离失效: key1=%s, key2=%s", key1, key2)
+	}
+	if key1 == key2 {
+		t.Fatalf("不同用户的幂等键产生了碰撞: key1=%s, key2=%s", key1, key2)
 	}
 }

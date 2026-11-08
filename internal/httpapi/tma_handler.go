@@ -432,16 +432,15 @@ func (s *server) handleTMAGetEventLogs(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	if targetJob == nil && len(jobs) > 0 {
-		targetJob = &jobs[0]
-	}
-
 	if targetJob == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"logs":      "",
-			"truncated": false,
-			"job_id":    int64(0),
-			"job_name":  "",
+			"logs":           "",
+			"truncated":      false,
+			"byte_truncated": false,
+			"line_truncated": false,
+			"job_id":         int64(0),
+			"job_name":       "",
+			"status":         "no_failed_job",
 		})
 		return
 	}
@@ -454,8 +453,9 @@ func (s *server) handleTMAGetEventLogs(w http.ResponseWriter, r *http.Request) {
 	defer body.Close()
 
 	const (
-		maxLogBytes = 2 << 20 // 2 MiB
-		maxLogLines = 200
+		maxLogBytes   = 2 << 20 // 2 MiB 严格读取上限
+		maxLogLines   = 200     // 尾部最多保留 200 行
+		maxLineLength = 4096    // 单行最大暂存 4KB，防止单行 3 MiB 挤爆内存
 	)
 	limitedReader := io.LimitReader(body, maxLogBytes)
 	cr := &countingReader{r: limitedReader}
@@ -464,29 +464,53 @@ func (s *server) handleTMAGetEventLogs(w http.ResponseWriter, r *http.Request) {
 	ring := make([]string, maxLogLines)
 	totalLines := 0
 
+	var curLine strings.Builder
 	for {
-		line, err := br.ReadString('\n')
-		if len(line) > 0 {
-			ring[totalLines%maxLogLines] = strings.TrimRight(line, "\r\n")
-			totalLines++
+		chunk, isPrefix, err := br.ReadLine()
+		if len(chunk) > 0 {
+			if curLine.Len() < maxLineLength {
+				remain := maxLineLength - curLine.Len()
+				if len(chunk) <= remain {
+					curLine.Write(chunk)
+				} else {
+					curLine.Write(chunk[:remain])
+				}
+			}
+		}
+		if !isPrefix {
+			if curLine.Len() > 0 || err == nil {
+				ring[totalLines%maxLogLines] = curLine.String()
+				totalLines++
+				curLine.Reset()
+			}
+		} else if err != nil {
+			if curLine.Len() > 0 {
+				ring[totalLines%maxLogLines] = curLine.String()
+				totalLines++
+				curLine.Reset()
+			}
 		}
 		if err != nil {
 			break
 		}
 	}
 
-	truncated := false
+	byteTruncated := false
 	if cr.bytesRead >= maxLogBytes {
-		truncated = true
+		byteTruncated = true
 	} else {
 		var extra [1]byte
 		if n, _ := body.Read(extra[:]); n > 0 {
-			truncated = true
+			byteTruncated = true
 		}
 	}
+
+	lineTruncated := false
 	if totalLines > maxLogLines {
-		truncated = true
+		lineTruncated = true
 	}
+
+	truncated := byteTruncated || lineTruncated
 
 	var resultLines []string
 	if totalLines <= maxLogLines {
@@ -514,10 +538,13 @@ func (s *server) handleTMAGetEventLogs(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"logs":      logs,
-		"truncated": truncated,
-		"job_id":    targetJob.ID,
-		"job_name":  targetJob.Name,
+		"logs":           logs,
+		"truncated":      truncated,
+		"byte_truncated": byteTruncated,
+		"line_truncated": lineTruncated,
+		"job_id":         targetJob.ID,
+		"job_name":       targetJob.Name,
+		"status":         "success",
 	})
 }
 
@@ -665,7 +692,7 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 		if len(hashHex) > 16 {
 			hashHex = hashHex[:16]
 		}
-		stableKey = fmt.Sprintf("tma:comment:%s:%d:%s", repo.ID, issueNum, hashHex)
+		stableKey = fmt.Sprintf("tma:comment:%s:%s:%d:%s", actorID, repo.ID, issueNum, hashHex)
 		targetType = "pull_request"
 		targetID = strconv.Itoa(issueNum)
 	}
@@ -691,6 +718,7 @@ func (s *server) handleTMAAction(w http.ResponseWriter, r *http.Request) {
 	if outcome != nil && outcome.Status == chatops.StatusPending {
 		recordAudit("conflict", "action_in_progress", "")
 		s.writeAPIError(w, r, http.StatusConflict, errorCodeConflict, map[string]any{
+			"status": "pending",
 			"reason": "action_in_progress",
 			"action": req.Action,
 		})
