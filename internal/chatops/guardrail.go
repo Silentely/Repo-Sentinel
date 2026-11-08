@@ -17,6 +17,7 @@ var actionRisks = map[string]string{
 	"workflow_rerun":            "medium",
 	"issue_apply_labels":        "medium",
 	"issue_request_details":     "medium",
+	"pr_comment":                "medium",
 	"issue_reply_draft":         "high",
 	"issue_mark_spam_and_close": "high",
 	"issue_mark_duplicate":      "high",

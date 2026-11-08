@@ -310,3 +310,100 @@ func TestJevIncidentTagsRoundTrip(t *testing.T) {
 		t.Fatalf("未设置 IncidentTags 应保持 nil: %v", gotAll.IncidentTags)
 	}
 }
+
+func TestChannelStore_SetQuietHoursEnabled(t *testing.T) {
+	ctx := t.Context()
+	data := openTestStore(t)
+
+	secretEnv := "secret-payload-test"
+	saved, err := data.Channels().Upsert(ctx, store.NotificationChannel{
+		ID:                ulid.Make().String(),
+		ChannelType:       store.ChannelTelegram,
+		Name:              "tg-alerts",
+		Enabled:           true,
+		Target:            "12345678",
+		SecretEnvelope:    secretEnv,
+		EventKinds:        []string{store.WorkItemKindIssue, store.WorkItemKindPR},
+		DigestEnabled:     true,
+		QuietHoursEnabled: false,
+		QuietHoursStart:   "22:00",
+		QuietHoursEnd:     "08:00",
+		QuietHoursTZ:      "Asia/Shanghai",
+	})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	// 1. 先触发一次 List，填充 listCache
+	initialList, err := data.Channels().List(ctx)
+	if err != nil {
+		t.Fatalf("initial list: %v", err)
+	}
+	var found bool
+	for _, ch := range initialList {
+		if ch.ID == saved.ID {
+			found = true
+			if ch.QuietHoursEnabled {
+				t.Fatal("expected quiet_hours_enabled to be false initially in cache")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("channel not found in initial list")
+	}
+
+	// 2. 调用原子更新方法将 QuietHoursEnabled 置为 true
+	if err := data.Channels().SetQuietHoursEnabled(ctx, saved.ID, true); err != nil {
+		t.Fatalf("SetQuietHoursEnabled to true: %v", err)
+	}
+
+	// 3. 验证 Get 结果：仅 QuietHoursEnabled 被修改，其他字段（SecretEnvelope、EventKinds 等）完整保留
+	got, err := data.Channels().Get(ctx, saved.ID)
+	if err != nil {
+		t.Fatalf("get after update: %v", err)
+	}
+	if !got.QuietHoursEnabled {
+		t.Fatal("expected QuietHoursEnabled to be true after update")
+	}
+	if got.SecretEnvelope != secretEnv {
+		t.Fatalf("SecretEnvelope was overwritten: got %s, want %s", got.SecretEnvelope, secretEnv)
+	}
+	if len(got.EventKinds) != 2 || got.EventKinds[0] != store.WorkItemKindIssue || got.EventKinds[1] != store.WorkItemKindPR {
+		t.Fatalf("EventKinds was overwritten: got %+v", got.EventKinds)
+	}
+	if got.Name != "tg-alerts" || !got.Enabled || got.Target != "12345678" || !got.DigestEnabled {
+		t.Fatalf("other fields changed unexpectedly: %+v", got)
+	}
+	if got.QuietHoursStart != "22:00" || got.QuietHoursEnd != "08:00" || got.QuietHoursTZ != "Asia/Shanghai" {
+		t.Fatalf("quiet hours time fields changed unexpectedly: %+v", got)
+	}
+
+	// 4. 验证 listCache 被成功失效：后续 List 调用返回更新后的真实值
+	cachedList, err := data.Channels().List(ctx)
+	if err != nil {
+		t.Fatalf("list after update: %v", err)
+	}
+	var updatedInList bool
+	for _, ch := range cachedList {
+		if ch.ID == saved.ID {
+			if ch.QuietHoursEnabled {
+				updatedInList = true
+			}
+		}
+	}
+	if !updatedInList {
+		t.Fatal("list cache was not invalidated; still returned stale quiet_hours_enabled")
+	}
+
+	// 5. 再次置为 false
+	if err := data.Channels().SetQuietHoursEnabled(ctx, saved.ID, false); err != nil {
+		t.Fatalf("SetQuietHoursEnabled to false: %v", err)
+	}
+	gotOff, err := data.Channels().Get(ctx, saved.ID)
+	if err != nil {
+		t.Fatalf("get after toggle off: %v", err)
+	}
+	if gotOff.QuietHoursEnabled {
+		t.Fatal("expected QuietHoursEnabled to be false after second update")
+	}
+}

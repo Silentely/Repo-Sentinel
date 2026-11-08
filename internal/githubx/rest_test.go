@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -389,5 +390,74 @@ func TestCreatePullRequestReview_ValidationAndEscape(t *testing.T) {
 	}
 	if gotPath != "/repos/owner%2Fsub/repo%2Fspecial/pulls/1/reviews" {
 		t.Fatalf("expected escaped path, got: %s", gotPath)
+	}
+}
+
+func TestGitHubClient_DownloadWorkflowJobLogs(t *testing.T) {
+	// Storage server simulating AWS S3 or Azure blob storage (different host).
+	// Must NOT receive Authorization header!
+	storageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			t.Errorf("storage server should not receive Authorization header, got: %s", auth)
+			http.Error(w, "Forbidden: Authorization header not allowed", http.StatusBadRequest)
+			return
+		}
+		if r.URL.Path != "/job-logs-bucket/job-9999.log" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("2026-11-08T01:00:00Z Step 1: Set up job\n2026-11-08T01:00:01Z Step 2: Run tests\nAll tests passed!\n"))
+	}))
+	defer storageServer.Close()
+
+	// GitHub API server simulating GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs
+	// Returning 302 redirect to storageServer URL.
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/owner/repo/actions/jobs/9999/logs" {
+			if r.Header.Get("Authorization") != "Bearer test-token-123" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			http.Redirect(w, r, storageServer.URL+"/job-logs-bucket/job-9999.log", http.StatusFound)
+			return
+		}
+		if r.URL.Path == "/repos/owner/repo/actions/jobs/4040/logs" {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer apiServer.Close()
+
+	client := &AppClient{
+		HTTP:    apiServer.Client(),
+		BaseURL: apiServer.URL,
+	}
+
+	// 1. Success case with redirect
+	stream, err := client.DownloadWorkflowJobLogs(context.Background(), "test-token-123", "owner", "repo", 9999)
+	if err != nil {
+		t.Fatalf("DownloadWorkflowJobLogs failed: %v", err)
+	}
+	defer stream.Close()
+
+	content, err := io.ReadAll(stream)
+	if err != nil {
+		t.Fatalf("read stream: %v", err)
+	}
+	expectedContent := "2026-11-08T01:00:00Z Step 1: Set up job\n2026-11-08T01:00:01Z Step 2: Run tests\nAll tests passed!\n"
+	if string(content) != expectedContent {
+		t.Fatalf("content mismatch:\ngot: %s\nwant: %s", string(content), expectedContent)
+	}
+
+	// 2. Error case (404)
+	errStream, err := client.DownloadWorkflowJobLogs(context.Background(), "test-token-123", "owner", "repo", 4040)
+	if err == nil {
+		_ = errStream.Close()
+		t.Fatal("expected error for 404 job, got nil")
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Fatalf("expected 404 in error message, got: %v", err)
 	}
 }

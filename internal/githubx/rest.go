@@ -652,3 +652,57 @@ func (c *AppClient) CloseIssue(ctx context.Context, token, owner, repo string, n
 	}
 	return nil
 }
+
+// DownloadWorkflowJobLogs 下载指定 Workflow Job 的日志原始文本流。
+// 遵循 GitHub API 重定向规范：当发生跨主机重定向（302 重定向至 S3 / Azure 签名地址）时，
+// 必须剥离 Authorization 请求头，避免对象存储因冲突鉴权机制而拒绝请求。
+// 调用方需负责关闭返回的 ReadCloser。
+func (c *AppClient) DownloadWorkflowJobLogs(ctx context.Context, token, owner, repo string, jobID int64) (io.ReadCloser, error) {
+	path := fmt.Sprintf("/repos/%s/%s/actions/jobs/%d/logs", url.PathEscape(owner), url.PathEscape(repo), jobID)
+	full := path
+	if strings.HasPrefix(path, "/") {
+		full = c.baseURL() + path
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", githubClientUA())
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	baseClient := c.httpClient()
+	client := *baseClient
+	origCheckRedirect := baseClient.CheckRedirect
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		if len(via) > 0 && req.URL.Host != via[0].URL.Host {
+			req.Header.Del("Authorization")
+		}
+		if origCheckRedirect != nil {
+			return origCheckRedirect(req, via)
+		}
+		return nil
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if ok, rle := parseRateLimitError(resp, b); ok {
+			return nil, rle
+		}
+		return nil, statusError(resp.StatusCode, b)
+	}
+
+	return resp.Body, nil
+}

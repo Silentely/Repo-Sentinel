@@ -366,6 +366,37 @@ func (e *GitHubChatOpsExecutor) ExecuteWithOutcome(ctx context.Context, action A
 		})
 		return e.mapReceiptDetailOutcome(action.Action, fmt.Sprintf("已成功快捷批准 PR #%d 合入", action.IssueNumber), scopeKey, detail, execErr)
 
+	case "pr_comment":
+		if action.IssueNumber <= 0 {
+			return &Outcome{
+				Status:  StatusRetryableFailure,
+				Action:  action.Action,
+				Message: "无效的 PR 编号",
+				Err:     errors.New("invalid pr number"),
+			}, errors.New("invalid pr number")
+		}
+		body := strings.TrimSpace(action.Payload)
+		if body == "" {
+			return &Outcome{
+				Status:  StatusRetryableFailure,
+				Action:  action.Action,
+				Message: "评论内容为空",
+				Err:     errors.New("empty comment payload"),
+			}, errors.New("empty comment payload")
+		}
+		runes := []rune(body)
+		if len(runes) > 2000 {
+			body = string(runes[:2000])
+		}
+		scopeKey := fmt.Sprintf("%d:%s", action.IssueNumber, action.ID)
+		detail, execErr := sideeffect.ExecuteWithReceiptDetail(ctx, settingsStore, "pr_comment", action.RepoID, scopeKey, "v1", scopeKey, func() (string, error) {
+			if commentErr := e.Client.CreateIssueComment(ctx, token, parts[0], parts[1], action.IssueNumber, body); commentErr != nil {
+				return "", commentErr
+			}
+			return scopeKey, nil
+		})
+		return e.mapReceiptDetailOutcome(action.Action, fmt.Sprintf("已成功在 PR #%d 发表评论", action.IssueNumber), scopeKey, detail, execErr)
+
 	default:
 		return &Outcome{
 			Status:  StatusRetryableFailure,

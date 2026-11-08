@@ -2237,6 +2237,17 @@ func (s *channelStore) ToggleEnabled(ctx context.Context, id string, enabled boo
 	return mapStoreError(err)
 }
 
+func (s *channelStore) SetQuietHoursEnabled(ctx context.Context, id string, enabled bool) error {
+	_, err := s.client.NotificationChannel.UpdateOneID(id).
+		SetQuietHoursEnabled(enabled).
+		SetUpdatedAt(time.Now().UTC()).
+		Save(ctx)
+	if err == nil {
+		s.listCache.Invalidate()
+	}
+	return mapStoreError(err)
+}
+
 func channelFromEntity(e *entclient.NotificationChannel) NotificationChannel {
 	return NotificationChannel{
 		ID: e.ID, ChannelType: e.ChannelType, Name: e.Name, Enabled: e.Enabled,

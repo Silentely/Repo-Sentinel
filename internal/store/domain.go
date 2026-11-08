@@ -758,6 +758,7 @@ type ChannelStore interface {
 	DisableOthersOfType(context.Context, string, string) error
 	Delete(context.Context, string) error
 	ToggleEnabled(context.Context, string, bool) error
+	SetQuietHoursEnabled(context.Context, string, bool) error
 }
 
 // OutboxStore 通知 Outbox。
