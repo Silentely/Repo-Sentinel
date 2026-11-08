@@ -51,6 +51,8 @@ var spaCanonicalPaths = []string{
 	"/about",
 	"/settings",
 	"/starred-releases",
+	"/tma",
+	"/tma/dashboard",
 }
 
 // siteOrigin 返回站点的规范外部 Origin（无尾斜杠）。
@@ -388,6 +390,9 @@ func (s *server) isMarkdownNegotiablePath(requestPath string) bool {
 		if p == requestPath {
 			return true
 		}
+	}
+	if strings.HasPrefix(requestPath, "/tma") {
+		return true
 	}
 	return false
 }

@@ -13,6 +13,7 @@ import {
 } from "./tma-api";
 import {
   applyTmaTheme,
+  bindTmaBackButton,
   getTmaStartParam,
   initTmaSdk,
   isTelegramWebAppAvailable,
@@ -164,6 +165,56 @@ describe("tma-sdk", () => {
         cleanup = initTmaSdk();
       }).not.toThrow();
       expect(() => cleanup?.()).not.toThrow();
+    });
+  });
+
+  describe("bindTmaBackButton", () => {
+    it("registers onClick handler and calls show(), and cleans up on unbind", () => {
+      const onClick = vi.fn();
+      const offClick = vi.fn();
+      const show = vi.fn();
+      const hide = vi.fn();
+      const onBack = vi.fn();
+
+      window.Telegram = {
+        WebApp: {
+          initData: "test",
+          initDataUnsafe: {},
+          themeParams: {},
+          isExpanded: false,
+          viewportHeight: 600,
+          viewportStableHeight: 600,
+          BackButton: {
+            isVisible: false,
+            onClick,
+            offClick,
+            show,
+            hide,
+          },
+          HapticFeedback: {} as any,
+          ready: vi.fn(),
+          expand: vi.fn(),
+          close: vi.fn(),
+          onEvent: vi.fn(),
+          offEvent: vi.fn(),
+        },
+      };
+
+      const unbind = bindTmaBackButton(onBack);
+      expect(onClick).toHaveBeenCalledWith(onBack);
+      expect(show).toHaveBeenCalledTimes(1);
+      expect(offClick).not.toHaveBeenCalled();
+      expect(hide).not.toHaveBeenCalled();
+
+      unbind();
+      expect(offClick).toHaveBeenCalledWith(onBack);
+      expect(hide).toHaveBeenCalledTimes(1);
+    });
+
+    it("safely no-ops when BackButton or Telegram is absent", () => {
+      delete window.Telegram;
+      const unbind = bindTmaBackButton(() => {});
+      expect(() => unbind()).not.toThrow();
     });
   });
 

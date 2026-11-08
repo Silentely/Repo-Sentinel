@@ -428,3 +428,20 @@ func TestDiscoveryResponsesVaryByForwardedProto(t *testing.T) {
 		})
 	}
 }
+
+func TestTMARoutes_DiscoveryAndMarkdownNegotiation(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{publicBaseURL: "https://reposentinel.example"})
+
+	for _, p := range []string{"/tma", "/tma/dashboard", "/tma/events/evt-123"} {
+		response := fixture.request(
+			t, http.MethodGet, p, "", "127.0.0.1:41016", nil,
+			map[string]string{"Accept": "text/markdown"},
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("TMA 路径 %s markdown 协商应 200，got %d", p, response.Code)
+		}
+		if !strings.Contains(response.Body.String(), "# RepoSentinel") {
+			t.Fatalf("TMA 路径 %s markdown 响应缺少站点说明", p)
+		}
+	}
+}

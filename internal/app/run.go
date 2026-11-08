@@ -172,19 +172,23 @@ func (a *App) Run(ctx context.Context) error {
 			botToken, err := httpapi.ResolveBotToken(workerCtx, a.data, kr, a.config.Notify.Telegram.Token.Reveal())
 			if err != nil {
 				if a.logger != nil {
-					a.logger.Warn("tma: setChatMenuButton failed", "error_code", "tma_bot_token_unavailable")
+					a.logger.Warn("tma: setChatMenuButton failed", "error_code", "tma_bot_token_unavailable", "action", "setChatMenuButton")
 				}
 				return
 			}
 			if botToken == "" {
 				if a.logger != nil {
-					a.logger.Warn("tma: setChatMenuButton failed", "error", "bot token not resolved")
+					a.logger.Warn("tma: setChatMenuButton failed", "error_code", "bot_token_not_resolved", "action", "setChatMenuButton")
 				}
 				return
 			}
 			if err := notify.SetBotMenuButton(workerCtx, botToken, menuURL); err != nil {
 				if a.logger != nil {
-					a.logger.Warn("tma: setChatMenuButton failed", "error", err)
+					a.logger.Warn("tma: setChatMenuButton failed",
+						"error_code", "telegram_set_chat_menu_button_failed",
+						"action", "setChatMenuButton",
+						"error", notify.LogSafeDeliveryError(err),
+					)
 				}
 				return
 			}

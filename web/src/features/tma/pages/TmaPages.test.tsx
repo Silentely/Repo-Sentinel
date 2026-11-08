@@ -14,6 +14,7 @@ import { TmaEventDetailPage } from "./TmaEventDetailPage";
 import { TmaLayout } from "./TmaLayout";
 
 let mockRouteParams: Record<string, string | undefined> = { id: "evt-123" };
+const mockNavigate = vi.fn();
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
@@ -40,7 +41,7 @@ vi.mock("@tanstack/react-router", () => ({
     );
   },
   useParams: () => mockRouteParams,
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mockNavigate,
   Outlet: () => <div data-testid="tma-outlet">Outlet Child Content</div>,
 }));
 
@@ -83,7 +84,13 @@ describe("TmaLayout & Pages", () => {
         isExpanded: true,
         viewportHeight: 600,
         viewportStableHeight: 600,
-        BackButton: {} as any,
+        BackButton: {
+          isVisible: false,
+          onClick: vi.fn(),
+          offClick: vi.fn(),
+          show: vi.fn(),
+          hide: vi.fn(),
+        } as any,
         HapticFeedback: {
           impactOccurred: vi.fn(),
           notificationOccurred: vi.fn(),
@@ -244,6 +251,27 @@ describe("TmaLayout & Pages", () => {
         run_attempt: 1,
       },
     };
+
+    it("wires Telegram BackButton on mount to return to dashboard, and cleans up on unmount", async () => {
+      setupTelegramEnv();
+      vi.mocked(tmaApi.fetchTmaEvent).mockResolvedValue(mockDetailData);
+      vi.mocked(tmaApi.fetchTmaEventLogs).mockResolvedValue({
+        logs: "normal logs",
+        truncated: false,
+      });
+
+      const backBtn = window.Telegram?.WebApp?.BackButton;
+      const { unmount } = render(<TmaEventDetailPage />);
+
+      await waitFor(() => {
+        expect(backBtn?.onClick).toHaveBeenCalledTimes(1);
+        expect(backBtn?.show).toHaveBeenCalledTimes(1);
+      });
+
+      unmount();
+      expect(backBtn?.offClick).toHaveBeenCalledTimes(1);
+      expect(backBtn?.hide).toHaveBeenCalledTimes(1);
+    });
 
     it("renders event detail tabs and action buttons with haptics", async () => {
       setupTelegramEnv();

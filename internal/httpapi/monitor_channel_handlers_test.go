@@ -250,3 +250,78 @@ func TestChannelIncidentTags(t *testing.T) {
 		t.Fatalf("cleared incident_tags should be nil (all accept), got %v", putView.IncidentTags)
 	}
 }
+
+
+func TestChannelHandlers_TelegramUpdateInvalidatesResolveBotTokenCacheImmediately(t *testing.T) {
+	ring := testHTTPKeyRing(t)
+	fixture := newHTTPTestFixture(t, httpTestOptions{keyRing: ring})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	headers := map[string]string{
+		CSRFHeaderName: csrf.Value,
+	}
+
+	ctx := context.Background()
+	fallbackToken := "cfg-fallback-token-xyz"
+
+	// 1. Upsert Telegram 渠道，设置 Token A
+	bodyA := `{"name":"TG告警群","enabled":true,"target":"-1001234567","secret":"tg-token-AAAAAA","event_kinds":["issue"]}`
+	putRecA := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram", bodyA, "127.0.0.1:45130", cookies, headers)
+	if putRecA.Code != http.StatusOK {
+		t.Fatalf("upsert telegram A 失败: %d, body: %s", putRecA.Code, putRecA.Body.String())
+	}
+
+	// 首次解析，断言得到 Token A
+	tok1, err := ResolveBotToken(ctx, fixture.store, *ring, fallbackToken)
+	if err != nil {
+		t.Fatalf("首次 ResolveBotToken 失败: %v", err)
+	}
+	if tok1 != "tg-token-AAAAAA" {
+		t.Fatalf("期望 Token A (tg-token-AAAAAA)，实际: %s", tok1)
+	}
+
+	// 2. 生产路径调用 HTTP API 更新为 Token B（不 sleep，直接断言缓存失效）
+	bodyB := `{"name":"TG告警群","enabled":true,"target":"-1001234567","secret":"tg-token-BBBBBB","event_kinds":["issue"]}`
+	putRecB := fixture.request(t, http.MethodPut, "/api/v1/notifications/channels/telegram", bodyB, "127.0.0.1:45131", cookies, headers)
+	if putRecB.Code != http.StatusOK {
+		t.Fatalf("upsert telegram B 失败: %d, body: %s", putRecB.Code, putRecB.Body.String())
+	}
+
+	tok2, err := ResolveBotToken(ctx, fixture.store, *ring, fallbackToken)
+	if err != nil {
+		t.Fatalf("更新后 ResolveBotToken 失败: %v", err)
+	}
+	if tok2 != "tg-token-BBBBBB" {
+		t.Fatalf("渠道更新后未立即生效（可能未失效缓存）: want tg-token-BBBBBB, got %s", tok2)
+	}
+
+	// 3. 生产路径调用 HTTP API 禁用渠道（Toggle Enabled = false）
+	toggleBody := `{"enabled":false}`
+	toggleRec := fixture.request(t, http.MethodPatch, "/api/v1/notifications/channels/telegram/toggle", toggleBody, "127.0.0.1:45132", cookies, headers)
+	if toggleRec.Code != http.StatusOK {
+		t.Fatalf("禁用 telegram 失败: %d", toggleRec.Code)
+	}
+
+	tok3, err := ResolveBotToken(ctx, fixture.store, *ring, fallbackToken)
+	if err != nil {
+		t.Fatalf("禁用后 ResolveBotToken 失败: %v", err)
+	}
+	if tok3 != fallbackToken {
+		t.Fatalf("禁用渠道后未立即回退至配置 Token: want %s, got %s", fallbackToken, tok3)
+	}
+
+	// 4. 生产路径调用 HTTP API 删除渠道
+	delRec := fixture.request(t, http.MethodDelete, "/api/v1/notifications/channels/telegram", "", "127.0.0.1:45133", cookies, headers)
+	if delRec.Code != http.StatusOK {
+		t.Fatalf("删除 telegram 失败: %d", delRec.Code)
+	}
+
+	tok4, err := ResolveBotToken(ctx, fixture.store, *ring, fallbackToken)
+	if err != nil {
+		t.Fatalf("删除后 ResolveBotToken 失败: %v", err)
+	}
+	if tok4 != fallbackToken {
+		t.Fatalf("删除渠道后未立即回退至配置 Token: want %s, got %s", fallbackToken, tok4)
+	}
+}

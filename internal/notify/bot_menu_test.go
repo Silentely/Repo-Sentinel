@@ -1,10 +1,15 @@
 package notify
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -92,4 +97,82 @@ func TestSetBotMenuButton_InvalidArgs(t *testing.T) {
 	if err := SetBotMenuButton(ctx, "fake-token", ""); err == nil {
 		t.Fatal("空 menuURL 应报错")
 	}
+}
+
+func TestSetBotMenuButton_NeverLeaksTokenInErrorsAndLogs(t *testing.T) {
+	botToken := "987654321:AAFE_TestSecretTokenShouldNeverBeLeaked_xyz"
+	menuURL := "https://sentinel.example.com/tma/dashboard"
+
+	// 1. Direct SetBotMenuButtonWithClient call failure (unreachable endpoint)
+	client := &http.Client{
+		Transport: &roundTripperFunc{
+			fn: func(req *http.Request) (*http.Response, error) {
+				return nil, &url.Error{
+					Op:  req.Method,
+					URL: req.URL.String(),
+					Err: errors.New("dial tcp: lookup telegram.invalid: no such host"),
+				}
+			},
+		},
+	}
+
+	err := SetBotMenuButtonWithClient(context.Background(), client, "https://telegram.invalid", botToken, menuURL)
+	if err == nil {
+		t.Fatal("期望请求失败但返回 nil")
+	}
+
+	errStr := err.Error()
+	if strings.Contains(errStr, botToken) {
+		t.Fatalf("错误信息中泄露了完整 botToken: %s", errStr)
+	}
+	if strings.Contains(errStr, "987654321:") {
+		t.Fatalf("错误信息中泄露了 token 前缀: %s", errStr)
+	}
+	if telegramBotTokenRegex.MatchString(errStr) {
+		t.Fatalf("错误信息匹配到疑似 Telegram Bot Token 模式: %s", errStr)
+	}
+
+	// 2. Direct LogSafeDeliveryError check
+	rawURLErr := &url.Error{
+		Op:  "Post",
+		URL: "https://api.telegram.org/bot" + botToken + "/setChatMenuButton",
+		Err: errors.New("connection reset by peer"),
+	}
+	sanitized := LogSafeDeliveryError(rawURLErr)
+	if strings.Contains(sanitized, botToken) {
+		t.Fatalf("LogSafeDeliveryError 泄露了完整 botToken: %s", sanitized)
+	}
+	if strings.Contains(sanitized, "987654321") {
+		t.Fatalf("LogSafeDeliveryError 泄露了 token 数字段: %s", sanitized)
+	}
+	if telegramBotTokenRegex.MatchString(sanitized) {
+		t.Fatalf("LogSafeDeliveryError 结果中仍匹配到 bot token 正则: %s", sanitized)
+	}
+
+	// 3. Logger buffer check
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	logger.Warn("tma: setChatMenuButton failed",
+		"error_code", "telegram_set_chat_menu_button_failed",
+		"action", "setChatMenuButton",
+		"error", LogSafeDeliveryError(err),
+	)
+	logOutput := logBuf.String()
+	if strings.Contains(logOutput, botToken) {
+		t.Fatalf("日志输出中泄露了 botToken: %s", logOutput)
+	}
+	if strings.Contains(logOutput, "987654321") {
+		t.Fatalf("日志输出中泄露了 token 前缀: %s", logOutput)
+	}
+	if telegramBotTokenRegex.MatchString(logOutput) {
+		t.Fatalf("日志输出中匹配到了 bot token 正则: %s", logOutput)
+	}
+}
+
+type roundTripperFunc struct {
+	fn func(req *http.Request) (*http.Response, error)
+}
+
+func (r *roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return r.fn(req)
 }

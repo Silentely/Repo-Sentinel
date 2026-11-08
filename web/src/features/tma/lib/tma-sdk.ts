@@ -1,38 +1,38 @@
+/**
+ * TMA SDK 集成与移动端交互辅助函数。
+ * 遵循 Telegram WebApp 原生语义与静默降级设计规范。
+ */
+
 export interface TmaHaptics {
-  impact: (style?: "light" | "medium" | "heavy") => void;
+  impact: (style?: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
   notification: (type: "success" | "warning" | "error") => void;
   selection: () => void;
 }
 
+/**
+ * 触发触觉反馈。
+ * 严格遵从静默降级原则：非 Telegram 环境或客户端不支持时直接静默忽略，不抛异常。
+ */
 export const tmaHaptics: TmaHaptics = {
-  impact(style: "light" | "medium" | "heavy" = "light"): void {
-    if (typeof window === "undefined") {
-      return;
-    }
+  impact: (style: "light" | "medium" | "heavy" | "rigid" | "soft" = "light") => {
     try {
       window.Telegram?.WebApp?.HapticFeedback?.impactOccurred(style);
     } catch {
-      // safe fallback
+      // Safe fallback
     }
   },
-  notification(type: "success" | "warning" | "error"): void {
-    if (typeof window === "undefined") {
-      return;
-    }
+  notification: (type: "error" | "success" | "warning") => {
     try {
       window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred(type);
     } catch {
-      // safe fallback
+      // Safe fallback
     }
   },
-  selection(): void {
-    if (typeof window === "undefined") {
-      return;
-    }
+  selection: () => {
     try {
       window.Telegram?.WebApp?.HapticFeedback?.selectionChanged();
     } catch {
-      // safe fallback
+      // Safe fallback
     }
   },
 };
@@ -46,15 +46,17 @@ export function isTelegramWebAppAvailable(): boolean {
 }
 
 /**
- * 将 Telegram 客户端传递的 themeParams 映射为 scoped CSS 变量，
- * 支持动态适配系统深色/浅色模式切换 (C3)。
+ * 将 Telegram 客户端传递的主题参数注入 CSS 自定义变量 (CSS custom properties)。
+ * 供 Tailwind 与深色模式主题直接无缝吸附。
  */
 export function applyTmaTheme(): void {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return;
   }
   const theme = window.Telegram?.WebApp?.themeParams;
-  if (!theme) return;
+  if (!theme) {
+    return;
+  }
 
   const root = document.documentElement;
   if (theme.bg_color) root.style.setProperty("--tg-theme-bg-color", theme.bg_color);
@@ -110,6 +112,36 @@ export function initTmaSdk(): () => void {
   return () => {
     try {
       webApp?.offEvent?.("themeChanged", onThemeChanged);
+    } catch {
+      // safe fallback
+    }
+  };
+}
+
+/**
+ * 绑定 Telegram 原生 BackButton：
+ * 显示返回按钮并挂载点击回调，组件卸载时清理事件监听并隐藏返回按钮 (C2)。
+ */
+export function bindTmaBackButton(onBack: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+  const backButton = window.Telegram?.WebApp?.BackButton;
+  if (!backButton) {
+    return () => {};
+  }
+
+  try {
+    backButton.onClick(onBack);
+    backButton.show();
+  } catch {
+    // safe fallback
+  }
+
+  return () => {
+    try {
+      backButton.offClick(onBack);
+      backButton.hide();
     } catch {
       // safe fallback
     }

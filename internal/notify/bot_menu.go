@@ -8,86 +8,90 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
-const defaultTelegramAPIBase = "https://api.telegram.org"
+const defaultTelegramAPIBaseURL = "https://api.telegram.org"
 
-// SetBotMenuButton 调用 Telegram Bot API setChatMenuButton 端点，将机器人默认菜单按钮配置为打开 TMA 控制台。
-func SetBotMenuButton(ctx context.Context, botToken, menuURL string) error {
-	client := newSafeHTTPClient(10 * time.Second)
-	return SetBotMenuButtonWithClient(ctx, client, defaultTelegramAPIBase, botToken, menuURL)
+type setChatMenuButtonRequest struct {
+	MenuButton menuButton `json:"menu_button"`
 }
 
-// SetBotMenuButtonWithClient 支持自定义 client 与 apiBase，便于单元测试与反代环境。
-func SetBotMenuButtonWithClient(ctx context.Context, client *http.Client, apiBase, botToken, menuURL string) error {
-	trimmedToken := strings.TrimSpace(botToken)
-	if trimmedToken == "" {
-		return fmt.Errorf("bot_token is required")
-	}
-	trimmedMenuURL := strings.TrimSpace(menuURL)
-	if trimmedMenuURL == "" {
-		return fmt.Errorf("menu_url is required")
-	}
+type menuButton struct {
+	Type   string     `json:"type"`
+	Text   string     `json:"text"`
+	WebApp webAppInfo `json:"web_app"`
+}
 
+type webAppInfo struct {
+	URL string `json:"url"`
+}
+
+type telegramResponse struct {
+	Ok          bool   `json:"ok"`
+	ErrorCode   int    `json:"error_code,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// SetBotMenuButton 配置 Telegram Bot 的聊天菜单按钮为打开 TMA 控制台
+func SetBotMenuButton(ctx context.Context, botToken, menuURL string) error {
+	return SetBotMenuButtonWithClient(ctx, http.DefaultClient, defaultTelegramAPIBaseURL, botToken, menuURL)
+}
+
+// SetBotMenuButtonWithClient 使用指定的 HTTP 客户端和 API 基础地址配置菜单按钮（方便单元测试注入 mock server）
+func SetBotMenuButtonWithClient(ctx context.Context, client *http.Client, apiBaseURL, botToken, menuURL string) error {
+	if botToken == "" {
+		return fmt.Errorf("botToken must not be empty")
+	}
+	if menuURL == "" {
+		return fmt.Errorf("menuURL must not be empty")
+	}
 	if client == nil {
-		client = newSafeHTTPClient(10 * time.Second)
+		client = http.DefaultClient
 	}
-	base := strings.TrimRight(strings.TrimSpace(apiBase), "/")
-	if base == "" {
-		base = defaultTelegramAPIBase
+	if apiBaseURL == "" {
+		apiBaseURL = defaultTelegramAPIBaseURL
 	}
+	endpoint := fmt.Sprintf("%s/bot%s/setChatMenuButton", strings.TrimRight(apiBaseURL, "/"), botToken)
 
-	endpoint := fmt.Sprintf("%s/bot%s/setChatMenuButton", base, trimmedToken)
-
-	requestBody := map[string]any{
-		"menu_button": map[string]any{
-			"type": "web_app",
-			"text": "控制台",
-			"web_app": map[string]string{
-				"url": trimmedMenuURL,
+	reqBody := setChatMenuButtonRequest{
+		MenuButton: menuButton{
+			Type: "web_app",
+			Text: "控制台",
+			WebApp: webAppInfo{
+				URL: menuURL,
 			},
 		},
 	}
-
-	bodyBytes, err := json.Marshal(requestBody)
+	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return fmt.Errorf("failed to marshal setChatMenuButton payload: %w", err)
+		return fmt.Errorf("failed to marshal setChatMenuButton request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return fmt.Errorf("failed to create setChatMenuButton request: %w", err)
+		return fmt.Errorf("failed to create setChatMenuButton request: %s", logSafeDeliveryError(err))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", webhookUserAgent())
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("setChatMenuButton request failed: %w", err)
+		return fmt.Errorf("setChatMenuButton request failed: %s", logSafeDeliveryError(err))
 	}
 	defer resp.Body.Close()
 
-	respBytes, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read setChatMenuButton response: %w", err)
 	}
 
-	var tgResp struct {
-		OK          bool   `json:"ok"`
-		Result      bool   `json:"result"`
-		ErrorCode   int    `json:"error_code"`
-		Description string `json:"description"`
-	}
+	var tgResp telegramResponse
 	if err := json.Unmarshal(respBytes, &tgResp); err != nil {
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("setChatMenuButton http status %d: %s", resp.StatusCode, string(respBytes))
-		}
-		return fmt.Errorf("failed to decode setChatMenuButton response: %w", err)
+		return fmt.Errorf("failed to parse setChatMenuButton response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK || !tgResp.OK {
-		return fmt.Errorf("telegram setChatMenuButton error %d: %s", tgResp.ErrorCode, tgResp.Description)
+	if !tgResp.Ok {
+		return fmt.Errorf("setChatMenuButton returned error: code=%d description=%s", tgResp.ErrorCode, tgResp.Description)
 	}
 
 	return nil

@@ -78,7 +78,7 @@ test.describe("Telegram Mini App (TMA)", () => {
     await expect(page.getByText("移动端告警与监控看板")).toBeVisible();
     await expect(page.getByText("纳管仓库")).toBeVisible();
     await expect(page.getByText("待办告警")).toBeVisible();
-    await expect(page.getByText("8")).toBeVisible();
+    await expect(page.getByText("8", { exact: true })).toBeVisible();
   });
 
   test("C4-3: 动作执行遇到 HTTP 409 时呈现告警反馈与防重复锁定", async ({ page }) => {

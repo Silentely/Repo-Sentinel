@@ -1320,7 +1320,19 @@ func parseRetryAfter(resp *http.Response) int {
 // 日志聚合平台，持有日志读权限者可凭该凭据向渠道推送任意消息（伪装告警、钓鱼）。
 // 与 internal/ai 的 redactURL 同一意图，并扩展到 path/query。仅保留 scheme://host
 // 与协议层原因，定位所需信息由同一条日志的 outbox_id/channel_id/channel_type 承担。
+var telegramBotTokenRegex = regexp.MustCompile(`(?i)(?:/bot|bot)?([0-9]{8,}:[a-zA-Z0-9_-]+)`)
+
+// LogSafeDeliveryError 去掉错误串中的目标 URL 凭据段，支持跨包复用。
+func LogSafeDeliveryError(err error) string {
+	return logSafeDeliveryError(err)
+}
+
+// logSafeDeliveryError 去掉错误串中的目标 URL 凭据段与 bot token。
 func logSafeDeliveryError(err error) string {
+	if err == nil {
+		return ""
+	}
+	var msg string
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
 		if parsed, perr := url.Parse(urlErr.URL); perr == nil {
@@ -1330,10 +1342,14 @@ func logSafeDeliveryError(err error) string {
 			parsed.RawPath = ""
 			parsed.Fragment = ""
 			// url.URL.Redacted 已对 userinfo 打码；此处再显式置空确保 path/query 一并去除。
-			return fmt.Sprintf("%s %s: %v", urlErr.Op, parsed.Redacted(), urlErr.Err)
+			msg = fmt.Sprintf("%s %s: %v", urlErr.Op, parsed.Redacted(), urlErr.Err)
+		} else {
+			msg = urlErr.Error()
 		}
+	} else {
+		msg = err.Error()
 	}
-	return err.Error()
+	return telegramBotTokenRegex.ReplaceAllString(msg, "[REDACTED_BOT_TOKEN]")
 }
 
 func validateWebhookURL(raw string, allowPrivate bool) error {

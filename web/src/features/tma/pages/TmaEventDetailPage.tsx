@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   executeTmaAction,
   fetchTmaEvent,
@@ -8,13 +8,21 @@ import {
   isTmaConflictError,
   type TmaEventDetailData,
 } from "../lib/tma-api";
-import { getTmaStartParam, tmaHaptics } from "../lib/tma-sdk";
+import { bindTmaBackButton, getTmaStartParam, tmaHaptics } from "../lib/tma-sdk";
 
 type TabType = "logs" | "diff" | "checks";
 
 export function TmaEventDetailPage() {
+  const navigate = useNavigate();
   const routeParams = useParams({ strict: false }) as Record<string, string | undefined>;
   const id = routeParams.id || getTmaStartParam() || "";
+
+  // 绑定 Telegram 原生 BackButton，组件卸载时清理监听并隐藏 (C2)
+  useEffect(() => {
+    return bindTmaBackButton(() => {
+      navigate({ to: "/tma/dashboard" });
+    });
+  }, [navigate]);
 
   const [detail, setDetail] = useState<TmaEventDetailData | null>(null);
   const [loading, setLoading] = useState(true);
