@@ -1,3 +1,4 @@
+import { isTelegramWebAppAvailable } from "./tma-sdk";
 export interface TmaWorkItem {
   id: string;
   repository_id: string;
@@ -110,6 +111,13 @@ export class TmaApiError extends Error {
   }
 }
 
+export class TmaUnavailableError extends Error {
+  constructor(message = "Telegram WebApp 环境不可用，已拦截外部网络调用。") {
+    super(message);
+    this.name = "TmaUnavailableError";
+  }
+}
+
 export class TmaConflictError extends TmaApiError {
   constructor(init: Omit<TmaApiErrorInit, "status" | "isPendingConflict">) {
     super({
@@ -196,6 +204,10 @@ export async function tmaRequest<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
+  if (!isTelegramWebAppAvailable()) {
+    throw new TmaUnavailableError();
+  }
+
   const url = endpoint.startsWith("/") ? endpoint : `${TMA_BASE}/${endpoint}`;
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");

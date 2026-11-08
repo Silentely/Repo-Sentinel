@@ -8,9 +8,11 @@ import {
   fetchTmaEventLogs,
   TmaApiError,
   TmaConflictError,
+  TmaUnavailableError,
   toggleTmaQuietHours,
 } from "./tma-api";
 import {
+  applyTmaTheme,
   getTmaStartParam,
   initTmaSdk,
   isTelegramWebAppAvailable,
@@ -43,7 +45,6 @@ describe("tma-sdk", () => {
           isExpanded: false,
           viewportHeight: 600,
           viewportStableHeight: 600,
-          MainButton: {} as any,
           BackButton: {} as any,
           HapticFeedback: {} as any,
           ready: vi.fn(),
@@ -70,7 +71,6 @@ describe("tma-sdk", () => {
           isExpanded: true,
           viewportHeight: 600,
           viewportStableHeight: 600,
-          MainButton: {} as any,
           BackButton: {} as any,
           HapticFeedback: {} as any,
           ready: vi.fn(),
@@ -84,37 +84,86 @@ describe("tma-sdk", () => {
     });
   });
 
-  describe("initTmaSdk", () => {
-    it("calls ready and expand on WebApp when available", () => {
-      const readyMock = vi.fn();
-      const expandMock = vi.fn();
+  describe("applyTmaTheme", () => {
+    it("maps themeParams to scoped CSS variables on documentElement", () => {
       window.Telegram = {
         WebApp: {
           initData: "test",
           initDataUnsafe: {},
-          themeParams: {},
-          isExpanded: false,
+          themeParams: {
+            bg_color: "#1a1a1a",
+            text_color: "#ffffff",
+            hint_color: "#888888",
+            link_color: "#2481cc",
+            button_color: "#50a7ea",
+            button_text_color: "#ffffff",
+            secondary_bg_color: "#2a2a2a",
+          },
+          isExpanded: true,
           viewportHeight: 600,
           viewportStableHeight: 600,
-          MainButton: {} as any,
-          BackButton: {} as any,
-          HapticFeedback: {} as any,
-          ready: readyMock,
-          expand: expandMock,
+          ready: vi.fn(),
+          expand: vi.fn(),
           close: vi.fn(),
           onEvent: vi.fn(),
           offEvent: vi.fn(),
         },
       };
 
-      initTmaSdk();
+      applyTmaTheme();
+      const root = document.documentElement;
+      expect(root.style.getPropertyValue("--tg-theme-bg-color")).toBe("#1a1a1a");
+      expect(root.style.getPropertyValue("--tg-theme-text-color")).toBe("#ffffff");
+      expect(root.style.getPropertyValue("--tg-theme-hint-color")).toBe("#888888");
+      expect(root.style.getPropertyValue("--tg-theme-link-color")).toBe("#2481cc");
+      expect(root.style.getPropertyValue("--tg-theme-button-color")).toBe("#50a7ea");
+      expect(root.style.getPropertyValue("--tg-theme-button-text-color")).toBe("#ffffff");
+      expect(root.style.getPropertyValue("--tg-theme-secondary-bg-color")).toBe("#2a2a2a");
+    });
+  });
+
+  describe("initTmaSdk", () => {
+    it("calls ready, expand, applies theme, listens to themeChanged and returns cleanup function", () => {
+      const readyMock = vi.fn();
+      const expandMock = vi.fn();
+      const onEventMock = vi.fn();
+      const offEventMock = vi.fn();
+
+      window.Telegram = {
+        WebApp: {
+          initData: "test",
+          initDataUnsafe: {},
+          themeParams: { bg_color: "#222222" },
+          isExpanded: false,
+          viewportHeight: 600,
+          viewportStableHeight: 600,
+          BackButton: {} as any,
+          HapticFeedback: {} as any,
+          ready: readyMock,
+          expand: expandMock,
+          close: vi.fn(),
+          onEvent: onEventMock,
+          offEvent: offEventMock,
+        },
+      };
+
+      const cleanup = initTmaSdk();
       expect(readyMock).toHaveBeenCalledTimes(1);
       expect(expandMock).toHaveBeenCalledTimes(1);
+      expect(onEventMock).toHaveBeenCalledWith("themeChanged", expect.any(Function));
+
+      // Test cleanup removes listener
+      cleanup();
+      expect(offEventMock).toHaveBeenCalledWith("themeChanged", expect.any(Function));
     });
 
     it("does not crash when outside Telegram", () => {
       delete window.Telegram;
-      expect(() => initTmaSdk()).not.toThrow();
+      let cleanup: (() => void) | undefined;
+      expect(() => {
+        cleanup = initTmaSdk();
+      }).not.toThrow();
+      expect(() => cleanup?.()).not.toThrow();
     });
   });
 
@@ -130,7 +179,6 @@ describe("tma-sdk", () => {
           isExpanded: false,
           viewportHeight: 600,
           viewportStableHeight: 600,
-          MainButton: {} as any,
           BackButton: {} as any,
           HapticFeedback: {} as any,
           ready: vi.fn(),
@@ -163,7 +211,6 @@ describe("tma-sdk", () => {
           isExpanded: false,
           viewportHeight: 600,
           viewportStableHeight: 600,
-          MainButton: {} as any,
           BackButton: {} as any,
           HapticFeedback: {
             impactOccurred,
@@ -214,7 +261,6 @@ describe("tma-api", () => {
         isExpanded: true,
         viewportHeight: 600,
         viewportStableHeight: 600,
-        MainButton: {} as any,
         BackButton: {} as any,
         HapticFeedback: {} as any,
         ready: vi.fn(),
@@ -229,6 +275,40 @@ describe("tma-api", () => {
   afterEach(() => {
     window.Telegram = originalTelegram;
     globalThis.fetch = originalFetch;
+  });
+
+  describe("C1: SDK availability guard", () => {
+    it("throws TmaUnavailableError and executes ZERO fetch calls when Telegram SDK is missing", async () => {
+      delete window.Telegram;
+      const fetchMock = vi.fn();
+      globalThis.fetch = fetchMock;
+
+      await expect(fetchTmaDashboard()).rejects.toThrow(TmaUnavailableError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("throws TmaUnavailableError when Telegram initData is empty string", async () => {
+      window.Telegram = {
+        WebApp: {
+          initData: "",
+          initDataUnsafe: {},
+          themeParams: {},
+          isExpanded: false,
+          viewportHeight: 600,
+          viewportStableHeight: 600,
+          ready: vi.fn(),
+          expand: vi.fn(),
+          close: vi.fn(),
+          onEvent: vi.fn(),
+          offEvent: vi.fn(),
+        },
+      };
+      const fetchMock = vi.fn();
+      globalThis.fetch = fetchMock;
+
+      await expect(fetchTmaDashboard()).rejects.toThrow(TmaUnavailableError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   it("fetchTmaDashboard sends GET to /api/v1/tma/dashboard with X-Telegram-Init-Data header", async () => {
@@ -328,7 +408,7 @@ describe("tma-api", () => {
     );
     globalThis.fetch = fetchMock;
 
-    const payload = { event_id: "ev_1", action: "workflow_rerun" };
+    const payload = { event_id: "ev_1", action: "workflow_rerun" as const };
     const result = await executeTmaAction(payload);
 
     expect(result).toEqual(mockOutcome);

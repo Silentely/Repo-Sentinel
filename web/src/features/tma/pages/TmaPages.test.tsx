@@ -83,7 +83,6 @@ describe("TmaLayout & Pages", () => {
         isExpanded: true,
         viewportHeight: 600,
         viewportStableHeight: 600,
-        MainButton: {} as any,
         BackButton: {} as any,
         HapticFeedback: {
           impactOccurred: vi.fn(),

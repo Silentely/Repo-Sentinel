@@ -7,7 +7,8 @@ export function TmaLayout() {
 
   useEffect(() => {
     if (isAvailable) {
-      initTmaSdk();
+      const cleanup = initTmaSdk();
+      return cleanup;
     }
   }, [isAvailable]);
 

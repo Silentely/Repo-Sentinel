@@ -1,5 +1,6 @@
 /**
  * Telegram WebApp SDK type declarations for RepoSentinel.
+ * 精简收敛至实际使用面，杜绝声明与实现两层皮 (C2)。
  */
 
 export interface TelegramUser {
@@ -20,24 +21,6 @@ export interface TelegramThemeParams {
   button_color?: string;
   button_text_color?: string;
   secondary_bg_color?: string;
-}
-
-export interface TelegramMainButton {
-  text: string;
-  color: string;
-  textColor: string;
-  isVisible: boolean;
-  isActive: boolean;
-  isProgressVisible: boolean;
-  setText(text: string): void;
-  onClick(fn: () => void): void;
-  offClick(fn: () => void): void;
-  show(): void;
-  hide(): void;
-  enable(): void;
-  disable(): void;
-  showProgress(leaveActive?: boolean): void;
-  hideProgress(): void;
 }
 
 export interface TelegramBackButton {
@@ -67,9 +50,8 @@ export interface TelegramWebApp {
   isExpanded: boolean;
   viewportHeight: number;
   viewportStableHeight: number;
-  MainButton: TelegramMainButton;
-  BackButton: TelegramBackButton;
-  HapticFeedback: TelegramHapticFeedback;
+  BackButton?: TelegramBackButton;
+  HapticFeedback?: TelegramHapticFeedback;
   ready(): void;
   expand(): void;
   close(): void;
