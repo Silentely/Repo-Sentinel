@@ -1,4 +1,4 @@
-import { isTelegramWebAppAvailable } from "./tma-sdk";
+import { getInitDataFromHash, isTelegramWebAppAvailable } from "./tma-sdk";
 export interface TmaWorkItem {
   id: string;
   repository_id: string;
@@ -147,7 +147,7 @@ export function getTmaInitData(): string {
   if (typeof window === "undefined") {
     return "";
   }
-  return window.Telegram?.WebApp?.initData ?? "";
+  return window.Telegram?.WebApp?.initData || getInitDataFromHash();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -41,8 +41,30 @@ export function useTmaHaptics(): TmaHaptics {
   return tmaHaptics;
 }
 
+/**
+ * 从 URL Hash 中防御性解析 Telegram 客户端传递的 tgWebAppData。
+ * 当 SDK 异步注入或特定客户端环境下作为双重兜底。
+ */
+export function getInitDataFromHash(): string {
+  if (typeof window === "undefined" || !window.location?.hash) {
+    return "";
+  }
+  try {
+    const rawHash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const params = new URLSearchParams(rawHash);
+    return params.get("tgWebAppData") || "";
+  } catch {
+    return "";
+  }
+}
+
 export function isTelegramWebAppAvailable(): boolean {
-  return typeof window !== "undefined" && Boolean(window.Telegram?.WebApp?.initData);
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return Boolean(window.Telegram?.WebApp?.initData || getInitDataFromHash());
 }
 
 /**

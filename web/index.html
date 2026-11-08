@@ -7,6 +7,9 @@
     <!-- 主题预置为外部脚本（public/theme-init.js）：CSP default-src 'self' 会拦截内联脚本，
          内联版本在深色主题下首帧闪白。取值与判定逻辑须与 src/components/theme-toggle.tsx 保持一致。 -->
     <script src="/theme-init.js"></script>
+    <!-- Telegram WebApp SDK：自托管于 public/telegram-web-app.js，符合 CSP default-src 'self' 约束，
+         在 Telegram 客户端中提供原生交互与 initData 桥接能力。 -->
+    <script src="/telegram-web-app.js"></script>
     <meta name="description" content="RepoSentinel 自托管的 GitHub 仓库监控" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon.ico" sizes="any" />

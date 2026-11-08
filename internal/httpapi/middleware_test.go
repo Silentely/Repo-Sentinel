@@ -447,6 +447,36 @@ func TestPlainHTTPNoHSTS(t *testing.T) {
 	}
 }
 
+// TestTMASecurityHeaders 验证启用 TMA 时，/tma/* 路由下发允许 Telegram Web 嵌入的 CSP 与 Frame 头。
+func TestTMASecurityHeaders(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{
+		publicBaseURL: "https://reposentinel.example",
+		tmaEnabled:    true,
+	})
+
+	t.Run("TMA路径下发允许web.telegram.org的CSP且不下发X-Frame-Options:DENY", func(t *testing.T) {
+		resp := fixture.request(t, http.MethodGet, "/tma/dashboard", "", "127.0.0.1:42501", nil, nil)
+		csp := resp.Header().Get("Content-Security-Policy")
+		if !strings.Contains(csp, "frame-ancestors 'self' https://web.telegram.org") {
+			t.Fatalf("TMA 路由 CSP 必须允许 web.telegram.org 作为 frame-ancestors，实际: %q", csp)
+		}
+		if got := resp.Header().Get("X-Frame-Options"); got != "" {
+			t.Fatalf("TMA 路由不应下发 X-Frame-Options，实际: %q", got)
+		}
+	})
+
+	t.Run("非TMA常规路径仍严格限制frame-ancestors 'none'与X-Frame-Options:DENY", func(t *testing.T) {
+		resp := fixture.request(t, http.MethodGet, "/health/live", "", "127.0.0.1:42501", nil, nil)
+		csp := resp.Header().Get("Content-Security-Policy")
+		if !strings.Contains(csp, "frame-ancestors 'none'") {
+			t.Fatalf("非 TMA 路由 CSP 必须保留 frame-ancestors 'none'，实际: %q", csp)
+		}
+		if got := resp.Header().Get("X-Frame-Options"); got != "DENY" {
+			t.Fatalf("非 TMA 路由必须下发 X-Frame-Options: DENY，实际: %q", got)
+		}
+	})
+}
+
 func cookieByName(t *testing.T, cookies []*http.Cookie, name string) *http.Cookie {
 	t.Helper()
 	for _, cookie := range cookies {

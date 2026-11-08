@@ -12,8 +12,12 @@ import {
   toggleTmaQuietHours,
 } from "./tma-api";
 import {
+  getTmaInitData,
+} from "./tma-api";
+import {
   applyTmaTheme,
   bindTmaBackButton,
+  getInitDataFromHash,
   getTmaStartParam,
   initTmaSdk,
   isTelegramWebAppAvailable,
@@ -82,6 +86,16 @@ describe("tma-sdk", () => {
         },
       };
       expect(isTelegramWebAppAvailable()).toBe(true);
+    });
+
+    it("returns true and extracts initData when hash contains tgWebAppData", () => {
+      delete window.Telegram;
+      window.location.hash = "#tgWebAppData=query_id%3D123%26hash%3Dabc";
+      expect(isTelegramWebAppAvailable()).toBe(true);
+      expect(getInitDataFromHash()).toBe("query_id=123&hash=abc");
+      expect(getTmaInitData()).toBe("query_id=123&hash=abc");
+      window.location.hash = "";
+      expect(getInitDataFromHash()).toBe("");
     });
   });
 
