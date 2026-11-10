@@ -102,8 +102,8 @@ func (s *dryRunWorkItemStore) UpsertIfNewer(ctx context.Context, item store.Work
 	return item, true, nil
 }
 
-func (s *dryRunWorkItemStore) SetIgnored(context.Context, string, bool) error { return nil }
-func (s *dryRunWorkItemStore) MarkMerged(context.Context, string, int) error  { return nil }
+func (s *dryRunWorkItemStore) SetIgnored(context.Context, string, bool) error        { return nil }
+func (s *dryRunWorkItemStore) MarkMerged(context.Context, string, int) error         { return nil }
 func (s *dryRunWorkItemStore) DeleteByRepoNumber(context.Context, string, int) error { return nil }
 
 type dryRunInstallationStore struct {

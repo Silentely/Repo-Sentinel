@@ -1101,9 +1101,9 @@ func TestProcessIssueDeletedRemovesWorkItem(t *testing.T) {
 		"action": "deleted",
 		"issue": map[string]any{
 			"number": 59,
-			"state": "open",
-			"title": "Dependency Dashboard",
-			"user": map[string]any{"login": "renovate[bot]", "type": "Bot"},
+			"state":  "open",
+			"title":  "Dependency Dashboard",
+			"user":   map[string]any{"login": "renovate[bot]", "type": "Bot"},
 		},
 		"repository": demoRepoPayload(false),
 	})
@@ -1118,7 +1118,7 @@ func TestProcessIssueDeletedRemovesWorkItem(t *testing.T) {
 	if _, err := data.WorkItems().GetByRepoNumber(ctx, repo.ID, 59); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("Issue 59 应已删除，got err=%v", err)
 	}
-	if _, err := data.Settings().Get(ctx, "ai.issue_triage." + item.ID); !errors.Is(err, store.ErrNotFound) {
+	if _, err := data.Settings().Get(ctx, "ai.issue_triage."+item.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("关联的分诊设置应已删除，got err=%v", err)
 	}
 }
