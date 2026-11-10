@@ -363,6 +363,25 @@ func (s *server) handleSetWorkItemIgnored(w http.ResponseWriter, r *http.Request
 		func(id string) { s.broadcastResource("work_items.changed", "work_item", id) })
 }
 
+func (s *server) handleDeleteWorkItem(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		s.writeAPIError(w, r, http.StatusBadRequest, errorCodeValidationFailed, map[string]any{"field": "id"})
+		return
+	}
+	item, err := s.dependencies.Store.WorkItems().Get(r.Context(), id)
+	if err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	if err := s.dependencies.Store.WorkItems().DeleteByRepoNumber(r.Context(), item.RepositoryID, item.Number); err != nil {
+		s.writeMappedError(w, r, err)
+		return
+	}
+	s.broadcastResource("work_items.changed", "work_item", id)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "deleted", "work_item_id": id})
+}
+
 type batchIgnoredBody struct {
 	IDs     []string `json:"ids"`
 	Ignored bool     `json:"ignored"`

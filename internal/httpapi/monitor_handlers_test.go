@@ -831,6 +831,54 @@ func TestDeleteRepositoryCascadeViaAPI(t *testing.T) {
 
 // TestTestChannelCreatesDatedOutbox 测试通知必须写入 outbox 且正文带发送时刻：
 // 多条测试通知内容相同会让人无法确认收到的是哪一条。
+func TestDeleteWorkItem(t *testing.T) {
+	fixture := newHTTPTestFixture(t, httpTestOptions{})
+	fixture.bootstrapAdmin(t)
+	cookies := fixture.login(t, httpTestPassword)
+	csrf := cookieByName(t, cookies, CSRFCookieName)
+	ctx := t.Context()
+	now := time.Now().UTC()
+
+	repo, err := fixture.store.Repositories().Upsert(ctx, store.Repository{
+		ID: "repo-del-wi", Type: store.RepositoryTypeInstallation, SyncStatus: store.SyncStatusActive,
+		Owner: "acme", Name: "demo", FullName: "acme/demo",
+	})
+	if err != nil {
+		t.Fatalf("upsert repo: %v", err)
+	}
+	item, _, err := fixture.store.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-delete-1", RepositoryID: repo.ID, Number: 59, Kind: store.WorkItemKindIssue,
+		State: "open", Title: "Dependency Dashboard", Author: "renovate[bot]",
+		SourceUpdatedAt: now, StateHash: "h1",
+	}, nil)
+	if err != nil {
+		t.Fatalf("upsert item: %v", err)
+	}
+	_, _ = fixture.store.Settings().Upsert(ctx, store.SystemSetting{
+		ID: "set-triage-wi", Key: "ai.issue_triage." + item.ID, ValueJSON: []byte(`{"category":"bug"}`),
+	})
+
+	// 1. 未认证拒绝
+	unauth := fixture.request(t, http.MethodDelete, "/api/v1/work-items/"+item.ID, "", "127.0.0.1:45120", nil, nil)
+	assertAPIError(t, unauth, http.StatusUnauthorized, "unauthorized")
+
+	// 2. 正常删除
+	ok := fixture.request(t, http.MethodDelete, "/api/v1/work-items/"+item.ID, "", "127.0.0.1:45121", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	if ok.Code != http.StatusOK {
+		t.Fatalf("delete status=%d body=%s", ok.Code, ok.Body.String())
+	}
+	if _, err := fixture.store.WorkItems().GetByRepoNumber(ctx, repo.ID, 59); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("工作项应已删除，got err=%v", err)
+	}
+	if _, err := fixture.store.Settings().Get(ctx, "ai.issue_triage."+item.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("关联分诊设置应已删除，got err=%v", err)
+	}
+
+	// 3. 重复删除返回 404
+	again := fixture.request(t, http.MethodDelete, "/api/v1/work-items/"+item.ID, "", "127.0.0.1:45122", cookies, map[string]string{CSRFHeaderName: csrf.Value})
+	assertAPIError(t, again, http.StatusNotFound, "not_found")
+}
+
 func TestTestChannelCreatesDatedOutbox(t *testing.T) {
 	fixture := newHTTPTestFixture(t, httpTestOptions{})
 	fixture.bootstrapAdmin(t)

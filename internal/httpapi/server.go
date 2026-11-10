@@ -461,6 +461,7 @@ func New(dependencies Dependencies) http.Handler {
 				mutating.Post("/work-items/{id}/ai-review", s.handleTriggerWorkItemAIReview)
 				mutating.Post("/work-items/{id}/ai-triage", s.handleTriggerWorkItemAITriage)
 				mutating.Patch("/work-items/{id}/ignored", s.handleSetWorkItemIgnored)
+				mutating.Delete("/work-items/{id}", s.handleDeleteWorkItem)
 				mutating.Post("/work-items/batch-ignore", s.handleBatchSetWorkItemIgnored)
 				mutating.Patch("/workflow-runs/{id}/ignored", s.handleSetWorkflowRunIgnored)
 				mutating.Patch("/security-alerts/{id}/ignored", s.handleSetSecurityAlertIgnored)

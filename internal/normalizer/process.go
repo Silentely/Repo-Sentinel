@@ -563,6 +563,14 @@ func (p *Processor) processIssue(ctx context.Context, env envelope) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
+	if env.Action == "deleted" {
+		if p.Store != nil {
+			if err := p.Store.WorkItems().DeleteByRepoNumber(ctx, repo.ID, env.Issue.Number); err != nil && !errors.Is(err, store.ErrNotFound) {
+				return Result{}, fmt.Errorf("delete issue work item: %w", err)
+			}
+		}
+		return Result{Repository: &repo, Updated: true, SuppressNotify: true}, nil
+	}
 	issue := env.Issue
 	hash := StateHash(kind, issue.State, issue.Title, issue.User.Login, milestoneTitle(issue.Milestone), strconv.FormatBool(issue.Draft))
 	updatedAt := issue.UpdatedAt

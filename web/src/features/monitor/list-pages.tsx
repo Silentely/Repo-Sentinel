@@ -39,6 +39,7 @@ import {
   repositoriesQueryOptions,
   setSecurityAlertIgnored,
   setWorkItemIgnored,
+  deleteWorkItem,
   setWorkflowRunIgnored,
   actionsInsightsQueryOptions,
   settingsQueryOptions,
@@ -185,17 +186,21 @@ function useInfiniteList<T>(opts: {
   return { q, items, total };
 }
 
-/** 条目操作区：GitHub 查看链接 + 忽略切换。 */
+/** 条目操作区：GitHub 查看链接 + 忽略切换 + 删除。 */
 function ItemActions({
   htmlUrl,
   ignored,
   busy,
   onToggleIgnore,
+  onDelete,
+  deleteBusy,
 }: {
   htmlUrl?: string;
   ignored?: boolean;
   busy?: boolean;
   onToggleIgnore: () => void;
+  onDelete?: () => void;
+  deleteBusy?: boolean;
 }) {
   return (
     <div className="item-actions">
@@ -205,6 +210,17 @@ function ItemActions({
         </a>
       ) : null}
       <IgnoreButton ignored={ignored} busy={busy} onToggle={onToggleIgnore} />
+      {onDelete ? (
+        <button
+          type="button"
+          className="quiet-button quiet-button--compact quiet-button--danger"
+          disabled={deleteBusy}
+          onClick={onDelete}
+          title="彻底从本地删除（适用于 GitHub 已删除条目）"
+        >
+          {deleteBusy ? "删除中…" : "删除"}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1498,6 +1514,17 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
   });
 
   const { mutation: ignoreMutation, busyId, errorMessage } = useIgnoreMutation(setWorkItemIgnored, ["work-items"]);
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteWorkItem(id),
+    onMutate: (id) => setDeleteBusyId(id),
+    onSettled: () => {
+      setDeleteBusyId(null);
+      queryClient.invalidateQueries({ queryKey: ["work-items"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (err) => setBatchError(toApiError(err).message || "删除失败"),
+  });
   const filtersActive =
     repoId !== "" ||
     reviewFilter !== "" ||
@@ -1746,6 +1773,12 @@ function WorkItemsList({ kind: defaultKind, title, description }: { kind: string
                         ignored: !(it.ignored || ignoredMode === "ignored"),
                       })
                     }
+                    onDelete={() => {
+                      if (window.confirm(`确定要从本地彻底删除 #${num} ${itemTitle} 吗？`)) {
+                        deleteMutation.mutate(it.id);
+                      }
+                    }}
+                    deleteBusy={deleteBusyId === it.id}
                   />
               </li>
             );

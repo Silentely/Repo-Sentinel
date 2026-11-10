@@ -252,13 +252,15 @@ export function BatchActionBar({
         alignItems: "center",
         justifyContent: "space-between",
         padding: "0.5rem 1rem",
-        background: "var(--card-bg, #1a1a24)",
-        border: "1px solid var(--border-color, #2d2d3d)",
-        borderRadius: "0.5rem",
+        background: "var(--bg-surface)",
+        border: "2px solid var(--border-subtle)",
+        borderRadius: "14px",
+        boxShadow: "3px 3px 0 var(--shadow-neo)",
         marginBottom: "0.75rem",
+        color: "var(--text-primary)",
       }}
     >
-      <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>已选择 {selectedCount} 项</span>
+      <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>已选择 {selectedCount} 项</span>
       <div style={{ display: "flex", gap: "0.5rem" }}>
         <button
           type="button"

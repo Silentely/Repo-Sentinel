@@ -683,6 +683,8 @@ type WorkItemStore interface {
 	SetIgnored(context.Context, string, bool) error
 	// MarkMerged 定向置位 PR 合并标记；StateHash 不含 merged，不能走 UpsertIfNewer。
 	MarkMerged(context.Context, string, int) error
+	// DeleteByRepoNumber 彻底删除工作项并清理其关联的系统设置（如 AI 分诊/审查），用于 Issue/PR 被硬删除场景。
+	DeleteByRepoNumber(ctx context.Context, repoID string, number int) error
 }
 
 // WorkflowRunStore Actions。

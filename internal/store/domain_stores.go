@@ -1337,6 +1337,21 @@ func (s *workItemStore) MarkMerged(ctx context.Context, repoID string, number in
 	return mapStoreError(err)
 }
 
+func (s *workItemStore) DeleteByRepoNumber(ctx context.Context, repoID string, number int) error {
+	item, err := s.client.WorkItem.Query().
+		Where(workitem.RepositoryIDEQ(repoID), workitem.NumberEQ(number)).
+		Only(ctx)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	keys := []string{
+		"ai.pr_review." + item.ID,
+		"ai.issue_triage." + item.ID,
+	}
+	_, _ = s.client.SystemSetting.Delete().Where(systemsetting.KeyIn(keys...)).Exec(ctx)
+	return mapStoreError(s.client.WorkItem.DeleteOneID(item.ID).Exec(ctx))
+}
+
 func (s *workItemStore) List(ctx context.Context, f ListFilter) ([]WorkItem, PageResult, error) {
 	f = NormalizeListFilter(f)
 	q := s.client.WorkItem.Query()

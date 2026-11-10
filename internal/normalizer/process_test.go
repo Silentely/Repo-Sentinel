@@ -1078,6 +1078,51 @@ func TestProcessRepositoryDeletedCascadeRemovesData(t *testing.T) {
 
 // installation_repositories 的 removed 载荷：仓库被移出安装（授权收回）。
 // GitHub 侧仓库仍存在，本地保留数据但必须暂停采集（unavailable）。
+// issues.deleted 事件：GitHub 侧 Issue 被硬删除，本地必须级联删除对应 WorkItem 及系统设置。
+func TestProcessIssueDeletedRemovesWorkItem(t *testing.T) {
+	data := openProcessStore(t)
+	repo := seedActiveDemoRepo(t, data)
+	ctx := t.Context()
+
+	// 预置该仓库的打开 Issue 与分诊设置。
+	item, _, err := data.WorkItems().UpsertIfNewer(ctx, store.WorkItem{
+		ID: "wi-issue-del", RepositoryID: repo.ID, Number: 59, Kind: store.WorkItemKindIssue,
+		State: "open", Title: "Dependency Dashboard", Author: "renovate[bot]",
+		HTMLURL: "https://github.com/acme/demo/issues/59", SourceUpdatedAt: time.Now().UTC(), StateHash: "h-del-59",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = data.Settings().Upsert(ctx, store.SystemSetting{
+		ID: "set-triage-59", Key: "ai.issue_triage." + item.ID, ValueJSON: []byte(`{"category":"bug"}`),
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"action": "deleted",
+		"issue": map[string]any{
+			"number": 59,
+			"state": "open",
+			"title": "Dependency Dashboard",
+			"user": map[string]any{"login": "renovate[bot]", "type": "Bot"},
+		},
+		"repository": demoRepoPayload(false),
+	})
+	proc := &normalizer.Processor{Store: data}
+	res, err := proc.Process(ctx, "issues", "delivery-issue-deleted", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Updated || !res.SuppressNotify {
+		t.Fatalf("expected updated=true, suppressNotify=true, got %+v", res)
+	}
+	if _, err := data.WorkItems().GetByRepoNumber(ctx, repo.ID, 59); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("Issue 59 应已删除，got err=%v", err)
+	}
+	if _, err := data.Settings().Get(ctx, "ai.issue_triage." + item.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("关联的分诊设置应已删除，got err=%v", err)
+	}
+}
+
 func TestProcessInstallationRepositoriesRemovedMarksUnavailable(t *testing.T) {
 	data := openProcessStore(t)
 	repo := seedActiveDemoRepo(t, data)

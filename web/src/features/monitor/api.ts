@@ -376,6 +376,13 @@ export async function setWorkItemIgnored(id: string, ignored: boolean): Promise<
   });
 }
 
+/** 删除本地工作项（用于已在 GitHub 侧硬删除的 Issue/PR）。 */
+export async function deleteWorkItem(id: string): Promise<void> {
+  await apiRequest(`/api/v1/work-items/${id}`, {
+    method: "DELETE",
+  });
+}
+
 /** 批量设置 Issue/PR 本地忽略标记。 */
 export async function batchSetWorkItemIgnored(ids: string[], ignored: boolean): Promise<{ updated_count: number }> {
   return apiRequest<{ updated_count: number }>("/api/v1/work-items/batch-ignore", {
