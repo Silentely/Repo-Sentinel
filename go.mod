@@ -7,7 +7,7 @@ require (
 	entgo.io/ent v0.14.6
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/oklog/ulid/v2 v2.1.2
 	golang.org/x/crypto v0.58.0
 	golang.org/x/sync v0.24.0
