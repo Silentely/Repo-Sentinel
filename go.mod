@@ -1,9 +1,9 @@
 module github.com/Silentely/Repo-Sentinel
 
-go 1.26.4
+go 1.26.10
 
 require (
-	ariga.io/atlas v1.3.0
+	ariga.io/atlas v1.4.0
 	entgo.io/ent v0.14.6
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
