@@ -247,7 +247,8 @@ go vet ./...
 pnpm --dir web test -- --run
 pnpm --dir web typecheck
 pnpm --dir web build
-npm run docs:build
+pnpm --dir docs install
+pnpm run docs:build
 ```
 
 CLI：`serve` · `version` · `config validate` · `admin reset-password` · `doctor` · `healthcheck` · `backup` · `restore`。

@@ -8,12 +8,13 @@
 
 ## 入口与启动
 
-根 `package.json`：
+`docs/package.json`（依赖与脚本随文档站就近管理）：
 
 ```bash
-npm run docs:dev      # 准备 agent 资源 + vitepress dev :5174
-npm run docs:build
-npm run docs:preview
+pnpm --dir docs install
+pnpm run docs:dev      # 准备 agent 资源 + vitepress dev :5174
+pnpm run docs:build
+pnpm run docs:preview
 ```
 
 `scripts/prepare-docs-agent-assets.mjs` 在 dev/build 前同步 `public/_sources` 等资源。
@@ -37,7 +38,7 @@ npm run docs:preview
 
 ## 关键依赖与配置
 
-- VitePress `1.6.4`（根 package）
+- VitePress `1.6.4`（`docs/package.json`）
 - `vercel.json` — 若托管文档站
 - 忽略构建产物：`docs/.vitepress/**`
 

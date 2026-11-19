@@ -3,7 +3,7 @@ GIT_SHA ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown'
 GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'unknown')
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILD_CHANNEL ?= local
-OUTPUT ?= reposentinel
+OUTPUT ?= bin/reposentinel
 BUILD_LDFLAGS := \
 	-X github.com/Silentely/Repo-Sentinel/internal/buildinfo.version=$(VERSION) \
 	-X github.com/Silentely/Repo-Sentinel/internal/buildinfo.gitSHA=$(GIT_SHA) \
@@ -33,15 +33,17 @@ lint:
 	golangci-lint run ./...
 
 build:
+	@mkdir -p "$(dir $(OUTPUT))"
 	go build -ldflags "$(BUILD_LDFLAGS)" -o "$(OUTPUT)" ./cmd/reposentinel
 
 build-production:
+	@mkdir -p "$(dir $(OUTPUT))"
 	go build -tags production -ldflags "$(BUILD_LDFLAGS)" -o "$(OUTPUT)" ./cmd/reposentinel
 
 docs-dev:
-	npm run docs:dev
+	pnpm run docs:dev
 
 docs-build:
-	npm run docs:build
+	pnpm run docs:build
 
 verify: gofmt-check fmt test vet build test-frontend

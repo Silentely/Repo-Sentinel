@@ -9,7 +9,7 @@
 ## 入口与启动
 
 ```bash
-npm run docs:agent-assets   # node scripts/prepare-docs-agent-assets.mjs
+pnpm run docs:agent-assets  # node scripts/prepare-docs-agent-assets.mjs
 # 亦由 docs:dev / docs:build 自动调用
 ```
 
@@ -28,7 +28,7 @@ npm run docs:agent-assets   # node scripts/prepare-docs-agent-assets.mjs
 
 ## 测试与质量
 
-- 随 `npm run docs:build` 间接验证；无独立单测
+- 随 `pnpm run docs:build` 间接验证；无独立单测
 
 ## 常见问题 (FAQ)
 

@@ -81,12 +81,12 @@ RepoSentinel 用于集中监控 GitHub 仓库的 Issue、Pull Request、Actions 
 ## 本地预览文档站
 
 ```bash
-npm install
-npm run docs:dev
+pnpm --dir docs install
+pnpm run docs:dev
 ```
 
 默认监听 <http://127.0.0.1:5174>。构建：
 
 ```bash
-npm run docs:build
+pnpm run docs:build
 ```

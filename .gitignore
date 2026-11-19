@@ -19,8 +19,8 @@
 *.sqlite3
 *.db
 
-# Go build output（仅仓库根目录二进制，锚定避免屏蔽 cmd/reposentinel 源码）
-/reposentinel
+# Go build output（仅仓库根目录 bin/，锚定避免屏蔽 cmd/reposentinel 源码）
+/bin/
 
 # macOS
 .DS_Store
@@ -29,6 +29,13 @@
 node_modules/
 web/node_modules/
 web/dist/
+
+# 文档站依赖归属 docs/ 子包，根目录保持无前端依赖
+/docs/node_modules/
+
+# 统一使用 pnpm，防止 npm 在根目录或文档子包生成锁文件
+/package-lock.json
+/docs/package-lock.json
 
 # 文档站构建产物
 docs/.vitepress/cache/

@@ -9,7 +9,7 @@
 ## 入口与启动
 
 ```bash
-./reposentinel serve --config configs/reposentinel.example.yaml
+./bin/reposentinel serve --config configs/reposentinel.example.yaml
 # 或通过文档约定的配置路径 / 环境变量覆盖
 ```
 

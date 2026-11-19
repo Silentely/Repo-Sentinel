@@ -7,7 +7,7 @@
 .dockerignore
 
 # 本地构建产物与运行期数据
-/reposentinel
+/bin/
 /data/
 /logs/
 /data_test/

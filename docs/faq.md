@@ -148,8 +148,8 @@ printf '%s\n' "$NEW_PASSWORD" | .tmp/reposentinel admin reset-password --passwor
 ### 文档站怎么预览？
 
 ```bash
-npm install
-npm run docs:dev
+pnpm --dir docs install
+pnpm run docs:dev
 ```
 
 ## 安全

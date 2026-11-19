@@ -1,0 +1,24 @@
+{
+  "name": "repo-sentinel-docs",
+  "private": true,
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "agent-assets": "node ../scripts/prepare-docs-agent-assets.mjs",
+    "dev": "pnpm run agent-assets && vitepress dev . --host 127.0.0.1 --port 5174",
+    "build": "pnpm run agent-assets && vitepress build .",
+    "preview": "vitepress preview . --host 127.0.0.1 --port 4174",
+    "clean": "rm -rf node_modules .vitepress/cache .vitepress/.temp .vitepress/dist"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "0.25.0",
+      "vite": "6.4.5"
+    }
+  }
+}

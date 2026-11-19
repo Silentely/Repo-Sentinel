@@ -182,7 +182,7 @@ graph TD
 | 前端 | React 19，TanStack Router/Query，Vite，pnpm 10.34.5，TypeScript |
 | 数据库 | SQLite（默认）+ PostgreSQL（可选），双轨迁移 |
 | 部署 | Docker / GHCR，CI 由 Tag `v*` 或 main/dev 推送触发 |
-| 文档站 | VitePress（根 `package.json`） |
+| 文档站 | VitePress（`docs/package.json`） |
 
 ## 开发命令
 
@@ -201,8 +201,9 @@ pnpm --dir web build
 # 可选 e2e：pnpm --dir web e2e
 
 # 文档站
-npm run docs:dev
-npm run docs:build
+pnpm --dir docs install
+pnpm run docs:dev
+pnpm run docs:build
 
 # 综合验证
 make verify                   # fmt + test + vet + build + test-frontend

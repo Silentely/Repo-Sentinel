@@ -15,9 +15,9 @@ Go 进程入口目录。当前仅含 `reposentinel` 单命令，将 `os.Args` �
 本地构建：
 
 ```bash
-make build                 # 输出 ./reposentinel
+make build                 # 输出 ./bin/reposentinel
 make build-production      # -tags production，嵌入 web/dist
-./reposentinel serve --config configs/reposentinel.example.yaml
+./bin/reposentinel serve --config configs/reposentinel.example.yaml
 ```
 
 ## 对外接口
@@ -36,7 +36,7 @@ make build-production      # -tags production，嵌入 web/dist
 ## 测试与质量
 
 - 入口极薄，行为测试集中在 `internal/cli`、`internal/app`
-- `make build` / `go build ./cmd/reposentinel` 作为冒烟
+- `make build` / `go build -o bin/reposentinel ./cmd/reposentinel` 作为冒烟
 
 ## 常见问题 (FAQ)
 

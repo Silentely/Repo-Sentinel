@@ -98,8 +98,8 @@ OUTPUT=.tmp/reposentinel BUILD_CHANNEL=local make build-production
 用户文档在 `docs/`（VitePress）。本地预览：
 
 ```bash
-npm install
-npm run docs:dev
+pnpm --dir docs install
+pnpm run docs:dev
 ```
 
 ## 需要帮助时
