@@ -4,7 +4,7 @@
 FROM node:24-bookworm AS frontend
 WORKDIR /src/web
 COPY web/package.json web/pnpm-lock.yaml ./
-RUN corepack enable && corepack prepare pnpm@10.34.5 --activate \
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate \
   && pnpm install --frozen-lockfile
 COPY web/ ./
 RUN pnpm build

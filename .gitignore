@@ -25,7 +25,17 @@
 # macOS
 .DS_Store
 
+# Python / 覆盖率与 Playwright 产物
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+playwright-report/
+test-results/
+
 # Node / 前端
+/dist/
 node_modules/
 web/node_modules/
 web/dist/

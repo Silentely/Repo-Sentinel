@@ -10,6 +10,6 @@
     "docs:dev": "pnpm --dir docs run dev",
     "docs:build": "pnpm --dir docs run build",
     "docs:preview": "pnpm --dir docs run preview",
-    "clean": "rm -rf node_modules docs/node_modules web/node_modules dist docs/.vitepress/cache docs/.vitepress/.temp docs/.vitepress/dist web/dist"
+    "clean": "rm -rf node_modules docs/node_modules web/node_modules .mypy_cache htmlcov .coverage coverage.xml dist docs/.vitepress/cache docs/.vitepress/.temp docs/.vitepress/dist web/dist web/playwright-report web/test-results playwright-report"
   }
 }
