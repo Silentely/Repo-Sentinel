@@ -45,7 +45,7 @@
   },
   "pnpm": {
     "overrides": {
-      "source-map-js": "1.2.3"
+      "source-map-js": "1.2.4"
     }
   }
 }
