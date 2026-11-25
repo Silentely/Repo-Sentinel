@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-25
+
+### 优化
+- **依赖升级**：升级 `modernc.org/sqlite` 至 1.63.0、`pgx` 至 5.13.0、`golang.org/x/crypto` 至 0.59.0、`ariga.io/atlas` 至 1.4.0；升级前端 `@tanstack/react-query` 至 5.108.4、`lucide-react` 至 1.78.0、`react-hook-form` 至 7.92.0、`recharts` 至 3.11.1、`oxlint` 至 1.95.0、`vitest` 至 5.1.1、`@playwright/test` 至 1.65.1、`tailwindcss` 至 4.3.5、`vite` 至 8.3.8。
+- **构建与依赖收敛**：新增文档站独立依赖配置（`docs/package.json` 与 `docs/pnpm-lock.yaml`），移除根目录多余的 `package-lock.json`，补充 `make clean` 清理目标及 `.gitignore` 产物规则。
+
+### 修复
+- **文档部署**：修正 Vercel 文档站构建配置与部署入口，确保文档站自动化构建正常运行。
+
 ## [0.10.0] - 2026-11-14
 
 ### 新增
